@@ -1,0 +1,175 @@
+﻿function rebuildParts(){
+  const m = state.model;
+  const {W,H,D} = m.dims;
+
+  // ---- backward compat / defaults
+  if (!m.front) m.front = {};
+  if (!m.front.heightMode) m.front.heightMode = "carcass";
+  if (!m.hardware) m.hardware = {};
+  if (m.hardware.legsH == null) m.hardware.legsH = 100;
+
+  // migrate old midA/midB -> mid/mid2 (if someone had it)
+  if (!m.mid && m.midA){
+    m.mid = { enabled:!!m.midA.enabled, x:num(m.midA.x,300), mat:m.midA.mat||"pb18", offT:num(m.midA.offT,0), offB:num(m.midA.offB,0) };
+  }
+  if (!m.mid2 && m.midB){
+    m.mid2 = { enabled:!!m.midB.enabled, x:num(m.midB.x,420), mat:m.midB.mat||"pb18", offT:num(m.midB.offT,0), offB:num(m.midB.offB,0) };
+  }
+  if (!m.mid)  m.mid  = { enabled:false, x:300, mat:"pb18", offT:0, offB:0 };
+  if (!m.mid2) m.mid2 = { enabled:false, x:420, mat:"pb18", offT:0, offB:0 };
+
+  if (!m.shelves) m.shelves = { autoCount:0, autoY:[], extra:[], span:{} };
+  if (!m.shelves.span) m.shelves.span = {};
+
+  const p = [];
+
+  if (m.has.left)   p.push(mkPart("left","Bok lewy","side","pb18", D, H));
+  if (m.has.right)  p.push(mkPart("right","Bok prawy","side","pb18", D, H));
+  if (m.has.top)    p.push(mkPart("top","Wieniec górny","top","pb18", W, D));
+  if (m.has.bottom) p.push(mkPart("bottom","Wieniec dolny","bottom","pb18", W, D));
+  if (m.back?.enabled && m.has.back) p.push(mkPart("back","Plecy","back", m.back.mat || "hdf3", W, H));
+
+  // ---- mids (with offsets)
+  const midOn  = !!m.mid?.enabled;
+  const mid2On = !!m.mid2?.enabled;
+
+  const innerW = Math.max(10, W - (m.pos?.L||0) - (m.pos?.R||0));
+  let midX  = clamp(Math.round(num(m.mid?.x,  Math.floor(innerW/2))), 1, Math.max(2, innerW-1));
+  let mid2X = clamp(Math.round(num(m.mid2?.x, Math.floor(innerW*0.7))), 1, Math.max(2, innerW-1));
+  if (mid2On && midOn){
+    if (mid2X <= midX+1) mid2X = clamp(midX+2, 2, innerW-1);
+  }
+
+  const midH1 = Math.max(10, H - Math.max(0,num(m.mid.offT,0)) - Math.max(0,num(m.mid.offB,0)));
+  const midH2 = Math.max(10, H - Math.max(0,num(m.mid2.offT,0)) - Math.max(0,num(m.mid2.offB,0)));
+
+  if (midOn)  p.push(mkPart("mid","Pion środkowy #1","mid",  m.mid.mat || "pb18",  D, midH1, { offT:m.mid.offT||0, offB:m.mid.offB||0, x:midX }));
+  if (mid2On) p.push(mkPart("mid2","Pion środkowy #2","mid", m.mid2.mat|| "pb18", D, midH2, { offT:m.mid2.offT||0, offB:m.mid2.offB||0, x:mid2X }));
+
+  // ---- shelves (split by mids)
+  const getSpan1 = (baseId)=>{
+    const v = m.shelves.span[baseId];
+    if (v==="L" || v==="R" || v==="both") return v;
+    return "both";
+  };
+  const getSpan2 = (baseId)=>{
+    const v = m.shelves.span[baseId];
+    if (v==="L" || v==="M" || v==="R" || v==="all") return v;
+    return "all";
+  };
+
+  const leftW  = Math.max(10, midX);
+  const rightW = Math.max(10, innerW - midX);
+
+  const segW = ()=>{
+    const a = Math.max(10, midX);
+    const b = Math.max(10, mid2X - midX);
+    const c = Math.max(10, innerW - mid2X);
+    return {a,b,c};
+  };
+
+  const pushShelf = (baseId, label, y, shelfType)=>{
+    if (!midOn){
+      p.push(mkPart(baseId, label, "shelf", "pb18", W, D, { shelfY:y, shelfType }));
+      return;
+    }
+
+    // 1 mid -> L/R
+    if (midOn && !mid2On){
+      const span = getSpan1(baseId);
+      if (span==="both" || span==="L"){
+        p.push(mkPart(baseId+"_L", label+" (L)", "shelf", "pb18", leftW, D, { shelfY:y, shelfType, shelfBaseId:baseId, shelfSpan:"L" }));
+      }
+      if (span==="both" || span==="R"){
+        p.push(mkPart(baseId+"_R", label+" (P)", "shelf", "pb18", rightW, D, { shelfY:y, shelfType, shelfBaseId:baseId, shelfSpan:"R" }));
+      }
+      return;
+    }
+
+    // 2 mids -> L/M/R
+    const span = getSpan2(baseId);
+    const {a,b,c} = segW();
+    if (span==="all" || span==="L"){
+      p.push(mkPart(baseId+"_L", label+" (L)", "shelf", "pb18", a, D, { shelfY:y, shelfType, shelfBaseId:baseId, shelfSpan:"L" }));
+    }
+    if (span==="all" || span==="M"){
+      p.push(mkPart(baseId+"_M", label+" (Ś)", "shelf", "pb18", b, D, { shelfY:y, shelfType, shelfBaseId:baseId, shelfSpan:"M" }));
+    }
+    if (span==="all" || span==="R"){
+      p.push(mkPart(baseId+"_R", label+" (P)", "shelf", "pb18", c, D, { shelfY:y, shelfType, shelfBaseId:baseId, shelfSpan:"R" }));
+    }
+  };
+
+  (m.shelves.autoY||[]).forEach((y, idx)=>{
+    const baseId = "s_auto_" + idx;
+    pushShelf(baseId, `Półka auto #${idx+1}`, y, "auto");
+  });
+
+  (m.shelves.extra||[]).forEach((it)=>{
+    pushShelf(it.id, `Półka extra`, it.y, "extra");
+  });
+
+  // ---- fronts / drawers
+  if (m.has.front && m.front.mode !== "none" && m.front.count>0){
+    const gap = clamp(m.front.gap, 0, 10);
+    const count = clamp(m.front.count, 1, 12);
+
+    const hm = m.front.heightMode || "carcass";
+    let baseH = H;
+
+    if (hm === "opening"){
+      baseH = Math.max(10, H - (m.pos?.T||0) - (m.pos?.B||0));
+    } else if (hm === "floor"){
+      const legs = Math.max(0, num(m.hardware.legsH, 100));
+      baseH = Math.max(10, H + legs);
+    }
+
+    if (m.front.mode==="doors"){
+      const doorCount = count;
+      const totalGap = (doorCount+1)*gap;
+      const doorW = Math.max(10, Math.floor((W - totalGap)/doorCount));
+      const doorH = Math.max(10, baseH - 2*gap);
+
+      for (let i=0;i<doorCount;i++){
+        p.push(mkPart(`front_${i+1}`, `Drzwi #${i+1}`, "front", m.front.mat, doorW, doorH, {
+          frontIndex:i+1, mode:"doors", corner:m.front.cornerFront, heightMode:hm
+        }));
+      }
+    }
+
+    if (m.front.mode==="drawers"){
+      const drawerCount = count;
+      const list = parseHeightsList(m.front.drawerHeights);
+      let heights = [];
+
+      if (list.length === drawerCount){
+        heights = list;
+      } else {
+        const totalGap = (drawerCount+1)*gap;
+        const avail = Math.max(20, baseH - totalGap);
+        const each = Math.floor(avail/drawerCount);
+        heights = Array.from({length:drawerCount}, ()=> each);
+      }
+
+      const frontW = Math.max(10, W - 2*gap);
+      for (let i=0;i<drawerCount;i++){
+        p.push(mkPart(`front_${i+1}`, `Front szuflady #${i+1}`, "front", m.front.mat, frontW, Math.max(10, heights[i]), {
+          frontIndex:i+1, mode:"drawers", corner:m.front.cornerFront, heightMode:hm
+        }));
+      }
+    }
+  }
+
+  state.parts = p;
+  if (!state.selected || !state.parts.some(x=>x.id===state.selected)){
+    state.selected = state.parts[0]?.id || null;
+  }
+}
+
+function computeHingesPerDoor(doorH){
+  if (doorH <= 900) return 2;
+  if (doorH <= 1400) return 3;
+  if (doorH <= 2000) return 4;
+  return 5;
+}
+

@@ -1,0 +1,225 @@
+﻿(() => {
+  "use strict";
+
+  // ====== helpers ======
+  const $ = (id) => document.getElementById(id);
+  const num = (v, def=0) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : def;
+  };
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+  const errBar = () => $("errBar");
+  const showErr = (msg) => {
+    const el = errBar();
+    if(!el) return;
+    el.style.display = "block";
+    el.textContent = "JS ERROR: " + msg;
+    $("statusPill").textContent = "ERR";
+  };
+  const clearErr = () => {
+    const el = errBar();
+    if(el){ el.style.display = "none"; el.textContent = ""; }
+    $("statusPill").textContent = "OK";
+  };
+
+  window.addEventListener("error", (e) => {
+    showErr(e && e.message ? e.message : String(e));
+  });
+
+  // ====== tiny material list ======
+  const MATERIALS = [
+    { id:"PB18",  name:"Płyta wiórowa 18 mm (PB18)" },
+    { id:"MDF18", name:"MDF 18 mm (MDF18)" },
+    { id:"HDF3",  name:"HDF 3 mm (HDF3)" },
+    { id:"PLY15", name:"Sklejka 15 mm (PLY15)" }
+  ];
+
+  function fillSelect(selId, ids, defId){
+    const sel = $(selId);
+    if(!sel) return;
+    sel.innerHTML = "";
+    for(const it of MATERIALS){
+      if(ids && !ids.includes(it.id)) continue;
+      const o = document.createElement("option");
+      o.value = it.id; o.textContent = it.name;
+      sel.appendChild(o);
+    }
+    sel.value = defId || (sel.options[0] ? sel.options[0].value : "");
+  }
+
+  // ====== state ======
+  const state = {
+    w: 600, h: 720, d: 560,
+    uiScale: 1,
+    frontMode: "none",
+    frontCount: 0,
+    frontInset: 4,     // bigger than before
+    frontGap: 3,       // bigger than before
+    frontMat: "MDF18",
+    matCarcass: "PB18",
+    matBack: "HDF3",
+    selected: "—"
+  };
+
+  function syncFromInputs(){
+    state.w = clamp(Math.round(num($("w")?.value, 600)), 50, 5000);
+    state.h = clamp(Math.round(num($("h")?.value, 720)), 50, 5000);
+    state.d = clamp(Math.round(num($("d")?.value, 560)), 50, 5000);
+    state.uiScale = clamp(num($("uiScale")?.value, 1), 0.5, 3);
+
+    state.frontMode = $("frontMode")?.value || "none";
+    state.frontCount = clamp(Math.round(num($("frontCount")?.value, 0)), 0, 20);
+    state.frontInset = clamp(Math.round(num($("frontInset")?.value, 4)), 0, 50);
+    state.frontGap = clamp(Math.round(num($("frontGap")?.value, 3)), 0, 20);
+
+    state.frontMat = $("frontMat")?.value || "MDF18";
+    state.matCarcass = $("matCarcass")?.value || "PB18";
+    state.matBack = $("matBack")?.value || "HDF3";
+
+    $("dimBadge").textContent = `${state.w}×${state.h}×${state.d}`;
+    $("dbg").textContent = `frontMode=${state.frontMode}, frontCount=${state.frontCount}, inset=${state.frontInset}, gap=${state.frontGap}`;
+  }
+
+  // ====== SVG drawing ======
+  const SVGNS = "http://www.w3.org/2000/svg";
+  const create = (tag) => document.createElementNS(SVGNS, tag);
+
+  function clearSVG(svg){
+    while(svg.firstChild) svg.removeChild(svg.firstChild);
+  }
+
+  function addText(svg, x, y, txt, opts={}){
+    const t = create("text");
+    t.setAttribute("x", x); t.setAttribute("y", y);
+    t.setAttribute("font-size", opts.size || "16");
+    t.setAttribute("fill", opts.fill || "#111");
+    t.setAttribute("font-weight", opts.weight || "600");
+    t.textContent = txt;
+    svg.appendChild(t);
+  }
+
+  function addRect(svg, x, y, w, h, opts={}){
+    const r = create("rect");
+    r.setAttribute("x", x); r.setAttribute("y", y);
+    r.setAttribute("width", w); r.setAttribute("height", h);
+    r.setAttribute("fill", opts.fill ?? "none");
+    r.setAttribute("stroke", opts.stroke ?? "#111");
+    r.setAttribute("stroke-width", opts.sw ?? "2");
+    if(opts.dash) r.setAttribute("stroke-dasharray", opts.dash);
+    r.style.cursor = opts.cursor || "default";
+    if(opts.rx) r.setAttribute("rx", opts.rx);
+    svg.appendChild(r);
+    return r;
+  }
+
+  function render(){
+    clearErr();
+    syncFromInputs();
+
+    const svg = $("moduleView");
+    if(!svg) return;
+
+    clearSVG(svg);
+
+    // layout
+    const pad = 60;
+    const areaW = 900 - pad*2;
+    const areaH = 560 - pad*2 - 20;
+
+    // scale based on W/H
+    const scale = Math.min(areaW / state.w, areaH / state.h) * state.uiScale;
+
+    const boxW = state.w * scale;
+    const boxH = state.h * scale;
+    const x0 = (900 - boxW)/2;
+    const y0 = 60;
+
+    addText(svg, 60, 32, "Front view", { size: 16, fill:"#111", weight:"800" });
+
+    // carcass rectangle
+    addRect(svg, x0, y0, boxW, boxH, { stroke:"#111", sw:2 });
+
+    // dimensions labels
+    addText(svg, x0 + boxW + 12, y0 + boxH/2, `H ${state.h} mm`, { size: 14, fill:"#111", weight:"600" });
+    addText(svg, x0 + boxW/2 - 30, y0 + boxH + 26, `W ${state.w} mm`, { size: 14, fill:"#111", weight:"600" });
+
+    // fronts / drawers
+    const inset = state.frontInset * scale;
+    const gap = state.frontGap * scale;
+
+    const fx = x0 + inset;
+    const fy = y0 + inset;
+    const fw = Math.max(0, boxW - inset*2);
+    const fh = Math.max(0, boxH - inset*2);
+
+    const strokeFront = "#ff8a00";  // vivid orange
+    const swFront = 4;              // thicker
+    const dashDot = "14 6 2 6";      // dash-dot
+
+    if(state.frontMode === "doors" && state.frontCount > 0){
+      // doors split width
+      const n = clamp(state.frontCount, 1, 10);
+      const cellW = (fw - gap*(n-1)) / n;
+      for(let i=0;i<n;i++){
+        const rx = fx + i*(cellW + gap);
+        const rr = addRect(svg, rx, fy, cellW, fh, { stroke: strokeFront, sw: swFront, fill:"none", rx:4, cursor:"pointer" });
+        rr.addEventListener("click", () => { state.selected = `Front drzwi #${i+1}`; $("selBadge").textContent = "Selected: " + state.selected; });
+      }
+      addText(svg, 60, 52, `Fronty: DRZWI • ${state.frontCount} • ${state.frontMat}`, { size: 12, fill:"#666", weight:"700" });
+    }
+
+    if(state.frontMode === "drawers" && state.frontCount > 0){
+      const n = clamp(state.frontCount, 1, 12);
+      const cellH = (fh - gap*(n-1)) / n;
+      for(let i=0;i<n;i++){
+        const ry = fy + i*(cellH + gap);
+        const rr = addRect(svg, fx, ry, fw, cellH, { stroke: strokeFront, sw: swFront, fill:"none", dash: dashDot, rx:4, cursor:"pointer" });
+        rr.addEventListener("click", () => { state.selected = `Szuflada #${i+1}`; $("selBadge").textContent = "Selected: " + state.selected; });
+      }
+      addText(svg, 60, 52, `Fronty: SZUFLADY • ${state.frontCount} • ${state.frontMat}`, { size: 12, fill:"#666", weight:"700" });
+    }
+
+    if(state.frontMode === "none" || state.frontCount === 0){
+      addText(svg, 60, 52, `Fronty: BRAK`, { size: 12, fill:"#666", weight:"700" });
+    }
+  }
+
+  function bind(){
+    fillSelect("frontMat", ["MDF18","PB18","PLY15"], "MDF18");
+    fillSelect("matCarcass", ["PB18","MDF18","PLY15"], "PB18");
+    fillSelect("matBack", ["HDF3"], "HDF3");
+
+    const ids = ["w","h","d","uiScale","frontMode","frontCount","frontInset","frontGap","frontMat","matCarcass","matBack"];
+    for(const id of ids){
+      const el = $(id);
+      if(!el) continue;
+      el.addEventListener("input", render);
+      el.addEventListener("change", render);
+    }
+
+    $("resetBtn")?.addEventListener("click", () => {
+      $("w").value = 600;
+      $("h").value = 720;
+      $("d").value = 560;
+      $("uiScale").value = 1;
+
+      $("frontMode").value = "none";
+      $("frontCount").value = 0;
+      $("frontInset").value = 4;  // bigger default
+      $("frontGap").value = 3;    // bigger default
+
+      $("frontMat").value = "MDF18";
+      $("matCarcass").value = "PB18";
+      $("matBack").value = "HDF3";
+
+      $("selBadge").textContent = "Selected: —";
+      render();
+    });
+
+    render();
+    window.__APP_READY__ = true;
+  }
+
+  window.addEventListener("load", bind);
+})();

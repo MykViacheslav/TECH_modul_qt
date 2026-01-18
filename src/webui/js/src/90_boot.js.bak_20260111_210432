@@ -1,0 +1,307 @@
+﻿function renderStatus(){
+  const m = state.model;
+  const t = state.templates.find(x=>x.id===state.loadedTemplateId);
+  const loadedTxt = t ? ` • LOADED: ${t.name}` : "";
+  $("statusPill").textContent = `${m.dims.W}×${m.dims.H}×${m.dims.D}${loadedTxt}`;
+}
+
+function renderAll(){
+  renderStatus();
+  renderPartsList();
+  renderQuick();
+  renderBOM();
+  renderSVG();
+}
+
+// ensure defaults + migrate old midA/midB if present
+function ensureModelDefaults(){
+  const m = state.model;
+
+  if (!m.front) m.front = {};
+  if (!m.front.heightMode) m.front.heightMode = "carcass";
+
+  if (!m.hardware) m.hardware = {};
+  if (m.hardware.legsH == null) m.hardware.legsH = 100;
+  if (!m.hardware.hingeType) m.hardware.hingeType = "hinge_110_soft";
+  if (!m.hardware.runnerType) m.hardware.runnerType = "blum_merivobox";
+
+  if (!m.shelves) m.shelves = { autoCount:0, autoY:[], extra:[], span:{} };
+  if (!m.shelves.span) m.shelves.span = {};
+
+  // migrate midA/midB -> mid/mid2
+  if (!m.mid && m.midA){
+    m.mid = { enabled:!!m.midA.enabled, x:num(m.midA.x,300), mat:m.midA.mat||"pb18", offT:num(m.midA.offT,0), offB:num(m.midA.offB,0) };
+  }
+  if (!m.mid2 && m.midB){
+    m.mid2 = { enabled:!!m.midB.enabled, x:num(m.midB.x,420), mat:m.midB.mat||"pb18", offT:num(m.midB.offT,0), offB:num(m.midB.offB,0) };
+  }
+
+  if (!m.mid)  m.mid  = { enabled:false, x:300, mat:"pb18", offT:0, offB:0 };
+  if (!m.mid2) m.mid2 = { enabled:false, x:420, mat:"pb18", offT:0, offB:0 };
+}
+
+function fillHardwareSelects(){
+  // hingeType / runnerType
+  const hs = $("hingeType");
+  const rs = $("runnerType");
+  if (hs){
+    hs.innerHTML = "";
+    (hardwareCatalog.hinges||[]).forEach(h=>{
+      const o=document.createElement("option"); o.value=h.id; o.textContent=h.name;
+      hs.appendChild(o);
+    });
+  }
+  if (rs){
+    rs.innerHTML = "";
+    (hardwareCatalog.runners||[]).forEach(r=>{
+      const o=document.createElement("option"); o.value=r.id; o.textContent=r.name;
+      rs.appendChild(o);
+    });
+  }
+}
+
+function init(){
+  // fill material selects
+  for (const m of materials){
+    const o=document.createElement("option"); o.value=m.id; o.textContent=m.name;
+    $("midMat")?.appendChild(o.cloneNode(true));
+    $("mid2Mat")?.appendChild(o.cloneNode(true));
+    $("backMat")?.appendChild(o.cloneNode(true));
+    $("frontMat")?.appendChild(o.cloneNode(true));
+    $("drawerBottomMat")?.appendChild(o.cloneNode(true));
+    $("drawerBackMat")?.appendChild(o.cloneNode(true));
+    $("drawerWoodMat")?.appendChild(o.cloneNode(true));
+    $("quickMat")?.appendChild(o.cloneNode(true));
+  }
+  for (const b of edgeBands){
+    const o=document.createElement("option"); o.value=b.id; o.textContent=b.name;
+    $("quickBand")?.appendChild(o);
+  }
+
+  fillHardwareSelects();
+
+    // --- mid offsets defaults + sync wrapper
+  if (!state.model.mid) state.model.mid = { enabled:false, x:300, mat:"pb18", offT:0, offB:0 };
+  if (state.model.mid.offT == null) state.model.mid.offT = 0;
+  if (state.model.mid.offB == null) state.model.mid.offB = 0;
+
+  if (typeof syncAllInputsFromModel === "function"){
+    const _origSync = syncAllInputsFromModel;
+    syncAllInputsFromModel = function(){
+      _origSync();
+      if ($("midOffT")) $("midOffT").value = (state.model.mid.offT==null ? 0 : state.model.mid.offT);
+      if ($("midOffB")) $("midOffB").value = (state.model.mid.offB==null ? 0 : state.model.mid.offB);
+    };
+  }
+fillGroupSelects();
+  state.model.group = state.groups[0] || "Kitchen";
+
+  ensureModelDefaults();
+  syncAllInputsFromModel();
+
+  // tabs
+  on("tab_module","click",()=>setTab("module"));
+  on("tab_base","click",()=>setTab("base"));
+  on("tab_wall","click",()=>setTab("wall"));
+  on("tab_set","click",()=>setTab("set"));
+
+  initSplitters();
+
+  // base actions
+  on("saveNew","click", saveAsNew);
+  on("overwriteLoaded","click", overwriteLoaded);
+  on("detachLoaded","click", detachLoaded);
+
+  on("baseFilterGroup","change", renderBaseList);
+  on("baseSearch","input", renderBaseList);
+  on("exportJson","click", exportJSON);
+  on("importJson","click", ()=> $("importFile").click());
+  on("importFile","change", (e)=>{
+    const f = e.target.files && e.target.files[0];
+    if (f) importJSONFile(f);
+    e.target.value = "";
+  });
+
+  // module inputs
+  on("moduleGroup","change", ()=>{ state.model.group = $("moduleGroup").value; renderStatus(); });
+  on("moduleName","input", ()=>{ state.model.name = $("moduleName").value; renderStatus(); });
+
+  on("w","input", ()=>{ state.model.dims.W = clamp(Math.round(num($("w").value,600)), 50, 5000); rebuildParts(); renderAll(); });
+  on("h","input", ()=>{ state.model.dims.H = clamp(Math.round(num($("h").value,720)), 50, 5000); normalizeShelves(); rebuildParts(); renderShelvesUI(); renderExtraShelvesUI(); renderAll(); });
+  on("d","input", ()=>{ state.model.dims.D = clamp(Math.round(num($("d").value,560)), 50, 2000); rebuildParts(); renderAll(); });
+
+  on("anchorCorner","change", ()=>{ state.model.anchor.corner = $("anchorCorner").value; renderAll(); });
+  on("anchorDX","input", ()=>{ state.model.anchor.dx = clamp(Math.round(num($("anchorDX").value,0)), 0, 5000); renderAll(); });
+  on("anchorDY","input", ()=>{ state.model.anchor.dy = clamp(Math.round(num($("anchorDY").value,0)), 0, 5000); renderAll(); });
+
+  on("sideMode","change", ()=>{ state.model.sideMode = $("sideMode").value; renderAll(); });
+
+  const bindPos=(id,key)=> on(id,"input", ()=>{
+    const m=state.model;
+    const {W,H}=m.dims;
+    const v = clamp(Math.round(num($(id).value,0)), 0, 5000);
+    if (key==="L") m.pos.L = clamp(v,0, Math.max(0, W - m.pos.R - 1));
+    if (key==="R") m.pos.R = clamp(v,0, Math.max(0, W - m.pos.L - 1));
+    if (key==="T") m.pos.T = clamp(v,0, Math.max(0, H - m.pos.B - 1));
+    if (key==="B") m.pos.B = clamp(v,0, Math.max(0, H - m.pos.T - 1));
+    normalizeShelves(); rebuildParts();
+    renderShelvesUI(); renderExtraShelvesUI(); renderAll();
+  });
+  bindPos("posL","L"); bindPos("posR","R"); bindPos("posT","T"); bindPos("posB","B");
+
+  on("posZero","click", ()=>{
+    state.model.pos = {L:0,R:0,T:0,B:0};
+    syncAllInputsFromModel();
+    normalizeShelves(); rebuildParts();
+    renderShelvesUI(); renderExtraShelvesUI(); renderAll();
+  });
+
+  const bindHas=(id,key)=> on(id,"change", ()=>{
+    state.model.has[key] = $(id).checked;
+    if (key==="back") state.model.back.enabled = state.model.has.back && state.model.back.enabled;
+    rebuildParts(); renderAll();
+  });
+  bindHas("hasLeft","left"); bindHas("hasRight","right");
+  bindHas("hasTop","top"); bindHas("hasBottom","bottom");
+  bindHas("hasBack","back"); bindHas("hasFront","front");
+
+  // mid #1
+  on("midEnabled","change", ()=>{
+    ensureModelDefaults();
+    state.model.mid.enabled = $("midEnabled").checked;
+    $("midWrap").style.display = state.model.mid.enabled ? "" : "none";
+    if ($("midOffT")) $("midOffT").disabled = !state.model.mid.enabled;
+    if ($("midOffB")) $("midOffB").disabled = !state.model.mid.enabled;
+    $("midOffWrap").style.display = state.model.mid.enabled ? "" : "none";
+    rebuildParts(); renderAll();
+  });
+  on("midX","input", ()=>{
+    const m=state.model;
+    const innerW = Math.max(50, m.dims.W - m.pos.L - m.pos.R);
+    m.mid.x = clamp(Math.round(num($("midX").value, m.mid.x)), 1, innerW-2);
+    if (m.mid2.enabled && m.mid2.x <= m.mid.x+1) m.mid2.x = m.mid.x+2;
+    rebuildParts(); renderAll();
+  });
+  on("midMat","change", ()=>{ state.model.mid.mat = $("midMat").value; rebuildParts(); renderAll(); });
+
+  on("midOffT","input", ()=>{
+    state.model.mid.offT = clamp(Math.round(num($("midOffT").value,0)), 0, 5000);
+    rebuildParts(); renderAll();
+  });
+  on("midOffB","input", ()=>{
+    state.model.mid.offB = clamp(Math.round(num($("midOffB").value,0)), 0, 5000);
+    rebuildParts(); renderAll();
+  });
+
+  on("midOffT","input", ()=>{ state.model.mid.offT = clamp(Math.round(num($("midOffT").value,0)), 0, 5000); rebuildParts(); renderAll(); });
+  on("midOffB","input", ()=>{ state.model.mid.offB = clamp(Math.round(num($("midOffB").value,0)), 0, 5000); rebuildParts(); renderAll(); });
+
+  // mid #2
+  on("mid2Enabled","change", ()=>{
+    ensureModelDefaults();
+    state.model.mid2.enabled = $("mid2Enabled").checked;
+    $("mid2Wrap").style.display = state.model.mid2.enabled ? "" : "none";
+    $("mid2OffWrap").style.display = state.model.mid2.enabled ? "" : "none";
+    // keep ordering if both enabled
+    if (state.model.mid.enabled && state.model.mid2.enabled && state.model.mid2.x <= state.model.mid.x+1){
+      state.model.mid2.x = state.model.mid.x+2;
+      if ($("mid2X")) $("mid2X").value = state.model.mid2.x;
+    }
+    rebuildParts(); renderAll();
+  });
+  on("mid2X","input", ()=>{
+    const m=state.model;
+    const innerW = Math.max(50, m.dims.W - m.pos.L - m.pos.R);
+    m.mid2.x = clamp(Math.round(num($("mid2X").value, m.mid2.x)), 2, innerW-1);
+    if (m.mid.enabled && m.mid2.x <= m.mid.x+1) m.mid2.x = m.mid.x+2;
+    rebuildParts(); renderAll();
+  });
+  on("mid2Mat","change", ()=>{ state.model.mid2.mat = $("mid2Mat").value; rebuildParts(); renderAll(); });
+  on("mid2OffT","input", ()=>{ state.model.mid2.offT = clamp(Math.round(num($("mid2OffT").value,0)), 0, 5000); rebuildParts(); renderAll(); });
+  on("mid2OffB","input", ()=>{ state.model.mid2.offB = clamp(Math.round(num($("mid2OffB").value,0)), 0, 5000); rebuildParts(); renderAll(); });
+
+  // shelves
+  on("autoShelfCount","input", ()=>{
+    state.model.shelves.autoCount = clamp(Math.round(num($("autoShelfCount").value,0)), 0, 12);
+    setAutoShelvesEqual();
+    rebuildParts(); renderShelvesUI(); renderExtraShelvesUI(); renderAll();
+  });
+  on("shelvesEqual","click", ()=>{
+    setAutoShelvesEqual();
+    rebuildParts(); renderShelvesUI(); renderAll();
+  });
+  on("shelvesClear","click", ()=>{
+    state.model.shelves.autoCount = 0;
+    state.model.shelves.autoY = [];
+    $("autoShelfCount").value = 0;
+    rebuildParts(); renderShelvesUI(); renderAll();
+  });
+  on("addExtraShelf","click", ()=>{
+    const y = Math.round(num($("extraShelfY").value,150));
+    state.model.shelves.extra.push({ id: uid("s_ex"), y });
+    normalizeShelves(); rebuildParts(); renderExtraShelvesUI(); renderAll();
+  });
+
+  // back
+  on("backEnabled","change", ()=>{ state.model.back.enabled = $("backEnabled").value==="yes"; rebuildParts(); renderAll(); });
+  on("backMat","change", ()=>{ state.model.back.mat = $("backMat").value; rebuildParts(); renderAll(); });
+
+  // front
+  on("frontMode","change", ()=>{
+    state.model.front.mode = $("frontMode").value;
+    $("drawerRow").style.display = (state.model.front.mode==="drawers") ? "" : "none";
+    rebuildParts(); renderAll();
+  });
+  on("frontCount","input", ()=>{ state.model.front.count = clamp(Math.round(num($("frontCount").value,0)), 0, 12); rebuildParts(); renderAll(); });
+  on("frontMat","change", ()=>{ state.model.front.mat = $("frontMat").value; rebuildParts(); renderAll(); });
+  on("frontGap","input", ()=>{ state.model.front.gap = clamp(Math.round(num($("frontGap").value,2)), 0, 10); rebuildParts(); renderAll(); });
+
+  on("frontHeightMode","change", ()=>{ state.model.front.heightMode = $("frontHeightMode").value; rebuildParts(); renderAll(); });
+  on("legsH","input", ()=>{ state.model.hardware.legsH = clamp(Math.round(num($("legsH").value,100)), 0, 1000); rebuildParts(); renderAll(); });
+
+  on("drawerSystem","change", ()=>{ state.model.front.drawerSystem = $("drawerSystem").value; rebuildParts(); renderAll(); });
+  on("drawerHeights","input", ()=>{ state.model.front.drawerHeights = $("drawerHeights").value; rebuildParts(); renderAll(); });
+  on("cornerFront","change", ()=>{ state.model.front.cornerFront = $("cornerFront").checked; rebuildParts(); renderAll(); });
+
+  // hardware catalog selections
+  on("hingeType","change", ()=>{ state.model.hardware.hingeType = $("hingeType").value; renderAll(); });
+  on("runnerType","change", ()=>{ state.model.hardware.runnerType = $("runnerType").value; renderAll(); });
+
+  on("mountType","change", ()=>{ state.model.hardware.mountType = $("mountType").value; renderAll(); });
+  on("mountCount","input", ()=>{ state.model.hardware.mountCount = clamp(Math.round(num($("mountCount").value,0)), 0, 99); renderAll(); });
+
+  on("drawerEstimate","change", ()=>{ state.model.hardware.drawerEstimate = $("drawerEstimate").checked; renderAll(); });
+  on("drawerBottomMat","change", ()=>{ state.model.hardware.drawerBottomMat = $("drawerBottomMat").value; renderAll(); });
+  on("drawerBackMat","change", ()=>{ state.model.hardware.drawerBackMat = $("drawerBackMat").value; renderAll(); });
+  on("drawerWoodMat","change", ()=>{ state.model.hardware.drawerWoodMat = $("drawerWoodMat").value; renderAll(); });
+  on("drawerClear","input", ()=>{ state.model.hardware.drawerClear = clamp(Math.round(num($("drawerClear").value,40)), 0, 200); renderAll(); });
+
+  // Quick
+  on("quickMat","change", ()=>{ const p = selPart(); if(!p) return; p.mat = $("quickMat").value; renderAll(); });
+  on("qL","click", ()=>toggleEdge("L"));
+  on("qR","click", ()=>toggleEdge("R"));
+  on("qT","click", ()=>toggleEdge("T"));
+  on("qB","click", ()=>toggleEdge("B"));
+  on("qAll08","click", ()=>setAllEdges("abs08"));
+  on("qAll2","click", ()=>setAllEdges("abs2"));
+  on("qClear","click", clearEdges);
+  on("qApplyKind","click", applyKind);
+
+  // initial shelves
+  setAutoShelvesEqual();
+  normalizeShelves();
+
+  rebuildParts();
+  renderShelvesUI();
+  renderExtraShelvesUI();
+  updateLoadedInfo();
+  renderAll();
+
+  window.addEventListener("resize", ()=>{ renderSVG(); renderWallSVG(); });
+
+  console.log("[TECH] boot: FULL4_OK");
+}
+
+init();
+
+

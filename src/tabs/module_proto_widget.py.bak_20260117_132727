@@ -1,0 +1,280 @@
+﻿from __future__ import annotations
+
+from PySide6 import QtCore, QtWidgets, QtGui
+
+from widgets.collapsible import CollapsibleSection
+
+
+class ModuleProtoWidget(QtWidgets.QWidget):
+    """
+    SAFE proto UI based on web mock (NO dependency on core/module_widget logic).
+    Goal: never-empty tab + stable base to port features step-by-step.
+    """
+    def __init__(self, ctx=None, parent=None):
+        super().__init__(parent)
+        self.ctx = ctx
+
+        self._build_ui()
+        self._wire()
+        self._recalc()
+
+    # ---------- UI helpers ----------
+    @staticmethod
+    def _sec_add(sec: CollapsibleSection, w: QtWidgets.QWidget):
+        # robust add (in case impl changes in future)
+        if hasattr(sec, "contentLayout") and sec.contentLayout is not None:
+            sec.contentLayout.addWidget(w)
+            return
+        if hasattr(sec, "content") and sec.content is not None:
+            lay = sec.content.layout()
+            if lay is None:
+                lay = QtWidgets.QVBoxLayout(sec.content)
+                lay.setContentsMargins(0, 0, 0, 0)
+            lay.addWidget(w)
+            return
+        # fallback: add into own layout
+        lay = sec.layout() or QtWidgets.QVBoxLayout(sec)
+        lay.addWidget(w)
+
+    def _build_ui(self):
+        root = QtWidgets.QVBoxLayout(self)
+        root.setContentsMargins(8, 8, 8, 8)
+        root.setSpacing(8)
+
+        # status pill like web OK/ERR
+        top = QtWidgets.QHBoxLayout()
+        top.addStretch(1)
+        self.status = QtWidgets.QLabel("OK")
+        self.status.setAlignment(QtCore.Qt.AlignCenter)
+        self.status.setFixedWidth(60)
+        self.status.setStyleSheet(
+            "QLabel{padding:4px 10px;border-radius:10px;background:#d7ffe1;color:#000;font-weight:700;}"
+        )
+        top.addWidget(self.status)
+        root.addLayout(top)
+
+        self.split = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        root.addWidget(self.split, 1)
+
+        # LEFT (controls)
+        leftWrap = QtWidgets.QWidget()
+        leftLay = QtWidgets.QVBoxLayout(leftWrap)
+        leftLay.setContentsMargins(0, 0, 0, 0)
+        leftLay.setSpacing(8)
+
+        # --- DIMS ---
+        self.secDims = CollapsibleSection("Wymiary + Anchor (pełne)")
+        dims = QtWidgets.QWidget()
+        g = QtWidgets.QGridLayout(dims)
+        g.setContentsMargins(0, 0, 0, 0)
+        g.setHorizontalSpacing(10)
+        g.setVerticalSpacing(6)
+
+        self.w = QtWidgets.QSpinBox(); self.w.setRange(50, 5000); self.w.setValue(600)
+        self.h = QtWidgets.QSpinBox(); self.h.setRange(50, 5000); self.h.setValue(720)
+        self.d = QtWidgets.QSpinBox(); self.d.setRange(50, 2000); self.d.setValue(560)
+
+        self.anchor = QtWidgets.QComboBox()
+        self.anchor.addItems(["NONE", "LT", "RT", "LB", "RB"])
+
+        self.anchorDX = QtWidgets.QSpinBox(); self.anchorDX.setRange(0, 5000); self.anchorDX.setValue(0)
+        self.anchorDY = QtWidgets.QSpinBox(); self.anchorDY.setRange(0, 5000); self.anchorDY.setValue(0)
+
+        g.addWidget(QtWidgets.QLabel("W (mm)"), 0, 0); g.addWidget(self.w, 0, 1)
+        g.addWidget(QtWidgets.QLabel("H (mm)"), 1, 0); g.addWidget(self.h, 1, 1)
+        g.addWidget(QtWidgets.QLabel("D (mm)"), 2, 0); g.addWidget(self.d, 2, 1)
+        g.addWidget(QtWidgets.QLabel("Anchor"), 3, 0); g.addWidget(self.anchor, 3, 1)
+        g.addWidget(QtWidgets.QLabel("Offset X"), 4, 0); g.addWidget(self.anchorDX, 4, 1)
+        g.addWidget(QtWidgets.QLabel("Offset Y"), 5, 0); g.addWidget(self.anchorDY, 5, 1)
+
+        self._sec_add(self.secDims, dims)
+        leftLay.addWidget(self.secDims)
+
+        # --- OFFSETS ---
+        self.secPos = CollapsibleSection("Przesunięcia (offset) — pełne")
+        pos = QtWidgets.QWidget()
+        g2 = QtWidgets.QGridLayout(pos)
+        g2.setContentsMargins(0, 0, 0, 0)
+        g2.setHorizontalSpacing(10)
+        g2.setVerticalSpacing(6)
+
+        self.posL = QtWidgets.QSpinBox(); self.posL.setRange(0, 2000); self.posL.setValue(0)
+        self.posR = QtWidgets.QSpinBox(); self.posR.setRange(0, 2000); self.posR.setValue(0)
+        self.posT = QtWidgets.QSpinBox(); self.posT.setRange(0, 2000); self.posT.setValue(0)
+        self.posB = QtWidgets.QSpinBox(); self.posB.setRange(0, 2000); self.posB.setValue(0)
+
+        self.btnZero = QtWidgets.QPushButton("Zeruj L/R/T/B")
+        self.btnLR = QtWidgets.QPushButton("L = R")
+        self.btnTB = QtWidgets.QPushButton("T = B")
+
+        g2.addWidget(QtWidgets.QLabel("Left (mm)"), 0, 0);   g2.addWidget(self.posL, 0, 1)
+        g2.addWidget(QtWidgets.QLabel("Right (mm)"), 1, 0);  g2.addWidget(self.posR, 1, 1)
+        g2.addWidget(QtWidgets.QLabel("Top (mm)"), 2, 0);    g2.addWidget(self.posT, 2, 1)
+        g2.addWidget(QtWidgets.QLabel("Bottom (mm)"), 3, 0); g2.addWidget(self.posB, 3, 1)
+        g2.addWidget(self.btnZero, 4, 0, 1, 2)
+        g2.addWidget(self.btnLR, 5, 0, 1, 2)
+        g2.addWidget(self.btnTB, 6, 0, 1, 2)
+
+        self._sec_add(self.secPos, pos)
+        leftLay.addWidget(self.secPos)
+
+        leftLay.addStretch(1)
+
+        leftScroll = QtWidgets.QScrollArea()
+        leftScroll.setWidgetResizable(True)
+        leftScroll.setWidget(leftWrap)
+
+        # CENTER (view)
+        center = QtWidgets.QWidget()
+        cLay = QtWidgets.QVBoxLayout(center)
+        cLay.setContentsMargins(0, 0, 0, 0)
+        title = QtWidgets.QLabel("Widok (proto) — wymiary na rysunku")
+        title.setStyleSheet("font-weight:800;")
+        cLay.addWidget(title)
+
+        self.scene = QtWidgets.QGraphicsScene(self)
+        self.view = QtWidgets.QGraphicsView(self.scene)
+        self.view.setRenderHint(QtGui.QPainter.Antialiasing, True)
+        cLay.addWidget(self.view, 1)
+
+        # RIGHT (BOM/info)
+        right = QtWidgets.QWidget()
+        rLay = QtWidgets.QVBoxLayout(right)
+        rLay.setContentsMargins(0, 0, 0, 0)
+        rTitle = QtWidgets.QLabel("Info (proto)")
+        rTitle.setStyleSheet("font-weight:800;")
+        self.bom = QtWidgets.QPlainTextEdit()
+        self.bom.setReadOnly(True)
+        rLay.addWidget(rTitle)
+        rLay.addWidget(self.bom, 1)
+
+        self.split.addWidget(leftScroll)
+        self.split.addWidget(center)
+        self.split.addWidget(right)
+        self.split.setStretchFactor(0, 0)
+        self.split.setStretchFactor(1, 1)
+        self.split.setStretchFactor(2, 0)
+        self.split.setSizes([360, 760, 340])
+
+    def _wire(self):
+        for sp in (self.w, self.h, self.d, self.posL, self.posR, self.posT, self.posB, self.anchorDX, self.anchorDY):
+            sp.valueChanged.connect(self._recalc)
+        self.anchor.currentIndexChanged.connect(self._recalc)
+
+        self.btnZero.clicked.connect(self._zero)
+        self.btnLR.clicked.connect(self._lr_same)
+        self.btnTB.clicked.connect(self._tb_same)
+
+    def _zero(self):
+        self.posL.setValue(0); self.posR.setValue(0); self.posT.setValue(0); self.posB.setValue(0)
+
+    def _lr_same(self):
+        self.posR.setValue(self.posL.value())
+
+    def _tb_same(self):
+        self.posB.setValue(self.posT.value())
+
+    def _set_ok(self, ok: bool, msg: str = "OK"):
+        if ok:
+            self.status.setText("OK")
+            self.status.setStyleSheet(
+                "QLabel{padding:4px 10px;border-radius:10px;background:#d7ffe1;color:#000;font-weight:700;}"
+            )
+        else:
+            self.status.setText("ERR")
+            self.status.setStyleSheet(
+                "QLabel{padding:4px 10px;border-radius:10px;background:#ffd6d6;color:#000;font-weight:700;}"
+            )
+            self.bom.setPlainText(msg)
+
+    # ---------- drawing helpers ----------
+    def _add_text(self, x: float, y: float, s: str, bold: bool = False):
+        it = self.scene.addText(s)
+        f = it.font()
+        f.setPointSize(10)
+        f.setBold(bold)
+        it.setFont(f)
+        it.setDefaultTextColor(QtGui.QColor(30, 30, 30))
+        it.setPos(x, y)
+        return it
+
+    def _add_dim_h(self, x1: float, x2: float, y: float, label: str):
+        pen = QtGui.QPen(QtGui.QColor(60, 60, 60), 1)
+        self.scene.addLine(x1, y, x2, y, pen)
+
+        # simple arrows
+        a = 6
+        self.scene.addLine(x1, y, x1 + a, y - a, pen)
+        self.scene.addLine(x1, y, x1 + a, y + a, pen)
+        self.scene.addLine(x2, y, x2 - a, y - a, pen)
+        self.scene.addLine(x2, y, x2 - a, y + a, pen)
+
+        self._add_text((x1 + x2) / 2 - 40, y - 18, label, bold=True)
+
+    def _add_dim_v(self, y1: float, y2: float, x: float, label: str):
+        pen = QtGui.QPen(QtGui.QColor(60, 60, 60), 1)
+        self.scene.addLine(x, y1, x, y2, pen)
+
+        a = 6
+        self.scene.addLine(x, y1, x - a, y1 + a, pen)
+        self.scene.addLine(x, y1, x + a, y1 + a, pen)
+        self.scene.addLine(x, y2, x - a, y2 - a, pen)
+        self.scene.addLine(x, y2, x + a, y2 - a, pen)
+
+        self._add_text(x + 8, (y1 + y2) / 2 - 10, label, bold=True)
+
+    def _recalc(self):
+        try:
+            W, H, D = self.w.value(), self.h.value(), self.d.value()
+            L, R, T, B = self.posL.value(), self.posR.value(), self.posT.value(), self.posB.value()
+
+            openW = max(1, W - L - R)
+            openH = max(1, H - T - B)
+
+            self.scene.clear()
+
+            # auto scale: fit to a reasonable box
+            max_px = 520.0
+            scale = min(max_px / max(W, 1), max_px / max(H, 1))
+            scale = max(0.15, min(scale, 1.2))
+
+            outer = QtCore.QRectF(0, 0, W * scale, H * scale)
+            opening = QtCore.QRectF(L * scale, T * scale, openW * scale, openH * scale)
+
+            pen_outer = QtGui.QPen(QtGui.QColor(30, 30, 30), 2)
+            pen_open = QtGui.QPen(QtGui.QColor(120, 120, 120), 2, QtCore.Qt.DashLine)
+
+            self.scene.addRect(outer, pen_outer)
+            self.scene.addRect(opening, pen_open)
+
+            # dimension lines: OUTER W/H and OPENING W/H
+            y_top = -24
+            self._add_dim_h(outer.left(), outer.right(), y_top, f"W={W} mm")
+            self._add_dim_h(opening.left(), opening.right(), y_top - 26, f"openW={openW} mm")
+
+            x_left = -30
+            self._add_dim_v(outer.top(), outer.bottom(), x_left, f"H={H} mm")
+            self._add_dim_v(opening.top(), opening.bottom(), x_left - 26, f"openH={openH} mm")
+
+            # offsets labels
+            self._add_text(outer.right() + 14, 0, f"D={D} mm", bold=True)
+            self._add_text(outer.right() + 14, 22, f"L={L}  R={R}", bold=False)
+            self._add_text(outer.right() + 14, 40, f"T={T}  B={B}", bold=False)
+            self._add_text(outer.right() + 14, 60, f"Anchor={self.anchor.currentText()}  dx={self.anchorDX.value()} dy={self.anchorDY.value()}", bold=False)
+
+            self.scene.setSceneRect(outer.adjusted(-90, -70, 260, 110))
+
+            # right panel info (complete list)
+            info = []
+            info.append(f"W/H/D: {W} / {H} / {D}")
+            info.append(f"Opening: openW/openH = {openW} / {openH}")
+            info.append(f"Offsets L/R/T/B: {L} / {R} / {T} / {B}")
+            info.append(f"Anchor: {self.anchor.currentText()}  dx={self.anchorDX.value()} dy={self.anchorDY.value()}")
+            info.append("")
+            info.append("NEXT (small steps): segment logic + shelves per segment + mid panels height.")
+            self.bom.setPlainText("\n".join(info))
+
+            self._set_ok(True)
+        except Exception:
+            import traceback
+            self._set_ok(False, traceback.format_exc())

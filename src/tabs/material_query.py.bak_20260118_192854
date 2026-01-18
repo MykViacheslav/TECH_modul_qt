@@ -1,0 +1,65 @@
+﻿from __future__ import annotations
+import sqlite3
+from pathlib import Path
+from PySide6 import QtCore, QtGui, QtWidgets
+
+def default_db_path() -> str:
+    # src/tabs -> src -> project root
+    root = Path(__file__).resolve().parents[2]
+    return str(root / "data" / "tech.db")
+
+def query_material_suggestions(db_path: str, q: str, limit: int = 10) -> list[str]:
+    try:
+        con = sqlite3.connect(db_path)
+        con.row_factory = sqlite3.Row
+        like = f"%{q.strip()}%" if q else "%"
+        rows = con.execute(
+            "SELECT code, name, kind, thickness_mm FROM materials "
+            "WHERE code LIKE ? OR name LIKE ? "
+            "ORDER BY updated_at DESC LIMIT ?",
+            (like, like, int(limit))
+        ).fetchall()
+        out = []
+        for r in rows:
+            code = r["code"]
+            name = r["name"]
+            th   = r["thickness_mm"]
+            th_s = f"{th:g}mm" if th is not None else ""
+            out.append(f"{code} — {name} {th_s}".strip())
+        return out
+    except Exception:
+        return []
+
+class MaterialQuery(QtCore.QObject):
+    """
+    Podpowiadanie materiałów w QLineEdit (QCompleter + debounce).
+    """
+    def __init__(self, line_edit: QtWidgets.QLineEdit, db_path: str | None = None, limit: int = 10, parent=None):
+        super().__init__(parent)
+        self.line_edit = line_edit
+        self.db_path = db_path or default_db_path()
+        self.limit = limit
+
+        self.model = QtCore.QStringListModel([])
+        self.completer = QtWidgets.QCompleter(self.model, self.line_edit)
+        self.completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+        self.completer.setFilterMode(QtCore.Qt.MatchContains)
+        self.line_edit.setCompleter(self.completer)
+
+        self._timer = QtCore.QTimer(self)
+        self._timer.setSingleShot(True)
+        self._timer.setInterval(150)
+        self._timer.timeout.connect(self._refresh)
+
+        self.line_edit.textEdited.connect(self._on_edit)
+
+        # initial
+        self._refresh()
+
+    def _on_edit(self, _txt: str):
+        self._timer.start()
+
+    def _refresh(self):
+        txt = self.line_edit.text()
+        items = query_material_suggestions(self.db_path, txt, self.limit)
+        self.model.setStringList(items)

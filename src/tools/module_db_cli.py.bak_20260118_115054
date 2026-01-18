@@ -1,0 +1,251 @@
+﻿from __future__ import annotations
+
+import argparse
+import json
+import sqlite3
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, Tuple
+
+
+SCHEMA_VERSION = 1
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def ensure_parent_dir(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+
+def connect(db_path: Path) -> sqlite3.Connection:
+    ensure_parent_dir(db_path)
+    con = sqlite3.connect(str(db_path))
+    con.row_factory = sqlite3.Row
+    return con
+
+
+def init_db(con: sqlite3.Connection) -> None:
+    con.execute(
+        """
+        CREATE TABLE IF NOT EXISTS modules (
+            anchor         TEXT PRIMARY KEY,
+            payload_json   TEXT NOT NULL,
+            schema_version INTEGER NOT NULL,
+            created_at     TEXT NOT NULL,
+            updated_at     TEXT NOT NULL
+        );
+        """
+    )
+    con.execute(
+        """
+        CREATE TABLE IF NOT EXISTS modules_history (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            anchor         TEXT NOT NULL,
+            payload_json   TEXT NOT NULL,
+            schema_version INTEGER NOT NULL,
+            archived_at    TEXT NOT NULL
+        );
+        """
+    )
+    con.commit()
+
+
+def normalize_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    # accept misspelling "anhor" -> "anchor"
+    if "anchor" not in payload and "anhor" in payload:
+        payload["anchor"] = payload.pop("anhor")
+
+    required = ["anchor", "width", "height", "depth", "materials"]
+    missing = [k for k in required if k not in payload]
+    if missing:
+        raise ValueError(f"Missing required fields: {missing}")
+
+    payload["anchor"] = str(payload["anchor"]).strip()
+    if not payload["anchor"]:
+        raise ValueError("anchor cannot be empty")
+
+    for k in ("width", "height", "depth"):
+        try:
+            payload[k] = float(payload[k])
+        except Exception as e:
+            raise ValueError(f"{k} must be a number, got: {payload.get(k)!r}") from e
+
+    # ensure JSON-serializable
+    json.dumps(payload["materials"], ensure_ascii=False)
+
+    payload.setdefault("schema_version", SCHEMA_VERSION)
+    return payload
+
+
+def read_json_file(path: Path) -> Dict[str, Any]:
+    raw = path.read_text(encoding="utf-8", errors="replace")
+    return json.loads(raw)
+
+
+def upsert_module(
+    con: sqlite3.Connection,
+    payload: Dict[str, Any],
+    overwrite: bool,
+    history: bool = True,
+) -> Tuple[str, bool]:
+    payload = normalize_payload(payload)
+    anchor = payload["anchor"]
+    now = utc_now_iso()
+    payload_json = json.dumps(payload, ensure_ascii=False, indent=2)
+
+    row = con.execute("SELECT * FROM modules WHERE anchor = ?", (anchor,)).fetchone()
+    if row is None:
+        con.execute(
+            """
+            INSERT INTO modules(anchor, payload_json, schema_version, created_at, updated_at)
+            VALUES(?,?,?,?,?)
+            """,
+            (anchor, payload_json, int(payload["schema_version"]), now, now),
+        )
+        con.commit()
+        return anchor, True
+
+    if not overwrite:
+        raise SystemExit(f"ERROR: module '{anchor}' already exists. Use --overwrite.")
+
+    if history:
+        con.execute(
+            """
+            INSERT INTO modules_history(anchor, payload_json, schema_version, archived_at)
+            VALUES(?,?,?,?)
+            """,
+            (row["anchor"], row["payload_json"], row["schema_version"], now),
+        )
+
+    con.execute(
+        """
+        UPDATE modules
+        SET payload_json=?, schema_version=?, updated_at=?
+        WHERE anchor=?
+        """,
+        (payload_json, int(payload["schema_version"]), now, anchor),
+    )
+    con.commit()
+    return anchor, False
+
+
+def get_module(con: sqlite3.Connection, anchor: str) -> Dict[str, Any]:
+    row = con.execute("SELECT * FROM modules WHERE anchor = ?", (anchor,)).fetchone()
+    if row is None:
+        raise SystemExit(f"ERROR: module '{anchor}' not found.")
+    return json.loads(row["payload_json"])
+
+
+def list_modules(con: sqlite3.Connection) -> list[dict[str, Any]]:
+    rows = con.execute(
+        "SELECT anchor, schema_version, created_at, updated_at FROM modules ORDER BY updated_at DESC"
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_module(con: sqlite3.Connection, anchor: str) -> None:
+    row = con.execute("SELECT anchor FROM modules WHERE anchor=?", (anchor,)).fetchone()
+    if row is None:
+        raise SystemExit(f"ERROR: module '{anchor}' not found.")
+    con.execute("DELETE FROM modules WHERE anchor=?", (anchor,))
+    con.commit()
+
+
+def parse_args() -> argparse.Namespace:
+    ap = argparse.ArgumentParser(prog="module_db_cli", description="TECH module DB CLI (SQLite)")
+    ap.add_argument("--db", required=True, help="Path to SQLite db, e.g. data/tech.db")
+
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("init", help="Create tables if missing")
+
+    s_save = sub.add_parser("save", help="Save module (insert/overwrite)")
+    s_save.add_argument("--json", help="Path to JSON file")
+    s_save.add_argument("--anchor")
+    s_save.add_argument("--width", type=float)
+    s_save.add_argument("--height", type=float)
+    s_save.add_argument("--depth", type=float)
+    s_save.add_argument("--materials", help="String or JSON string")
+    s_save.add_argument("--overwrite", action="store_true")
+    s_save.add_argument("--no-history", action="store_true")
+
+    s_get = sub.add_parser("get", help="Get module")
+    s_get.add_argument("--anchor", required=True)
+    s_get.add_argument("--out")
+
+    sub.add_parser("list", help="List modules")
+
+    s_del = sub.add_parser("delete", help="Delete module")
+    s_del.add_argument("--anchor", required=True)
+
+    return ap.parse_args()
+
+
+def main() -> int:
+    ns = parse_args()
+    db_path = Path(ns.db).resolve()
+    con = connect(db_path)
+
+    if ns.cmd == "init":
+        init_db(con)
+        print(f"OK: DB initialized: {db_path}")
+        return 0
+
+    init_db(con)
+
+    if ns.cmd == "save":
+        if ns.json:
+            payload = read_json_file(Path(ns.json))
+        else:
+            if not (ns.anchor and ns.width is not None and ns.height is not None and ns.depth is not None and ns.materials is not None):
+                raise SystemExit("ERROR: provide --json OR all of: --anchor --width --height --depth --materials")
+
+            mat: Any = ns.materials
+            try:
+                mat = json.loads(ns.materials)
+            except Exception:
+                pass
+
+            payload = {
+                "anchor": ns.anchor,
+                "width": ns.width,
+                "height": ns.height,
+                "depth": ns.depth,
+                "materials": mat,
+                "schema_version": SCHEMA_VERSION,
+            }
+
+        anchor, created = upsert_module(con, payload, overwrite=bool(ns.overwrite), history=not bool(ns.no_history))
+        print(f"OK: saved '{anchor}' ({'created' if created else 'overwritten'})")
+        return 0
+
+    if ns.cmd == "get":
+        payload = get_module(con, ns.anchor)
+        out = json.dumps(payload, ensure_ascii=False, indent=2)
+        if ns.out:
+            out_path = Path(ns.out)
+            ensure_parent_dir(out_path)
+            out_path.write_text(out + "\n", encoding="utf-8")
+            print(f"OK: wrote {out_path}")
+        else:
+            print(out)
+        return 0
+
+    if ns.cmd == "list":
+        items = list_modules(con)
+        print(f"COUNT: {len(items)}")
+        for it in items:
+            print(f"- {it['anchor']}  v{it['schema_version']}  updated={it['updated_at']}")
+        return 0
+
+    if ns.cmd == "delete":
+        delete_module(con, ns.anchor)
+        print(f"OK: deleted '{ns.anchor}'")
+        return 0
+
+    raise SystemExit("Unknown command")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

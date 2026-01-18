@@ -1,0 +1,2007 @@
+﻿
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
+
+from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6.QtCore import QSettings
+
+from core.module_library import ModuleLibrary, ModuleRecord
+from widgets.collapsible import CollapsibleSection
+
+
+# Standardowe długości nominalne (NL) - Blum (typowe)
+STD_NL_MM: List[int] = [250, 270, 300, 350, 400, 450, 500, 550, 600, 650]
+
+
+# Wysokości MERIVOBOX wg Blum (N/M/K/E)
+# N=68.5, M=91, K=129, E=192
+MERIVOBOX_HEIGHTS_MM: Dict[str, float] = {
+    "N": 68.5,
+    "M": 91.0,
+    "K": 129.0,
+    "E": 192.0,
+}
+
+# TANDEMBOX (antaro) wg strony Blum pokazuje m.in. K/C/D
+TANDEMBOX_HEIGHTS_MM: Dict[str, float] = {
+    "K": 116.0,
+    "C": 171.0,
+    "D": 203.0,
+}
+
+
+@dataclass
+class EdgeMap:
+    L: str = ""
+    P: str = ""
+    G: str = ""
+    D: str = ""
+
+
+@dataclass
+class Part:
+    key: str
+    name_pl: str
+    a_mm: float          # wymiar A (np. szer./gł.)
+    b_mm: float          # wymiar B (np. wys./gł.)
+    thick_mm: float      # grubość
+    material: str = ""
+    edges: EdgeMap = field(default_factory=EdgeMap)
+
+
+def mm2_to_m2(mm2: float) -> float:
+    return mm2 / 1_000_000.0
+
+
+def safe_float(v: Any, default: float = 0.0) -> float:
+    try:
+        return float(v)
+    except Exception:
+        return default
+
+
+def safe_int(v: Any, default: int = 0) -> int:
+    try:
+        return int(v)
+    except Exception:
+        return default
+
+
+def clamp(v: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, v))
+
+
+def pick_nl_for_depth(cabinet_depth_mm: float) -> int:
+    """
+    Auto zasada wg Twojego założenia:
+    - w korpusie D nie można dać NL=D
+    - bierzemy NL <= D-50 (np. D=500 => NL=450)
+    """
+    target = max(0.0, cabinet_depth_mm - 50.0)
+    candidates = [nl for nl in STD_NL_MM if nl <= target]
+    if not candidates:
+        return max(0, min(STD_NL_MM))  # fallback najmniejszy
+    return max(candidates)
+
+
+class PartRectItem(QtWidgets.QGraphicsRectItem):
+    def __init__(self, part_key: str, rect: QtCore.QRectF, selectable: bool = True):
+        super().__init__(rect)
+        self.part_key = part_key
+        self.setAcceptHoverEvents(True)
+        self.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, bool(selectable))
+        self._hover = False
+        self._selected = False
+        self._update_pen()
+        # UI COMPACT v12 (styles)
+        try:
+            _qss = """
+            /* compact inputs */
+            QLineEdit, QSpinBox, QDoubleSpinBox {
+                min-width: 70px;
+                max-width: 95px;
+                padding: 2px 6px;
+            }
+            QSpinBox, QDoubleSpinBox {
+                padding-right: 4px;
+            }
+            /* bigger checkbox indicator */
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+            }
+            """
+            self.setStyleSheet((self.styleSheet() or "") + _qss)
+        except Exception:
+            pass
+
+    def set_selected(self, val: bool):
+        self._selected = bool(val)
+        self._update_pen()
+
+    def hoverEnterEvent(self, event):
+                # HOVER_DEBUG_V3
+        try:
+            sp = self.scenePos()
+            key = getattr(self, "part_key", None) or getattr(self, "key", None) or ""
+            print(f"[HOVER] {key} pos=({sp.x():.0f},{sp.y():.0f})", flush=True)
+        except Exception:
+            pass
+        self._hover = True
+        self._update_pen()
+        super().hoverEnterEvent(event)
+
+    def hoverLeaveEvent(self, event):
+        self._hover = False
+        self._update_pen()
+        super().hoverLeaveEvent(event)
+
+    def _update_pen(self):
+
+        # Always assign pen (prevents UnboundLocalError)
+
+        if getattr(self, '_selected', False):
+
+            pen = QtGui.QPen(QtGui.QColor('#DC2626'), 2.4)
+
+        elif getattr(self, '_hover', False):
+
+            pen = QtGui.QPen(QtGui.QColor('#2563EB'), 2.0)
+
+        else:
+
+            pen = QtGui.QPen(QtGui.QColor('#111827'), 1.4)
+
+        try:
+
+            pen.setCosmetic(True)
+
+        except Exception:
+
+            pass
+
+        self.setPen(pen)
+
+        self.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+    def hoverMoveEvent(self, event):
+        try:
+            # scene units are mm in this app
+            sp = self.scenePos()
+            key = getattr(self, "part_key", None) or getattr(self, "key", None) or ""
+            QtWidgets.QToolTip.showText(
+                event.screenPos().toPoint(),
+                f"{key} | pos: ({sp.x():.0f}, {sp.y():.0f}) mm",
+            )
+        except Exception:
+            pass
+        return super().hoverMoveEvent(event)
+
+class DragPartRectItem(PartRectItem):
+    """
+    Draggable item with small overlay (Δ in mm). Works in scene units = mm.
+    - shows bubble while dragging
+    - bubble is editable; Enter commits Δ
+    - stores override in ModuleWidget._pos_override_mm
+    """
+    def __init__(self, part_key: str, rect: QtCore.QRectF, mw: "ModuleWidget", axis: str = "y", selectable: bool = True):
+        super().__init__(part_key, rect, selectable=selectable)
+        self._mw = mw
+        self._axis = axis
+        self._dragging = False
+        self._press_scene = None
+        self._start_pos = QtCore.QPointF(0.0, 0.0)
+        try:
+            self.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
+        except Exception:
+            pass
+
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self._dragging = True
+            self._press_scene = event.scenePos()
+            self._start_pos = self.pos()
+            try:
+                self.setCursor(QtCore.Qt.CursorShape.ClosedHandCursor)
+            except Exception:
+                pass
+            if self._mw is not None:
+                self._mw._drag_begin(self, self._press_scene, self._start_pos)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._dragging and self._press_scene is not None:
+            cur = event.scenePos()
+            dx = cur.x() - self._press_scene.x()
+            dy = cur.y() - self._press_scene.y()
+
+            if self._axis == "y":
+                new_pos = QtCore.QPointF(self._start_pos.x(), self._start_pos.y() + dy)
+                delta_for_bubble = dy
+            elif self._axis == "x":
+                new_pos = QtCore.QPointF(self._start_pos.x() + dx, self._start_pos.y())
+                delta_for_bubble = dx
+            else:
+                new_pos = QtCore.QPointF(self._start_pos.x() + dx, self._start_pos.y() + dy)
+                delta_for_bubble = dy
+
+            self.setPos(new_pos)
+            if self._mw is not None:
+                self._mw._drag_update(cur, delta_for_bubble, new_pos)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._dragging:
+            self._dragging = False
+            try:
+                self.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
+            except Exception:
+                pass
+            if self._mw is not None:
+                self._mw._drag_end()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+class ModuleWidget(QtWidgets.QWidget):
+    def __init__(self, ctx, parent=None) -> None:
+        super().__init__(parent)
+        self.ctx = ctx
+        self.settings: QSettings = getattr(ctx, "settings", QSettings("TECH_modul", "TECH_modul_qt"))
+
+        proj_root = Path(__file__).resolve().parents[2]
+        self.library = ModuleLibrary(proj_root / "data" / "modules.json")
+
+        self.parts: Dict[str, Part] = {}
+        # ALT_DRAG_BUBBLE_V2 state
+        self._alt_drag_active = False
+        self._alt_drag_item = None
+        self._alt_drag_start_scene = QtCore.QPointF(0.0, 0.0)
+        self._alt_drag_start_pos = QtCore.QPointF(0.0, 0.0)
+        self._alt_drag_bubble = None
+        self._alt_drag_filter_installed = False
+        # ALT_DRAG_BUBBLE_V1 state
+        self._alt_drag_active = False
+        self._alt_drag_item = None
+        self._alt_drag_start_scene = QtCore.QPointF(0.0, 0.0)
+        self._alt_drag_start_pos = QtCore.QPointF(0.0, 0.0)
+        self._alt_drag_bubble = None
+        self._pos_override_mm: Dict[str, QtCore.QPointF] = {}
+        self._drag_item = None
+        self._drag_start_item_pos = QtCore.QPointF(0.0, 0.0)
+        self._drag_bubble_proxy = None
+        self._drag_bubble_edit = None
+        self._drag_bubble_label = None
+        self.selected_key: str = "side_left"
+
+        self._build_ui()
+        # ALT_DRAG_BUBBLE_V2 call
+        self._install_alt_drag_filter()
+        self._populate_catalogs()
+        self._load_state()
+
+        self._rebuild_parts()
+        self._refresh_scene()
+        self._refresh_quick_panel()
+        self._refresh_bom()
+        self._refresh_project_tree()
+
+        bus = getattr(self.ctx, "bus", None)
+        sig = getattr(bus, "data_changed", None)
+        if sig is not None and hasattr(sig, "connect"):
+            try:
+                sig.connect(self._on_data_changed)
+            except Exception:
+                pass
+
+    @QtCore.Slot(object)
+    def _on_data_changed(self, key: object) -> None:
+        if str(key) == "catalogs":
+            self._populate_catalogs()
+
+    def closeEvent(self, e) -> None:
+        try:
+            self._save_state()
+        except Exception:
+            pass
+        super().closeEvent(e)
+
+    # -----------------------------
+    # UI
+    # -----------------------------
+    def _build_ui(self) -> None:
+        root = QtWidgets.QHBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(10)
+
+        self.split = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
+        root.addWidget(self.split, 1)
+
+        NUM_W = 92
+        CB_W = 260
+
+        def prep_spin(sp: QtWidgets.QAbstractSpinBox):
+            sp.setMaximumWidth(NUM_W)
+            sp.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
+            sp.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
+
+        def prep_cb(cb: QtWidgets.QComboBox):
+            cb.setMaximumWidth(CB_W)
+
+        # LEFT
+        left_scroll = QtWidgets.QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setMinimumWidth(360)
+
+        left = QtWidgets.QWidget()
+        left_scroll.setWidget(left)
+        leftL = QtWidgets.QVBoxLayout(left)
+        leftL.setContentsMargins(8, 8, 8, 8)
+        leftL.setSpacing(10)
+
+        self.sections_box = QtWidgets.QVBoxLayout()
+        self.sections_box.setContentsMargins(0, 0, 0, 0)
+        self.sections_box.setSpacing(10)
+        leftL.addLayout(self.sections_box, 1)
+
+        def mk_page() -> Tuple[QtWidgets.QWidget, QtWidgets.QVBoxLayout]:
+            w = QtWidgets.QWidget()
+            l = QtWidgets.QVBoxLayout(w)
+            l.setContentsMargins(0, 0, 0, 0)
+            l.setSpacing(8)
+            return w, l
+
+        # ---- Section: Nazwa + baza
+        p, pl = mk_page()
+        f = QtWidgets.QFormLayout()
+        f.setVerticalSpacing(6)
+        self.in_name = QtWidgets.QLineEdit()
+        self.btn_save_db = QtWidgets.QPushButton("Zapisz do bazy")
+        self.btn_load_db = QtWidgets.QPushButton("Wczytaj z bazy")
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(self.btn_save_db)
+        row.addWidget(self.btn_load_db)
+        f.addRow("Nazwa modułu", self.in_name)
+        pl.addLayout(f)
+        pl.addLayout(row)
+        sec_name = CollapsibleSection("Moduł: nazwa + baza", p, opened=True)
+        self.sections_box.addWidget(sec_name)
+
+        # ---- Section: Wymiary
+        p, pl = mk_page()
+        f = QtWidgets.QFormLayout()
+        f.setVerticalSpacing(6)
+        self.in_W = QtWidgets.QDoubleSpinBox(); self.in_W.setRange(50, 5000); self.in_W.setDecimals(1); self.in_W.setValue(600.0); prep_spin(self.in_W)
+        self.in_H = QtWidgets.QDoubleSpinBox(); self.in_H.setRange(50, 5000); self.in_H.setDecimals(1); self.in_H.setValue(720.0); prep_spin(self.in_H)
+        self.in_D = QtWidgets.QDoubleSpinBox(); self.in_D.setRange(50, 5000); self.in_D.setDecimals(1); self.in_D.setValue(560.0); prep_spin(self.in_D)
+        f.addRow("W (mm)", self.in_W)
+        f.addRow("H (mm)", self.in_H)
+        f.addRow("D (mm)", self.in_D)
+        pl.addLayout(f)
+        sec_dims = CollapsibleSection("Wymiary", p, opened=True)
+        self.sections_box.addWidget(sec_dims)
+
+        # ---- Section: Elementy korpusu
+        p, pl = mk_page()
+        grid = QtWidgets.QGridLayout()
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(8)
+
+        def chk(label: str, default: bool) -> QtWidgets.QCheckBox:
+            c = QtWidgets.QCheckBox(label)
+            c.setChecked(default)
+            c.setStyleSheet("QCheckBox{font-weight:900;} QCheckBox::indicator{width:18px;height:18px;}")
+            return c
+
+        self.ck_side_left  = chk("Bok lewy", True)
+        self.ck_side_right = chk("Bok prawy", True)
+        self.ck_top        = chk("Wieniec góra", True)
+        self.ck_bottom     = chk("Wieniec dół", True)
+        self.ck_front      = chk("Front", True)
+        self.ck_back       = chk("Plecy", True)
+        self.ck_middle     = chk("Środkowa ścianka", False)
+        # MIDDLE MULTI v16 UI
+        # INDENTFIX: disabled broken line -> # INDENTFIX: disabled broken line -> self.in_middle_count = QtWidgets.QSpinBox(); self.in_middle_count.setRange(1, 10); self.in_middle_count.setValue(1); prep_spin(self.in_middle_count)
+        self.in_middle_offsets = QtWidgets.QLineEdit(); self.in_middle_offsets.setPlaceholderText('Ofsety mm: np. 200,380 (od lewego wew. boku)')
+        self.ck_shelves    = chk("Półki (dodatkowe)", True)
+
+        grid.addWidget(self.ck_side_left,  0, 0)
+        grid.addWidget(self.ck_side_right, 0, 1)
+        grid.addWidget(self.ck_top,        1, 0)
+        grid.addWidget(self.ck_bottom,     1, 1)
+        grid.addWidget(self.ck_front,      2, 0)
+        grid.addWidget(self.ck_back,       2, 1)
+        grid.addWidget(self.ck_middle,     3, 0)
+        grid.addWidget(QtWidgets.QLabel('Ilość:'), 3, 1)
+        # INDENTFIX: disabled broken line -> # INDENTFIX: disabled broken line -> grid.addWidget(self.in_middle_count, 3, 2)
+        grid.addWidget(self.in_middle_offsets, 4, 0, 1, 3)
+        grid.addWidget(self.ck_shelves,    3, 1)
+
+        pl.addLayout(grid)
+        sec_parts = CollapsibleSection("Elementy korpusu", p, opened=True)
+        self.sections_box.addWidget(sec_parts)
+
+        # ---- Section: Fronty / Szuflady
+        p, pl = mk_page()
+        f = QtWidgets.QFormLayout()
+        f.setVerticalSpacing(6)
+
+        self.cb_front_mode = QtWidgets.QComboBox()
+        self.cb_front_mode.addItems(["Drzwi", "Szuflady", "Brak"])
+
+        self.cb_front_hmode = QtWidgets.QComboBox()
+        self.cb_front_hmode.addItems(["Na całą wysokość", "Między wieńcami"])
+
+        self.in_front_count = QtWidgets.QSpinBox(); self.in_front_count.setRange(1, 20); self.in_front_count.setValue(2); prep_spin(self.in_front_count)
+        self.in_front_gap = QtWidgets.QDoubleSpinBox(); self.in_front_gap.setRange(0, 20); self.in_front_gap.setDecimals(1); self.in_front_gap.setValue(2.0); prep_spin(self.in_front_gap)
+        self.in_front_side = QtWidgets.QDoubleSpinBox(); self.in_front_side.setRange(0, 50); self.in_front_side.setDecimals(1); self.in_front_side.setValue(2.0); prep_spin(self.in_front_side)
+        self.cb_front_mat = QtWidgets.QComboBox(); prep_cb(self.cb_front_mat)
+
+        f.addRow("Tryb", self.cb_front_mode)
+        f.addRow("Front: wysokość", self.cb_front_hmode)
+        f.addRow("Ilość (drzwi/szuflad)", self.in_front_count)
+        f.addRow("Gap (mm)", self.in_front_gap)
+        f.addRow("Odstęp boków (mm)", self.in_front_side)
+        f.addRow("Materiał frontu", self.cb_front_mat)
+
+        # --- SZUFLADY (AUTO)
+        self.gb_drawers = QtWidgets.QGroupBox("Szuflady: system (AUTO)")
+        dl = QtWidgets.QFormLayout(self.gb_drawers)
+        dl.setVerticalSpacing(6)
+
+        self.cb_drawer_brand = QtWidgets.QComboBox()
+        self.cb_drawer_brand.addItems(['Blum', 'Hettich', 'Sevroll', 'Strong', 'GTV', 'Rejs'])
+        prep_cb(self.cb_drawer_brand)
+
+        self.cb_drawer_system = QtWidgets.QComboBox()
+        self.cb_drawer_system.addItems(["MERIVOBOX", "TANDEMBOX"])
+        prep_cb(self.cb_drawer_system)
+
+        self.cb_drawer_height_code = QtWidgets.QComboBox()
+        # wypełnimy dynamicznie wg systemu
+        prep_cb(self.cb_drawer_height_code)
+
+        self.lbl_drawer_nl = QtWidgets.QLabel("NL: —")
+        self.lbl_drawer_nl.setStyleSheet("font-weight:900; color:#0f172a;")
+
+        self.lbl_drawer_auto = QtWidgets.QLabel("Auto: NL = max długość ≤ D- 10, tył luz 10 mm, boki wg systemu")
+        self.lbl_drawer_auto.setWordWrap(True)
+        self.lbl_drawer_auto.setStyleSheet("color:#475569;")
+
+        dl.addRow("Producent", self.cb_drawer_brand)
+        dl.addRow("System", self.cb_drawer_system)
+        dl.addRow("Wysokość (kod)", self.cb_drawer_height_code)
+        dl.addRow("Długość prowadnicy", self.lbl_drawer_nl)
+        dl.addRow("", self.lbl_drawer_auto)
+
+        pl.addLayout(f)
+        pl.addWidget(self.gb_drawers)
+
+        # Widok: fronty na rysunku
+        self.ck_hide_fronts = QtWidgets.QCheckBox("Ukryj fronty na rysunku")
+        self.ck_hide_fronts.setChecked(False)
+        self.ck_hide_fronts.setStyleSheet("font-weight:900; QCheckBox::indicator{width:18px;height:18px;}")
+        self.ck_fronts_clickable = QtWidgets.QCheckBox("Fronty nie przechwytują kliknięć")
+        self.ck_fronts_clickable.setChecked(True)
+        self.ck_fronts_clickable.setStyleSheet("font-weight:900; QCheckBox::indicator{width:18px;height:18px;}")
+        pl.addWidget(self.ck_hide_fronts)
+        pl.addWidget(self.ck_fronts_clickable)
+
+        sec_front = CollapsibleSection("Fronty / Szuflady", p, opened=True)
+        self.sections_box.addWidget(sec_front)
+
+        # (reszta UI w PART 2)
+        # ---- Section: Materiały / ilości
+        p, pl = mk_page()
+        f = QtWidgets.QFormLayout()
+        f.setVerticalSpacing(6)
+
+        self.cb_mat_carcass = QtWidgets.QComboBox(); prep_cb(self.cb_mat_carcass)
+        self.in_thick = QtWidgets.QDoubleSpinBox(); self.in_thick.setRange(10, 40); self.in_thick.setDecimals(1); self.in_thick.setValue(18.0); prep_spin(self.in_thick)
+
+        self.cb_back_mat = QtWidgets.QComboBox(); prep_cb(self.cb_back_mat)
+        self.in_back_thick = QtWidgets.QDoubleSpinBox(); self.in_back_thick.setRange(2, 10); self.in_back_thick.setDecimals(1); self.in_back_thick.setValue(3.0); prep_spin(self.in_back_thick)
+
+        self.in_shelves = QtWidgets.QSpinBox(); self.in_shelves.setRange(0, 20); self.in_shelves.setValue(0); prep_spin(self.in_shelves)
+        self.ck_split_shelves = QtWidgets.QCheckBox("Dziel półki przy przegrodzie")
+        self.ck_split_shelves.setChecked(True)
+        self.ck_split_shelves.setStyleSheet("font-weight:900;")
+
+        self.in_qty = QtWidgets.QSpinBox(); self.in_qty.setRange(1, 999); self.in_qty.setValue(1); prep_spin(self.in_qty)
+
+        f.addRow("Materiał korpusu", self.cb_mat_carcass)
+        f.addRow("Grubość korpusu (mm)", self.in_thick)
+        f.addRow("Plecy: materiał", self.cb_back_mat)
+        f.addRow("Plecy: grubość (mm)", self.in_back_thick)
+        f.addRow("Półki dodatkowe (szt)", self.in_shelves)
+        f.addRow("", self.ck_split_shelves)
+        f.addRow("Ilość modułów", self.in_qty)
+
+        pl.addLayout(f)
+        sec_mat = CollapsibleSection("Materiały / ilości", p, opened=True)
+        self.sections_box.addWidget(sec_mat)
+
+        # ---- Section: Okucia
+        p, pl = mk_page()
+        f = QtWidgets.QFormLayout()
+        f.setVerticalSpacing(6)
+
+        self.ck_hinges_auto = QtWidgets.QCheckBox("Auto: zawiasy wg wysokości frontu")
+        self.ck_hinges_auto.setChecked(True)
+        self.ck_hinges_auto.setStyleSheet("font-weight:900; QCheckBox::indicator{width:18px;height:18px;}")
+
+        self.in_hinges_override = QtWidgets.QSpinBox(); self.in_hinges_override.setRange(0, 200); self.in_hinges_override.setValue(0); prep_spin(self.in_hinges_override)
+        self.in_legs = QtWidgets.QSpinBox(); self.in_legs.setRange(0, 50); self.in_legs.setValue(4); prep_spin(self.in_legs)
+        self.in_hangers = QtWidgets.QSpinBox(); self.in_hangers.setRange(0, 50); self.in_hangers.setValue(2); prep_spin(self.in_hangers)
+        self.in_pins_per_shelf = QtWidgets.QSpinBox(); self.in_pins_per_shelf.setRange(0, 20); self.in_pins_per_shelf.setValue(4); prep_spin(self.in_pins_per_shelf)
+
+        f.addRow("", self.ck_hinges_auto)
+        f.addRow("Zawiasy: override (0=auto)", self.in_hinges_override)
+        f.addRow("Nóżki (szafka dolna)", self.in_legs)
+        f.addRow("Zawieszki (wisząca)", self.in_hangers)
+        f.addRow("Podpórki półek / półkę", self.in_pins_per_shelf)
+        pl.addLayout(f)
+
+        sec_fit = CollapsibleSection("Okucia (BOM)", p, opened=False)
+        self.sections_box.addWidget(sec_fit)
+
+        # Bottom buttons
+        btns = QtWidgets.QHBoxLayout()
+        self.btn_reset = QtWidgets.QPushButton("Resetuj")
+        self.btn_recalc = QtWidgets.QPushButton("Przelicz")
+        btns.addWidget(self.btn_reset)
+        btns.addWidget(self.btn_recalc)
+        btns.addStretch(1)
+        leftL.addLayout(btns)
+
+        leftL.addStretch(1)
+
+        # CENTER: rysunek
+        center = QtWidgets.QWidget()
+        centerL = QtWidgets.QVBoxLayout(center)
+        centerL.setContentsMargins(8, 8, 8, 8)
+        centerL.setSpacing(6)
+
+        self.lbl_front_title = QtWidgets.QLabel("Widok z przodu")
+        self.lbl_top_title = QtWidgets.QLabel("Widok z góry")
+        for lab in (self.lbl_front_title, self.lbl_top_title):
+            lab.setStyleSheet("font-weight: 900; color:#0f172a;")
+
+        rowH = QtWidgets.QHBoxLayout()
+        rowH.addWidget(self.lbl_front_title)
+        rowH.addStretch(1)
+        centerL.addLayout(rowH)
+
+        self.scene = QtWidgets.QGraphicsScene(self)
+        self.view = QtWidgets.QGraphicsView(self.scene)
+        self.view.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+        self.view.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.view.setMouseTracking(True)
+        centerL.addWidget(self.view, 1)
+
+        rowH2 = QtWidgets.QHBoxLayout()
+        rowH2.addWidget(self.lbl_top_title)
+        rowH2.addStretch(1)
+        centerL.addLayout(rowH2)
+
+        # RIGHT
+        right = QtWidgets.QWidget()
+        rightL = QtWidgets.QVBoxLayout(right)
+        rightL.setContentsMargins(8, 8, 8, 8)
+        rightL.setSpacing(10)
+        right.setMinimumWidth(380)
+
+        gb_quick = QtWidgets.QGroupBox("Wybrany element: materiał + okleina")
+        ql = QtWidgets.QVBoxLayout(gb_quick)
+        ql.setSpacing(8)
+
+        self.lbl_selected = QtWidgets.QLabel("Wybrany: —")
+        self.lbl_selected.setStyleSheet("font-weight: 900;")
+        ql.addWidget(self.lbl_selected)
+
+        self.lbl_selected_dims = QtWidgets.QLabel("A×B×T: —")
+        self.lbl_selected_dims.setStyleSheet("color:#475569; font-weight:900;")
+        ql.addWidget(self.lbl_selected_dims)
+
+        formQ = QtWidgets.QFormLayout()
+        formQ.setVerticalSpacing(6)
+
+        self.cb_q_material = QtWidgets.QComboBox(); self.cb_q_material.setMaximumWidth(CB_W)
+        self.cb_q_edge = QtWidgets.QComboBox(); self.cb_q_edge.setMaximumWidth(CB_W)
+
+        formQ.addRow("Materiał", self.cb_q_material)
+        formQ.addRow("Okleina (typ)", self.cb_q_edge)
+        ql.addLayout(formQ)
+
+        gb_bom = QtWidgets.QGroupBox("BOM: materiały + okleina + okucia")
+        bl = QtWidgets.QVBoxLayout(gb_bom)
+        self.lbl_parts = QtWidgets.QLabel("parts: 0")
+        self.txt_bom = QtWidgets.QPlainTextEdit()
+        self.txt_bom.setReadOnly(True)
+        bl.addWidget(self.lbl_parts)
+        bl.addWidget(self.txt_bom, 1)
+        rightL.addWidget(gb_quick)
+
+        # Tabs: BOM + Project Tree (Drzewo)
+        self.right_tabs = QtWidgets.QTabWidget()
+        self.right_tabs.setDocumentMode(True)
+
+        self.right_tabs.addTab(gb_bom, "BOM")
+
+        self.tree = QtWidgets.QTreeWidget()
+        self.tree.setHeaderLabels(["Element", "Wartość"])
+        self.tree.setAlternatingRowColors(True)
+        self.tree.setUniformRowHeights(True)
+        self.tree.itemClicked.connect(self._on_tree_clicked)
+        self.right_tabs.addTab(self.tree, "Drzewo")
+
+        rightL.addWidget(self.right_tabs, 1)
+        self.split.addWidget(left_scroll)
+        self.split.addWidget(center)
+        self.split.addWidget(right)
+        self.split.setStretchFactor(0, 0)
+        self.split.setStretchFactor(1, 1)
+        self.split.setStretchFactor(2, 0)
+
+        # signals
+        def hook(w):
+            if hasattr(w, "valueChanged"):
+                w.valueChanged.connect(self._on_recalc)
+            if hasattr(w, "currentIndexChanged"):
+                w.currentIndexChanged.connect(self._on_recalc)
+            if hasattr(w, "toggled"):
+                w.toggled.connect(self._on_recalc)
+            if hasattr(w, "stateChanged"):
+                w.stateChanged.connect(self._on_recalc)
+            if isinstance(w, QtWidgets.QLineEdit):
+                w.textChanged.connect(self._on_recalc)
+
+        for w in [
+            self.in_name,
+            self.in_W, self.in_H, self.in_D,
+            self.ck_side_left, self.ck_side_right, self.ck_top, self.ck_bottom, self.ck_front, self.ck_back, self.ck_middle, self.ck_shelves,
+            self.in_middle_offsets,
+            # INDENTFIX: disabled broken line -> # INDENTFIX: disabled broken line -> self.in_middle_count, self.in_middle_offsets,
+            self.cb_front_mode, self.cb_front_hmode, self.in_front_count, self.in_front_gap, self.in_front_side, self.cb_front_mat,
+            self.cb_drawer_brand, self.cb_drawer_system, self.cb_drawer_height_code,
+            self.ck_hide_fronts, self.ck_fronts_clickable,
+            self.cb_mat_carcass, self.in_thick, self.cb_back_mat, self.in_back_thick, self.in_shelves, self.ck_split_shelves, self.in_qty,
+            self.ck_hinges_auto, self.in_hinges_override, self.in_legs, self.in_hangers, self.in_pins_per_shelf,
+        ]:
+            hook(w)
+
+        # HARD_CONNECT_CARCASS_TOGGLES
+
+        for _w in (
+
+            getattr(self, 'ck_side_left', None),
+
+            getattr(self, 'ck_side_right', None),
+
+            getattr(self, 'ck_top', None),
+
+            getattr(self, 'ck_bottom', None),
+
+            getattr(self, 'ck_front', None),
+
+            getattr(self, 'ck_back', None),
+
+            getattr(self, 'ck_middle', None),
+
+            getattr(self, 'ck_shelves', None),
+
+        ):
+
+            if _w is None:
+
+                continue
+
+            try:
+
+                if hasattr(_w, 'toggled'):
+
+                    _w.toggled.connect(self._on_recalc)
+
+                elif hasattr(_w, 'stateChanged'):
+
+                    _w.stateChanged.connect(self._on_recalc)
+
+            except Exception:
+
+                pass
+
+        self.btn_reset.clicked.connect(self._on_reset)
+        self.btn_recalc.clicked.connect(self._on_recalc)
+        self.btn_save_db.clicked.connect(self._save_to_db)
+        self.btn_load_db.clicked.connect(self._load_from_db)
+
+        self.cb_q_material.currentIndexChanged.connect(self._apply_quick_material)
+        self.scene.selectionChanged.connect(self._scene_selection_changed)
+
+        self.cb_front_mode.currentIndexChanged.connect(self._sync_drawers_enabled)
+        self.cb_drawer_system.currentIndexChanged.connect(self._sync_drawer_height_codes)
+
+        self._sync_drawers_enabled()
+        self._sync_drawer_height_codes()
+
+    def _sync_drawers_enabled(self) -> None:
+        is_drawers = (self.cb_front_mode.currentText() == "Szuflady")
+        self.gb_drawers.setEnabled(is_drawers)
+
+    def _sync_drawer_height_codes(self) -> None:
+        sys = self.cb_drawer_system.currentText()
+        self.cb_drawer_height_code.blockSignals(True)
+        try:
+            self.cb_drawer_height_code.clear()
+            if sys == "MERIVOBOX":
+                for k in ["N", "M", "K", "E"]:
+                    self.cb_drawer_height_code.addItem(k)
+        finally:
+            self.cb_drawer_height_code.blockSignals(False)
+
+        self._update_drawer_nl_label()
+
+    def _update_drawer_nl_label(self) -> None:
+        nl = pick_nl_for_depth(float(self.in_D.value()))
+        self.lbl_drawer_nl.setText(f"NL: {nl} mm")
+    # -----------------------------
+    # Catalogs
+    # -----------------------------
+    def _populate_catalogs(self) -> None:
+        catalogs = getattr(self.ctx, "catalogs", None)
+
+        mats: List[str] = []
+        edges: List[str] = []
+
+        try:
+            if catalogs and hasattr(catalogs, "get_materials"):
+                mats = [getattr(x, "name", str(x)) for x in catalogs.get_materials()]
+        except Exception:
+            mats = []
+
+        try:
+            if catalogs and hasattr(catalogs, "get_edges"):
+                edges = [getattr(x, "name", str(x)) for x in catalogs.get_edges()]
+        except Exception:
+            edges = []
+
+        def fill(cb: QtWidgets.QComboBox, placeholder: str, items: List[str]):
+            cur = cb.currentText()
+            cb.blockSignals(True)
+            try:
+                cb.clear()
+                cb.addItem(placeholder)
+                for it in items:
+                    cb.addItem(it)
+                idx = cb.findText(cur)
+                if idx >= 0:
+                    cb.setCurrentIndex(idx)
+            finally:
+                cb.blockSignals(False)
+
+        fill(self.cb_mat_carcass, "Płyta wiórowa 18 mm (domyślnie)", mats)
+        fill(self.cb_front_mat, "MDF 18 mm (domyślnie)", mats)
+        fill(self.cb_back_mat, "HDF 3 mm (domyślnie)", mats)
+
+        fill(self.cb_q_material, "— wybierz materiał —", mats)
+        fill(self.cb_q_edge, "ABS 0.8 (domyślnie)", edges)
+
+    # -----------------------------
+    # Selection handling
+    # -----------------------------
+    def _scene_selection_changed(self):
+        sel = self.scene.selectedItems()
+        if not sel:
+            return
+        it = sel[0]
+        if isinstance(it, PartRectItem):
+            self._select_part(it.part_key)
+
+    def _select_part(self, key: str) -> None:
+        if key not in self.parts:
+            return
+        self.selected_key = key
+        self._refresh_scene()
+        self._refresh_quick_panel()
+        self._save_state()
+
+    # -----------------------------
+    # State load/save
+    # -----------------------------
+    def _load_state(self) -> None:
+        s = self.settings
+        s.beginGroup("module")
+        if True:
+            self.in_name.setText(str(s.value("name", "Moduł 1")))
+
+            self.in_W.setValue(safe_float(s.value("W", 600.0), 600.0))
+            self.in_H.setValue(safe_float(s.value("H", 720.0), 720.0))
+            self.in_D.setValue(safe_float(s.value("D", 560.0), 560.0))
+
+            def b(key: str, default: str) -> bool:
+                return str(s.value(key, default)).lower() in ("1", "true", "tak", "yes")
+
+            self.ck_side_left.setChecked(b("part_side_left", "true"))
+            self.ck_side_right.setChecked(b("part_side_right", "true"))
+            self.ck_top.setChecked(b("part_top", "true"))
+            self.ck_bottom.setChecked(b("part_bottom", "true"))
+            self.ck_front.setChecked(b("part_front", "true"))
+            self.ck_back.setChecked(b("part_back", "true"))
+            self.ck_middle.setChecked(b("part_middle", "false"))
+            # MIDDLE MULTI v16 state load
+            if hasattr(self, 'in_middle_offsets'):
+                self.in_middle_offsets.setText(str(s.value('middle_offsets', '')))
+            self.ck_shelves.setChecked(b("part_shelves", "true"))
+
+            fm = str(s.value("front_mode", "Drzwi"))
+            idx = self.cb_front_mode.findText(fm)
+            if idx >= 0:
+                self.cb_front_mode.setCurrentIndex(idx)
+
+            hm = str(s.value("front_hmode", "Na całą wysokość"))
+            idx = self.cb_front_hmode.findText(hm)
+            if idx >= 0:
+                self.cb_front_hmode.setCurrentIndex(idx)
+
+            self.in_front_count.setValue(safe_int(s.value("front_count", 2), 2))
+            self.in_front_gap.setValue(safe_float(s.value("front_gap", 2.0), 2.0))
+            self.in_front_side.setValue(safe_float(s.value("front_side_offset", 2.0), 2.0))
+
+            self.in_thick.setValue(safe_float(s.value("thick", 18.0), 18.0))
+            self.in_back_thick.setValue(safe_float(s.value("back_thick", 3.0), 3.0))
+            self.in_shelves.setValue(safe_int(s.value("shelves_count", 0), 0))
+            self.ck_split_shelves.setChecked(b("shelves_split", "true"))
+            self.in_qty.setValue(safe_int(s.value("qty", 1), 1))
+
+            self.ck_hinges_auto.setChecked(b("hinges_auto", "true"))
+            self.in_hinges_override.setValue(safe_int(s.value("hinges_override", 0), 0))
+            self.in_legs.setValue(safe_int(s.value("legs", 4), 4))
+            self.in_hangers.setValue(safe_int(s.value("hangers", 2), 2))
+            self.in_pins_per_shelf.setValue(safe_int(s.value("pins_per_shelf", 4), 4))
+
+            # drawers
+            sys = str(s.value("drawer_system", "MERIVOBOX"))
+            idx = self.cb_drawer_system.findText(sys)
+            if idx >= 0:
+                self.cb_drawer_system.setCurrentIndex(idx)
+
+            code = str(s.value("drawer_height_code", "M"))
+            idx = self.cb_drawer_height_code.findText(code)
+            if idx >= 0:
+                self.cb_drawer_height_code.setCurrentIndex(idx)
+
+            self.selected_key = str(s.value("selected_key", "side_left"))
+
+        self._update_drawer_nl_label()
+
+    def _save_state(self) -> None:
+        s = self.settings
+        s.beginGroup("module")
+        if True:
+            s.setValue("name", self.in_name.text())
+            s.setValue("W", self.in_W.value())
+            s.setValue("H", self.in_H.value())
+            s.setValue("D", self.in_D.value())
+
+            s.setValue("part_side_left", "true" if self.ck_side_left.isChecked() else "false")
+            s.setValue("part_side_right", "true" if self.ck_side_right.isChecked() else "false")
+            s.setValue("part_top", "true" if self.ck_top.isChecked() else "false")
+            s.setValue("part_bottom", "true" if self.ck_bottom.isChecked() else "false")
+            s.setValue("part_front", "true" if self.ck_front.isChecked() else "false")
+            s.setValue("part_back", "true" if self.ck_back.isChecked() else "false")
+            s.setValue("part_middle", "true" if self.ck_middle.isChecked() else "false")
+            # MIDDLE MULTI v16 state save
+            if hasattr(self, 'in_middle_offsets'):
+                s.setValue('middle_offsets', self.in_middle_offsets.text())
+            s.setValue("part_shelves", "true" if self.ck_shelves.isChecked() else "false")
+
+            s.setValue("front_mode", self.cb_front_mode.currentText())
+            s.setValue("front_hmode", self.cb_front_hmode.currentText())
+            s.setValue("front_count", self.in_front_count.value())
+            s.setValue("front_gap", self.in_front_gap.value())
+            s.setValue("front_side_offset", self.in_front_side.value())
+
+            s.setValue("thick", self.in_thick.value())
+            s.setValue("back_thick", self.in_back_thick.value())
+            s.setValue("shelves_count", self.in_shelves.value())
+            s.setValue("shelves_split", "true" if self.ck_split_shelves.isChecked() else "false")
+            s.setValue("qty", self.in_qty.value())
+
+            s.setValue("hinges_auto", "true" if self.ck_hinges_auto.isChecked() else "false")
+            s.setValue("hinges_override", self.in_hinges_override.value())
+            s.setValue("legs", self.in_legs.value())
+            s.setValue("hangers", self.in_hangers.value())
+            s.setValue("pins_per_shelf", self.in_pins_per_shelf.value())
+
+            s.setValue("drawer_system", self.cb_drawer_system.currentText())
+            s.setValue("drawer_height_code", self.cb_drawer_height_code.currentText())
+
+            s.setValue("selected_key", self.selected_key)
+
+    # -----------------------------
+    # Core parts rebuild
+    # -----------------------------
+    def _rebuild_parts(self) -> None:
+        W = float(self.in_W.value())
+        H = float(self.in_H.value())
+        D = float(self.in_D.value())
+        t = float(self.in_thick.value())
+        bt = float(self.in_back_thick.value())
+
+        has_L = bool(self.ck_side_left.isChecked())
+        has_R = bool(self.ck_side_right.isChecked())
+        has_T = bool(self.ck_top.isChecked())
+        has_B = bool(self.ck_bottom.isChecked())
+
+        front_enabled = bool(self.ck_front.isChecked())
+        back_enabled = bool(self.ck_back.isChecked())
+        middle_on = bool(self.ck_middle.isChecked())
+
+        # shelves
+        shelves_on = bool(self.ck_shelves.isChecked())
+        shelves_cnt = int(self.in_shelves.value()) if shelves_on else 0
+        split_shelves = bool(self.ck_split_shelves.isChecked())
+
+        # materials (fallbacks for placeholder index 0)
+        carcass_mat = self.cb_mat_carcass.currentText().strip()
+        if self.cb_mat_carcass.currentIndex() == 0:
+            carcass_mat = "Płyta wiórowa 18 mm"
+
+        back_mat = self.cb_back_mat.currentText().strip()
+        if self.cb_back_mat.currentIndex() == 0:
+            back_mat = "HDF 3 mm"
+
+        front_mat = self.cb_front_mat.currentText().strip()
+        if self.cb_front_mat.currentIndex() == 0:
+            front_mat = "MDF 18 mm"
+
+        front_thick = 18.0
+
+        innerW = W - (t if has_L else 0.0) - (t if has_R else 0.0)
+        innerH = H - (t if has_T else 0.0) - (t if has_B else 0.0)
+        innerW = max(0.0, innerW)
+        innerH = max(0.0, innerH)
+
+        parts: Dict[str, Part] = {}
+
+        def ensure(key: str, name: str, a: float, b: float, thick: float, default_mat: str):
+            old = self.parts.get(key)
+            if old is None:
+                parts[key] = Part(key, name, a, b, thick, default_mat)
+            else:
+                old.name_pl = name
+                old.a_mm, old.b_mm = a, b
+                old.thick_mm = thick
+                if not old.material:
+                    old.material = default_mat
+                parts[key] = old
+
+        # sides
+        if has_L:
+            ensure("side_left", "Bok lewy", D, H, t, carcass_mat)
+        if has_R:
+            ensure("side_right", "Bok prawy", D, H, t, carcass_mat)
+
+        # top/bottom
+        if has_T:
+            ensure("top", "Wieniec góra", innerW, D, t, carcass_mat)
+        if has_B:
+            ensure("bottom", "Wieniec dół", innerW, D, t, carcass_mat)
+
+        # back
+        if back_enabled:
+            ensure("back", "Plecy", W, H, bt, back_mat)
+
+        # middle partitions (by offsets list; if empty -> one centered)
+        self._middle_xs_mm = []
+        if middle_on:
+            raw_off = ""
+            try:
+                raw_off = (self.in_middle_offsets.text() or "").strip()
+            except Exception:
+                raw_off = ""
+
+            offsets = []
+            if raw_off:
+                for tok in raw_off.replace(";", ",").split(","):
+                    tok = tok.strip()
+                    if not tok:
+                        continue
+                    try:
+                        offsets.append(float(tok))
+                    except Exception:
+                        pass
+
+            x_min = 0.0
+            x_max = max(0.0, innerW - t)
+
+            if offsets:
+                xs = [max(x_min, min(x_max, float(x))) for x in offsets]
+            else:
+                # single centered partition if checkbox ON and no offsets
+                xs = [max(x_min, min(x_max, (innerW - t) / 2.0))]
+
+            # dedupe
+            xs2 = []
+            for x in sorted(xs):
+                if not xs2 or abs(x - xs2[-1]) > 0.5:
+                    xs2.append(x)
+            xs = xs2
+
+            self._middle_xs_mm = xs
+            for i, _x in enumerate(xs, start=1):
+                ensure(f"middle_{i}", f"Środkowa ścianka {i}", D, innerH, t, carcass_mat)
+
+        # shelves
+        if shelves_cnt > 0:
+            for i in range(1, shelves_cnt + 1):
+                if middle_on and split_shelves:
+                    a_half = max(0.0, (innerW - t) / 2.0)
+                    ensure(f"shelf_{i}_L", f"Półka {i} (lewa)", a_half, D, t, carcass_mat)
+                    ensure(f"shelf_{i}_R", f"Półka {i} (prawa)", a_half, D, t, carcass_mat)
+                else:
+                    ensure(f"shelf_{i}", f"Półka {i}", innerW, D, t, carcass_mat)
+
+        # fronts
+        if front_enabled and self.cb_front_mode.currentText() != "Brak":
+            mode = self.cb_front_mode.currentText()
+            n = int(self.in_front_count.value())
+            gap = float(self.in_front_gap.value())
+            side_off = float(self.in_front_side.value())
+            hmode = self.cb_front_hmode.currentText()
+
+            openH = H if hmode == "Na całą wysokość" else max(0.0, H - (t if has_T else 0.0) - (t if has_B else 0.0))
+            if mode == "Drzwi":
+                availW = max(0.0, W - 2 * side_off)
+                panelW = max(0.0, (availW - gap * (n - 1)) / max(1, n))
+                for i in range(1, n + 1):
+                    ensure(f"front_{i}", f"Front {i}", panelW, openH, front_thick, front_mat)
+            else:
+                availW = max(0.0, W - 2 * side_off)
+                availH = max(0.0, openH)
+                panelH = max(0.0, (availH - gap * (n - 1)) / max(1, n))
+                for i in range(1, n + 1):
+                    ensure(f"front_{i}", f"Front szuflady {i}", availW, panelH, front_thick, front_mat)
+
+        self.parts = parts
+        if self.selected_key not in self.parts and self.parts:
+            self.selected_key = next(iter(self.parts.keys()))
+
+        self._update_drawer_nl_label()
+
+    def _refresh_scene(self) -> None:
+        self.scene.blockSignals(True)
+        if True:
+            self.scene.clear()
+
+            # AUTO_REBUILD_PARTS_IF_EMPTY
+            if not getattr(self, 'parts', None):
+                try:
+                    self._rebuild_parts()
+                except Exception:
+                    pass
+
+            W = float(self.in_W.value())
+            H = float(self.in_H.value())
+            D = float(self.in_D.value())
+
+            gap = 90.0
+            margin = 50.0
+
+            front_origin = QtCore.QPointF(0.0, 0.0)
+            top_origin = QtCore.QPointF(0.0, H + gap)
+
+            front_rect = QtCore.QRectF(front_origin.x(), front_origin.y(), W, H)
+            top_rect = QtCore.QRectF(top_origin.x(), top_origin.y(), W, D)
+
+            try:
+                front_on = bool(front_on)
+            except Exception:
+                front_on = False
+            if front_on:
+                strip_h = max(8.0, min(14.0, top_rect.height() * 0.08))
+                front_top_strip = QtCore.QRectF(top_rect.left(), top_rect.bottom(), top_rect.width(), strip_h)
+                add_part('front_top', front_top_strip)
+            pen_outer = QtGui.QPen(QtGui.QColor("#0f172a"), 2.0)
+            pen_outer.setCosmetic(True)
+            self.scene.addRect(front_rect, pen_outer)
+            self.scene.addRect(top_rect, pen_outer)
+
+            def add_part(key: str, rect: QtCore.QRectF):
+                if key not in self.parts:
+                    return None
+                hide_fronts = getattr(self, 'ck_hide_fronts', None)
+                hide_fronts = hide_fronts.isChecked() if hide_fronts is not None else False
+                fronts_clickable = getattr(self, 'ck_fronts_clickable', None)
+                fronts_clickable = fronts_clickable.isChecked() if fronts_clickable is not None else True
+
+                if key.startswith('front_') and hide_fronts:
+                    return None
+
+                selectable = True
+                if key.startswith('front_') and fronts_clickable:
+                    selectable = False
+                # draggable: shelves + middle partitions (visual override)
+                if key.startswith("shelf_") or key.startswith("middle_"):
+                    it = DragPartRectItem(key, rect, self, axis="y", selectable=selectable)
+                else:
+                    it = PartRectItem(key, rect, selectable=selectable)
+
+                # apply saved override (pos in mm)
+                try:
+                    off = getattr(self, "_pos_override_mm", {}).get(key)
+                    if off is not None:
+                        it.setPos(off)
+                except Exception:
+                    pass
+                if key.startswith('front_') and selectable is False:
+                    pass
+                it.set_selected(key == self.selected_key)
+                self.scene.addItem(it)
+
+                # A×B×T w środku jeśli się mieści
+                p = self.parts[key]
+                if rect.width() >= 64 and rect.height() >= 30:
+                    txt = QtWidgets.QGraphicsSimpleTextItem(f"{p.a_mm:.0f}×{p.b_mm:.0f}×{p.thick_mm:.0f}", it)
+                    txt.setBrush(QtGui.QBrush(QtGui.QColor("#475569")))
+                    f = QtGui.QFont()
+                    f.setPointSize(8)
+                    f.setBold(True)
+                    txt.setFont(f)
+                    br = txt.boundingRect()
+                    txt.setPos(rect.width()/2 - br.width()/2, rect.height()/2 - br.height()/2)
+                return it
+
+            # Prosty rysunek (jak było)
+            t = float(self.in_thick.value())
+            has_L = self.ck_side_left.isChecked()
+            has_R = self.ck_side_right.isChecked()
+            has_T = self.ck_top.isChecked()
+            has_B = self.ck_bottom.isChecked()
+            middle_on = self.ck_middle.isChecked()
+
+            innerW = W - (t if has_L else 0) - (t if has_R else 0)
+            innerH = H - (t if has_T else 0) - (t if has_B else 0)
+            innerW = max(0.0, innerW)
+            innerH = max(0.0, innerH)
+
+            # front view
+            if has_L and "side_left" in self.parts:
+                r = QtCore.QRectF(front_origin.x() + 0, front_origin.y() + 0, t, H)
+                add_part("side_left", r)
+            if has_R and "side_right" in self.parts:
+                r = QtCore.QRectF(front_origin.x() + (W - t), front_origin.y() + 0, t, H)
+                add_part("side_right", r)
+            if has_T and "top" in self.parts:
+                x = (t if has_L else 0.0)
+                r = QtCore.QRectF(front_origin.x() + x, front_origin.y() + 0, innerW, t)
+                add_part("top", r)
+            if has_B and "bottom" in self.parts:
+                x = (t if has_L else 0.0)
+                r = QtCore.QRectF(front_origin.x() + x, front_origin.y() + (H - t), innerW, t)
+                add_part("bottom", r)
+            # środkowe ścianki (wiele)
+            if middle_on:
+                xs = getattr(self, '_middle_xs_mm', []) or []
+                y0 = (t if has_T else 0.0)
+                for i, xrel in enumerate(xs, start=1):
+                    key = f"middle_{i}"
+                    if key in self.parts:
+                        x = (t if has_L else 0.0) + float(xrel)
+                        r = QtCore.QRectF(front_origin.x() + x, front_origin.y() + y0, t, innerH)
+                        add_part(key, r)
+            # półki
+            shelves_cnt = int(self.in_shelves.value()) if self.ck_shelves.isChecked() else 0
+            if shelves_cnt > 0:
+                y0 = (t if has_T else 0.0)
+                y1 = H - (t if has_B else 0.0)
+                span = max(0.0, y1 - y0)
+                step = span / (shelves_cnt + 1)
+                for i in range(1, shelves_cnt + 1):
+                    y = y0 + step * i
+                    if middle_on and self.ck_split_shelves.isChecked():
+                        left_w = max(0.0, (innerW - t) / 2.0)
+                        xL = (t if has_L else 0.0)
+                        xR = (t if has_L else 0.0) + left_w + t
+                        rL = QtCore.QRectF(front_origin.x() + xL, front_origin.y() + y, left_w, t)
+                        rR = QtCore.QRectF(front_origin.x() + xR, front_origin.y() + y, left_w, t)
+                        add_part(f"shelf_{i}_L", rL)
+                        add_part(f"shelf_{i}_R", rR)
+
+            # fronty
+            if self.ck_front.isChecked() and self.cb_front_mode.currentText() != "Brak":
+                mode = self.cb_front_mode.currentText()
+                n = int(self.in_front_count.value())
+                gapF = float(self.in_front_gap.value())
+                side_off = float(self.in_front_side.value())
+                hmode = self.cb_front_hmode.currentText()
+                openH = H if hmode == "Na całą wysokość" else max(0.0, H - (t if has_T else 0.0) - (t if has_B else 0.0))
+                baseY = 0.0 if hmode == "Na całą wysokość" else (t if has_T else 0.0)
+
+                if mode == "Drzwi":
+                    availW = max(0.0, W - 2 * side_off)
+                    panelW = max(0.0, (availW - gapF * (n - 1)) / max(1, n))
+                    for i in range(1, n + 1):
+                        x = side_off + (i - 1) * (panelW + gapF)
+                        r = QtCore.QRectF(front_origin.x() + x, front_origin.y() + baseY, panelW, openH)
+                        add_part(f"front_{i}", r)
+
+            # top view: kontur + boki + przegroda
+            pen_thin = QtGui.QPen(QtGui.QColor("#334155"), 1.2)
+            pen_thin.setCosmetic(True)
+            if has_L:
+                self.scene.addRect(QtCore.QRectF(top_origin.x() + 0, top_origin.y() + 0, t, D), pen_thin)
+            if has_R:
+                self.scene.addRect(QtCore.QRectF(top_origin.x() + (W - t), top_origin.y() + 0, t, D), pen_thin)
+            if middle_on:
+                xs = getattr(self, '_middle_xs_mm', []) or []
+                for i, xrel in enumerate(xs, start=1):
+                    x = (t if has_L else 0.0) + float(xrel)
+                    self.scene.addRect(QtCore.QRectF(top_origin.x() + x, top_origin.y() + 0, t, D), pen_thin)
+            # module dimensions
+            # --- DIMENSIONS (czytelne, etykiety poza linią) ---
+            dim_pen = QtGui.QPen(QtGui.QColor('#2563eb'), 2.6)
+            dim_pen.setCosmetic(True)
+            
+            def dim_label(number_str: str, cx: float, cy: float):
+                titem = self.scene.addText(number_str)
+                f = QtGui.QFont(); f.setPointSize(16); f.setBold(True)
+                titem.setFont(f)
+                titem.setDefaultTextColor(QtGui.QColor('#0f172a'))
+                br = titem.boundingRect()
+            
+                bg = QtWidgets.QGraphicsRectItem(QtCore.QRectF(0, 0, br.width() + 10, br.height() + 6))
+                bg.setPos(cx - br.width()/2 - 5, cy - br.height()/2 - 3)
+                bg.setPen(QtGui.QPen(QtCore.Qt.PenStyle.NoPen))
+                bg.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255, 210)))
+                bg.setZValue(9998)
+                self.scene.addItem(bg)
+            
+                titem.setPos(cx - br.width()/2, cy - br.height()/2)
+                titem.setZValue(9999)
+                return titem
+            
+            # FRONT VIEW: H — tekst obok linii (nie na linii)
+            xH = front_rect.left() - 32
+            self.scene.addLine(xH, front_rect.top(), xH, front_rect.bottom(), dim_pen)
+            dim_label(f"{int(H)}", xH - 22, front_rect.center().y())
+            
+            # TOP VIEW: W — tekst NAD linią
+            yW = top_rect.top() - 26
+            self.scene.addLine(top_rect.left(), yW, top_rect.right(), yW, dim_pen)
+            dim_label(f"{int(W)}", top_rect.center().x(), yW - 16)
+            
+            # TOP VIEW: D — tekst obok linii
+            xD = top_rect.left() - 32
+            self.scene.addLine(xD, top_rect.top(), xD, top_rect.bottom(), dim_pen)
+            dim_label(f"{int(D)}", xD - 22, top_rect.center().y())
+            
+            all_rect = front_rect.united(top_rect).adjusted(-margin, -margin, margin, margin)
+            self.scene.setSceneRect(all_rect)
+            front_chk = getattr(self, 'ck_front', None)
+            front_on2 = front_chk.isChecked() if front_chk is not None else False
+            if front_on2:
+                try:
+                    strip_h = max(8.0, min(14.0, top_rect.height() * 0.08))
+                    front_strip = QtCore.QRectF(top_rect.left(), top_rect.bottom(), top_rect.width(), strip_h)
+                except Exception:
+                    pass
+
+            # TOP VIEW: front pasek (manual, zawsze widoczny) — bez add_part
+            try:
+                # front włączony?
+                _front_chk = getattr(self, 'ck_front', None)
+                _front_on = _front_chk.isChecked() if _front_chk is not None else False
+            
+                # ukryj fronty? (best-effort: różne nazwy)
+                _hide = False
+                for _nm in ('ck_hide_fronts','ck_hide_front','ck_front_hide','ck_fronts_hide','ck_hide_front_view'):
+                    _w = getattr(self, _nm, None)
+                    if _w is not None and hasattr(_w, 'isChecked') and _w.isChecked():
+                        _hide = True
+                        break
+            
+                if _front_on and not _hide:
+                    # top_rect powinien istnieć w tej funkcji; jeśli nie, to skip
+                    if 'top_rect' in locals():
+                        _strip_h = max(10.0, min(18.0, float(top_rect.height()) * 0.10))
+                        _rect = QtCore.QRectF(top_rect.left(), top_rect.bottom(), top_rect.width(), _strip_h)
+                        _it = QtWidgets.QGraphicsRectItem(_rect)
+                        try:
+                            _it.setPen(QtGui.QPen(QtGui.QColor('#334155'), 1))
+                            _it.setBrush(QtGui.QBrush(QtGui.QColor('#E2E8F0')))
+                        except Exception:
+                            pass
+                        _it.setZValue(999)
+                        # oznaczamy klucz (dla debug/klików jeśli potrzebne)
+                        try:
+                            _it.setData(0, 'frontTop')
+                        except Exception:
+                            pass
+                        self.scene.addItem(_it)
+            except Exception:
+                pass
+
+            self.view.fitInView(all_rect, QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+
+    # -----------------------------
+    # Quick panel
+    # -----------------------------
+    def _refresh_quick_panel(self) -> None:
+        p = self.parts.get(self.selected_key)
+        if not p:
+            self.lbl_selected.setText("Wybrany: —")
+            self.lbl_selected_dims.setText("A×B×T: —")
+            return
+        self.lbl_selected.setText(f"Wybrany: {p.name_pl}  [{p.key}]")
+        self.lbl_selected_dims.setText(f"A×B×T: {p.a_mm:.0f}×{p.b_mm:.0f}×{p.thick_mm:.0f} mm")
+
+        if p.material:
+            idx = self.cb_q_material.findText(p.material)
+            if idx >= 0:
+                self.cb_q_material.blockSignals(True)
+                self.cb_q_material.setCurrentIndex(idx)
+                self.cb_q_material.blockSignals(False)
+
+    def _apply_quick_material(self) -> None:
+        p = self.parts.get(self.selected_key)
+        if not p:
+            return
+        txt = self.cb_q_material.currentText().strip()
+        if txt.startswith("—"):
+            return
+        p.material = txt
+        self._refresh_bom()
+        self._save_state()
+
+    # -----------------------------
+    # Drawers calc (AUTO)
+    # -----------------------------
+    def _drawer_height_mm(self) -> float:
+        sys = self.cb_drawer_system.currentText()
+        code = self.cb_drawer_height_code.currentText()
+        if sys == "MERIVOBOX":
+            return float(MERIVOBOX_HEIGHTS_MM.get(code, 91.0))
+        return float(TANDEMBOX_HEIGHTS_MM.get(code, 116.0))
+
+    def _drawer_board_thick_mm(self) -> float:
+        # Na razie zgodnie z Twoim założeniem: MERIVOBOX i TANDEMBOX -> 16 mm
+        return 16.0
+
+    def _drawer_side_clear_total_mm(self) -> float:
+        # Auto luz na boki - wg typowego założenia systemów metalowych (około 42 mm łącznie)
+        # (doprecyzujemy, jeśli chcesz rozróżnienie systemów)
+        return 42.0
+
+    def _drawer_calc_area_m2(self) -> Tuple[str, float, int]:
+        """
+        Zwraca:
+        - nazwa materiału (płyta do szuflad),
+        - area_m2_total dla 1 modułu,
+        - NL (nominal length)
+        Liczymy: dno (Wbox x NL) + tył (Wbox x Hbox)
+        """
+        if self.cb_front_mode.currentText() != "Szuflady":
+            return ("", 0.0, 0)
+
+        W = float(self.in_W.value())
+        H = float(self.in_H.value())
+        D = float(self.in_D.value())
+        t = float(self.in_thick.value())
+
+        has_L = bool(self.ck_side_left.isChecked())
+        has_R = bool(self.ck_side_right.isChecked())
+
+        innerW = W - (t if has_L else 0.0) - (t if has_R else 0.0)
+        innerW = max(0.0, innerW)
+
+        n = int(self.in_front_count.value())
+
+        nl = pick_nl_for_depth(D)
+        box_h = self._drawer_height_mm()
+        thick = self._drawer_board_thick_mm()
+
+        # box width: innerW - clearance(system)
+        w_box = max(0.0, innerW - self._drawer_side_clear_total_mm())
+        d_box = float(nl)
+
+        area_one = mm2_to_m2(w_box * d_box) + mm2_to_m2(w_box * box_h)
+        area_total = area_one * n
+
+        mat = f"Płyta {int(thick)} mm (szuflady)"
+        return (mat, area_total, nl)
+
+    # -----------------------------
+    # BOM
+    # -----------------------------
+    def _hinges_for_height(self, h_mm: float) -> int:
+        if h_mm <= 900:
+            return 3
+        if h_mm <= 1600:
+            return 4
+        return 5
+
+    def _refresh_bom(self) -> None:
+        qty = int(self.in_qty.value())
+        lines: List[str] = []
+        lines.append(f"Moduł: {self.in_name.text().strip() or '—'}   x{qty}")
+        lines.append("")
+
+        mats_m2: Dict[str, float] = {}
+
+        def add_area(mat: str, a: float, b: float):
+            if not mat:
+                mat = "—"
+            mats_m2[mat] = mats_m2.get(mat, 0.0) + mm2_to_m2(a * b)
+
+        part_list = list(self.parts.values())
+        self.lbl_parts.setText(f"parts: {len(part_list)}")
+
+        for p in part_list:
+            add_area(p.material or "—", p.a_mm, p.b_mm)
+
+        # drawers
+        mat_draw, area_draw, nl = self._drawer_calc_area_m2()
+        if mat_draw and area_draw > 0:
+            mats_m2[mat_draw] = mats_m2.get(mat_draw, 0.0) + area_draw
+
+        lines.append("MATERIAŁY (m²):")
+        for k in sorted(mats_m2.keys()):
+            lines.append(f"- {k}: {mats_m2[k] * qty:.3f} m²")
+        lines.append("")
+
+        lines.append("OKUCIA:")
+        # drzwi: zawiasy
+        hinges_override = int(self.in_hinges_override.value())
+        hinges_auto = bool(self.ck_hinges_auto.isChecked())
+        hinges_total = 0
+        if self.ck_front.isChecked() and self.cb_front_mode.currentText() == "Drzwi":
+            for p in part_list:
+                if p.key.startswith("front_"):
+                    if hinges_override > 0:
+                        hinges_total += hinges_override
+        if hinges_total:
+            lines.append(f"- Zawiasy: {hinges_total * qty} szt")
+
+        # szuflady: prowadnice
+        if self.cb_front_mode.currentText() == "Szuflady":
+            n = int(self.in_front_count.value())
+            system = self.cb_drawer_system.currentText()
+            code = self.cb_drawer_height_code.currentText()
+            lines.append(f"- Prowadnice szuflad (Blum {system} {code}, NL={nl}): {n * qty} kpl")
+
+        legs = int(self.in_legs.value())
+        hangers = int(self.in_hangers.value())
+        pins_per_shelf = int(self.in_pins_per_shelf.value())
+        shelf_count = sum(1 for p in part_list if p.key.startswith("shelf_"))
+
+        if legs:
+            lines.append(f"- Nóżki: {legs * qty} szt")
+        if hangers:
+            lines.append(f"- Zawieszki: {hangers * qty} szt")
+        if shelf_count and pins_per_shelf:
+            lines.append(f"- Podpórki półek: {shelf_count * pins_per_shelf * qty} szt")
+
+        self.txt_bom.setPlainText("\n".join(lines))
+
+    def _refresh_project_tree(self) -> None:
+        tree = getattr(self, "tree", None)
+        if tree is None:
+            return
+
+        tree.blockSignals(True)
+        try:
+            tree.clear()
+
+            name = self.in_name.text().strip() if hasattr(self, "in_name") else ""
+            name = name or "—"
+
+            root = QtWidgets.QTreeWidgetItem(["Moduł", name])
+            tree.addTopLevelItem(root)
+            root.setExpanded(True)
+
+            # dims
+            dims = QtWidgets.QTreeWidgetItem(["Wymiary", ""])
+            try:
+                dims.addChild(QtWidgets.QTreeWidgetItem(["W (mm)", f"{float(self.in_W.value()):.1f}"]))
+                dims.addChild(QtWidgets.QTreeWidgetItem(["H (mm)", f"{float(self.in_H.value()):.1f}"]))
+                dims.addChild(QtWidgets.QTreeWidgetItem(["D (mm)", f"{float(self.in_D.value()):.1f}"]))
+            except Exception:
+                pass
+            root.addChild(dims)
+
+            # parts
+            parts_node = QtWidgets.QTreeWidgetItem(["Części", f"{len(self.parts)}"])
+            root.addChild(parts_node)
+
+            for key, p in sorted(self.parts.items(), key=lambda kv: kv[0]):
+                node = QtWidgets.QTreeWidgetItem([p.name_pl, p.key])
+                node.setData(0, QtCore.Qt.ItemDataRole.UserRole, p.key)
+                parts_node.addChild(node)
+
+                node.addChild(QtWidgets.QTreeWidgetItem(
+                    ["Wymiary (A×B×T)", f"{p.a_mm:.0f}×{p.b_mm:.0f}×{p.thick_mm:.0f} mm"]
+                ))
+                node.addChild(QtWidgets.QTreeWidgetItem(["Materiał", p.material or "—"]))
+
+                e = getattr(p, "edges", None)
+                if e is not None and any(getattr(e, k, "") for k in ("L", "P", "G", "D")):
+                    edges = QtWidgets.QTreeWidgetItem(["Okleina", ""])
+                    edges.addChild(QtWidgets.QTreeWidgetItem(["L", getattr(e, "L", "") or "—"]))
+                    edges.addChild(QtWidgets.QTreeWidgetItem(["P", getattr(e, "P", "") or "—"]))
+                    edges.addChild(QtWidgets.QTreeWidgetItem(["G", getattr(e, "G", "") or "—"]))
+                    edges.addChild(QtWidgets.QTreeWidgetItem(["D", getattr(e, "D", "") or "—"]))
+                    node.addChild(edges)
+
+            tree.expandToDepth(1)
+            tree.resizeColumnToContents(0)
+        finally:
+            tree.blockSignals(False)
+
+    def _on_tree_clicked(self, item: QtWidgets.QTreeWidgetItem, column: int) -> None:
+        key = item.data(0, QtCore.Qt.ItemDataRole.UserRole)
+        if isinstance(key, str) and key in self.parts:
+            self._select_part(key)
+
+            # best-effort: center on scene item
+            try:
+                for it in self.scene.items():
+                    if isinstance(it, PartRectItem) and getattr(it, "part_key", None) == key:
+                        self.view.centerOn(it)
+                        break
+            except Exception:
+                pass
+
+    # -----------------------------
+    # Drag bubble (Δ mm + editable)
+    # -----------------------------
+    def _ensure_drag_bubble(self) -> None:
+        if getattr(self, "_drag_bubble_proxy", None) is not None:
+            return
+
+        w = QtWidgets.QWidget()
+        w.setObjectName("dragBubble")
+        w.setStyleSheet("""
+        QWidget#dragBubble {
+            background: rgba(255,255,255,235);
+            border: 1px solid rgba(15,23,42,60);
+            border-radius: 8px;
+        }
+        QLabel { color:#0f172a; font-weight:900; }
+        QLineEdit {
+            min-width: 70px;
+            padding: 3px 6px;
+            border: 1px solid rgba(15,23,42,60);
+            border-radius: 6px;
+            font-weight: 900;
+        }
+        """)
+
+        lay = QtWidgets.QHBoxLayout(w)
+        lay.setContentsMargins(8, 6, 8, 6)
+        lay.setSpacing(6)
+
+        lab = QtWidgets.QLabel("ΔY (mm):")
+        edit = QtWidgets.QLineEdit("0")
+        edit.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
+        edit.setFixedWidth(80)
+        suffix = QtWidgets.QLabel("mm")
+
+        lay.addWidget(lab)
+        lay.addWidget(edit)
+        lay.addWidget(suffix)
+
+        proxy = self.scene.addWidget(w)
+        proxy.setZValue(100000)
+        proxy.setVisible(False)
+
+        self._drag_bubble_proxy = proxy
+        self._drag_bubble_edit = edit
+        self._drag_bubble_label = lab
+
+        def commit():
+            self._drag_commit_from_edit()
+        edit.returnPressed.connect(commit)
+
+    def _drag_begin(self, item: QtWidgets.QGraphicsItem, scene_pos: QtCore.QPointF, start_item_pos: QtCore.QPointF) -> None:
+        self._ensure_drag_bubble()
+        self._drag_item = item
+        self._drag_start_item_pos = QtCore.QPointF(start_item_pos.x(), start_item_pos.y())
+
+        # show bubble near cursor
+        self._drag_bubble_proxy.setPos(scene_pos + QtCore.QPointF(16, 16))
+        self._drag_bubble_proxy.setVisible(True)
+
+        # set editable value = 0
+        try:
+            self._drag_bubble_edit.setText("0")
+            self._drag_bubble_edit.selectAll()
+        except Exception:
+            pass
+
+    def _drag_update(self, scene_pos: QtCore.QPointF, delta_mm: float, new_item_pos: QtCore.QPointF) -> None:
+        if getattr(self, "_drag_bubble_proxy", None) is None:
+            return
+        if self._drag_bubble_proxy.isVisible():
+            self._drag_bubble_proxy.setPos(scene_pos + QtCore.QPointF(16, 16))
+        # update text (keep it simple: int mm)
+        try:
+            self._drag_bubble_edit.setText(str(int(round(delta_mm))))
+        except Exception:
+            pass
+
+        # persist override
+        try:
+            key = getattr(self._drag_item, "part_key", None)
+            if isinstance(key, str):
+                self._pos_override_mm[key] = QtCore.QPointF(new_item_pos.x(), new_item_pos.y())
+        except Exception:
+            pass
+
+    def _drag_commit_from_edit(self) -> None:
+        # Enter in edit: apply Δ mm exactly
+        if self._drag_item is None:
+            return
+        try:
+            txt = self._drag_bubble_edit.text().strip()
+            dy = safe_float(txt, 0.0)
+        except Exception:
+            dy = 0.0
+
+        # move only Y by dy relative to drag start pos
+        try:
+            cur = self._drag_item.pos()
+            new_pos = QtCore.QPointF(self._drag_start_item_pos.x(), self._drag_start_item_pos.y() + dy)
+            self._drag_item.setPos(new_pos)
+
+            key = getattr(self._drag_item, "part_key", None)
+            if isinstance(key, str):
+                self._pos_override_mm[key] = QtCore.QPointF(new_pos.x(), new_pos.y())
+        except Exception:
+            pass
+
+        self._drag_end()
+
+    def _drag_end(self) -> None:
+        if getattr(self, "_drag_bubble_proxy", None) is not None:
+            try:
+                self._drag_bubble_proxy.setVisible(False)
+            except Exception:
+                pass
+        self._drag_item = None
+
+    # -----------------------------------
+    # ALT + Left Mouse drag bubble (SAFE)
+    # -----------------------------------
+    def _install_alt_drag_filter(self) -> None:
+        # ALT_DRAG_BUBBLE_V2 install
+        if getattr(self, "_alt_drag_filter_installed", False):
+            return
+        try:
+            v = getattr(self, "view", None)
+            if v is None:
+                v = self.findChild(QtWidgets.QGraphicsView)
+            if v is None:
+                return
+            self.view = v  # keep for later
+            self.view.setMouseTracking(True)
+            self.view.viewport().setMouseTracking(True)
+            self.view.viewport().installEventFilter(self)
+            self._alt_drag_filter_installed = True
+        except Exception:
+            pass
+
+    def _ensure_alt_drag_bubble(self) -> None:
+        if getattr(self, "_alt_drag_bubble", None) is not None:
+            return
+        try:
+            t = QtWidgets.QGraphicsSimpleTextItem("")
+            t.setZValue(999999)
+            t.setVisible(False)
+            self.scene.addItem(t)
+            self._alt_drag_bubble = t
+        except Exception:
+            self._alt_drag_bubble = None
+
+    def _alt_drag_begin(self, item, scene_pos: QtCore.QPointF) -> None:
+        self._ensure_alt_drag_bubble()
+        self._alt_drag_active = True
+        self._alt_drag_item = item
+        self._alt_drag_start_scene = QtCore.QPointF(scene_pos.x(), scene_pos.y())
+        try:
+            self._alt_drag_start_pos = QtCore.QPointF(item.pos().x(), item.pos().y())
+        except Exception:
+            self._alt_drag_start_pos = QtCore.QPointF(0.0, 0.0)
+
+        if getattr(self, "_alt_drag_bubble", None) is not None:
+            self._alt_drag_bubble.setText("ΔY: 0 mm")
+            self._alt_drag_bubble.setPos(scene_pos + QtCore.QPointF(12, 12))
+            self._alt_drag_bubble.setVisible(True)
+
+    def _alt_drag_update(self, scene_pos: QtCore.QPointF) -> None:
+        if not getattr(self, "_alt_drag_active", False):
+            return
+        it = getattr(self, "_alt_drag_item", None)
+        if it is None:
+            return
+        dy = scene_pos.y() - self._alt_drag_start_scene.y()
+        try:
+            it.setPos(QtCore.QPointF(self._alt_drag_start_pos.x(), self._alt_drag_start_pos.y() + dy))
+        except Exception:
+            pass
+
+        b = getattr(self, "_alt_drag_bubble", None)
+        if b is not None:
+            b.setText(f"ΔY: {int(round(dy))} mm")
+            b.setPos(scene_pos + QtCore.QPointF(12, 12))
+
+    def _alt_drag_end(self) -> None:
+        if not getattr(self, "_alt_drag_active", False):
+            return
+        it = getattr(self, "_alt_drag_item", None)
+        start_pos = getattr(self, "_alt_drag_start_pos", QtCore.QPointF(0.0, 0.0))
+
+        b = getattr(self, "_alt_drag_bubble", None)
+        if b is not None:
+            b.setVisible(False)
+
+        self._alt_drag_active = False
+        self._alt_drag_item = None
+
+        if it is None:
+            return
+
+        try:
+            cur_dy = it.pos().y() - start_pos.y()
+        except Exception:
+            cur_dy = 0.0
+
+        try:
+            val, ok = QtWidgets.QInputDialog.getDouble(
+                self, "Точне зміщення", "ΔY (мм):",
+                float(cur_dy), -100000.0, 100000.0, 1
+            )
+            if ok:
+                it.setPos(QtCore.QPointF(start_pos.x(), start_pos.y() + float(val)))
+        except Exception:
+            pass
+
+    def eventFilter(self, obj, event):
+        try:
+            # ALT_DRAG_BUBBLE_V2
+            v = getattr(self, "view", None)
+            if v is not None and obj is v.viewport():
+                et = event.type()
+
+                if et == QtCore.QEvent.Type.MouseButtonPress:
+                    if event.button() == QtCore.Qt.MouseButton.LeftButton:
+                        mods = QtWidgets.QApplication.keyboardModifiers()
+                        if mods & QtCore.Qt.KeyboardModifier.AltModifier:
+                            sp = v.mapToScene(event.pos())
+                            it = self.scene.itemAt(sp, v.transform())
+                            if it is not None and getattr(it, "part_key", None) is not None:
+                                self._alt_drag_begin(it, sp)
+                                return True
+
+                if et == QtCore.QEvent.Type.MouseMove:
+                    if getattr(self, "_alt_drag_active", False):
+                        sp = v.mapToScene(event.pos())
+                        self._alt_drag_update(sp)
+                        return True
+
+                if et == QtCore.QEvent.Type.MouseButtonRelease:
+                    if getattr(self, "_alt_drag_active", False):
+                        self._alt_drag_end()
+                        return True
+        except Exception:
+            pass
+
+        return super().eventFilter(obj, event)
+    # -----------------------------
+    # Actions
+    # -----------------------------
+    def _on_recalc(self) -> None:
+        self._rebuild_parts()
+        self._refresh_scene()
+        self._refresh_quick_panel()
+        self._refresh_bom()
+        self._save_state()
+        # FRONT BOM v14 add FRONT row if enabled
+        try:
+            # FRONT enabled?
+            _front_on = False
+            _chk = getattr(self, 'ck_front', None)
+            if _chk is not None and hasattr(_chk, 'isChecked'):
+                _front_on = bool(_chk.isChecked())
+        
+            if _front_on:
+                # best-effort dimension getter
+                def _dim_mm(_key: str, _default: float = 0.0) -> float:
+                    k = (_key or '').lower()
+                    # try common spinboxes by attribute name
+                    candidates = []
+                    if k in ('w','width','szer','szerokosc','szerokość'):
+                        candidates = ['sp_w','sb_w','spin_w','sp_width','sb_width','spin_width','sp_szer','sb_szer','spin_szer']
+                    elif k in ('h','height','wys','wysokosc','wysokość'):
+                        candidates = ['sp_h','sb_h','spin_h','sp_height','sb_height','spin_height','sp_wys','sb_wys','spin_wys']
+                    elif k in ('d','depth','gleb','glebokosc','głębokość'):
+                        candidates = ['sp_d','sb_d','spin_d','sp_depth','sb_depth','spin_depth','sp_gleb','sb_gleb','spin_gleb']
+                    for nm in candidates:
+                        w = getattr(self, nm, None)
+                        if w is not None and hasattr(w, 'value'):
+                            try:
+                                return float(w.value())
+                            except Exception:
+                                pass
+                    # fallback: scan all attributes
+                    for nm, w in self.__dict__.items():
+                        if not isinstance(nm, str):
+                            continue
+                        nml = nm.lower()
+                        if k == 'w' and ('width' in nml or 'szer' in nml):
+                            if hasattr(w, 'value'):
+                                if True:
+                                    pass
+                        if k == 'h' and ('height' in nml or 'wys' in nml):
+                            if hasattr(w, 'value'):
+                                if True:
+                                    pass
+                        if k == 'd' and ('depth' in nml or 'gleb' in nml):
+                            if hasattr(w, 'value'):
+                                if True:
+                                    pass
+                    return float(_default)
+        
+                W = _dim_mm('w', 0.0)
+                H = _dim_mm('h', 0.0)
+                area_m2 = max(0.0, (W/1000.0) * (H/1000.0))
+        
+                # find materials table (common names)
+                tbl = None
+                for _nm in ('tbl_mat','tbl_materials','tbl_material','table_materials','table_mat','tbl_bom','tbl_qty'):
+                    _t = getattr(self, _nm, None)
+                    if _t is not None and hasattr(_t, 'rowCount') and hasattr(_t, 'insertRow'):
+                        tbl = _t
+                        break
+        
+                if tbl is not None:
+                    from PySide6.QtWidgets import QTableWidgetItem
+                    r = tbl.rowCount()
+                    tbl.insertRow(r)
+                    cols = int(tbl.columnCount()) if hasattr(tbl, 'columnCount') else 1
+                    if cols >= 1:
+                        tbl.setItem(r, 0, QTableWidgetItem('Front'))
+                    if cols >= 2:
+                        tbl.setItem(r, 1, QTableWidgetItem(f"{area_m2:.3f}"))
+                    if cols >= 3:
+                        tbl.setItem(r, 2, QTableWidgetItem('m²'))
+        except Exception:
+            pass
+        # FRONT BOM v15
+        try:
+            _front_on = False
+            if hasattr(self, 'ck_front') and self.ck_front is not None:
+                try:
+                    _front_on = bool(self.ck_front.isChecked())
+                except Exception:
+                    _front_on = False
+        
+            if _front_on:
+                W = float(self.in_W.value()) if hasattr(self, 'in_W') else 0.0
+                H = float(self.in_H.value()) if hasattr(self, 'in_H') else 0.0
+                area_m2 = max(0.0, (W/1000.0) * (H/1000.0))
+                cnt = int(self.in_front_count.value()) if hasattr(self, 'in_front_count') else 1
+                mat = ''
+                if hasattr(self, 'cb_front_mat') and self.cb_front_mat is not None:
+                    try:
+                        mat = self.cb_front_mat.currentText().strip()
+                    except Exception:
+                        mat = ''
+                lines.append(f"Front: {area_m2:.3f} m2  | szt: {cnt}  | mat: {mat or '-'}")
+        except Exception:
+            pass
+
+
+    def _on_reset(self) -> None:
+        self.in_W.setValue(600.0)
+        self.in_H.setValue(720.0)
+        self.in_D.setValue(560.0)
+        self.in_thick.setValue(18.0)
+        self.in_back_thick.setValue(3.0)
+        self.in_shelves.setValue(0)
+        self.in_qty.setValue(1)
+        self.ck_middle.setChecked(False)
+        self.ck_split_shelves.setChecked(True)
+        self._on_recalc()
+
+    # -----------------------------
+    # DB: save/load
+    # -----------------------------
+    def _export_state(self) -> Dict[str, Any]:
+        return {
+            "name": self.in_name.text(),
+            "W": self.in_W.value(),
+            "H": self.in_H.value(),
+            "D": self.in_D.value(),
+            "front_mode": self.cb_front_mode.currentText(),
+            "front_hmode": self.cb_front_hmode.currentText(),
+            "front_count": self.in_front_count.value(),
+            "front_gap": self.in_front_gap.value(),
+            "front_side_offset": self.in_front_side.value(),
+            "thick": self.in_thick.value(),
+            "back_thick": self.in_back_thick.value(),
+            "shelves_count": self.in_shelves.value(),
+            "shelves_split": self.ck_split_shelves.isChecked(),
+            "qty": self.in_qty.value(),
+            "drawer": {
+                "system": self.cb_drawer_system.currentText(),
+                "height_code": self.cb_drawer_height_code.currentText(),
+            },
+        }
+
+    def _save_to_db(self) -> None:
+        name = (self.in_name.text() or "").strip()
+        if not name:
+            QtWidgets.QMessageBox.warning(self, "Brak nazwy", "Podaj nazwę modułu przed zapisem.")
+            return
+        try:
+            state = self._export_state()
+            record = ModuleRecord(name=name, state=state)
+            self.library.upsert(record)
+            QtWidgets.QMessageBox.information(self, "Zapisano", f"Zapisano moduł do bazy: {name}")
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Błąd zapisu", f"Nie udało się zapisać do bazy.\n\nPowód: {e}")
+
+    def _load_from_db(self) -> None:
+        name = (self.in_name.text() or "").strip()
+        if not name:
+            QtWidgets.QMessageBox.warning(self, "Brak nazwy", "Wpisz nazwę modułu do wczytania.")
+            return
+        if True:
+            rec = self.library.get(name)
+            st = rec.state or {}
+            self.in_W.setValue(safe_float(st.get("W", 600.0), 600.0))
+            self.in_H.setValue(safe_float(st.get("H", 720.0), 720.0))
+            self.in_D.setValue(safe_float(st.get("D", 560.0), 560.0))
+
+            fm = str(st.get("front_mode", "Drzwi"))
+            idx = self.cb_front_mode.findText(fm)
+            if idx >= 0:
+                self.cb_front_mode.setCurrentIndex(idx)
+
+            hm = str(st.get("front_hmode", "Na całą wysokość"))
+            idx = self.cb_front_hmode.findText(hm)
+            if idx >= 0:
+                self.cb_front_hmode.setCurrentIndex(idx)
+
+            self.in_front_count.setValue(safe_int(st.get("front_count", 2), 2))
+            self.in_front_gap.setValue(safe_float(st.get("front_gap", 2.0), 2.0))
+            self.in_front_side.setValue(safe_float(st.get("front_side_offset", 2.0), 2.0))
+
+            self.in_thick.setValue(safe_float(st.get("thick", 18.0), 18.0))
+            self.in_back_thick.setValue(safe_float(st.get("back_thick", 3.0), 3.0))
+            self.in_shelves.setValue(safe_int(st.get("shelves_count", 0), 0))
+            self.ck_split_shelves.setChecked(bool(st.get("shelves_split", True)))
+            self.in_qty.setValue(safe_int(st.get("qty", 1), 1))
+
+            dr = st.get("drawer", {}) or {}
+            sys = str(dr.get("system", "MERIVOBOX"))
+            idx = self.cb_drawer_system.findText(sys)
+            if idx >= 0:
+                self.cb_drawer_system.setCurrentIndex(idx)
+
+            code = str(dr.get("height_code", "M"))
+            idx = self.cb_drawer_height_code.findText(code)
+            if idx >= 0:
+                self.cb_drawer_height_code.setCurrentIndex(idx)
+
+            self._on_recalc()
+            QtWidgets.QMessageBox.information(self, "Wczytano", f"Wczytano moduł z bazy: {name}")
+

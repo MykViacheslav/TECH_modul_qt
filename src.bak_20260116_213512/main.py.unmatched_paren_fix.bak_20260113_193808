@@ -1,0 +1,396 @@
+﻿import sys, math
+from dataclasses import dataclass
+from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6.QtSvg import QSvgRenderer
+from ui.theme import apply_theme
+from ui.i18n import apply_polish_i18n
+from ui.persistence import restore_window_state, setup_autosave
+
+APP_TITLE = "TECH_modul (Qt)"
+
+def esc(s: str) -> str:
+    return (s or "").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace('"',"&quot;")
+
+@dataclass
+class State:
+    W: float = 600
+    H: float = 720
+    D: float = 560
+    frontMode: str = "doors"   # "doors" | "drawers" | "none"
+    frontCount: int = 2
+    frontInset: float = 2
+    frontGap: float = 2
+    showHandles: bool = True
+    edge: str = "P"            # P/L/R (simple)
+    frontMat: str = "MDF 18 mm"
+    corpMat: str = "Płyta wiórowa 18 mm (PB18)"
+    abs: str = "0.8"
+
+def build_svg(st: State) -> str:
+    W = max(1.0, float(st.W))
+    H = max(1.0, float(st.H))
+    D = max(1.0, float(st.D))
+    mode = st.frontMode
+    cnt = max(0, int(st.frontCount))
+    inset = max(0.0, float(st.frontInset))
+    gap = max(0.0, float(st.frontGap))
+    show_handles = bool(st.showHandles)
+
+    svgW, svgH = 900, 620
+
+    # Boxes (front and top) — SAME SIZE => same "visibility" scale
+    frontBox = dict(x=90, y=60,  w=360, h=360)
+    topBox   = dict(x=90, y=450, w=360, h=360)
+
+    # ONE shared scale for both views
+    s = min(frontBox["w"]/W, frontBox["h"]/H, topBox["w"]/W, topBox["h"]/D)
+
+    # Front
+    fw, fh = W*s, H*s
+    fx = frontBox["x"] + (frontBox["w"] - fw)/2
+    fy = frontBox["y"] + (frontBox["h"] - fh)/2
+
+    # Top
+    tw, td = W*s, D*s
+    tx = topBox["x"] + (topBox["w"] - tw)/2
+    ty = topBox["y"] + (topBox["h"] - td)/2
+
+    css = """
+    .box{ fill:none; stroke:#9ca3af; stroke-width:1.6; }
+    .front{ fill:none; stroke:#111827; stroke-width:1.6; }
+    .drawer{ fill:none; stroke:#111827; stroke-width:1.6; }
+    .edgeR{ stroke:#2563eb; stroke-width:2.2; }
+    .arrow{ stroke:#111827; stroke-width:1.2; }
+    .handle rect{ fill:#111827; }
+    .lbl{ font: 12px system-ui, Segoe UI, Arial; fill:#0f172a; }
+    .mut{ font: 11px system-ui, Segoe UI, Arial; fill:#475569; }
+    .insetOutline{ fill:none; stroke:#f97316; stroke-width:1.6; opacity:0.95; }
+    """
+
+    def rect(x,y,w,h,cls):
+        return f'<rect class="{cls}" x="{x:.2f}" y="{y:.2f}" width="{w:.2f}" height="{h:.2f}" />'
+
+    def line(x1,y1,x2,y2,cls):
+        return f'<line class="{cls}" x1="{x1:.2f}" y1="{y1:.2f}" x2="{x2:.2f}" y2="{y2:.2f}" />'
+
+    def text(x,y,t,cls="lbl"):
+        return f'<text class="{cls}" x="{x:.2f}" y="{y:.2f}">{esc(t)}</text>'
+
+    def handle(cx,cy):
+        w,h,rx = 18,6,3
+        x,y = cx-w/2, cy-h/2
+        return f'<g class="handle"><rect x="{x:.2f}" y="{y:.2f}" width="{w}" height="{h}" rx="{rx}" ry="{rx}" /></g>'
+
+    parts = []
+    parts.append(f'<svg id="moduleView" width="{svgW}" height="{svgH}" viewBox="0 0 {svgW} {svgH}" xmlns="http://www.w3.org/2000/svg">')
+    parts.append("<style>"+css+"</style>")
+
+    # ---- Front view ----
+    parts.append(text(frontBox["x"], frontBox["y"]-16, "Front view"))
+    parts.append(rect(fx, fy, fw, fh, "box"))
+
+    parts.append(text(fx + fw/2 - 28, fy + fh + 22, f"W {int(W)} mm", "mut"))
+    parts.append(text(fx + fw + 14, fy + fh/2,      f"H {int(H)} mm", "mut"))
+
+    # right edge highlight (front)
+    parts.append(line(fx+fw, fy, fx+fw, fy+fh, "edgeR"))
+
+    # inset outline (front)
+    inset_px = inset * s
+    if inset_px > 0 and fw - 2*inset_px > 0 and fh - 2*inset_px > 0:
+        parts.append(rect(fx+inset_px, fy+inset_px, fw-2*inset_px, fh-2*inset_px, "insetOutline"))
+
+    # doors/drawers (front)
+    if mode != "none" and cnt > 0:
+        innerX = fx + inset*s
+        innerY = fy + inset*s
+        innerW = fw - 2*inset*s
+        innerH = fh - 2*inset*s
+
+        if innerW > 2 and innerH > 2:
+            if mode == "doors":
+                panelW = (innerW - (cnt-1)*gap*s) / max(1,cnt)
+                for i in range(cnt):
+                    px = innerX + i*(panelW + gap*s)
+                    parts.append(rect(px, innerY, panelW, innerH, "front"))
+                    if show_handles:
+                        hx = (px + panelW - 14) if i == 0 else (px + 14)
+                        parts.append(handle(hx, innerY + innerH/2))
+                    ax1 = (px + panelW - 6) if i == 0 else (px + 6)
+                    ax2 = (px + 6) if i == 0 else (px + panelW - 6)
+                    parts.append(line(ax1, innerY + 18, ax2, innerY + 18, "arrow"))
+
+            elif mode == "drawers":
+                drawerH = (innerH - (cnt-1)*gap*s) / max(1,cnt)
+                for i in range(cnt):
+                    py = innerY + i*(drawerH + gap*s)
+                    parts.append(rect(innerX, py, innerW, drawerH, "drawer"))
+                    if show_handles:
+                        parts.append(handle(innerX + innerW/2, py + drawerH/2))
+
+    # ---- Top view (finished) ----
+    parts.append(text(topBox["x"], topBox["y"]-16, "Top view"))
+    parts.append(rect(tx, ty, tw, td, "box"))
+    parts.append(text(tx + tw/2 - 28, ty + td + 22, f"D {int(D)} mm", "mut"))
+
+    # inset outline (top)
+    inset_px_top = inset * s
+    if inset_px_top > 0 and tw - 2*inset_px_top > 0 and td - 2*inset_px_top > 0:
+        parts.append(rect(tx+inset_px_top, ty+inset_px_top, tw-2*inset_px_top, td-2*inset_px_top, "insetOutline"))
+
+    # edge highlight (top) — simple mapping
+    pad = max(2.0, inset_px_top)
+    if st.edge == "P":   # right
+        parts.append(line(tx+tw-pad, ty+pad, tx+tw-pad, ty+td-pad, "edgeR"))
+    elif st.edge == "L": # left
+        parts.append(line(tx+pad, ty+pad, tx+pad, ty+td-pad, "edgeR"))
+    elif st.edge == "R": # top
+        parts.append(line(tx+pad, ty+pad, tx+tw-pad, ty+pad, "edgeR"))
+
+    parts.append("</svg>")
+    return "\n".join(parts)
+
+class SvgView(QtWidgets.QWidget):
+    def __init__(self):
+        super().__init__()
+        self._renderer = QSvgRenderer()
+        self._svg_text = ""
+        self._label = QtWidgets.QLabel(alignment=QtCore.Qt.AlignCenter)
+        self._label.setMinimumSize(600, 520)
+        self._label.setStyleSheet("background:#ffffff; border:1px solid #e5e7eb; border-radius:12px;")
+
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(0,0,0,0)
+        lay.addWidget(self._label, 1)
+
+    def set_svg(self, svg_text: str):
+        self._svg_text = svg_text or ""
+        self._rerender()
+
+    def _rerender(self):
+        if not self._svg_text:
+            self._label.clear()
+            return
+        svg_bytes = self._svg_text.encode("utf-8")
+        self._renderer.load(QtCore.QByteArray(svg_bytes))
+
+        w, h = 900, 620
+        img = QtGui.QImage(w, h, QtGui.QImage.Format_ARGB32)
+        img.fill(QtGui.QColor("white"))
+        p = QtGui.QPainter(img)
+        self._renderer.render(p)
+        p.end()
+
+        pix = QtGui.QPixmap.fromImage(img)
+        target = self._label.size()
+        pix2 = pix.scaled(target, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+        self._label.setPixmap(pix2)
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._rerender()
+
+class MainWindow(QtWidgets.QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle(APP_TITLE)
+        self.resize(1280, 760)
+
+        self.state = State()
+
+        self.tabs = QtWidgets.QTabWidget()
+        self.setCentralWidget(self.tabs)
+
+        # ---- Module tab ----
+        self.modTab = QtWidgets.QWidget()
+        self.tabs.addTab(self.modTab, "Module")
+
+        self.view = SvgView()
+
+        # Left controls
+        self.wW = QtWidgets.QDoubleSpinBox(); self.wW.setRange(1,5000); self.wW.setDecimals(0); self.wW.setSingleStep(10); self.wW.setValue(self.state.W)
+        self.wH = QtWidgets.QDoubleSpinBox(); self.wH.setRange(1,5000); self.wH.setDecimals(0); self.wH.setSingleStep(10); self.wH.setValue(self.state.H)
+        self.wD = QtWidgets.QDoubleSpinBox(); self.wD.setRange(1,5000); self.wD.setDecimals(0); self.wD.setSingleStep(10); self.wD.setValue(self.state.D)
+
+        self.mode = QtWidgets.QComboBox(); self.mode.addItems(["doors","drawers","none"]); self.mode.setCurrentText(self.state.frontMode)
+        self.cnt = QtWidgets.QSpinBox(); self.cnt.setRange(0,10); self.cnt.setValue(self.state.frontCount)
+        self.inset = QtWidgets.QDoubleSpinBox(); self.inset.setRange(0,50); self.inset.setDecimals(1); self.inset.setValue(self.state.frontInset)
+        self.gap = QtWidgets.QDoubleSpinBox(); self.gap.setRange(0,50); self.gap.setDecimals(1); self.gap.setValue(self.state.frontGap)
+        self.showHandles = QtWidgets.QCheckBox("Show handles"); self.showHandles.setChecked(True)
+
+        self.btnReset = QtWidgets.QPushButton("Reset")
+        self.status = QtWidgets.QLabel("OK")
+        self.status.setStyleSheet("color:#475569;")
+
+        form = QtWidgets.QFormLayout()
+        form.addRow("W (mm)", self.wW)
+        form.addRow("H (mm)", self.wH)
+        form.addRow("D (mm)", self.wD)
+        form.addRow("Front mode", self.mode)
+        form.addRow("Count", self.cnt)
+        form.addRow("Inset", self.inset)
+        form.addRow("Gap", self.gap)
+        form.addRow("", self.showHandles)
+        form.addRow("", self.btnReset)
+        form.addRow("Status", self.status)
+
+        leftCard = QtWidgets.QGroupBox("Parameters")
+        leftCard.setLayout(form)
+
+        # Right controls
+        self.frontMat = QtWidgets.QComboBox()
+        self.frontMat.addItems(["MDF 18 mm","MDF 19 mm","HDF 3 mm"])
+        self.frontMat.setCurrentText(self.state.frontMat)
+
+        self.corpMat = QtWidgets.QComboBox()
+        self.corpMat.addItems(["Płyta wiórowa 18 mm (PB18)","Sklejka 18 mm","MDF 18 mm"])
+        self.corpMat.setCurrentText(self.state.corpMat)
+
+        self.abs = QtWidgets.QComboBox()
+        self.abs.addItems(["0.4","0.8","1.0","2.0"])
+        self.abs.setCurrentText(self.state.abs)
+
+        mats = QtWidgets.QFormLayout()
+        mats.addRow("Front material", self.frontMat)
+        mats.addRow("Corpus material", self.corpMat)
+        mats.addRow("ABS (mm)", self.abs)
+        matsBox = QtWidgets.QGroupBox("Materials")
+        matsBox.setLayout(mats)
+
+        self.edgeP = QtWidgets.QPushButton("Edge: P (right)")
+        self.edgeL = QtWidgets.QPushButton("Edge: L")
+        self.edgeR = QtWidgets.QPushButton("Edge: R (top)")
+        edgeRow = QtWidgets.QHBoxLayout()
+        edgeRow.addWidget(self.edgeP); edgeRow.addWidget(self.edgeL); edgeRow.addWidget(self.edgeR)
+        edgeBox = QtWidgets.QGroupBox("Edge")
+        v = QtWidgets.QVBoxLayout(edgeBox)
+        v.addLayout(edgeRow)
+
+        rightCol = QtWidgets.QVBoxLayout()
+        rightCol.addWidget(matsBox)
+        rightCol.addWidget(edgeBox)
+        rightCol.addStretch(1)
+
+        rightWrap = QtWidgets.QWidget()
+        rightWrap.setLayout(rightCol)
+        rightWrap.setMinimumWidth(320)
+
+        # Layout: 3 columns
+        grid = QtWidgets.QGridLayout(self.modTab)
+        grid.setColumnStretch(0,0)
+        grid.setColumnStretch(1,1)
+        grid.setColumnStretch(2,0)
+        grid.addWidget(leftCard, 0,0)
+        grid.addWidget(self.view, 0,1)
+        grid.addWidget(rightWrap, 0,2)
+
+        # ---- Edge tab ----
+        self.edgeTab = QtWidgets.QWidget()
+        self.tabs.addTab(self.edgeTab, "Edge")
+        ed = QtWidgets.QVBoxLayout(self.edgeTab)
+        ed.addWidget(QtWidgets.QLabel("Edge is shown in Module tab (top view highlight)."))
+        ed.addStretch(1)
+
+        # ---- BOM tab ----
+        self.bomTab = QtWidgets.QWidget()
+        self.tabs.addTab(self.bomTab, "BOM")
+        vb = QtWidgets.QVBoxLayout(self.bomTab)
+        self.bomText = QtWidgets.QPlainTextEdit()
+        self.bomText.setPlaceholderText("BOM will be generated later.")
+        vb.addWidget(self.bomText, 1)
+
+        # Signals
+        for w in (self.wW,self.wH,self.wD,self.cnt,self.inset,self.gap):
+            w.valueChanged.connect(self.on_change)
+        self.mode.currentIndexChanged.connect(self.on_change)
+        self.showHandles.stateChanged.connect(self.on_change)
+        self.frontMat.currentIndexChanged.connect(self.on_change)
+        self.corpMat.currentIndexChanged.connect(self.on_change)
+        self.abs.currentIndexChanged.connect(self.on_change)
+
+        self.btnReset.clicked.connect(self.on_reset)
+        self.edgeP.clicked.connect(lambda: self.set_edge("P"))
+        self.edgeL.clicked.connect(lambda: self.set_edge("L"))
+        self.edgeR.clicked.connect(lambda: self.set_edge("R"))
+
+        self.render()
+
+    def set_edge(self, e):
+        self.state.edge = e
+        self.render()
+
+    def on_change(self, *a):
+        self.state.W = self.wW.value()
+        self.state.H = self.wH.value()
+        self.state.D = self.wD.value()
+        self.state.frontMode = self.mode.currentText()
+        self.state.frontCount = self.cnt.value()
+        self.state.frontInset = self.inset.value()
+        self.state.frontGap = self.gap.value()
+        self.state.showHandles = self.showHandles.isChecked()
+        self.state.frontMat = self.frontMat.currentText()
+        self.state.corpMat = self.corpMat.currentText()
+        self.state.abs = self.abs.currentText()
+        self.render()
+
+    def on_reset(self):
+        self.wW.setValue(600)
+        self.wH.setValue(720)
+        self.wD.setValue(560)
+        self.mode.setCurrentText("doors")
+        self.cnt.setValue(2)
+        self.inset.setValue(2)
+        self.gap.setValue(2)
+        self.showHandles.setChecked(True)
+        self.frontMat.setCurrentText("MDF 18 mm")
+        self.corpMat.setCurrentText("Płyta wiórowa 18 mm (PB18)")
+        self.abs.setCurrentText("0.8")
+        self.state.edge = "P"
+        self.render()
+
+    def render(self):
+        try:
+            svg = build_svg(self.state)
+            self.view.set_svg(svg)
+            self.status.setText("OK")
+        except Exception as e:
+            self.status.setText(f"ERR: {e}")
+
+def main():
+    app = QtWidgets.QApplication(sys.argv)
+
+    # Delikatne (jaśniejsze) zakładki + UI
+    app.setStyleSheet("""
+      QMainWindow { background: #f8fafc; }
+      QTabWidget::pane { border: 1px solid #e5e7eb; border-radius: 10px; background: #ffffff; }
+      QTabBar::tab {
+        background: #eef2f7; color: #0f172a;
+        border: 1px solid #d0d7e2;
+        padding: 8px 14px;
+        margin-right: 6px;
+        border-top-left-radius: 10px;
+        border-top-right-radius: 10px;
+      }
+      QTabBar::tab:selected { background: #ffffff; }
+      QGroupBox { background:#ffffff; border:1px solid #e5e7eb; border-radius:12px; margin-top:10px; }
+      QGroupBox:title { subcontrol-origin: margin; left: 10px; padding: 0 6px; color:#334155; }
+      QPushButton {
+        background:#f1f5f9; color:#0f172a; border:1px solid #cbd5e1;
+        padding: 8px 10px; border-radius: 10px;
+      }
+      QPushButton:hover { background:#e2e8f0; }
+    """)
+
+    win = MainWindow()
+    restore_window_state(win)
+    setup_autosave(app, win)
+)
+    sys.exit(app.exec())
+
+if __name__ == "__main__":
+    main()
+
+
+
+
+

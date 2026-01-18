@@ -1,0 +1,29 @@
+﻿from __future__ import annotations
+from PySide6 import QtCore, QtWidgets
+from .project_tree_widget import ProjectTreeWidget
+
+def wrap_with_project_tree(content: QtWidgets.QWidget, ctx=None) -> QtWidgets.QWidget:
+    # avoid double-wrap
+    if getattr(content, "_wrapped_with_project_tree", False):
+        return content
+
+    w = QtWidgets.QWidget()
+    w._wrapped_with_project_tree = True  # marker
+
+    tree = ProjectTreeWidget(ctx=ctx)
+    tree.setMinimumWidth(260)
+
+    split = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+    split.addWidget(tree)
+    split.addWidget(content)
+    split.setStretchFactor(0, 0)
+    split.setStretchFactor(1, 1)
+
+    lay = QtWidgets.QVBoxLayout(w)
+    lay.setContentsMargins(0,0,0,0)
+    lay.addWidget(split)
+
+    # nice: keep reference
+    w.project_tree = tree
+    w.content = content
+    return w

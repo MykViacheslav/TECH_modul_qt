@@ -1,0 +1,72 @@
+﻿param(
+  [Parameter(Mandatory=$true)][string]$Anchor,
+  [string]$Name = "",
+  [Parameter(Mandatory=$true)][double]$Width,
+  [Parameter(Mandatory=$true)][double]$Height,
+  [Parameter(Mandatory=$true)][double]$Depth,
+
+  [string]$Materials = "",
+
+  [string]$MaterialAnchor = "",
+  [string]$MaterialQuery  = "",
+
+  [switch]$Overwrite,
+  [switch]$NoHistory,
+  [string]$DbPath = (Join-Path (Split-Path $PSScriptRoot -Parent) "data\tech.db")
+)
+
+. (Join-Path $PSScriptRoot "env.ps1")
+
+$Root   = Split-Path $PSScriptRoot -Parent
+$Cli    = Join-Path $Root "src\tools\module_db_cli.py"
+$MatCli = Join-Path $Root "src\tools\material_db_cli.py"
+
+function Resolve-MaterialAnchor {
+  param([string]$Query, [int]$Limit = 10)
+
+  if(-not (Test-Path $MatCli)){
+    throw "Missing: $MatCli"
+  }
+
+  $json = & $Py $MatCli --db $DbPath suggest --q $Query --limit $Limit
+  if($LASTEXITCODE -ne 0){
+    Write-Host $json
+    exit $LASTEXITCODE
+  }
+
+  $items = $json | ConvertFrom-Json
+
+  if(-not $items -or $items.Count -eq 0){
+    Write-Host "No material matches for query: '$Query'"
+    exit 4
+  }
+
+  if($items.Count -eq 1){
+    return [string]$items[0].anchor
+  }
+
+  Write-Host "Multiple materials match query: '$Query'. Pick one -MaterialAnchor:"
+  $items | Select-Object idx, anchor, name, kind, thickness_mm, score | Format-Table -AutoSize
+  exit 2
+}
+
+if(((-not $MaterialAnchor) -or $MaterialAnchor.Trim().Length -eq 0) -and ($MaterialQuery -and $MaterialQuery.Trim().Length -gt 0)){
+  $MaterialAnchor = Resolve-MaterialAnchor -Query $MaterialQuery -Limit 10
+  Write-Host ("OK: MaterialAnchor resolved to: " + $MaterialAnchor)
+}
+
+$args = @(
+  $Cli, "--db", $DbPath, "save",
+  "--anchor", $Anchor,
+  "--width",  $Width,
+  "--height", $Height,
+  "--depth",  $Depth,
+  "--materials", $Materials
+)
+
+if($Name -and $Name.Trim().Length -gt 0){ $args += @("--name", $Name) }
+if($MaterialAnchor -and $MaterialAnchor.Trim().Length -gt 0){ $args += @("--material-anchor", $MaterialAnchor) }
+if($Overwrite){ $args += "--overwrite" }
+if($NoHistory){ $args += "--no-history" }
+
+& $Py @args

@@ -1,0 +1,8 @@
+﻿from __future__ import annotations
+
+# Compatibility wrapper:
+# old:  from tabs.module_proto_widget import ModuleProtoWidget
+# new:  from tabs.module_proto.widget import ModuleProtoWidget
+from .module_proto.widget import ModuleProtoWidget
+
+__all__ = ["ModuleProtoWidget"]

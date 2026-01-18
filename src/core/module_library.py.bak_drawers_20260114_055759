@@ -1,0 +1,78 @@
+﻿from __future__ import annotations
+
+import json
+from dataclasses import dataclass, asdict
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+
+@dataclass
+class ModuleRecord:
+    name: str
+    state: Dict[str, Any]
+    bom: Dict[str, Any]
+
+
+class ModuleLibrary:
+    """
+    Prosta "baza" modułów na pliku JSON.
+    Trzymamy:
+    - nazwę
+    - stan modułu (wymiary/checkboxy/offsety itp.)
+    - BOM (materiały, okleina, okucia)
+    """
+    def __init__(self, file_path: Path) -> None:
+        self.file_path = file_path
+        self.file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def _read(self) -> List[Dict[str, Any]]:
+        if not self.file_path.exists():
+            return []
+        try:
+            return json.loads(self.file_path.read_text(encoding="utf-8", errors="ignore")) or []
+        except Exception:
+            return []
+
+    def _write(self, rows: List[Dict[str, Any]]) -> None:
+        self.file_path.write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def list_names(self) -> List[str]:
+        rows = self._read()
+        names = []
+        for r in rows:
+            n = str(r.get("name", "")).strip()
+            if n:
+                names.append(n)
+        return sorted(set(names), key=lambda x: x.lower())
+
+    def get(self, name: str) -> Optional[ModuleRecord]:
+        name = (name or "").strip()
+        if not name:
+            return None
+        rows = self._read()
+        for r in rows:
+            if str(r.get("name", "")).strip().lower() == name.lower():
+                return ModuleRecord(
+                    name=str(r.get("name", "")).strip(),
+                    state=dict(r.get("state") or {}),
+                    bom=dict(r.get("bom") or {}),
+                )
+        return None
+
+    def upsert(self, rec: ModuleRecord) -> None:
+        name = (rec.name or "").strip()
+        if not name:
+            raise ValueError("ModuleRecord.name jest pusty")
+
+        rows = self._read()
+        out: List[Dict[str, Any]] = []
+        replaced = False
+        for r in rows:
+            if str(r.get("name", "")).strip().lower() == name.lower():
+                out.append(asdict(rec))
+                replaced = True
+            else:
+                out.append(r)
+        if not replaced:
+            out.append(asdict(rec))
+        self._write(out)

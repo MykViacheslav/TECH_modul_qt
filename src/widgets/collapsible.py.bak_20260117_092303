@@ -1,0 +1,48 @@
+﻿from __future__ import annotations
+
+from PySide6 import QtWidgets, QtCore
+
+
+class CollapsibleSection(QtWidgets.QWidget):
+    """
+    Simple collapsible section:
+    - header toolbutton (arrow + title)
+    - content widget (with contentLayout)
+    """
+    def __init__(self, title: str = "", parent=None, expanded: bool = True):
+        super().__init__(parent)
+
+        self._btn = QtWidgets.QToolButton(self)
+        self._btn.setText(title)
+        self._btn.setCheckable(True)
+        self._btn.setChecked(bool(expanded))
+        self._btn.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+        self._btn.setArrowType(QtCore.Qt.DownArrow if expanded else QtCore.Qt.RightArrow)
+        self._btn.clicked.connect(self._toggle)
+
+        self._content = QtWidgets.QWidget(self)
+        self.contentLayout = QtWidgets.QVBoxLayout(self._content)
+        self.contentLayout.setContentsMargins(8, 6, 8, 8)
+        self.contentLayout.setSpacing(8)
+        self._content.setVisible(bool(expanded))
+
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        lay.addWidget(self._btn)
+        lay.addWidget(self._content)
+
+        # small styling (keeps your dark theme untouched; just button look)
+        self._btn.setStyleSheet("QToolButton{padding:6px 8px;font-weight:700;}")
+
+    def _toggle(self):
+        on = self._btn.isChecked()
+        self._content.setVisible(on)
+        self._btn.setArrowType(QtCore.Qt.DownArrow if on else QtCore.Qt.RightArrow)
+
+    def setExpanded(self, on: bool):
+        self._btn.setChecked(bool(on))
+        self._toggle()
+
+    def isExpanded(self) -> bool:
+        return self._btn.isChecked()

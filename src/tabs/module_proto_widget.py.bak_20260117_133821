@@ -1,0 +1,526 @@
+﻿from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import List, Optional, Tuple
+
+from PySide6 import QtCore, QtWidgets, QtGui
+
+from widgets.collapsible import CollapsibleSection
+
+
+@dataclass
+class MidPanelCfg:
+    enabled: bool
+    x_mm: int
+    height_mm: int
+    cap_kind: str          # "NONE" | "SHELF" | "BOTTOM"
+    cap_span: str          # "BOTH" | "LEFT" | "RIGHT"
+
+
+class ModuleProtoWidget(QtWidgets.QWidget):
+    """
+    Proto UI:
+    - segments from mid panels (X positions)
+    - shelves per segment (All / Seg1 / Seg2 / Seg3)
+    - cap above a mid-panel: shelf/bottom, span left/right/both
+    - IMPORTANT: cap limits segment height -> shelves don't go "above segment"
+    """
+    def __init__(self, ctx=None, parent=None):
+        super().__init__(parent)
+        self.ctx = ctx
+        self._build_ui()
+        self._wire()
+        self._recalc()
+
+    # ---------- helpers ----------
+    @staticmethod
+    def _sec_add(sec: CollapsibleSection, w: QtWidgets.QWidget):
+        if hasattr(sec, "contentLayout") and sec.contentLayout is not None:
+            sec.contentLayout.addWidget(w)
+            return
+        if hasattr(sec, "content") and sec.content is not None:
+            lay = sec.content.layout()
+            if lay is None:
+                lay = QtWidgets.QVBoxLayout(sec.content)
+                lay.setContentsMargins(0, 0, 0, 0)
+            lay.addWidget(w)
+            return
+        lay = sec.layout() or QtWidgets.QVBoxLayout(sec)
+        lay.addWidget(w)
+
+    def _build_ui(self):
+        root = QtWidgets.QVBoxLayout(self)
+        root.setContentsMargins(8, 8, 8, 8)
+        root.setSpacing(8)
+
+        # status pill
+        top = QtWidgets.QHBoxLayout()
+        top.addStretch(1)
+        self.status = QtWidgets.QLabel("OK")
+        self.status.setAlignment(QtCore.Qt.AlignCenter)
+        self.status.setFixedWidth(60)
+        self.status.setStyleSheet("QLabel{padding:4px 10px;border-radius:10px;background:#d7ffe1;color:#000;font-weight:700;}")
+        top.addWidget(self.status)
+        root.addLayout(top)
+
+        self.split = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        root.addWidget(self.split, 1)
+
+        # LEFT
+        leftWrap = QtWidgets.QWidget()
+        leftLay = QtWidgets.QVBoxLayout(leftWrap)
+        leftLay.setContentsMargins(0, 0, 0, 0)
+        leftLay.setSpacing(8)
+
+        # --- DIMS ---
+        self.secDims = CollapsibleSection("Wymiary + Anchor")
+        dims = QtWidgets.QWidget()
+        g = QtWidgets.QGridLayout(dims)
+        g.setContentsMargins(0, 0, 0, 0)
+        g.setHorizontalSpacing(10)
+        g.setVerticalSpacing(6)
+
+        self.w = QtWidgets.QSpinBox(); self.w.setRange(50, 5000); self.w.setValue(600)
+        self.h = QtWidgets.QSpinBox(); self.h.setRange(50, 5000); self.h.setValue(720)
+        self.d = QtWidgets.QSpinBox(); self.d.setRange(50, 2000); self.d.setValue(560)
+
+        self.anchor = QtWidgets.QComboBox()
+        self.anchor.addItems(["NONE", "LT", "RT", "LB", "RB"])
+        self.anchorDX = QtWidgets.QSpinBox(); self.anchorDX.setRange(0, 5000); self.anchorDX.setValue(0)
+        self.anchorDY = QtWidgets.QSpinBox(); self.anchorDY.setRange(0, 5000); self.anchorDY.setValue(0)
+
+        g.addWidget(QtWidgets.QLabel("W (mm)"), 0, 0); g.addWidget(self.w, 0, 1)
+        g.addWidget(QtWidgets.QLabel("H (mm)"), 1, 0); g.addWidget(self.h, 1, 1)
+        g.addWidget(QtWidgets.QLabel("D (mm)"), 2, 0); g.addWidget(self.d, 2, 1)
+        g.addWidget(QtWidgets.QLabel("Anchor"), 3, 0); g.addWidget(self.anchor, 3, 1)
+        g.addWidget(QtWidgets.QLabel("Offset X"), 4, 0); g.addWidget(self.anchorDX, 4, 1)
+        g.addWidget(QtWidgets.QLabel("Offset Y"), 5, 0); g.addWidget(self.anchorDY, 5, 1)
+
+        self._sec_add(self.secDims, dims)
+        leftLay.addWidget(self.secDims)
+
+        # --- OFFSETS ---
+        self.secPos = CollapsibleSection("Przesunięcia (offset)")
+        pos = QtWidgets.QWidget()
+        g2 = QtWidgets.QGridLayout(pos)
+        g2.setContentsMargins(0, 0, 0, 0)
+        g2.setHorizontalSpacing(10)
+        g2.setVerticalSpacing(6)
+
+        self.posL = QtWidgets.QSpinBox(); self.posL.setRange(0, 2000); self.posL.setValue(0)
+        self.posR = QtWidgets.QSpinBox(); self.posR.setRange(0, 2000); self.posR.setValue(0)
+        self.posT = QtWidgets.QSpinBox(); self.posT.setRange(0, 2000); self.posT.setValue(0)
+        self.posB = QtWidgets.QSpinBox(); self.posB.setRange(0, 2000); self.posB.setValue(0)
+
+        self.btnZero = QtWidgets.QPushButton("Zeruj L/R/T/B")
+        self.btnLR = QtWidgets.QPushButton("L = R")
+        self.btnTB = QtWidgets.QPushButton("T = B")
+
+        g2.addWidget(QtWidgets.QLabel("Left (mm)"), 0, 0);   g2.addWidget(self.posL, 0, 1)
+        g2.addWidget(QtWidgets.QLabel("Right (mm)"), 1, 0);  g2.addWidget(self.posR, 1, 1)
+        g2.addWidget(QtWidgets.QLabel("Top (mm)"), 2, 0);    g2.addWidget(self.posT, 2, 1)
+        g2.addWidget(QtWidgets.QLabel("Bottom (mm)"), 3, 0); g2.addWidget(self.posB, 3, 1)
+        g2.addWidget(self.btnZero, 4, 0, 1, 2)
+        g2.addWidget(self.btnLR, 5, 0, 1, 2)
+        g2.addWidget(self.btnTB, 6, 0, 1, 2)
+
+        self._sec_add(self.secPos, pos)
+        leftLay.addWidget(self.secPos)
+
+        # --- MID PANELS ---
+        self.secMid = CollapsibleSection("Piony środkowe (mid-panels)")
+        mid = QtWidgets.QWidget()
+        gm = QtWidgets.QGridLayout(mid)
+        gm.setContentsMargins(0, 0, 0, 0)
+        gm.setHorizontalSpacing(10)
+        gm.setVerticalSpacing(6)
+
+        # mid A
+        self.midA_on = QtWidgets.QCheckBox("Pion #1 (midA)")
+        self.midA_x = QtWidgets.QSpinBox(); self.midA_x.setRange(1, 4999); self.midA_x.setValue(300)
+        self.midA_h = QtWidgets.QSpinBox(); self.midA_h.setRange(50, 5000); self.midA_h.setValue(600)
+
+        self.midA_cap = QtWidgets.QComboBox(); self.midA_cap.addItems(["NONE", "SHELF", "BOTTOM"])
+        self.midA_span = QtWidgets.QComboBox(); self.midA_span.addItems(["BOTH", "LEFT", "RIGHT"])
+
+        r = 0
+        gm.addWidget(self.midA_on, r, 0, 1, 2); r += 1
+        gm.addWidget(QtWidgets.QLabel("X (mm)"), r, 0); gm.addWidget(self.midA_x, r, 1); r += 1
+        gm.addWidget(QtWidgets.QLabel("Wysokość od dołu (mm)"), r, 0); gm.addWidget(self.midA_h, r, 1); r += 1
+        gm.addWidget(QtWidgets.QLabel("Cap (nad pionem)"), r, 0); gm.addWidget(self.midA_cap, r, 1); r += 1
+        gm.addWidget(QtWidgets.QLabel("Cap span"), r, 0); gm.addWidget(self.midA_span, r, 1); r += 1
+
+        line = QtWidgets.QFrame(); line.setFrameShape(QtWidgets.QFrame.HLine); line.setFrameShadow(QtWidgets.QFrame.Sunken)
+        gm.addWidget(line, r, 0, 1, 2); r += 1
+
+        # mid B
+        self.midB_on = QtWidgets.QCheckBox("Pion #2 (midB)")
+        self.midB_x = QtWidgets.QSpinBox(); self.midB_x.setRange(1, 4999); self.midB_x.setValue(420)
+        self.midB_h = QtWidgets.QSpinBox(); self.midB_h.setRange(50, 5000); self.midB_h.setValue(600)
+
+        self.midB_cap = QtWidgets.QComboBox(); self.midB_cap.addItems(["NONE", "SHELF", "BOTTOM"])
+        self.midB_span = QtWidgets.QComboBox(); self.midB_span.addItems(["BOTH", "LEFT", "RIGHT"])
+
+        gm.addWidget(self.midB_on, r, 0, 1, 2); r += 1
+        gm.addWidget(QtWidgets.QLabel("X2 (mm)"), r, 0); gm.addWidget(self.midB_x, r, 1); r += 1
+        gm.addWidget(QtWidgets.QLabel("Wysokość2 od dołu (mm)"), r, 0); gm.addWidget(self.midB_h, r, 1); r += 1
+        gm.addWidget(QtWidgets.QLabel("Cap2 (nad pionem)"), r, 0); gm.addWidget(self.midB_cap, r, 1); r += 1
+        gm.addWidget(QtWidgets.QLabel("Cap2 span"), r, 0); gm.addWidget(self.midB_span, r, 1); r += 1
+
+        self._sec_add(self.secMid, mid)
+        leftLay.addWidget(self.secMid)
+
+        # --- SHELVES ---
+        self.secShelves = CollapsibleSection("Półki (segmenty)")
+        sh = QtWidgets.QWidget()
+        gs = QtWidgets.QGridLayout(sh)
+        gs.setContentsMargins(0, 0, 0, 0)
+        gs.setHorizontalSpacing(10)
+        gs.setVerticalSpacing(6)
+
+        self.shelf_n = QtWidgets.QSpinBox(); self.shelf_n.setRange(0, 12); self.shelf_n.setValue(1)
+        self.shelf_seg = QtWidgets.QComboBox()
+        self.shelf_seg.addItems(["ALL", "SEG1", "SEG2", "SEG3"])
+
+        self.btnShelvesEq = QtWidgets.QPushButton("Równo (auto)")
+        self.btnShelves0 = QtWidgets.QPushButton("0")
+
+        gs.addWidget(QtWidgets.QLabel("Ilość (auto)"), 0, 0); gs.addWidget(self.shelf_n, 0, 1)
+        gs.addWidget(QtWidgets.QLabel("Gdzie?"), 1, 0); gs.addWidget(self.shelf_seg, 1, 1)
+        gs.addWidget(self.btnShelvesEq, 2, 0, 1, 2)
+        gs.addWidget(self.btnShelves0, 3, 0, 1, 2)
+
+        hint = QtWidgets.QLabel("Uwaga: jeśli jest 'cap' nad pionem, to segment ma limit wysokości -> półki nie idą wyżej.")
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color:#666;")
+        gs.addWidget(hint, 4, 0, 1, 2)
+
+        self._sec_add(self.secShelves, sh)
+        leftLay.addWidget(self.secShelves)
+
+        leftLay.addStretch(1)
+
+        leftScroll = QtWidgets.QScrollArea()
+        leftScroll.setWidgetResizable(True)
+        leftScroll.setWidget(leftWrap)
+
+        # CENTER view
+        center = QtWidgets.QWidget()
+        cLay = QtWidgets.QVBoxLayout(center)
+        cLay.setContentsMargins(0, 0, 0, 0)
+        title = QtWidgets.QLabel("Widok (proto) — segmenty + półki")
+        title.setStyleSheet("font-weight:800;")
+        cLay.addWidget(title)
+
+        self.scene = QtWidgets.QGraphicsScene(self)
+        self.view = QtWidgets.QGraphicsView(self.scene)
+        self.view.setRenderHint(QtGui.QPainter.Antialiasing, True)
+        cLay.addWidget(self.view, 1)
+
+        # RIGHT info
+        right = QtWidgets.QWidget()
+        rLay = QtWidgets.QVBoxLayout(right)
+        rLay.setContentsMargins(0, 0, 0, 0)
+        rTitle = QtWidgets.QLabel("Info (proto)")
+        rTitle.setStyleSheet("font-weight:800;")
+        self.info = QtWidgets.QPlainTextEdit()
+        self.info.setReadOnly(True)
+        rLay.addWidget(rTitle)
+        rLay.addWidget(self.info, 1)
+
+        self.split.addWidget(leftScroll)
+        self.split.addWidget(center)
+        self.split.addWidget(right)
+        self.split.setStretchFactor(0, 0)
+        self.split.setStretchFactor(1, 1)
+        self.split.setStretchFactor(2, 0)
+        self.split.setSizes([370, 780, 340])
+
+        # default: enable midA off, midB off
+        self.midA_on.setChecked(False)
+        self.midB_on.setChecked(False)
+        self._sync_mid_enables()
+
+    def _wire(self):
+        # dims/pos
+        for sp in (self.w, self.h, self.d, self.posL, self.posR, self.posT, self.posB, self.anchorDX, self.anchorDY):
+            sp.valueChanged.connect(self._recalc)
+        self.anchor.currentIndexChanged.connect(self._recalc)
+
+        self.btnZero.clicked.connect(self._zero)
+        self.btnLR.clicked.connect(self._lr_same)
+        self.btnTB.clicked.connect(self._tb_same)
+
+        # mid
+        self.midA_on.toggled.connect(self._sync_mid_enables)
+        self.midB_on.toggled.connect(self._sync_mid_enables)
+        for w in (self.midA_x, self.midA_h, self.midA_cap, self.midA_span,
+                  self.midB_x, self.midB_h, self.midB_cap, self.midB_span):
+            if isinstance(w, QtWidgets.QSpinBox):
+                w.valueChanged.connect(self._recalc)
+            else:
+                w.currentIndexChanged.connect(self._recalc)
+
+        # shelves
+        self.shelf_n.valueChanged.connect(self._recalc)
+        self.shelf_seg.currentIndexChanged.connect(self._recalc)
+        self.btnShelves0.clicked.connect(lambda: self.shelf_n.setValue(0))
+        self.btnShelvesEq.clicked.connect(self._recalc)
+
+    def _sync_mid_enables(self):
+        a = self.midA_on.isChecked()
+        b = self.midB_on.isChecked()
+        for w in (self.midA_x, self.midA_h, self.midA_cap, self.midA_span):
+            w.setEnabled(a)
+        for w in (self.midB_x, self.midB_h, self.midB_cap, self.midB_span):
+            w.setEnabled(b)
+        self._recalc()
+
+    def _zero(self):
+        self.posL.setValue(0); self.posR.setValue(0); self.posT.setValue(0); self.posB.setValue(0)
+
+    def _lr_same(self):
+        self.posR.setValue(self.posL.value())
+
+    def _tb_same(self):
+        self.posB.setValue(self.posT.value())
+
+    def _set_ok(self, ok: bool, msg: str = "OK"):
+        if ok:
+            self.status.setText("OK")
+            self.status.setStyleSheet("QLabel{padding:4px 10px;border-radius:10px;background:#d7ffe1;color:#000;font-weight:700;}")
+        else:
+            self.status.setText("ERR")
+            self.status.setStyleSheet("QLabel{padding:4px 10px;border-radius:10px;background:#ffd6d6;color:#000;font-weight:700;}")
+            self.info.setPlainText(msg)
+
+    # ---------- model ----------
+    def _get_mid_cfgs(self) -> List[MidPanelCfg]:
+        out: List[MidPanelCfg] = []
+        if self.midA_on.isChecked():
+            out.append(MidPanelCfg(True, self.midA_x.value(), self.midA_h.value(),
+                                   self.midA_cap.currentText(), self.midA_span.currentText()))
+        if self.midB_on.isChecked():
+            out.append(MidPanelCfg(True, self.midB_x.value(), self.midB_h.value(),
+                                   self.midB_cap.currentText(), self.midB_span.currentText()))
+        return out
+
+    def _compute_segments(self, W: int, L: int, R: int, mids: List[MidPanelCfg]) -> List[Tuple[str, int, int]]:
+        """Return list of (segName, x1_mm, x2_mm) inside opening [L, W-R]."""
+        x0 = L
+        xN = max(L + 1, W - R)
+
+        xs = []
+        for m in mids:
+            x = int(m.x_mm)
+            x = max(x0 + 1, min(x, xN - 1))
+            xs.append(x)
+        xs = sorted(set(xs))
+
+        bounds = [x0] + xs + [xN]
+        segs = []
+        for i in range(len(bounds) - 1):
+            segs.append((f"SEG{i+1}", bounds[i], bounds[i+1]))
+        return segs
+
+    def _cap_limits_by_segment(self, segs: List[Tuple[str, int, int]], W: int, H: int, B: int, mids: List[MidPanelCfg]) -> dict:
+        """
+        For each segment, return maxY_mm (exclusive limit for shelves).
+        Default = opening bottom (H-B). If a cap applies to the segment -> maxY = min(maxY, capY).
+        capY = top of mid panel (from bottom): y = (H - B) - height_mm
+        """
+        open_bottom = H - B
+        limits = {name: open_bottom for (name, _, _) in segs}
+
+        def find_seg_left_of(xm: int) -> Optional[str]:
+            for name, x1, x2 in segs:
+                if x2 == xm:
+                    return name
+            return None
+
+        def find_seg_right_of(xm: int) -> Optional[str]:
+            for name, x1, x2 in segs:
+                if x1 == xm:
+                    return name
+            return None
+
+        for m in mids:
+            if m.cap_kind == "NONE":
+                continue
+
+            capY = (H - B) - int(m.height_mm)
+            # clamp into opening
+            capY = max(0, min(capY, open_bottom))
+
+            if m.cap_span == "BOTH":
+                for k in list(limits.keys()):
+                    limits[k] = min(limits[k], capY)
+            elif m.cap_span == "LEFT":
+                # segment immediately left of this mid
+                segname = find_seg_left_of(max(segs[0][1] + 1, min(m.x_mm, segs[-1][2] - 1)))
+                if segname:
+                    limits[segname] = min(limits[segname], capY)
+            elif m.cap_span == "RIGHT":
+                segname = find_seg_right_of(max(segs[0][1] + 1, min(m.x_mm, segs[-1][2] - 1)))
+                if segname:
+                    limits[segname] = min(limits[segname], capY)
+
+        return limits
+
+    # ---------- drawing ----------
+    def _add_text(self, x: float, y: float, s: str, bold: bool = False):
+        it = self.scene.addText(s)
+        f = it.font()
+        f.setPointSize(10)
+        f.setBold(bold)
+        it.setFont(f)
+        it.setDefaultTextColor(QtGui.QColor(30, 30, 30))
+        it.setPos(x, y)
+        return it
+
+    def _add_dim_h(self, x1: float, x2: float, y: float, label: str):
+        pen = QtGui.QPen(QtGui.QColor(60, 60, 60), 1)
+        self.scene.addLine(x1, y, x2, y, pen)
+        a = 6
+        self.scene.addLine(x1, y, x1 + a, y - a, pen)
+        self.scene.addLine(x1, y, x1 + a, y + a, pen)
+        self.scene.addLine(x2, y, x2 - a, y - a, pen)
+        self.scene.addLine(x2, y, x2 - a, y + a, pen)
+        self._add_text((x1 + x2) / 2 - 45, y - 18, label, bold=True)
+
+    def _add_dim_v(self, y1: float, y2: float, x: float, label: str):
+        pen = QtGui.QPen(QtGui.QColor(60, 60, 60), 1)
+        self.scene.addLine(x, y1, x, y2, pen)
+        a = 6
+        self.scene.addLine(x, y1, x - a, y1 + a, pen)
+        self.scene.addLine(x, y1, x + a, y1 + a, pen)
+        self.scene.addLine(x, y2, x - a, y2 - a, pen)
+        self.scene.addLine(x, y2, x + a, y2 - a, pen)
+        self._add_text(x + 8, (y1 + y2) / 2 - 10, label, bold=True)
+
+    def _recalc(self):
+        try:
+            W, H, D = self.w.value(), self.h.value(), self.d.value()
+            L, R, T, B = self.posL.value(), self.posR.value(), self.posT.value(), self.posB.value()
+
+            openW = max(1, W - L - R)
+            openH = max(1, H - T - B)
+
+            mids = self._get_mid_cfgs()
+            segs = self._compute_segments(W, L, R, mids)
+            limits = self._cap_limits_by_segment(segs, W, H, B, mids)
+
+            n_shelves = int(self.shelf_n.value())
+            target = self.shelf_seg.currentText()  # ALL/SEG1/SEG2/SEG3
+
+            self.scene.clear()
+
+            # scale
+            max_px = 520.0
+            scale = min(max_px / max(W, 1), max_px / max(H, 1))
+            scale = max(0.15, min(scale, 1.2))
+
+            outer = QtCore.QRectF(0, 0, W * scale, H * scale)
+            opening = QtCore.QRectF(L * scale, T * scale, openW * scale, openH * scale)
+
+            pen_outer = QtGui.QPen(QtGui.QColor(30, 30, 30), 2)
+            pen_open = QtGui.QPen(QtGui.QColor(120, 120, 120), 2, QtCore.Qt.DashLine)
+            self.scene.addRect(outer, pen_outer)
+            self.scene.addRect(opening, pen_open)
+
+            # dims
+            self._add_dim_h(outer.left(), outer.right(), -24, f"W={W} mm")
+            self._add_dim_h(opening.left(), opening.right(), -50, f"openW={openW} mm")
+            self._add_dim_v(outer.top(), outer.bottom(), -30, f"H={H} mm")
+            self._add_dim_v(opening.top(), opening.bottom(), -56, f"openH={openH} mm")
+
+            # segment vertical lines + labels
+            pen_seg = QtGui.QPen(QtGui.QColor(90, 90, 90), 1, QtCore.Qt.DotLine)
+            for name, x1, x2 in segs:
+                # draw boundary at x2 (except last)
+                if name != segs[-1][0]:
+                    bx = x2 * scale
+                    self.scene.addLine(bx, opening.top(), bx, opening.bottom(), pen_seg)
+                cx = (x1 + x2) / 2 * scale
+                self._add_text(cx - 22, opening.top() - 22, name, bold=True)
+
+            # mid panels + cap(s)
+            pen_mid = QtGui.QPen(QtGui.QColor(40, 40, 40), 3)
+            pen_cap = QtGui.QPen(QtGui.QColor(40, 40, 40), 2)
+            for m in mids:
+                xm = int(m.x_mm)
+                xm = max(L + 1, min(xm, W - R - 1))
+                x = xm * scale
+
+                # mid panel vertical (from opening bottom up to top-of-mid)
+                bottomY = (H - B) * scale
+                topY = ((H - B) - int(m.height_mm)) * scale
+                topY = max(opening.top(), min(topY, opening.bottom()))
+                self.scene.addLine(x, bottomY, x, topY, pen_mid)
+
+                # cap
+                if m.cap_kind != "NONE":
+                    capY_mm = (H - B) - int(m.height_mm)
+                    capY_mm = max(T, min(capY_mm, H - B))
+                    y = capY_mm * scale
+
+                    if m.cap_span == "BOTH":
+                        x1s = L * scale
+                        x2s = (W - R) * scale
+                    elif m.cap_span == "LEFT":
+                        x1s = L * scale
+                        x2s = x
+                    else:  # RIGHT
+                        x1s = x
+                        x2s = (W - R) * scale
+
+                    self.scene.addLine(x1s, y, x2s, y, pen_cap)
+                    self._add_text(x2s + 6, y - 10, f"{m.cap_kind}", bold=True)
+
+            # shelves (limited by cap -> per segment)
+            pen_shelf = QtGui.QPen(QtGui.QColor(60, 60, 60), 2)
+            for name, x1, x2 in segs:
+                if target != "ALL" and name != target:
+                    continue
+                if n_shelves <= 0:
+                    continue
+
+                seg_top_mm = T
+                seg_bottom_mm = min(H - B, limits.get(name, H - B))
+                if seg_bottom_mm <= seg_top_mm + 5:
+                    continue
+
+                # evenly spaced inside [seg_top, seg_bottom]
+                span = seg_bottom_mm - seg_top_mm
+                for i in range(1, n_shelves + 1):
+                    y_mm = seg_top_mm + (i / (n_shelves + 1)) * span
+                    y = y_mm * scale
+                    self.scene.addLine(x1 * scale, y, x2 * scale, y, pen_shelf)
+
+            # right info
+            lines = []
+            lines.append(f"W/H/D: {W} / {H} / {D}")
+            lines.append(f"Opening: {openW} x {openH}")
+            lines.append(f"Offsets L/R/T/B: {L}/{R}/{T}/{B}")
+            lines.append(f"Anchor: {self.anchor.currentText()}  dx={self.anchorDX.value()} dy={self.anchorDY.value()}")
+            lines.append("")
+            lines.append("Segments:")
+            for name, x1, x2 in segs:
+                lim = limits.get(name, H - B)
+                lines.append(f" - {name}: X[{x1}..{x2}]  shelfMaxY={lim} (mm from top)")
+            lines.append("")
+            lines.append("Mid panels:")
+            if not mids:
+                lines.append(" - (none)")
+            for m in mids:
+                capY = (H - B) - int(m.height_mm)
+                lines.append(f" - x={m.x_mm}  h={m.height_mm}  cap={m.cap_kind}/{m.cap_span}  capY={capY}")
+            lines.append("")
+            lines.append(f"Shelves: n={n_shelves} target={target}")
+            self.info.setPlainText("\n".join(lines))
+
+            self.scene.setSceneRect(outer.adjusted(-90, -80, 320, 140))
+            self._set_ok(True)
+        except Exception:
+            import traceback
+            self._set_ok(False, traceback.format_exc())

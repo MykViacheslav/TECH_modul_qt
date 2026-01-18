@@ -1,0 +1,38 @@
+﻿# === BUILD: js\app.js from js\src\*.js ===
+$ErrorActionPreference = 'Stop'
+
+$here   = Split-Path -Parent $PSCommandPath
+$srcDir = Join-Path $here 'src'
+$out    = Join-Path $here 'app.js'
+
+$parts = @(
+  '00_core.js',
+  '10a_module_parts.js',
+  '10b_module_bom.js',
+  '10c_module_quick_edges.js',
+  '10d_module_shelves.js',
+  '10e_module_svg_drag.js',
+  '20_appui.js',
+  '30_wall.js',
+  '90_boot.js'
+)
+$buf = New-Object System.Text.StringBuilder
+
+[void]$buf.AppendLine('(() => {')
+
+foreach ($p in $parts) {
+  $path = Join-Path $srcDir $p
+  if (!(Test-Path $path)) { throw "Brak pliku: $path" }
+  $txt = Get-Content -Path $path -Raw -Encoding UTF8
+  [void]$buf.AppendLine("`n// ===== PART: $p =====`n")
+  [void]$buf.AppendLine($txt)
+}
+
+[void]$buf.AppendLine('})();')
+
+Set-Content -Path $out -Value $buf.ToString() -Encoding UTF8
+Write-Host "✅ Zbudowano: $out"
+
+
+
+

@@ -1,0 +1,35 @@
+﻿param(
+  [Parameter(ParameterSetName="FromJson", Mandatory=$true)]
+  [string]$Json,
+
+  [Parameter(ParameterSetName="FromArgs", Mandatory=$true)]
+  [string]$Anchor,
+  [Parameter(ParameterSetName="FromArgs", Mandatory=$true)]
+  [double]$Width,
+  [Parameter(ParameterSetName="FromArgs", Mandatory=$true)]
+  [double]$Height,
+  [Parameter(ParameterSetName="FromArgs", Mandatory=$true)]
+  [double]$Depth,
+  [Parameter(ParameterSetName="FromArgs", Mandatory=$true)]
+  [string]$Materials,
+
+  [switch]$Overwrite
+)
+
+. (Join-Path $PSScriptRoot "env.ps1")
+
+if($PSCmdlet.ParameterSetName -eq "FromJson"){
+  if($Overwrite){
+    & $Py $Cli --db $Db save --json $Json --overwrite
+  } else {
+    & $Py $Cli --db $Db save --json $Json
+  }
+} else {
+  if($Overwrite){
+    & $Py $Cli --db $Db save --anchor $Anchor --width $Width --height $Height --depth $Depth --materials $Materials --overwrite
+  } else {
+    & $Py $Cli --db $Db save --anchor $Anchor --width $Width --height $Height --depth $Depth --materials $Materials
+  }
+}
+
+

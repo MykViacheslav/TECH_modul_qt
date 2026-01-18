@@ -1,0 +1,210 @@
+﻿:root{
+  --bg:#f5f6f8;
+  --card:#ffffff;
+  --text:#111;
+  --muted:#666;
+  --border:#e6e8ee;
+  --accent:#ff3b30;      /* mocny czerwony */
+  --accent2:#ff8a00;     /* mocny pomarańczowy (fronty/szuflady) */
+}
+
+*{ box-sizing:border-box; }
+body{
+  margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  background:var(--bg); color:var(--text);
+}
+
+.topbar{
+  display:flex; align-items:center; gap:10px;
+  padding:10px 14px; background:var(--card); border-bottom:1px solid var(--border);
+  position:sticky; top:0; z-index:20;
+}
+
+.pill{
+  padding:6px 10px; border-radius:999px; font-weight:700; font-size:12px;
+  border:1px solid var(--border); background:#fff;
+}
+
+.app{
+  display:grid;
+  grid-template-columns: 420px 1fr;
+  gap:14px;
+  padding:14px;
+}
+
+.card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:12px;
+  box-shadow: 0 1px 0 rgba(0,0,0,.03);
+}
+
+.h1{ font-size:22px; margin:0 0 10px 0; }
+.h2{ font-size:14px; margin:0 0 8px 0; color:var(--muted); font-weight:700; }
+
+.row{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+.row3{ display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; }
+
+label{ font-size:12px; color:var(--muted); display:block; margin:0 0 6px 2px; }
+input, select, button{
+  width:100%;
+  padding:10px 10px;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:#fff;
+  font-size:14px;
+}
+
+button{
+  cursor:pointer; font-weight:700;
+}
+button.danger{
+  border-color:#ffd0cc;
+  color:#b50000;
+  background:#fff5f4;
+}
+button.primary{
+  border-color:#ffd9b0;
+  background:#fff3e6;
+}
+
+.hr{ height:1px; background:var(--border); margin:12px 0; }
+
+.muted{ color:var(--muted); font-size:12px; line-height:1.35; }
+
+#moduleView{
+  width:100%;
+  height:560px;
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius:12px;
+}
+
+.badge{
+  font-size:12px;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  background:#fff;
+  color:var(--muted);
+}
+
+.notice{
+  border:1px solid #ffd9b0;
+  background:#fff3e6;
+  padding:10px 12px;
+  border-radius:12px;
+  font-size:12px;
+  color:#6a3b00;
+}
+
+/* DOOR_CFG__V1 */
+.doorCfgGrid{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:10px; }
+.doorCfgItem{
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:10px;
+  background:#fff;
+}
+.doorCfgTitle{
+  font-weight:900;
+  font-size:12px;
+  margin:0 0 8px 0;
+}
+.doorCfgRow{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+.doorHint{ font-size:12px; color:var(--muted); margin-top:6px; }
+
+/* TAB_UI__V1 */
+.tabsBar{ display:flex; gap:10px; padding:10px 12px; align-items:center; }
+.tabBtn{
+  border:1px solid var(--border);
+  background:#fff;
+  border-radius:999px;
+  padding:8px 14px;
+  font-weight:800;
+  cursor:pointer;
+}
+.tabBtn.active{ outline:3px solid rgba(255,138,0,.25); border-color:#ff8a00; }
+.tabPanel{ display:none; }
+
+;/* QUICK_UI__V1 */
+.quickPanel{
+  position:fixed;
+  top:86px;
+  right:14px;
+  width:360px;
+  max-height:calc(100vh - 110px);
+  overflow:auto;
+  background:#fff;
+  border:1px solid rgba(0,0,0,.12);
+  border-radius:16px;
+  padding:12px;
+  box-shadow:0 10px 30px rgba(0,0,0,.10);
+  z-index:9999;
+}
+.quickTitle{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; font-weight:900; }
+.quickGrid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.quickGrid label{ font-weight:800; font-size:12px; opacity:.85; display:block; margin-bottom:4px; }
+.quickGrid select{ width:100%; padding:8px 10px; border:1px solid rgba(0,0,0,.18); border-radius:10px; }
+.edgeSketchBox{
+  margin-top:10px;
+  border:1px dashed rgba(0,0,0,.25);
+  border-radius:14px;
+  padding:10px;
+  display:flex;
+  gap:10px;
+  align-items:center;
+}
+.edgeSketchBox svg{ width:120px; height:120px; display:block; }
+.edgeLegend{ font-size:12px; line-height:1.25; opacity:.85; }
+.edgeBtns2{
+  margin-top:10px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+}
+.edgeBtn2{
+  border:1px solid rgba(0,0,0,.18);
+  border-radius:999px;
+  padding:10px 12px;
+  font-weight:900;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  background:#fff;
+}
+.edgeBtn2:hover{ outline:3px solid rgba(255,138,0,.18); border-color:#ff8a00; }
+.edgeBtn2 .v{ font-weight:800; opacity:.8; }
+.quickHint{ margin-top:10px; font-size:12px; opacity:.75; }
+
+
+/* __FRONT_DRAWER_STROKE_V2: thin lines for fronts/drawers (no new logic) */
+#moduleView .front,
+#moduleView .door,
+#moduleView .drawer,
+#moduleView [data-kind*="front"],
+#moduleView [data-kind*="door"],
+#moduleView [data-kind*="drawer"],
+#moduleView [data-part*="front"],
+#moduleView [data-part*="door"],
+#moduleView [data-part*="drawer"] {
+  stroke-width: 2 !important;
+}
+
+
+
+/* __FRONT_DRAWER_THIN_V1: fronts + drawers thin and same line style */
+#moduleView .front,
+#moduleView .door,
+#moduleView .drawer,
+#moduleView [data-kind*="front"],
+#moduleView [data-kind*="door"],
+#moduleView [data-kind*="drawer"],
+#moduleView [data-part*="front"],
+#moduleView [data-part*="door"],
+#moduleView [data-part*="drawer"]{
+  stroke-width: 1.5 !important;
+  stroke-dasharray: none !important; /* drawers like fronts */
+}

@@ -1,0 +1,70 @@
+﻿from __future__ import annotations
+from types import SimpleNamespace
+
+from .bus import Bus
+from .project_tree_store import ProjectStore
+from .project_tree_wrapper import wrap_with_project_tree
+
+def ensure_ctx(ctx):
+    if ctx is None:
+        ctx = SimpleNamespace()
+
+    # ctx as dict
+    if isinstance(ctx, dict):
+        if "bus" not in ctx or ctx["bus"] is None:
+            ctx["bus"] = Bus()
+        if "project_store" not in ctx or ctx["project_store"] is None:
+            ctx["project_store"] = ProjectStore()
+            ctx["project_store"].ensure_loaded()
+        return ctx
+
+    # ctx as object
+    if not hasattr(ctx, "bus") or getattr(ctx, "bus") is None:
+        ctx.bus = Bus()
+    if not hasattr(ctx, "project_store") or getattr(ctx, "project_store") is None:
+        ctx.project_store = ProjectStore()
+        ctx.project_store.ensure_loaded()
+
+    return ctx
+
+def _safe_tab(make_fn, title: str):
+    try:
+        return make_fn()
+    except Exception as e:
+        from PySide6 import QtWidgets, QtCore
+        lab = QtWidgets.QLabel(f"Tab '{title}' unavailable: {e}")
+        lab.setAlignment(QtCore.Qt.AlignCenter)
+        return lab
+
+def build_tabs(ctx):
+    ctx = ensure_ctx(ctx)
+
+    # Import tabs safely (so app always starts)
+    def mk_komplet():
+        from .tab_komplet import KompletTab
+        return KompletTab(ctx)
+
+    def mk_sciana():
+        from .tab_sciana import ScianaTab
+        return ScianaTab(ctx)
+
+    def mk_modul():
+        from .tab_module import ModuleTab
+        return ModuleTab(ctx)
+
+    def mk_baza():
+        from .tab_module_base import ModuleBaseTab
+        return ModuleBaseTab(ctx)
+
+    raw = [
+        ("KOMPLET", _safe_tab(mk_komplet, "KOMPLET")),
+        ("SCIANA",  _safe_tab(mk_sciana,  "SCIANA")),
+        ("MODUL",   _safe_tab(mk_modul,   "MODUL")),
+        ("BAZA",    _safe_tab(mk_baza,    "BAZA")),
+    ]
+
+    # IMPORTANT: every tab gets the SAME Project Tree component (widget per tab, shared store)
+    out = []
+    for title, widget in raw:
+        out.append((title, wrap_with_project_tree(widget, ctx)))
+    return out

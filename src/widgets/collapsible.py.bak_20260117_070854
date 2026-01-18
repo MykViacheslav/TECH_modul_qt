@@ -1,0 +1,43 @@
+﻿from __future__ import annotations
+
+from PySide6 import QtWidgets, QtCore
+
+
+class CollapsibleSection(QtWidgets.QWidget):
+    """
+    Stable collapsible section:
+    - click triangle/text -> hides/shows content widget
+    - exposes: .content (QWidget) and .contentLayout (QVBoxLayout)
+    """
+    def __init__(self, title: str = "", parent=None):
+        super().__init__(parent)
+
+        self._btn = QtWidgets.QToolButton(self)
+        self._btn.setText(title)
+        self._btn.setCheckable(True)
+        self._btn.setChecked(True)
+        self._btn.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+        self._btn.setArrowType(QtCore.Qt.DownArrow)
+        self._btn.clicked.connect(self._toggle)
+
+        self.content = QtWidgets.QWidget(self)
+        self.contentLayout = QtWidgets.QVBoxLayout(self.content)
+        self.contentLayout.setContentsMargins(0, 0, 0, 0)
+        self.contentLayout.setSpacing(6)
+
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(6)
+        lay.addWidget(self._btn)
+        lay.addWidget(self.content)
+
+        self.setCollapsed(False)
+
+    def setCollapsed(self, collapsed: bool):
+        self._btn.setChecked(not collapsed)
+        self.content.setVisible(not collapsed)
+        self._btn.setArrowType(QtCore.Qt.RightArrow if collapsed else QtCore.Qt.DownArrow)
+
+    def _toggle(self):
+        collapsed = not self._btn.isChecked()
+        self.setCollapsed(collapsed)

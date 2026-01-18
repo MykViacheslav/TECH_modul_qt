@@ -1,0 +1,171 @@
+﻿from __future__ import annotations
+
+from PySide6 import QtWidgets, QtGui
+
+
+def apply_theme(app: QtWidgets.QApplication) -> None:
+    """
+    Delikatna neutralna тема (soft gray), bez "strasznej bieli".
+    Cel: przyjemne tło, jaśniejsze zakładki, czytelne kontrolki.
+    """
+    app.setStyle("Fusion")
+
+    # Palette (neutralne szarości)
+    pal = QtGui.QPalette()
+
+    bg = QtGui.QColor("#F2F4F7")          # app background
+    panel = QtGui.QColor("#F7F8FA")       # panel bg
+    base = QtGui.QColor("#FAFBFC")        # inputs bg
+    text = QtGui.QColor("#0F172A")        # slate-900
+    subtle = QtGui.QColor("#334155")      # slate-700
+    border = QtGui.QColor("#D5DCE5")      # soft border
+    btn = QtGui.QColor("#EEF2F6")         # button bg
+    btn_hover = QtGui.QColor("#E6EBF2")
+    highlight = QtGui.QColor("#CBD5E1")   # selection-ish (subtle)
+
+    pal.setColor(QtGui.QPalette.Window, bg)
+    pal.setColor(QtGui.QPalette.Base, base)
+    pal.setColor(QtGui.QPalette.AlternateBase, panel)
+    pal.setColor(QtGui.QPalette.WindowText, text)
+    pal.setColor(QtGui.QPalette.Text, text)
+    pal.setColor(QtGui.QPalette.Button, btn)
+    pal.setColor(QtGui.QPalette.ButtonText, text)
+    pal.setColor(QtGui.QPalette.Highlight, highlight)
+    pal.setColor(QtGui.QPalette.HighlightedText, text)
+    pal.setColor(QtGui.QPalette.PlaceholderText, subtle)
+
+    app.setPalette(pal)
+
+    # QSS (jaśniejsze zakładki, miękkie obramowania)
+    qss = """
+    QWidget {
+        background: transparent;
+        color: #0F172A;
+        font-family: "Segoe UI";
+        font-size: 10pt;
+    }
+
+    QMainWindow, QDialog, QFrame, QTabWidget::pane {
+        background: #F2F4F7;
+    }
+
+    /* Tabs */
+    QTabWidget::pane {
+        border: 1px solid #D5DCE5;
+        border-radius: 10px;
+        padding: 6px;
+        background: #F7F8FA;
+    }
+
+    QTabBar::tab {
+        background: #E9EDF2;
+        border: 1px solid #D5DCE5;
+        border-bottom: none;
+        padding: 8px 14px;
+        margin-right: 4px;
+        border-top-left-radius: 10px;
+        border-top-right-radius: 10px;
+        color: #1F2937;
+    }
+    QTabBar::tab:selected {
+        background: #F7F8FA;
+        color: #0F172A;
+        font-weight: 600;
+    }
+    QTabBar::tab:hover {
+        background: #EEF2F6;
+    }
+
+    /* Inputs */
+    QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QTextEdit, QPlainTextEdit {
+        background: #FAFBFC;
+        border: 1px solid #D5DCE5;
+        border-radius: 8px;
+        padding: 6px 8px;
+        selection-background-color: #CBD5E1;
+        selection-color: #0F172A;
+    }
+    QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus, QTextEdit:focus, QPlainTextEdit:focus {
+        border: 1px solid #94A3B8;
+    }
+
+    /* Buttons */
+    QPushButton {
+        background: #EEF2F6;
+        border: 1px solid #D5DCE5;
+        border-radius: 8px;
+        padding: 7px 12px;
+    }
+    QPushButton:hover {
+        background: #E6EBF2;
+    }
+    QPushButton:pressed {
+        background: #DDE3EC;
+    }
+    QPushButton:disabled {
+        color: #94A3B8;
+        background: #F1F4F8;
+    }
+
+    /* GroupBox */
+    QGroupBox {
+        border: 1px solid #D5DCE5;
+        border-radius: 10px;
+        margin-top: 10px;
+        background: #F7F8FA;
+    }
+    QGroupBox::title {
+        subcontrol-origin: margin;
+        left: 10px;
+        padding: 0 6px;
+        color: #334155;
+        font-weight: 600;
+        background: #F7F8FA;
+    }
+
+    /* Tables */
+    QTableWidget, QTableView {
+        background: #FAFBFC;
+        border: 1px solid #D5DCE5;
+        border-radius: 10px;
+        gridline-color: #E2E8F0;
+        selection-background-color: #CBD5E1;
+        selection-color: #0F172A;
+    }
+    QHeaderView::section {
+        background: #EEF2F6;
+        border: 1px solid #D5DCE5;
+        padding: 6px 8px;
+        font-weight: 600;
+        color: #1F2937;
+    }
+
+    /* Scrollbars (delikatne) */
+    QScrollBar:vertical {
+        background: transparent;
+        width: 12px;
+        margin: 4px;
+    }
+    QScrollBar::handle:vertical {
+        background: #D5DCE5;
+        border-radius: 6px;
+        min-height: 24px;
+    }
+    QScrollBar::handle:vertical:hover { background: #C7D0DC; }
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
+
+    QScrollBar:horizontal {
+        background: transparent;
+        height: 12px;
+        margin: 4px;
+    }
+    QScrollBar::handle:horizontal {
+        background: #D5DCE5;
+        border-radius: 6px;
+        min-width: 24px;
+    }
+    QScrollBar::handle:horizontal:hover { background: #C7D0DC; }
+    QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0px; }
+    """
+
+    app.setStyleSheet(qss)

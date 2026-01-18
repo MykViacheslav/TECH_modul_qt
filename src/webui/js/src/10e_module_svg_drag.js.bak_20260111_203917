@@ -1,0 +1,500 @@
+﻿function strokeColor(id){
+  if (id===state.selected) return "#d93025";
+  if (id===state.hover) return "#1a73e8";
+  return "#000";
+}
+function strokeW(id){
+  if (id===state.selected) return 4.2;
+  if (id===state.hover) return 2.6;
+  return 1.3;
+}
+function clientToSvg(svg, e){
+  const rect = svg.getBoundingClientRect();
+  const vb = svg.viewBox.baseVal;
+  const x = (e.clientX - rect.left) * (vb.width / rect.width);
+  const y = (e.clientY - rect.top)  * (vb.height / rect.height);
+  return {x,y};
+}
+
+function renderSVG(){
+  const svg = $("moduleView");
+  svg.innerHTML = "";
+
+  const m = state.model;
+  const {W,H,D} = m.dims;
+
+  // defaults
+  if (!m.mid) m.mid = { enabled:false, x:Math.floor(W/2), mat:"pb18", offT:0, offB:0 };
+  if (m.mid.offT == null) m.mid.offT = 0;
+  if (m.mid.offB == null) m.mid.offB = 0;
+  if (!m.mid2) m.mid2 = { enabled:false, x:Math.floor(W*0.7), mat:"pb18", offT:0, offB:0 };
+  if (m.mid2.offT == null) m.mid2.offT = 0;
+  if (m.mid2.offB == null) m.mid2.offB = 0;
+
+  if (!m.shelves) m.shelves = { autoCount:0, autoY:[], extra:[], span:{} };
+  if (!m.shelves.span) m.shelves.span = {};
+
+  const vbW=900, vbH=940;
+  const padX=80, padY=80, dimRight=120, gapMm=130;
+  const availW = vbW - padX*2 - dimRight;
+  const availH = vbH - padY*2 - 50;
+  const scale = Math.min(availW/W, availH/(H + gapMm + D));
+
+  const frontX=padX, frontY=padY, frontW=W*scale, frontH=H*scale;
+  const topX=padX, topY=frontY+frontH+(gapMm*scale), topW=W*scale, topD=D*scale;
+
+  state.view = { scale, frontX, frontY, frontW, frontH, topX, topY, topW, topD };
+
+  const NS="http://www.w3.org/2000/svg";
+  const make=(tag,attrs={})=>{
+    const el=document.createElementNS(NS,tag);
+    for (const [k,v] of Object.entries(attrs)) el.setAttribute(k,String(v));
+    return el;
+  };
+  const text=(x,y,t,bold=false,anchor="start")=>{
+    const el=make("text",{x,y,"font-size":13,"text-anchor":anchor});
+    if (bold) el.setAttribute("font-weight","800");
+    el.textContent=t;
+    svg.appendChild(el);
+  };
+  const rawRect=(x,y,w,h,sw=1.2,col="#000",fill="transparent",op=1,dash=null)=>{
+    const r=make("rect",{x,y,width:w,height:h,stroke:col,"stroke-width":sw,fill,opacity:op});
+    if (dash) r.setAttribute("stroke-dasharray",dash);
+    svg.appendChild(r);
+  };
+  const rawLine=(x1,y1,x2,y2,sw=1.2,col="#000",dash=null,op=1)=>{
+    const l=make("line",{x1,y1,x2,y2,stroke:col,"stroke-width":sw,opacity:op,"stroke-linecap":"square"});
+    if (dash) l.setAttribute("stroke-dasharray",dash);
+    svg.appendChild(l);
+  };
+
+  const selectableLine=(id,x1,y1,x2,y2,dragType=null, tipLabel=null, tipGet=null, tipSet=null, clickHandler=null)=>{
+    const hit=make("line",{
+      x1,y1,x2,y2,
+      stroke:"#000","stroke-width":18,
+      "stroke-opacity":0,
+      "pointer-events":"stroke"
+    });
+    hit.style.cursor = dragType ? "grab" : "pointer";
+    hit.onmouseenter=()=>{ state.hover=id; renderAll(); };
+    hit.onmouseleave=()=>{ state.hover=null; renderAll(); };
+    hit.onclick=(e)=>{
+      if (typeof clickHandler==="function"){ clickHandler(e); return; }
+      state.selected=id; renderAll();
+    };
+    if (dragType){
+      hit.onpointerdown=(e)=>{
+        state.drag = { type: dragType, tip: tipLabel ? {label:tipLabel, get:tipGet, set:tipSet} : null };
+        e.preventDefault();
+        if (state.drag.tip) dragTip.bindActive(state.drag.tip, e.clientX, e.clientY);
+        window.addEventListener("pointermove", onDragMove);
+        window.addEventListener("pointerup", onDragEnd, { once:true });
+      };
+    }
+    svg.appendChild(hit);
+
+    const ln=make("line",{
+      x1,y1,x2,y2,
+      stroke: strokeColor(id),
+      "stroke-width": strokeW(id),
+      "stroke-linecap":"square"
+    });
+    svg.appendChild(ln);
+
+    if (dragType){
+      const mx=(x1+x2)/2, my=(y1+y2)/2;
+      const h=make("rect",{
+        x: mx-5, y: my-5, width:10, height:10,
+        fill: (id===state.selected ? "rgba(217,48,37,0.20)" : "rgba(0,0,0,0.10)"),
+        stroke: strokeColor(id),
+        "stroke-width": 1.2,
+        rx:2, ry:2
+      });
+      svg.appendChild(h);
+    }
+  };
+
+  // Titles
+  text(frontX, frontY-20, "Front view", true);
+  text(topX, topY-20, "Top view", true);
+
+  // Envelope
+  rawRect(frontX, frontY, frontW, frontH, 1.0, "#000", "transparent", 0.20);
+
+  // clamp
+  m.pos.L = clamp(m.pos.L, 0, Math.max(0, W - m.pos.R - 1));
+  m.pos.R = clamp(m.pos.R, 0, Math.max(0, W - m.pos.L - 1));
+  m.pos.T = clamp(m.pos.T, 0, Math.max(0, H - m.pos.B - 1));
+  m.pos.B = clamp(m.pos.B, 0, Math.max(0, H - m.pos.T - 1));
+
+  const leftX   = frontX + m.pos.L*scale;
+  const rightX  = frontX + (W - m.pos.R)*scale;
+  const topYl   = frontY + m.pos.T*scale;
+  const bottomYl= frontY + (H - m.pos.B)*scale;
+
+  const sideY1 = (m.sideMode==="between") ? topYl : frontY;
+  const sideY2 = (m.sideMode==="between") ? bottomYl : (frontY+frontH);
+
+  if (m.has.left) selectableLine("left", leftX, sideY1, leftX, sideY2, "posL",
+    "Left (mm)", ()=>m.pos.L, (v)=>{ m.pos.L=clamp(v,0,Math.max(0,W-m.pos.R-1)); $("posL").value=m.pos.L; normalizeShelves(); rebuildParts(); renderShelvesUI(); renderExtraShelvesUI(); renderAll(); });
+
+  if (m.has.right) selectableLine("right", rightX, sideY1, rightX, sideY2, "posR",
+    "Right (mm)", ()=>m.pos.R, (v)=>{ m.pos.R=clamp(v,0,Math.max(0,W-m.pos.L-1)); $("posR").value=m.pos.R; normalizeShelves(); rebuildParts(); renderShelvesUI(); renderExtraShelvesUI(); renderAll(); });
+
+  if (m.has.top) selectableLine("top", leftX, topYl, rightX, topYl, "posT",
+    "Top (mm)", ()=>m.pos.T, (v)=>{ m.pos.T=clamp(v,0,Math.max(0,H-m.pos.B-1)); $("posT").value=m.pos.T; normalizeShelves(); rebuildParts(); renderShelvesUI(); renderExtraShelvesUI(); renderAll(); });
+
+  if (m.has.bottom) selectableLine("bottom", leftX, bottomYl, rightX, bottomYl, "posB",
+    "Bottom (mm)", ()=>m.pos.B, (v)=>{ m.pos.B=clamp(v,0,Math.max(0,H-m.pos.T-1)); $("posB").value=m.pos.B; normalizeShelves(); rebuildParts(); renderShelvesUI(); renderExtraShelvesUI(); renderAll(); });
+
+  // mids (2) with offsets
+  const innerW = Math.max(50, (W - m.pos.L - m.pos.R));
+  let mid1Svg=null, mid2Svg=null;
+
+  const clampMidX = (x)=> clamp(Math.round(num(x, Math.floor(innerW/2))), 1, innerW-1);
+
+  if (m.mid.enabled){
+    m.mid.x = clampMidX(m.mid.x);
+    mid1Svg = frontX + (m.pos.L + m.mid.x)*scale;
+
+    const y1 = frontY + Math.max(0,m.mid.offT)*scale;
+    const y2 = frontY + (H - Math.max(0,m.mid.offB))*scale;
+
+    selectableLine("mid", mid1Svg, y1, mid1Svg, y2, "midX",
+      "Mid X (mm)", ()=>m.mid.x, (v)=>{ m.mid.x=clamp(v,1,innerW-1); $("midX").value=m.mid.x; rebuildParts(); renderAll(); });
+  }
+
+  if (m.mid2.enabled){
+    m.mid2.x = clampMidX(m.mid2.x);
+
+    // jeśli mid1 też włączony, pilnuj kolejności
+    if (m.mid.enabled && m.mid2.x <= m.mid.x+1) m.mid2.x = clamp(m.mid.x+2, 1, innerW-1);
+
+    mid2Svg = frontX + (m.pos.L + m.mid2.x)*scale;
+
+    const y1 = frontY + Math.max(0,m.mid2.offT)*scale;
+    const y2 = frontY + (H - Math.max(0,m.mid2.offB))*scale;
+
+    selectableLine("mid2", mid2Svg, y1, mid2Svg, y2, "mid2X",
+      "Mid2 X (mm)", ()=>m.mid2.x, (v)=>{ m.mid2.x=clamp(v,1,innerW-1); $("mid2X").value=m.mid2.x; rebuildParts(); renderAll(); });
+  }
+
+  // shelves
+  normalizeShelves();
+  const innerH = Math.max(50, H - m.pos.T - m.pos.B);
+  const yToSvg = (yFromBottom)=>{
+    const yFromTopInner = innerH - yFromBottom;
+    return topYl + yFromTopInner*scale;
+  };
+
+  const midsOn = ()=> (m.mid.enabled || m.mid2.enabled);
+  const bothMids = ()=> (m.mid.enabled && m.mid2.enabled);
+
+  const allowedModes = ()=>{
+    if (bothMids()) return ["all","L","M","R"];
+    if (midsOn()) return ["all","L","R"];
+    return ["all"];
+  };
+
+  const getSpan = (baseId)=>{
+    let v = m.shelves.span[baseId];
+    if (v==="both") v="all";
+    const allowed = allowedModes();
+    if (!allowed.includes(v)) v="all";
+    m.shelves.span[baseId]=v;
+    return v;
+  };
+
+  const cycleSpan = (baseId)=>{
+    const allowed = allowedModes();
+    const cur = getSpan(baseId);
+    const idx = Math.max(0, allowed.indexOf(cur));
+    const nxt = allowed[(idx+1) % allowed.length];
+    m.shelves.span[baseId]=nxt;
+    return nxt;
+  };
+
+  const shelfClickHandler = (baseId, seg, preferSelectId)=> (e)=>{
+    if (e && e.detail === 3){
+      cycleSpan(baseId);
+      rebuildParts();
+      state.selected = preferSelectId;
+      renderAll();
+      return;
+    }
+
+    // jeśli kliknęliśmy segment, który aktualnie jest "wyłączony" => przełącz na all
+    const span = getSpan(baseId);
+    if (span !== "all" && span !== seg){
+      m.shelves.span[baseId] = "all";
+      rebuildParts();
+      state.selected = preferSelectId;
+      renderAll();
+      return;
+    }
+
+    state.selected = preferSelectId;
+    renderAll();
+  };
+
+  const drawShelf = (baseId, yVal, label, setYFn)=>{
+    const ySvg = yToSvg(yVal);
+    const xL = leftX, xR = rightX;
+
+    // no mids
+    if (!midsOn()){
+      selectableLine(baseId, xL, ySvg, xR, ySvg, "shelf:"+baseId,
+        label, ()=>yVal, (v)=>{
+          setYFn(clamp(v,1,innerH-1));
+          normalizeShelves(); rebuildParts();
+          renderShelvesUI(); renderExtraShelvesUI(); renderAll();
+        });
+      rawLine(xL, ySvg, xR, ySvg, 1.0, "#000", "6 6", 0.25);
+      return;
+    }
+
+    // define boundaries
+    let a = mid1Svg, b = mid2Svg;
+    if (!m.mid.enabled && m.mid2.enabled){
+      a = mid2Svg; b = null; // treat mid2 as main
+    }
+    const span = getSpan(baseId);
+
+    const segOpacity = (seg)=> (span==="all" || span===seg) ? 0.25 : 0.10;
+
+    // one mid => L/R
+    if (!bothMids()){
+      selectableLine(baseId+"_L", xL, ySvg, a, ySvg, "shelf:"+baseId,
+        label, ()=>yVal, (v)=>{
+          setYFn(clamp(v,1,innerH-1));
+          normalizeShelves(); rebuildParts();
+          renderShelvesUI(); renderExtraShelvesUI(); renderAll();
+        }, shelfClickHandler(baseId, "L", baseId+"_L"));
+      rawLine(xL, ySvg, a, ySvg, 1.0, "#000", "6 6", segOpacity("L"));
+
+      selectableLine(baseId+"_R", a, ySvg, xR, ySvg, "shelf:"+baseId,
+        label, ()=>yVal, (v)=>{
+          setYFn(clamp(v,1,innerH-1));
+          normalizeShelves(); rebuildParts();
+          renderShelvesUI(); renderExtraShelvesUI(); renderAll();
+        }, shelfClickHandler(baseId, "R", baseId+"_R"));
+      rawLine(a, ySvg, xR, ySvg, 1.0, "#000", "6 6", segOpacity("R"));
+      return;
+    }
+
+    // two mids => L/M/R
+    selectableLine(baseId+"_L", xL, ySvg, a, ySvg, "shelf:"+baseId,
+      label, ()=>yVal, (v)=>{
+        setYFn(clamp(v,1,innerH-1));
+        normalizeShelves(); rebuildParts();
+        renderShelvesUI(); renderExtraShelvesUI(); renderAll();
+      }, shelfClickHandler(baseId, "L", baseId+"_L"));
+    rawLine(xL, ySvg, a, ySvg, 1.0, "#000", "6 6", segOpacity("L"));
+
+    selectableLine(baseId+"_M", a, ySvg, b, ySvg, "shelf:"+baseId,
+      label, ()=>yVal, (v)=>{
+        setYFn(clamp(v,1,innerH-1));
+        normalizeShelves(); rebuildParts();
+        renderShelvesUI(); renderExtraShelvesUI(); renderAll();
+      }, shelfClickHandler(baseId, "M", baseId+"_M"));
+    rawLine(a, ySvg, b, ySvg, 1.0, "#000", "6 6", segOpacity("M"));
+
+    selectableLine(baseId+"_R", b, ySvg, xR, ySvg, "shelf:"+baseId,
+      label, ()=>yVal, (v)=>{
+        setYFn(clamp(v,1,innerH-1));
+        normalizeShelves(); rebuildParts();
+        renderShelvesUI(); renderExtraShelvesUI(); renderAll();
+      }, shelfClickHandler(baseId, "R", baseId+"_R"));
+    rawLine(b, ySvg, xR, ySvg, 1.0, "#000", "6 6", segOpacity("R"));
+  };
+
+  (m.shelves.autoY||[]).forEach((y, idx)=>{
+    const baseId = "s_auto_"+idx;
+    drawShelf(baseId, y, `Shelf #${idx+1} (mm)`, (nv)=>{ m.shelves.autoY[idx]=nv; });
+  });
+
+  (m.shelves.extra||[]).forEach((it)=>{
+    drawShelf(it.id, it.y, "Shelf extra (mm)", (nv)=>{ it.y=nv; });
+  });
+
+  // ===== FRONT DRAWING: inset + dash-dot for drawers =====
+  if (m.has.front && m.front && m.front.mode!=="none" && num(m.front.count,0)>0){
+    const hm = m.front.heightMode || "carcass";
+    const gapMmFront = clamp(num(m.front.gap, 2), 0, 10);
+
+    let baseH = H;
+    if (hm === "opening"){
+      baseH = Math.max(10, H - (m.pos?.T||0) - (m.pos?.B||0));
+    } else if (hm === "floor"){
+      const legs = Math.max(0, num(m.hardware?.legsH, 100));
+      baseH = Math.max(10, H + legs);
+    }
+
+    let fx1, fy1, fx2, fy2;
+    if (hm === "opening"){
+      fx1 = leftX;  fx2 = rightX;
+      fy1 = topYl;  fy2 = bottomYl;
+    } else if (hm === "floor"){
+      const legs = Math.max(0, num(m.hardware?.legsH, 100));
+      fx1 = frontX; fx2 = frontX + frontW;
+      fy1 = frontY; fy2 = frontY + (H + legs)*scale;
+    } else {
+      fx1 = frontX; fx2 = frontX + frontW;
+      fy1 = frontY; fy2 = frontY + frontH;
+    }
+
+    const inset = gapMmFront * scale; // "mały odstęp od boków"
+    fx1 += inset; fy1 += inset; fx2 -= inset; fy2 -= inset;
+
+    const fw = Math.max(8, fx2-fx1);
+    const fh = Math.max(8, fy2-fy1);
+
+    const outlineDash = (m.front.mode==="drawers") ? "10 4 2 4" : "6 6";
+    rawRect(fx1, fy1, fw, fh, 1.2, "#000", "transparent", 0.14, outlineDash);
+
+    if (m.front.cornerFront){
+      rawLine(fx1, fy1, fx1+fw*0.35, fy1+fh*0.35, 1.2, "#000", outlineDash, 0.18);
+    }
+
+    if (m.front.mode==="doors"){
+      const doorCount = clamp(Math.round(num(m.front.count,1)),1,12);
+      const gapPx = gapMmFront * scale;
+      const totalGap = (doorCount-1) * gapPx;
+      const doorWpx = Math.max(6, (fw - totalGap) / doorCount);
+      for (let i=0;i<doorCount;i++){
+        const x = fx1 + i*(doorWpx + gapPx);
+        rawRect(x, fy1, doorWpx, fh, 1.0, "#000", "transparent", 0.18, "6 6");
+      }
+    }
+
+    if (m.front.mode==="drawers"){
+      const drawerCount = clamp(Math.round(num(m.front.count,1)),1,12);
+      const list = (typeof parseHeightsList === "function") ? parseHeightsList(m.front.drawerHeights) : [];
+      let heights = [];
+      if (list.length === drawerCount){
+        heights = list;
+      } else {
+        const totalGap = (drawerCount+1)*gapMmFront;
+        const avail = Math.max(20, baseH - totalGap);
+        const each = Math.floor(avail/drawerCount);
+        heights = Array.from({length:drawerCount}, ()=> each);
+      }
+
+      const gapPx = gapMmFront * scale;
+      let y = fy1;
+
+      for (let i=0;i<drawerCount;i++){
+        const hPx = Math.max(6, heights[i]*scale);
+        rawRect(fx1, y, fw, hPx, 1.0, "#000", "transparent", 0.18, "10 4 2 4"); // dash-dot
+
+        // marker uchwytu (lekki)
+        const hx1 = fx1 + fw*0.35, hx2 = fx1 + fw*0.65, hy = y + hPx*0.55;
+        rawLine(hx1, hy, hx2, hy, 1.3, "#000", null, 0.16);
+
+        y = y + hPx + gapPx;
+        if (y > fy2) break;
+      }
+    }
+  }
+
+  // top view
+  rawRect(topX, topY, topW, topD, 1.2, "#000", "transparent", 1);
+  if (m.has.back && m.back?.enabled) selectableLine("back", topX, topY, topX+topW, topY);
+
+  text(frontX + frontW/2, frontY + frontH + 30, `W ${W} mm`, false, "middle");
+  text(frontX + frontW + 16, frontY + frontH/2, `H ${H} mm`);
+  text(topX + topW + 16, topY + topD/2, `D ${D} mm`);
+}
+
+function onDragMove(e){
+  if (!state.drag || !state.view) return;
+  const svg = $("moduleView");
+  const pt = clientToSvg(svg, e);
+  const m = state.model;
+  const {W,H} = m.dims;
+  const {scale, frontX, frontY} = state.view;
+
+  const xMm = (pt.x - frontX)/scale;
+  const yMm = (pt.y - frontY)/scale;
+
+  if (state.drag.tip) dragTip.showAt(e.clientX, e.clientY);
+
+  const t = state.drag.type;
+
+  if (t==="posL"){
+    m.pos.L = clamp(Math.round(xMm), 0, Math.max(0, W - m.pos.R - 1));
+    $("posL").value = m.pos.L;
+    dragTip.syncValue();
+    normalizeShelves(); rebuildParts(); renderShelvesUI(); renderExtraShelvesUI(); renderAll();
+    return;
+  }
+  if (t==="posR"){
+    const rightIn = Math.round(W - xMm);
+    m.pos.R = clamp(rightIn, 0, Math.max(0, W - m.pos.L - 1));
+    $("posR").value = m.pos.R;
+    dragTip.syncValue();
+    normalizeShelves(); rebuildParts(); renderShelvesUI(); renderExtraShelvesUI(); renderAll();
+    return;
+  }
+  if (t==="posT"){
+    m.pos.T = clamp(Math.round(yMm), 0, Math.max(0, H - m.pos.B - 1));
+    $("posT").value = m.pos.T;
+    dragTip.syncValue();
+    normalizeShelves(); rebuildParts(); renderShelvesUI(); renderExtraShelvesUI(); renderAll();
+    return;
+  }
+  if (t==="posB"){
+    const botIn = Math.round(H - yMm);
+    m.pos.B = clamp(botIn, 0, Math.max(0, H - m.pos.T - 1));
+    $("posB").value = m.pos.B;
+    dragTip.syncValue();
+    normalizeShelves(); rebuildParts(); renderShelvesUI(); renderExtraShelvesUI(); renderAll();
+    return;
+  }
+
+  const innerW = Math.max(50, W - m.pos.L - m.pos.R);
+
+  if (t==="midX"){
+    const xInInner = Math.round(xMm - m.pos.L);
+    m.mid.x = clamp(xInInner, 1, innerW-1);
+    $("midX").value = m.mid.x;
+    dragTip.syncValue();
+    rebuildParts(); renderAll();
+    return;
+  }
+  if (t==="mid2X"){
+    const xInInner = Math.round(xMm - m.pos.L);
+    m.mid2.x = clamp(xInInner, 1, innerW-1);
+    $("mid2X").value = m.mid2.x;
+    dragTip.syncValue();
+    rebuildParts(); renderAll();
+    return;
+  }
+
+  if (String(t).startsWith("shelf:")){
+    const baseId = String(t).slice("shelf:".length);
+    const innerH = Math.max(50, H - m.pos.T - m.pos.B);
+    const yFromBottom = Math.round(innerH - (yMm - m.pos.T));
+    const yClamped = clamp(yFromBottom, 1, innerH-1);
+
+    if (baseId.startsWith("s_auto_")){
+      const idx = Number(baseId.split("_").pop());
+      if (Number.isFinite(idx) && m.shelves.autoY[idx]!=null) m.shelves.autoY[idx] = yClamped;
+    } else {
+      const it = (m.shelves.extra||[]).find(x=>x.id===baseId);
+      if (it) it.y = yClamped;
+    }
+
+    normalizeShelves();
+    rebuildParts();
+    renderShelvesUI();
+    renderExtraShelvesUI();
+    renderAll();
+    return;
+  }
+}
+
+function onDragEnd(){
+  window.removeEventListener("pointermove", onDragMove);
+  state.drag = null;
+}

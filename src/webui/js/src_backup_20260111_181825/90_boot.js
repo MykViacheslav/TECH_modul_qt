@@ -1,0 +1,265 @@
+﻿function renderStatus(){
+    const m = state.model;
+    const t = state.templates.find(x=>x.id===state.loadedTemplateId);
+    const loadedTxt = t ? ` • LOADED: ${t.name}` : "";
+    $("statusPill").textContent = `${m.dims.W}×${m.dims.H}×${m.dims.D}${loadedTxt}`;
+  }
+
+  function renderAll(){
+    renderStatus();
+    renderPartsList();
+    renderQuick();
+    renderBOM();
+    renderSVG();
+  }
+
+  function init(){
+    // fill selects
+    for (const m of materials){
+      const o=document.createElement("option"); o.value=m.id; o.textContent=m.name;
+      $("midMat").appendChild(o.cloneNode(true));
+      $("backMat").appendChild(o.cloneNode(true));
+      $("frontMat").appendChild(o.cloneNode(true));
+      $("drawerBottomMat").appendChild(o.cloneNode(true));
+      $("drawerBackMat").appendChild(o.cloneNode(true));
+      $("drawerWoodMat").appendChild(o.cloneNode(true));
+      $("quickMat").appendChild(o.cloneNode(true));
+    }
+    for (const b of edgeBands){
+      const o=document.createElement("option"); o.value=b.id; o.textContent=b.name;
+      $("quickBand").appendChild(o);
+    }
+
+    fillGroupSelects();
+    state.model.group = state.groups[0] || "Kitchen";
+    syncAllInputsFromModel();
+
+    // tabs
+    on("tab_module","click",()=>setTab("module"));
+    on("tab_base","click",()=>setTab("base"));
+    on("tab_wall","click",()=>setTab("wall"));
+    on("tab_set","click",()=>setTab("set"));
+
+    initSplitters();
+
+    // base actions
+    on("saveNew","click", saveAsNew);
+    on("overwriteLoaded","click", overwriteLoaded);
+    on("detachLoaded","click", detachLoaded);
+
+    on("baseFilterGroup","change", renderBaseList);
+    on("baseSearch","input", renderBaseList);
+    on("exportJson","click", exportJSON);
+    on("importJson","click", ()=> $("importFile").click());
+    on("importFile","change", (e)=>{
+      const f = e.target.files && e.target.files[0];
+      if (f) importJSONFile(f);
+      e.target.value = "";
+    });
+
+    // module inputs
+    on("moduleGroup","change", ()=>{ state.model.group = $("moduleGroup").value; renderStatus(); });
+    on("moduleName","input", ()=>{ state.model.name = $("moduleName").value; renderStatus(); });
+
+    on("w","input", ()=>{ state.model.dims.W = clamp(Math.round(num($("w").value,600)), 50, 5000); rebuildParts(); renderAll(); });
+    on("h","input", ()=>{ state.model.dims.H = clamp(Math.round(num($("h").value,720)), 50, 5000); normalizeShelves(); rebuildParts(); renderShelvesUI(); renderExtraShelvesUI(); renderAll(); });
+    on("d","input", ()=>{ state.model.dims.D = clamp(Math.round(num($("d").value,560)), 50, 2000); rebuildParts(); renderAll(); });
+
+    on("anchorCorner","change", ()=>{ state.model.anchor.corner = $("anchorCorner").value; renderAll(); });
+    on("anchorDX","input", ()=>{ state.model.anchor.dx = clamp(Math.round(num($("anchorDX").value,0)), 0, 5000); renderAll(); });
+    on("anchorDY","input", ()=>{ state.model.anchor.dy = clamp(Math.round(num($("anchorDY").value,0)), 0, 5000); renderAll(); });
+
+    on("sideMode","change", ()=>{ state.model.sideMode = $("sideMode").value; renderAll(); });
+
+    const bindPos=(id,key)=> on(id,"input", ()=>{
+      const m=state.model;
+      const {W,H}=m.dims;
+      const v = clamp(Math.round(num($(id).value,0)), 0, 5000);
+      if (key==="L") m.pos.L = clamp(v,0, Math.max(0, W - m.pos.R - 1));
+      if (key==="R") m.pos.R = clamp(v,0, Math.max(0, W - m.pos.L - 1));
+      if (key==="T") m.pos.T = clamp(v,0, Math.max(0, H - m.pos.B - 1));
+      if (key==="B") m.pos.B = clamp(v,0, Math.max(0, H - m.pos.T - 1));
+      normalizeShelves();
+      rebuildParts();
+      renderShelvesUI();
+      renderExtraShelvesUI();
+      renderAll();
+    });
+    bindPos("posL","L"); bindPos("posR","R"); bindPos("posT","T"); bindPos("posB","B");
+
+    on("posZero","click", ()=>{
+      state.model.pos = {L:0,R:0,T:0,B:0};
+      syncAllInputsFromModel();
+      normalizeShelves();
+      rebuildParts();
+      renderShelvesUI();
+      renderExtraShelvesUI();
+      renderAll();
+    });
+    on("posLRsame","click", ()=>{
+      state.model.pos.R = state.model.pos.L;
+      syncAllInputsFromModel();
+      rebuildParts();
+      renderAll();
+    });
+    on("posTBsame","click", ()=>{
+      state.model.pos.B = state.model.pos.T;
+      syncAllInputsFromModel();
+      normalizeShelves();
+      rebuildParts();
+      renderShelvesUI();
+      renderExtraShelvesUI();
+      renderAll();
+    });
+
+    const bindHas=(id,key)=> on(id,"change", ()=>{
+      state.model.has[key] = $(id).checked;
+      if (key==="back") state.model.back.enabled = state.model.has.back && state.model.back.enabled;
+      rebuildParts();
+      renderAll();
+    });
+    bindHas("hasLeft","left"); bindHas("hasRight","right");
+    bindHas("hasTop","top"); bindHas("hasBottom","bottom");
+    bindHas("hasBack","back"); bindHas("hasFront","front");
+
+    on("midEnabled","change", ()=>{
+      state.model.mid.enabled = $("midEnabled").checked;
+      $("midWrap").style.display = state.model.mid.enabled ? "" : "none";
+      rebuildParts(); renderAll();
+    });
+    on("midX","input", ()=>{ state.model.mid.x = Math.round(num($("midX").value, state.model.mid.x)); rebuildParts(); renderAll(); });
+    on("midMat","change", ()=>{ state.model.mid.mat = $("midMat").value; rebuildParts(); renderAll(); });
+
+    on("autoShelfCount","input", ()=>{
+      state.model.shelves.autoCount = clamp(Math.round(num($("autoShelfCount").value,0)), 0, 12);
+      setAutoShelvesEqual();
+      rebuildParts();
+      renderShelvesUI();
+      renderExtraShelvesUI();
+      renderAll();
+    });
+    on("shelvesEqual","click", ()=>{
+      setAutoShelvesEqual();
+      rebuildParts();
+      renderShelvesUI();
+      renderAll();
+    });
+    on("shelvesClear","click", ()=>{
+      state.model.shelves.autoCount = 0;
+      state.model.shelves.autoY = [];
+      $("autoShelfCount").value = 0;
+      rebuildParts();
+      renderShelvesUI();
+      renderAll();
+    });
+    on("addExtraShelf","click", ()=>{
+      const y = Math.round(num($("extraShelfY").value,150));
+      state.model.shelves.extra.push({ id: uid("s_ex"), y });
+      normalizeShelves();
+      rebuildParts();
+      renderExtraShelvesUI();
+      renderAll();
+    });
+
+    on("backEnabled","change", ()=>{ state.model.back.enabled = $("backEnabled").value==="yes"; rebuildParts(); renderAll(); });
+    on("backMat","change", ()=>{ state.model.back.mat = $("backMat").value; rebuildParts(); renderAll(); });
+
+    on("frontMode","change", ()=>{
+      state.model.front.mode = $("frontMode").value;
+      $("drawerRow").style.display = (state.model.front.mode==="drawers") ? "" : "none";
+      rebuildParts(); renderAll();
+    });
+    on("frontCount","input", ()=>{ state.model.front.count = clamp(Math.round(num($("frontCount").value,0)), 0, 12); rebuildParts(); renderAll(); });
+    on("frontMat","change", ()=>{ state.model.front.mat = $("frontMat").value; rebuildParts(); renderAll(); });
+    on("frontGap","input", ()=>{ state.model.front.gap = clamp(Math.round(num($("frontGap").value,2)), 0, 10); rebuildParts(); renderAll(); });
+    on("drawerSystem","change", ()=>{ state.model.front.drawerSystem = $("drawerSystem").value; rebuildParts(); renderAll(); });
+    on("drawerHeights","input", ()=>{ state.model.front.drawerHeights = $("drawerHeights").value; rebuildParts(); renderAll(); });
+    on("cornerFront","change", ()=>{ state.model.front.cornerFront = $("cornerFront").checked; rebuildParts(); renderAll(); });
+
+    on("mountType","change", ()=>{ state.model.hardware.mountType = $("mountType").value; renderAll(); });
+    on("mountCount","input", ()=>{ state.model.hardware.mountCount = clamp(Math.round(num($("mountCount").value,0)), 0, 99); renderAll(); });
+
+    on("drawerEstimate","change", ()=>{ state.model.hardware.drawerEstimate = $("drawerEstimate").checked; renderAll(); });
+    on("drawerBottomMat","change", ()=>{ state.model.hardware.drawerBottomMat = $("drawerBottomMat").value; renderAll(); });
+    on("drawerBackMat","change", ()=>{ state.model.hardware.drawerBackMat = $("drawerBackMat").value; renderAll(); });
+    on("drawerWoodMat","change", ()=>{ state.model.hardware.drawerWoodMat = $("drawerWoodMat").value; renderAll(); });
+    on("drawerClear","input", ()=>{ state.model.hardware.drawerClear = clamp(Math.round(num($("drawerClear").value,40)), 0, 200); renderAll(); });
+
+    // Quick
+    on("quickMat","change", ()=>{ const p = selPart(); if(!p) return; p.mat = $("quickMat").value; renderAll(); });
+    on("qL","click", ()=>toggleEdge("L"));
+    on("qR","click", ()=>toggleEdge("R"));
+    on("qT","click", ()=>toggleEdge("T"));
+    on("qB","click", ()=>toggleEdge("B"));
+    on("qAll08","click", ()=>setAllEdges("abs08"));
+    on("qAll2","click", ()=>setAllEdges("abs2"));
+    on("qClear","click", clearEdges);
+    on("qApplyKind","click", applyKind);
+
+    // Wall bindings
+    on("wallType","change", ()=>{
+      state.wall.type = $("wallType").value;
+      $("wallDimsI").classList.toggle("hidden", state.wall.type!=="I");
+      $("wallDimsL").classList.toggle("hidden", state.wall.type!=="L");
+      $("wallDimsC").classList.toggle("hidden", state.wall.type!=="C");
+      renderWallAll();
+    });
+    on("wallH","input", ()=>{ state.wall.H = Math.round(num($("wallH").value,2700)); renderWallAll(); });
+
+    on("wallA","input", ()=>{ state.wall.A = Math.round(num($("wallA").value,4000)); renderWallAll(); });
+    on("wallTh","input", ()=>{ state.wall.th = Math.round(num($("wallTh").value,120)); renderWallAll(); });
+
+    on("wallLA","input", ()=>{ state.wall.LA = Math.round(num($("wallLA").value,3000)); renderWallAll(); });
+    on("wallLB","input", ()=>{ state.wall.LB = Math.round(num($("wallLB").value,2500)); renderWallAll(); });
+    on("wallLTh","input", ()=>{ state.wall.Lth = Math.round(num($("wallLTh").value,120)); renderWallAll(); });
+
+    on("wallCA","input", ()=>{ state.wall.CA = Math.round(num($("wallCA").value,3500)); renderWallAll(); });
+    on("wallCB","input", ()=>{ state.wall.CB = Math.round(num($("wallCB").value,2200)); renderWallAll(); });
+    on("wallCC","input", ()=>{ state.wall.CC = Math.round(num($("wallCC").value,1600)); renderWallAll(); });
+    on("wallCTh","input", ()=>{ state.wall.Cth = Math.round(num($("wallCTh").value,120)); renderWallAll(); });
+
+    on("islandOn","change", ()=>{
+      state.wall.island.on = $("islandOn").checked;
+      $("islandWrap").classList.toggle("hidden", !state.wall.island.on);
+      renderWallAll();
+    });
+    on("islandW","input", ()=>{ state.wall.island.W = Math.round(num($("islandW").value,900)); renderWallAll(); });
+    on("islandD","input", ()=>{ state.wall.island.D = Math.round(num($("islandD").value,600)); renderWallAll(); });
+    on("islandX","input", ()=>{ state.wall.island.x = Math.round(num($("islandX").value,1200)); renderWallAll(); });
+    on("islandY","input", ()=>{ state.wall.island.y = Math.round(num($("islandY").value,800)); renderWallAll(); });
+
+    on("addObs","click", ()=>{
+      const o = {
+        id: uid("obs"),
+        type: $("obsType").value,
+        name: String($("obsName").value || "").trim() || $("obsType").value,
+        x: Math.round(num($("obsX").value,800)),
+        y: Math.round(num($("obsY").value,0)),
+        W: Math.round(num($("obsW").value,1200)),
+        D: Math.round(num($("obsD").value,120))
+      };
+      state.wall.obs.push(o);
+      state.wall.selectedObsId = o.id;
+      renderWallAll();
+    });
+
+    // initial shelves
+    setAutoShelvesEqual();
+    normalizeShelves();
+
+    rebuildParts();
+    renderShelvesUI();
+    renderExtraShelvesUI();
+    updateLoadedInfo();
+    renderAll();
+
+    // init wall UI visibility
+    $("wallDimsI").classList.toggle("hidden", state.wall.type!=="I");
+    $("wallDimsL").classList.toggle("hidden", state.wall.type!=="L");
+    $("wallDimsC").classList.toggle("hidden", state.wall.type!=="C");
+    $("islandWrap").classList.toggle("hidden", !state.wall.island.on);
+
+    window.addEventListener("resize", ()=>{ renderSVG(); renderWallSVG(); });
+  }
+
+  init();

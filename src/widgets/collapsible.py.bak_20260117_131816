@@ -1,0 +1,43 @@
+﻿from __future__ import annotations
+
+from PySide6 import QtWidgets, QtCore
+
+
+class CollapsibleSection(QtWidgets.QWidget):
+    """
+    Simple, stable collapsible section.
+
+    API guaranteed:
+      - .content (QWidget)
+      - .contentLayout (QVBoxLayout)
+      - .content_layout (alias)
+    """
+    def __init__(self, title: str = "", parent=None, expanded: bool = True):
+        super().__init__(parent)
+
+        self._btn = QtWidgets.QToolButton(text=title, checkable=True, checked=expanded)
+        self._btn.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+        self._btn.setArrowType(QtCore.Qt.DownArrow if expanded else QtCore.Qt.RightArrow)
+        self._btn.clicked.connect(self._toggle)
+
+        self.content = QtWidgets.QWidget(self)
+        self.content.setVisible(expanded)
+
+        self.contentLayout = QtWidgets.QVBoxLayout(self.content)
+        self.contentLayout.setContentsMargins(0, 0, 0, 0)
+        self.contentLayout.setSpacing(8)
+
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(6)
+        lay.addWidget(self._btn)
+        lay.addWidget(self.content)
+
+    @property
+    def content_layout(self):
+        return self.contentLayout
+
+    def _toggle(self):
+        on = self._btn.isChecked()
+        self.content.setVisible(on)
+        self._btn.setArrowType(QtCore.Qt.DownArrow if on else QtCore.Qt.RightArrow)

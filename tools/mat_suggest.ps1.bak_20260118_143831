@@ -1,0 +1,35 @@
+﻿param(
+  [Parameter(Mandatory=$true)][string]$Query,
+  [int]$Limit = 10,
+  [switch]$Json,
+  [string]$DbPath = (Join-Path (Split-Path $PSScriptRoot -Parent) "data\tech.db")
+)
+
+. (Join-Path $PSScriptRoot "env.ps1")
+
+$Root = Split-Path $PSScriptRoot -Parent
+$Cli  = Join-Path $Root "src\tools\material_suggest_cli.py"
+
+$out = & $Py $Cli --db $DbPath suggest --q $Query --limit $Limit
+if($LASTEXITCODE -ne 0){
+  Write-Host $out
+  exit $LASTEXITCODE
+}
+
+if($Json){
+  $out
+  exit 0
+}
+
+$items = $out | ConvertFrom-Json
+if(-not $items -or $items.Count -eq 0){
+  Write-Host "No matches."
+  exit 0
+}
+
+$items |
+  Select-Object idx, anchor, name, kind, thickness_mm, score |
+  Format-Table -AutoSize
+
+# also return objects to pipeline
+$items

@@ -1,0 +1,47 @@
+﻿from __future__ import annotations
+from types import SimpleNamespace
+
+def ensure_ctx(ctx):
+    if ctx is None:
+        ctx = SimpleNamespace()
+
+    # dict ctx
+    if isinstance(ctx, dict):
+        if "db_path" not in ctx:
+            # default db path
+            import os
+            root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # .../src/tabs -> .../src
+            proj = os.path.dirname(root)
+            ctx["db_path"] = os.path.join(proj, "data", "tech.db")
+        if "bus" not in ctx or ctx["bus"] is None:
+            from app.bus import AppBus
+            ctx["bus"] = AppBus()
+        return ctx
+
+    # object ctx
+    if not hasattr(ctx, "db_path") or not getattr(ctx, "db_path", None):
+        import os
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        proj = os.path.dirname(root)
+        ctx.db_path = os.path.join(proj, "data", "tech.db")
+
+    if not hasattr(ctx, "bus") or getattr(ctx, "bus", None) is None:
+        from app.bus import AppBus
+        ctx.bus = AppBus()
+
+    return ctx
+
+def build_tabs(ctx):
+    ctx = ensure_ctx(ctx)
+
+    def wrap(widget):
+        from .project_tree_wrapper import wrap_with_project_tree
+        return wrap_with_project_tree(widget, ctx)
+
+    from .tab_module import ModuleTab
+    from .tab_module_base import ModuleBaseTab
+
+    return [
+        ("MODUL", wrap(ModuleTab(ctx))),
+        ("BAZA MODULU", wrap(ModuleBaseTab(ctx))),
+    ]

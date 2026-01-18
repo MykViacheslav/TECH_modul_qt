@@ -1,0 +1,34 @@
+﻿from __future__ import annotations
+from types import SimpleNamespace
+
+from .bus import Bus
+
+def ensure_ctx(ctx):
+    if ctx is None:
+        ctx = SimpleNamespace()
+
+    # ctx can be dict or object
+    if isinstance(ctx, dict):
+        if "bus" not in ctx or ctx["bus"] is None:
+            ctx["bus"] = Bus()
+        return ctx
+
+    if not hasattr(ctx, "bus") or getattr(ctx, "bus") is None:
+        ctx.bus = Bus()
+    return ctx
+
+def build_tabs(ctx):
+    ctx = ensure_ctx(ctx)
+
+    # Wszystkie zakładki na jednym poziomie (bez hierarchii)
+    from .tab_komplet import KompletTab
+    from .tab_sciana  import ScianaTab
+    from .tab_module  import ModuleTab
+    from .tab_module_base import ModuleBaseTab
+
+    return [
+        ("KOMPLET", KompletTab(ctx)),
+        ("SCIANA",  ScianaTab(ctx)),
+        ("MODUL",   ModuleTab(ctx)),
+        ("BAZA",    ModuleBaseTab(ctx)),
+    ]

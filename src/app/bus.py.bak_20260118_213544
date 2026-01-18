@@ -1,0 +1,10 @@
+﻿from __future__ import annotations
+from PySide6 import QtCore
+
+class AppBus(QtCore.QObject):
+    # from BAZA MODULU / ProjectTree -> MODUL
+    module_load_requested = QtCore.Signal(str)      # anchor
+    # from ProjectTree -> any tab
+    material_chosen = QtCore.Signal(str)            # material code
+    # generic refresh (optional)
+    refresh_requested = QtCore.Signal(str)          # topic

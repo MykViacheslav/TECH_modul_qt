@@ -1,0 +1,56 @@
+﻿from __future__ import annotations
+
+from PySide6 import QtWidgets, QtCore
+
+
+class CollapsibleSection(QtWidgets.QWidget):
+    """
+    Stable collapsible widget:
+      - click arrow/title -> hide/show body
+      - provides: content (QWidget), contentLayout + content_layout (aliases), addWidget()
+    """
+    def __init__(self, title: str = "", parent=None, expanded: bool = True):
+        super().__init__(parent)
+
+        self._btn = QtWidgets.QToolButton(self)
+        self._btn.setText(title)
+        self._btn.setCheckable(True)
+        self._btn.setChecked(bool(expanded))
+        self._btn.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+        self._btn.setArrowType(QtCore.Qt.DownArrow if expanded else QtCore.Qt.RightArrow)
+        self._btn.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+
+        self.content = QtWidgets.QWidget(self)
+        self._content_layout = QtWidgets.QVBoxLayout(self.content)
+        self._content_layout.setContentsMargins(0, 0, 0, 0)
+        self._content_layout.setSpacing(6)
+
+        root = QtWidgets.QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(6)
+        root.addWidget(self._btn)
+        root.addWidget(self.content)
+
+        self.content.setVisible(bool(expanded))
+
+        self._btn.clicked.connect(self._toggle)
+
+    # compatibility names (some code expects these)
+    @property
+    def contentLayout(self):
+        return self._content_layout
+
+    @property
+    def content_layout(self):
+        return self._content_layout
+
+    def addWidget(self, w: QtWidgets.QWidget):
+        self._content_layout.addWidget(w)
+
+    def _toggle(self):
+        on = self._btn.isChecked()
+        self.content.setVisible(on)
+        self._btn.setArrowType(QtCore.Qt.DownArrow if on else QtCore.Qt.RightArrow)
+
+    def setTitle(self, title: str):
+        self._btn.setText(title)

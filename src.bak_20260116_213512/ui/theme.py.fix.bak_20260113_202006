@@ -1,0 +1,249 @@
+﻿from __future__ import annotations
+
+from PySide6 import QtWidgets, QtGui
+
+
+def apply_theme(app: QtWidgets.QApplication) -> None:
+    """
+    Soft gray theme 2.0 (neutral, delikatny, mniej płaski).
+    Bez ingerencji w funkcjonalność — tylko wygląd.
+    """
+    app.setStyle("Fusion")
+
+    # ---- Palette (spójne tło dla Fusion) ----
+    pal = QtGui.QPalette()
+
+    # neutral + lekki "ciepły" odcień szarości
+    window_bg   = QtGui.QColor("#EEF1F4")  # główne tło
+    surface     = QtGui.QColor("#F6F7F9")  # panele
+    card        = QtGui.QColor("#FAFBFC")  # karty / inputs
+    text        = QtGui.QColor("#0B1220")  # prawie czarny
+    muted       = QtGui.QColor("#475569")  # slate-600
+    border      = QtGui.QColor("#CCD5E1")  # obramowania
+    accent      = QtGui.QColor("#3B82F6")  # delikatny akcent (blue-500)
+    selection   = QtGui.QColor("#D8E6FF")  # zaznaczenie bardzo jasne
+
+    pal.setColor(QtGui.QPalette.Window, window_bg)
+    pal.setColor(QtGui.QPalette.AlternateBase, surface)
+    pal.setColor(QtGui.QPalette.Base, card)
+
+    pal.setColor(QtGui.QPalette.WindowText, text)
+    pal.setColor(QtGui.QPalette.Text, text)
+    pal.setColor(QtGui.QPalette.PlaceholderText, muted)
+
+    pal.setColor(QtGui.QPalette.Button, surface)
+    pal.setColor(QtGui.QPalette.ButtonText, text)
+
+    pal.setColor(QtGui.QPalette.Highlight, selection)
+    pal.setColor(QtGui.QPalette.HighlightedText, text)
+
+    app.setPalette(pal)
+
+    # ---- QSS ----
+    qss = """
+    /* Global */
+    QWidget {
+        font-family: "Segoe UI";
+        font-size: 10pt;
+        color: #0B1220;
+    }
+
+    QMainWindow, QDialog {
+        background: #EEF1F4;
+    }
+
+    /* Subtelne "karty" dla głównych powierzchni */
+    QFrame, QScrollArea, QStackedWidget {
+        background: transparent;
+    }
+
+    /* Tooltips */
+    QToolTip {
+        background: #0F172A;
+        color: #F8FAFC;
+        border: 1px solid #0F172A;
+        border-radius: 8px;
+        padding: 6px 8px;
+    }
+
+    /* Tabs */
+    QTabWidget::pane {
+        background: #F6F7F9;
+        border: 1px solid #CCD5E1;
+        border-radius: 12px;
+        padding: 8px;
+        top: -1px;
+    }
+
+    QTabBar::tab {
+        background: #E9EDF2;
+        border: 1px solid #CCD5E1;
+        border-bottom: none;
+        padding: 9px 14px;
+        margin-right: 6px;
+        border-top-left-radius: 12px;
+        border-top-right-radius: 12px;
+        color: #1F2937;
+    }
+    QTabBar::tab:hover {
+        background: #EEF2F6;
+    }
+    QTabBar::tab:selected {
+        background: #F6F7F9;
+        font-weight: 600;
+        border-color: #B9C6D6;
+        /* delikatny akcent */
+        border-top: 2px solid #3B82F6;
+        padding-top: 8px; /* kompensacja 2px */
+    }
+
+    /* GroupBox jako karta */
+    QGroupBox {
+        background: #F6F7F9;
+        border: 1px solid #CCD5E1;
+        border-radius: 12px;
+        margin-top: 12px;
+        padding: 10px;
+    }
+    QGroupBox::title {
+        subcontrol-origin: margin;
+        left: 12px;
+        padding: 0 8px;
+        color: #334155;
+        font-weight: 600;
+        background: #F6F7F9;
+    }
+
+    /* Labels (często siadają na przezroczysto) */
+    QLabel {
+        background: transparent;
+    }
+
+    /* Inputs */
+    QLineEdit, QSpinBox, QDoubleSpinBox, QTextEdit, QPlainTextEdit, QComboBox {
+        background: #FAFBFC;
+        border: 1px solid #CCD5E1;
+        border-radius: 10px;
+        padding: 7px 10px;
+        selection-background-color: #D8E6FF;
+        selection-color: #0B1220;
+    }
+
+    QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus {
+        border: 1px solid #3B82F6;
+    }
+
+    QComboBox::drop-down {
+        border-left: 1px solid #CCD5E1;
+        width: 28px;
+        background: #F6F7F9;
+        border-top-right-radius: 10px;
+        border-bottom-right-radius: 10px;
+    }
+    QComboBox::down-arrow {
+        width: 10px;
+        height: 10px;
+    }
+
+    /* Buttons */
+    QPushButton {
+        background: #F6F7F9;
+        border: 1px solid #CCD5E1;
+        border-radius: 10px;
+        padding: 8px 12px;
+    }
+    QPushButton:hover {
+        background: #EEF2F6;
+        border-color: #B9C6D6;
+    }
+    QPushButton:pressed {
+        background: #E4EAF2;
+    }
+    QPushButton:disabled {
+        color: #94A3B8;
+        background: #F1F4F8;
+        border-color: #D7DEE8;
+    }
+
+    /* Tables */
+    QTableWidget, QTableView {
+        background: #FAFBFC;
+        border: 1px solid #CCD5E1;
+        border-radius: 12px;
+        gridline-color: #E2E8F0;
+        selection-background-color: #D8E6FF;
+        selection-color: #0B1220;
+    }
+    QHeaderView::section {
+        background: #EEF2F6;
+        border: 1px solid #CCD5E1;
+        padding: 7px 9px;
+        font-weight: 600;
+        color: #1F2937;
+    }
+
+    /* Menus */
+    QMenu {
+        background: #FAFBFC;
+        border: 1px solid #CCD5E1;
+        border-radius: 10px;
+        padding: 6px;
+    }
+    QMenu::item {
+        padding: 6px 10px;
+        border-radius: 8px;
+    }
+    QMenu::item:selected {
+        background: #D8E6FF;
+    }
+
+    /* Scrollbars (minimal) */
+    QScrollBar:vertical {
+        background: transparent;
+        width: 12px;
+        margin: 6px;
+    }
+    QScrollBar::handle:vertical {
+        background: #CCD5E1;
+        border-radius: 6px;
+        min-height: 28px;
+    }
+    QScrollBar::handle:vertical:hover { background: #BFC9D7; }
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
+
+    QScrollBar:horizontal {
+        background: transparent;
+        height: 12px;
+        margin: 6px;
+    }
+    QScrollBar::handle:horizontal {
+        background: #CCD5E1;
+        border-radius: 6px;
+        min-width: 28px;
+    }
+    QScrollBar::handle:horizontal:hover { background: #BFC9D7; }
+    QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0px; }
+        /* === UX_POLISH_BLOCK (auto) === */
+    QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {
+        min-height: 34px;
+    }
+    QPushButton {
+        min-height: 34px;
+    }
+    QComboBox QAbstractItemView {
+        padding: 6px;
+        border-radius: 10px;
+    }
+    QFormLayout {
+        spacing: 10px;
+    }
+    /* Delikatne "sekcje" jeśli ktoś użyje QFrame#sectionFrame */
+    QFrame#sectionFrame {
+        background: #F6F7F9;
+        border: 1px solid #CCD5E1;
+        border-radius: 12px;
+    }
+    /* === /UX_POLISH_BLOCK === */
+"""
+app.setStyleSheet(qss)
+

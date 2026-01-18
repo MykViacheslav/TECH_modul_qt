@@ -1,0 +1,64 @@
+﻿from __future__ import annotations
+
+from PySide6 import QtCore, QtWidgets
+
+
+class CollapsibleSection(QtWidgets.QWidget):
+    """
+    Small, stable collapsible widget.
+    гарантовано ховає/показує контент при кліку на трикутник/заголовок.
+
+    Compatibility:
+      - contentLayout (old)
+      - content_layout (snake)
+      - body / content (widget)
+    """
+
+    toggled = QtCore.Signal(bool)
+
+    def __init__(self, title: str = "", parent=None, start_open: bool = True):
+        super().__init__(parent)
+
+        self._btn = QtWidgets.QToolButton(self)
+        self._btn.setText(title)
+        self._btn.setCheckable(True)
+        self._btn.setChecked(bool(start_open))
+        self._btn.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+        self._btn.setArrowType(QtCore.Qt.DownArrow if start_open else QtCore.Qt.RightArrow)
+        self._btn.clicked.connect(self._toggle)
+
+        self.content = QtWidgets.QWidget(self)
+        self.contentLayout = QtWidgets.QVBoxLayout(self.content)
+        self.contentLayout.setContentsMargins(0, 0, 0, 0)
+        self.contentLayout.setSpacing(6)
+
+        # aliases for different code styles
+        self.content_layout = self.contentLayout
+        self.body = self.content
+        self.bodyLayout = self.contentLayout
+
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(6)
+        lay.addWidget(self._btn)
+        lay.addWidget(self.content)
+
+        self.content.setVisible(bool(start_open))
+
+    def set_title(self, title: str):
+        self._btn.setText(title)
+
+    def is_open(self) -> bool:
+        return bool(self._btn.isChecked())
+
+    def set_open(self, open_: bool):
+        self._btn.setChecked(bool(open_))
+        self.content.setVisible(bool(open_))
+        self._btn.setArrowType(QtCore.Qt.DownArrow if open_ else QtCore.Qt.RightArrow)
+        self.toggled.emit(bool(open_))
+
+    def _toggle(self):
+        on = self._btn.isChecked()
+        self.content.setVisible(on)
+        self._btn.setArrowType(QtCore.Qt.DownArrow if on else QtCore.Qt.RightArrow)
+        self.toggled.emit(on)

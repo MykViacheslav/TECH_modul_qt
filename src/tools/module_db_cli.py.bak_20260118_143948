@@ -1,0 +1,257 @@
+﻿import argparse, json, os, sqlite3
+from datetime import datetime
+
+SCHEMA_VERSION = 1
+
+def now_iso():
+    return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
+def connect(db_path: str):
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    con = sqlite3.connect(db_path)
+    con.row_factory = sqlite3.Row
+    return con
+
+def table_info(con, table: str):
+    try:
+        rows = con.execute(f"PRAGMA table_info({table})").fetchall()
+        return [r["name"] for r in rows]
+    except sqlite3.Error:
+        return []
+
+def has_table(con, table: str) -> bool:
+    row = con.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        (table,),
+    ).fetchone()
+    return bool(row)
+
+def ensure_column(con, table: str, col: str, coldef_sql: str):
+    cols = table_info(con, table)
+    if col in cols:
+        return
+    con.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coldef_sql}")
+
+def ensure_schema(con: sqlite3.Connection):
+    # modules with material_anchor column
+    con.execute("""
+    CREATE TABLE IF NOT EXISTS modules (
+        anchor TEXT PRIMARY KEY,
+        material_anchor TEXT,
+        payload_json TEXT NOT NULL,
+        schema_version INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """)
+    con.execute("""
+    CREATE TABLE IF NOT EXISTS modules_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        anchor TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        schema_version INTEGER NOT NULL,
+        saved_at TEXT NOT NULL
+    )
+    """)
+    con.commit()
+
+    # migrations (older DB)
+    cols_m = table_info(con, "modules")
+    if cols_m:
+        if "material_anchor" not in cols_m:
+            ensure_column(con, "modules", "material_anchor", "TEXT")
+        if "created_at" not in cols_m:
+            ensure_column(con, "modules", "created_at", "TEXT")
+            con.execute("UPDATE modules SET created_at=? WHERE created_at IS NULL", (now_iso(),))
+        if "updated_at" not in cols_m:
+            ensure_column(con, "modules", "updated_at", "TEXT")
+            con.execute("UPDATE modules SET updated_at=? WHERE updated_at IS NULL", (now_iso(),))
+        if "schema_version" not in cols_m:
+            ensure_column(con, "modules", "schema_version", "INTEGER")
+            con.execute("UPDATE modules SET schema_version=? WHERE schema_version IS NULL", (SCHEMA_VERSION,))
+        if "payload_json" not in cols_m:
+            ensure_column(con, "modules", "payload_json", "TEXT")
+        con.commit()
+
+    cols_h = table_info(con, "modules_history")
+    if cols_h:
+        if "saved_at" not in cols_h:
+            ensure_column(con, "modules_history", "saved_at", "TEXT")
+            if "created_at" in cols_h:
+                con.execute("UPDATE modules_history SET saved_at=created_at WHERE saved_at IS NULL")
+            con.execute("UPDATE modules_history SET saved_at=? WHERE saved_at IS NULL", (now_iso(),))
+        if "schema_version" not in cols_h:
+            ensure_column(con, "modules_history", "schema_version", "INTEGER")
+            con.execute("UPDATE modules_history SET schema_version=? WHERE schema_version IS NULL", (SCHEMA_VERSION,))
+        if "payload_json" not in cols_h:
+            ensure_column(con, "modules_history", "payload_json", "TEXT")
+        if "anchor" not in cols_h:
+            ensure_column(con, "modules_history", "anchor", "TEXT")
+        con.commit()
+
+def material_exists_or_fail(con: sqlite3.Connection, material_anchor: str):
+    if not material_anchor:
+        return
+    # require materials table
+    if not has_table(con, "materials"):
+        raise SystemExit("ERROR: materials table not found. Run: .\\tools\\mat_init.ps1")
+    row = con.execute("SELECT anchor FROM materials WHERE anchor = ?", (material_anchor,)).fetchone()
+    if not row:
+        raise SystemExit(f"ERROR: material '{material_anchor}' not found in materials DB.")
+
+def upsert(con: sqlite3.Connection, payload: dict, overwrite: bool, history: bool):
+    ensure_schema(con)
+    anchor = str(payload.get("anchor") or "").strip()
+    if not anchor:
+        raise SystemExit("ERROR: anchor is required")
+
+    material_anchor = str(payload.get("material_anchor") or "").strip() or None
+    if material_anchor:
+        material_exists_or_fail(con, material_anchor)
+
+    row = con.execute("SELECT anchor, created_at FROM modules WHERE anchor = ?", (anchor,)).fetchone()
+    created_at = row["created_at"] if row and "created_at" in row.keys() else now_iso()
+    updated_at = now_iso()
+
+    payload = dict(payload)
+    payload["anchor"] = anchor
+    payload["schema_version"] = SCHEMA_VERSION
+    if material_anchor:
+        payload["material_anchor"] = material_anchor
+
+    payload_json = json.dumps(payload, ensure_ascii=False)
+
+    if row and not overwrite:
+        return anchor, False, True
+
+    con.execute("""
+        INSERT INTO modules(anchor, material_anchor, payload_json, schema_version, created_at, updated_at)
+        VALUES(?,?,?,?,?,?)
+        ON CONFLICT(anchor) DO UPDATE SET
+            material_anchor=excluded.material_anchor,
+            payload_json=excluded.payload_json,
+            schema_version=excluded.schema_version,
+            updated_at=excluded.updated_at
+    """, (anchor, material_anchor, payload_json, SCHEMA_VERSION, created_at, updated_at))
+
+    if history:
+        con.execute("""
+            INSERT INTO modules_history(anchor, payload_json, schema_version, saved_at)
+            VALUES(?,?,?,?)
+        """, (anchor, payload_json, SCHEMA_VERSION, updated_at))
+
+    con.commit()
+    return anchor, True, False
+
+def cmd_init(args):
+    con = connect(args.db)
+    ensure_schema(con)
+    print(f"OK: DB initialized: {args.db}")
+    return 0
+
+def cmd_save(args):
+    con = connect(args.db)
+    payload = {
+        "anchor": args.anchor,
+        "name": args.name,
+        "width": args.width,
+        "height": args.height,
+        "depth": args.depth,
+        "materials": args.materials,
+        "material_anchor": args.material_anchor,
+    }
+    payload = {k:v for k,v in payload.items() if v is not None and v != ""}
+
+    anchor, saved, existed_no_overwrite = upsert(
+        con, payload,
+        overwrite=bool(args.overwrite),
+        history=not bool(args.no_history)
+    )
+
+    if existed_no_overwrite:
+        print(f"ERROR: '{anchor}' already exists. Use --overwrite.")
+        return 2
+    if saved and args.overwrite:
+        print(f"OK: saved '{anchor}' (overwritten)")
+    else:
+        print(f"OK: saved '{anchor}'")
+    return 0
+
+def cmd_get(args):
+    con = connect(args.db)
+    ensure_schema(con)
+    row = con.execute("SELECT payload_json FROM modules WHERE anchor = ?", (args.anchor,)).fetchone()
+    if not row:
+        print("ERROR: not found")
+        return 4
+    obj = json.loads(row["payload_json"])
+    print(json.dumps(obj, ensure_ascii=False, indent=2))
+    return 0
+
+def cmd_list(args):
+    con = connect(args.db)
+    ensure_schema(con)
+    limit = int(args.limit) if args.limit is not None else 200
+    if limit <= 0:
+        limit = 200
+    rows = con.execute(
+        "SELECT payload_json FROM modules ORDER BY updated_at DESC LIMIT ?",
+        (limit,)
+    ).fetchall()
+    out = [json.loads(r["payload_json"]) for r in rows]
+    print(json.dumps(out, ensure_ascii=False, indent=2))
+    return 0
+
+def cmd_delete(args):
+    con = connect(args.db)
+    ensure_schema(con)
+    cur = con.execute("DELETE FROM modules WHERE anchor = ?", (args.anchor,))
+    con.commit()
+    if cur.rowcount:
+        print(f"OK: deleted '{args.anchor}'")
+    else:
+        print("OK: not found")
+    return 0
+
+def build_parser():
+    p = argparse.ArgumentParser(prog="module_db_cli")
+    p.add_argument("--db", required=True)
+
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("init")
+    s.set_defaults(fn=cmd_init)
+
+    s = sub.add_parser("save")
+    s.add_argument("--anchor", required=True)
+    s.add_argument("--name", default="")
+    s.add_argument("--width", type=float)
+    s.add_argument("--height", type=float)
+    s.add_argument("--depth", type=float)
+    s.add_argument("--materials", default="")
+    s.add_argument("--material-anchor", default="")
+    s.add_argument("--overwrite", action="store_true")
+    s.add_argument("--no-history", action="store_true")
+    s.set_defaults(fn=cmd_save)
+
+    s = sub.add_parser("get")
+    s.add_argument("--anchor", required=True)
+    s.set_defaults(fn=cmd_get)
+
+    s = sub.add_parser("list")
+    s.add_argument("--limit", type=int, default=200)
+    s.set_defaults(fn=cmd_list)
+
+    s = sub.add_parser("delete")
+    s.add_argument("--anchor", required=True)
+    s.set_defaults(fn=cmd_delete)
+
+    return p
+
+def main(argv=None):
+    p = build_parser()
+    args = p.parse_args(argv)
+    return args.fn(args)
+
+if __name__ == "__main__":
+    raise SystemExit(main())

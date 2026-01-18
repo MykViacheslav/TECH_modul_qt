@@ -1,0 +1,74 @@
+{
+  "type": "TECH_EXPORT",
+  "created_at": "2026-01-18T22:00:58Z",
+  "db_path_hint": "C:\\PythonProject\\TECH_modul\\TECH_modul_qt\\data\\tech.db",
+  "modules": [
+    {
+      "anchor": "M01",
+      "name": "Baza M01",
+      "width": 600.0,
+      "height": 720.0,
+      "depth": 560.0,
+      "materials": "MDF18 + HPL09",
+      "schema_version": 1
+    },
+    {
+      "anchor": "mod1",
+      "name": "",
+      "width": 600.0,
+      "height": 1000.0,
+      "depth": 500.0,
+      "materials": "",
+      "schema_version": 1
+    },
+    {
+      "anchor": "M001",
+      "name": "MOD_test",
+      "width": 600.0,
+      "height": 900.0,
+      "depth": 525.0,
+      "materials": "płyta 18 test",
+      "schema_version": 1
+    },
+    {
+      "anchor": "M02",
+      "name": "Stack test",
+      "width": 600.0,
+      "height": 720.0,
+      "depth": 560.0,
+      "materials": "MDF18 + HPL09",
+      "schema_version": 1
+    }
+  ],
+  "materials": [
+    {
+      "anchor": "HPL08",
+      "kind": "hpl",
+      "name": "HPL 0.8mm",
+      "thickness_mm": 0.8,
+      "schema_version": 1,
+      "code": "HPL_08MM"
+    },
+    {
+      "code": "MDF18",
+      "name": "MDF 18mm",
+      "kind": "board",
+      "thickness_mm": 18.0,
+      "schema_version": 1
+    },
+    {
+      "code": "HPL09",
+      "name": "HPL 0.9mm",
+      "kind": "laminate",
+      "thickness_mm": 0.9,
+      "schema_version": 1
+    },
+    {
+      "code": "EG_U999",
+      "name": "EGGER U999",
+      "kind": "board",
+      "thickness_mm": 18.0,
+      "schema_version": 1
+    }
+  ]
+}

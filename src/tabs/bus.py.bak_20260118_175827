@@ -1,0 +1,9 @@
+﻿from __future__ import annotations
+from PySide6 import QtCore
+
+class Bus(QtCore.QObject):
+    # BAZA -> MODUL: request load this anchor
+    module_load_requested = QtCore.Signal(str)
+
+    # optional: request switch to tab by title
+    tab_requested = QtCore.Signal(str)

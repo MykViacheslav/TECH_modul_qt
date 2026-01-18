@@ -1,0 +1,38 @@
+﻿from __future__ import annotations
+
+from PySide6.QtCore import QLibraryInfo, QLocale, QTranslator, QDir
+from PySide6.QtWidgets import QApplication
+from pathlib import Path
+
+
+def apply_polish_i18n(app: QApplication) -> None:
+    """
+    Enforces Polish locale and installs Qt translations.
+    Call this immediately after QApplication() is created and BEFORE creating any widgets.
+    """
+    # 1) Force Polish locale for numbers/dates/etc (e.g., decimal comma)
+    polish = QLocale(QLocale.Polish, QLocale.Poland)
+    QLocale.setDefault(polish)
+
+    # 2) Load Qt built-in translations (standard dialogs, buttons, etc.)
+    # Qt6 usually uses qtbase_<lang>.qm in the TranslationsPath
+    qt_translations_path = QLibraryInfo.path(QLibraryInfo.TranslationsPath)
+
+    qt_tr = QTranslator(app)
+    if qt_tr.load(polish, "qtbase", "_", qt_translations_path):
+        app.installTranslator(qt_tr)
+
+    # 3) OPTIONAL: Load your app translations if you later add them.
+    # Expected location: <project>/src/i18n/pl_PL/app_pl.qm
+    # (This does nothing if the file doesn't exist.)
+    app_tr = QTranslator(app)
+    try:
+        # src/ui/i18n.py -> src/
+        src_dir = Path(__file__).resolve().parents[1]
+        qm_path = src_dir / "i18n" / "pl_PL" / "app_pl.qm"
+        if qm_path.exists():
+            if app_tr.load(str(qm_path)):
+                app.installTranslator(app_tr)
+    except Exception:
+        # Keep i18n non-fatal.
+        pass

@@ -1,0 +1,57 @@
+﻿from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
+from .materials_store import MaterialSpec, EdgeSpec, FittingSpec
+
+
+@dataclass
+class BoardSpec:
+    """
+    Płyta / płyta meblowa (początek).
+    Później dodamy: dostawca, kod, dekor, struktura, itp.
+    """
+    name: str
+    thickness_mm: float
+    price_per_m2: float
+    currency: str = "PLN"
+
+
+@dataclass
+class CatalogStore:
+    """
+    Wspólny magazyn słowników/parametrów.
+    Zakładki czytają dane stąd (read-only API), a edycja odbywa się w zakładce 'Słowniki / Parametry'.
+    """
+    boards: List[BoardSpec] = field(default_factory=list)
+    # Później:
+    # edges: List[EdgeSpec] = ...
+    # fittings: List[FittingSpec] = ...
+    # handles: List[HandleSpec] = ...
+    # labor_rates: ...
+    # etc.
+
+    def get_boards(self) -> List[BoardSpec]:
+        return list(self.boards)
+
+    def set_boards(self, items: List[BoardSpec]) -> None:
+        # W przyszłości: walidacja, wersjonowanie, sygnały.
+        self.boards = list(items)
+
+    def get_materials(self) -> List[MaterialSpec]:
+        return list(self.materials)
+
+    def set_materials(self, items: List[MaterialSpec]) -> None:
+        self.materials = list(items)
+
+    def get_edges(self) -> List[EdgeSpec]:
+        return list(self.edges)
+
+    def set_edges(self, items: List[EdgeSpec]) -> None:
+        self.edges = list(items)
+
+    def get_fittings(self) -> List[FittingSpec]:
+        return list(self.fittings)
+
+    def set_fittings(self, items: List[FittingSpec]) -> None:
+        self.fittings = list(items)

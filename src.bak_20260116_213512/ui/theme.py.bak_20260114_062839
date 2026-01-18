@@ -1,0 +1,117 @@
+﻿from __future__ import annotations
+
+from PySide6 import QtWidgets
+
+
+def apply_theme(app: QtWidgets.QApplication) -> None:
+    """
+    Delikatna neutralna (soft gray). Nic nie wykonuje się przy imporcie.
+    """
+    qss = """
+    QWidget {
+        background: #F4F6F8;
+        color: #0F172A;
+        font-family: "Segoe UI";
+        font-size: 10.5pt;
+    }
+
+    QMainWindow::separator { background: transparent; }
+
+    QGroupBox {
+        background: #F8FAFC;
+        border: 1px solid #CBD5E1;
+        border-radius: 10px;
+        margin-top: 10px;
+        padding: 10px;
+    }
+    QGroupBox::title {
+        subcontrol-origin: margin;
+        left: 10px;
+        padding: 0 6px;
+        color: #0F172A;
+        font-weight: 800;
+        background: transparent;
+    }
+
+    QTabWidget::pane {
+        border: 1px solid #CBD5E1;
+        border-radius: 12px;
+        background: #F8FAFC;
+        padding: 6px;
+    }
+    QTabBar::tab {
+        background: #EEF2F7;
+        border: 1px solid #CBD5E1;
+        padding: 8px 12px;
+        margin-right: 6px;
+        border-top-left-radius: 10px;
+        border-top-right-radius: 10px;
+        font-weight: 800;
+        color: #0F172A;
+    }
+    QTabBar::tab:selected {
+        background: #F8FAFC;
+        border-color: #94A3B8;
+    }
+
+    QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {
+        background: #FFFFFF;
+        border: 1px solid #CBD5E1;
+        border-radius: 8px;
+        padding: 0px 6px;
+        min-height: 24px;
+        max-height: 24px;
+        selection-background-color: #2563EB;
+        selection-color: #FFFFFF;
+    }
+    QComboBox::drop-down { border: 0px; width: 24px; }
+
+    QPushButton {
+        background: #E7EEF8;
+        border: 1px solid #94A3B8;
+        border-radius: 10px;
+        padding: 6px 10px;
+        font-weight: 900;
+    }
+    QPushButton:hover { background: #DDE8F7; }
+    QPushButton:pressed { background: #CFDDF3; }
+
+    QToolButton {
+        background: #EEF2F7;
+        border: 1px solid #CBD5E1;
+        border-radius: 10px;
+        padding: 7px 10px;
+        font-weight: 900;
+        color: #0F172A;
+    }
+    QToolButton:hover { background: #E7EEF8; }
+    QToolButton:checked {
+        background: #F8FAFC;
+        border-color: #94A3B8;
+    }
+
+    QCheckBox {
+        spacing: 10px;
+        font-weight: 900;
+        color: #0F172A;
+    }
+    QCheckBox::indicator {
+        width: 18px;
+        height: 18px;
+        border: 2px solid #334155;
+        border-radius: 4px;
+        background: #FFFFFF;
+    }
+    QCheckBox::indicator:checked {
+        background: #2563EB;
+        border: 2px solid #1E40AF;
+    }
+
+    QScrollArea { border: 0px; background: transparent; }
+    QGraphicsView {
+        background: #F8FAFC;
+        border: 1px solid #CBD5E1;
+        border-radius: 12px;
+    }
+    """
+    app.setStyleSheet(qss)

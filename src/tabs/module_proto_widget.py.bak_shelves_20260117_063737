@@ -1,0 +1,712 @@
+﻿from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import List
+
+from PySide6 import QtCore, QtWidgets, QtGui
+
+from widgets.collapsible import CollapsibleSection
+
+
+@dataclass
+class ExtraShelf:
+    y_mm: int
+
+
+class ModuleProtoWidget(QtWidgets.QWidget):
+    """
+    SAFE proto UI based on web mock (NO dependency on core/module_widget logic).
+    Goal now: LEFT PANEL like web (sections + toggles) with stable behavior.
+    """
+    def __init__(self, ctx=None, parent=None):
+        super().__init__(parent)
+        self.ctx = ctx
+        self.extra_shelves: List[ExtraShelf] = []
+
+        self._build_ui()
+        self._fill_demo_data()
+        self._wire()
+        self._recalc()
+
+    # ---- CollapsibleSection compatibility layer ----
+    def _sec_add(self, sec: QtWidgets.QWidget, w: QtWidgets.QWidget) -> None:
+        fn = getattr(sec, "addWidget", None)
+        if callable(fn):
+            try:
+                fn(w)
+                return
+            except Exception:
+                pass
+
+        for name in ("contentLayout", "content_layout", "innerLayout", "bodyLayout", "containerLayout"):
+            lay = getattr(sec, name, None)
+            if isinstance(lay, QtWidgets.QLayout):
+                lay.addWidget(w)
+                return
+
+        for name in ("content", "container", "body", "panel", "frame"):
+            cw = getattr(sec, name, None)
+            if isinstance(cw, QtWidgets.QWidget):
+                lay = cw.layout()
+                if lay is None:
+                    lay = QtWidgets.QVBoxLayout(cw)
+                    lay.setContentsMargins(0, 0, 0, 0)
+                lay.addWidget(w)
+                return
+
+        lay = sec.layout()
+        if lay is None:
+            lay = QtWidgets.QVBoxLayout(sec)
+            lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(w)
+
+    def _build_ui(self):
+        root = QtWidgets.QVBoxLayout(self)
+        root.setContentsMargins(8, 8, 8, 8)
+        root.setSpacing(8)
+
+        # status pill like web OK/ERR
+        top = QtWidgets.QHBoxLayout()
+        top.addStretch(1)
+        self.status = QtWidgets.QLabel("OK")
+        self.status.setAlignment(QtCore.Qt.AlignCenter)
+        self.status.setFixedWidth(60)
+        self.status.setStyleSheet(
+            "QLabel{padding:4px 10px;border-radius:10px;background:#d7ffe1;color:#000;font-weight:700;}"
+        )
+        top.addWidget(self.status)
+        root.addLayout(top)
+
+        self.split = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        root.addWidget(self.split, 1)
+
+        # LEFT WRAP (scroll)
+        leftWrap = QtWidgets.QWidget()
+        leftLay = QtWidgets.QVBoxLayout(leftWrap)
+        leftLay.setContentsMargins(0, 0, 0, 0)
+        leftLay.setSpacing(8)
+
+        # sticky note
+        self.note = QtWidgets.QLabel(
+            "✅ Ліва панель як у web-proto.\n"
+            "✅ Поки що без drag — тільки параметри та стабільний BOM.\n"
+            "✅ Далі маленькими кроками: shelves → mid → fronts → materials → drag."
+        )
+        self.note.setWordWrap(True)
+        self.note.setStyleSheet("QLabel{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:10px;padding:8px;}")
+        leftLay.addWidget(self.note)
+
+        # --- SECTION: Base save/overwrite (UI only) ---
+        self.secBase = CollapsibleSection("Baza: zapis / nadpisz")
+        base = QtWidgets.QWidget()
+        g0 = QtWidgets.QGridLayout(base)
+        g0.setContentsMargins(0, 0, 0, 0)
+        g0.setHorizontalSpacing(10)
+        g0.setVerticalSpacing(8)
+
+        self.moduleGroup = QtWidgets.QComboBox()
+        self.moduleName  = QtWidgets.QLineEdit()
+        self.moduleName.setPlaceholderText("np. Base 600x720")
+
+        self.btnSaveNew = QtWidgets.QPushButton("Zapisz jako NOWY")
+        self.btnOverwrite = QtWidgets.QPushButton("Nadpisz LOADED")
+        self.btnDetach = QtWidgets.QPushButton("Odłącz (nie powiązuj z bazą)")
+        self.btnDetach.setProperty("danger", True)
+
+        self.loadedInfo = QtWidgets.QLabel("Loaded: —")
+        self.loadedInfo.setStyleSheet("color:#6b7280;")
+
+        g0.addWidget(QtWidgets.QLabel("Grupa"), 0, 0); g0.addWidget(self.moduleGroup, 0, 1)
+        g0.addWidget(QtWidgets.QLabel("Nazwa modelu"), 1, 0); g0.addWidget(self.moduleName, 1, 1)
+        g0.addWidget(self.btnSaveNew, 2, 0); g0.addWidget(self.btnOverwrite, 2, 1)
+        g0.addWidget(self.btnDetach, 3, 0, 1, 2)
+        g0.addWidget(self.loadedInfo, 4, 0, 1, 2)
+
+        self._sec_add(self.secBase, base)
+        leftLay.addWidget(self.secBase)
+
+        # --- SECTION: Dimensions + Anchor ---
+        self.secDims = CollapsibleSection("Wymiary + Anchor")
+        dims = QtWidgets.QWidget()
+        g = QtWidgets.QGridLayout(dims)
+        g.setContentsMargins(0, 0, 0, 0)
+        g.setHorizontalSpacing(10)
+        g.setVerticalSpacing(8)
+
+        self.w = QtWidgets.QSpinBox(); self.w.setRange(50, 5000); self.w.setValue(600)
+        self.h = QtWidgets.QSpinBox(); self.h.setRange(50, 5000); self.h.setValue(720)
+        self.d = QtWidgets.QSpinBox(); self.d.setRange(50, 2000); self.d.setValue(560)
+
+        self.anchor = QtWidgets.QComboBox()
+        self.anchor.addItems(["NONE", "LT", "RT", "LB", "RB"])
+
+        self.anchorDX = QtWidgets.QSpinBox(); self.anchorDX.setRange(0, 2000); self.anchorDX.setValue(0)
+        self.anchorDY = QtWidgets.QSpinBox(); self.anchorDY.setRange(0, 2000); self.anchorDY.setValue(0)
+
+        g.addWidget(QtWidgets.QLabel("W (mm)"), 0, 0); g.addWidget(self.w, 0, 1)
+        g.addWidget(QtWidgets.QLabel("H (mm)"), 1, 0); g.addWidget(self.h, 1, 1)
+        g.addWidget(QtWidgets.QLabel("D (mm)"), 2, 0); g.addWidget(self.d, 2, 1)
+        g.addWidget(QtWidgets.QLabel("Anchor"), 3, 0); g.addWidget(self.anchor, 3, 1)
+        g.addWidget(QtWidgets.QLabel("Offset X (mm)"), 4, 0); g.addWidget(self.anchorDX, 4, 1)
+        g.addWidget(QtWidgets.QLabel("Offset Y (mm)"), 5, 0); g.addWidget(self.anchorDY, 5, 1)
+
+        self._sec_add(self.secDims, dims)
+        leftLay.addWidget(self.secDims)
+
+        # --- SECTION: Offsets ---
+        self.secPos = CollapsibleSection("Przesunięcia elementów (offset)")
+        pos = QtWidgets.QWidget()
+        g2 = QtWidgets.QGridLayout(pos)
+        g2.setContentsMargins(0, 0, 0, 0)
+        g2.setHorizontalSpacing(10)
+        g2.setVerticalSpacing(8)
+
+        self.posL = QtWidgets.QSpinBox(); self.posL.setRange(0, 2000); self.posL.setValue(0)
+        self.posR = QtWidgets.QSpinBox(); self.posR.setRange(0, 2000); self.posR.setValue(0)
+        self.posT = QtWidgets.QSpinBox(); self.posT.setRange(0, 2000); self.posT.setValue(0)
+        self.posB = QtWidgets.QSpinBox(); self.posB.setRange(0, 2000); self.posB.setValue(0)
+
+        self.btnZero = QtWidgets.QPushButton("Zeruj")
+        self.btnLR = QtWidgets.QPushButton("L = R")
+        self.btnTB = QtWidgets.QPushButton("T = B")
+
+        self.sideMode = QtWidgets.QComboBox()
+        self.sideMode.addItems(["Boki pełne", "Boki między wieńcami"])
+
+        g2.addWidget(QtWidgets.QLabel("Left (mm)"), 0, 0);   g2.addWidget(self.posL, 0, 1)
+        g2.addWidget(QtWidgets.QLabel("Right (mm)"), 1, 0);  g2.addWidget(self.posR, 1, 1)
+        g2.addWidget(QtWidgets.QLabel("Top (mm)"), 2, 0);    g2.addWidget(self.posT, 2, 1)
+        g2.addWidget(QtWidgets.QLabel("Bottom (mm)"), 3, 0); g2.addWidget(self.posB, 3, 1)
+        g2.addWidget(self.btnZero, 4, 0); g2.addWidget(self.btnLR, 4, 1)
+        g2.addWidget(self.btnTB, 5, 0);   g2.addWidget(self.sideMode, 5, 1)
+
+        self._sec_add(self.secPos, pos)
+        leftLay.addWidget(self.secPos)
+
+        # --- SECTION: Elements ---
+        self.secElems = CollapsibleSection("Elementy (włącz/wyłącz)")
+        elems = QtWidgets.QWidget()
+        vE = QtWidgets.QVBoxLayout(elems)
+        vE.setContentsMargins(0, 0, 0, 0)
+        vE.setSpacing(6)
+
+        def cb(text, checked=True):
+            c = QtWidgets.QCheckBox(text)
+            c.setChecked(checked)
+            return c
+
+        self.hasLeft = cb("Bok lewy", True)
+        self.hasRight = cb("Bok prawy", True)
+        self.hasTop = cb("Wieniec górny", True)
+        self.hasBottom = cb("Wieniec dolny", True)
+        self.hasBack = cb("Plecy", True)
+        self.hasFront = cb("Front", False)
+
+        vE.addWidget(self.hasLeft)
+        vE.addWidget(self.hasRight)
+        vE.addWidget(self.hasTop)
+        vE.addWidget(self.hasBottom)
+        vE.addSpacing(4)
+        vE.addWidget(self.hasBack)
+        vE.addWidget(self.hasFront)
+
+        self._sec_add(self.secElems, elems)
+        leftLay.addWidget(self.secElems)
+
+        # --- SECTION: Mid panels ---
+        self.secMid = CollapsibleSection("Piony środkowe (proto)")
+        mid = QtWidgets.QWidget()
+        vM = QtWidgets.QVBoxLayout(mid)
+        vM.setContentsMargins(0, 0, 0, 0)
+        vM.setSpacing(8)
+
+        self.midEnabled = QtWidgets.QCheckBox("Pion #1 (midA)")
+        self.midWrap = QtWidgets.QWidget()
+        gM1 = QtWidgets.QGridLayout(self.midWrap)
+        gM1.setContentsMargins(0, 0, 0, 0)
+        gM1.setHorizontalSpacing(10)
+        gM1.setVerticalSpacing(8)
+
+        self.midX = QtWidgets.QSpinBox(); self.midX.setRange(1, 5000); self.midX.setValue(300)
+        self.midMat = QtWidgets.QComboBox()
+        self.midOffT = QtWidgets.QSpinBox(); self.midOffT.setRange(0, 2000); self.midOffT.setValue(0)
+        self.midOffB = QtWidgets.QSpinBox(); self.midOffB.setRange(0, 2000); self.midOffB.setValue(0)
+
+        gM1.addWidget(QtWidgets.QLabel("X (mm)"), 0, 0); gM1.addWidget(self.midX, 0, 1)
+        gM1.addWidget(QtWidgets.QLabel("Materiał"), 1, 0); gM1.addWidget(self.midMat, 1, 1)
+        gM1.addWidget(QtWidgets.QLabel("Offset góra (mm)"), 2, 0); gM1.addWidget(self.midOffT, 2, 1)
+        gM1.addWidget(QtWidgets.QLabel("Offset dół (mm)"), 3, 0); gM1.addWidget(self.midOffB, 3, 1)
+        self.midWrap.setVisible(False)
+
+        line = QtWidgets.QFrame()
+        line.setFrameShape(QtWidgets.QFrame.HLine)
+        line.setStyleSheet("color:#e5e7eb;")
+
+        self.mid2Enabled = QtWidgets.QCheckBox("Pion #2 (midB)")
+        self.mid2Wrap = QtWidgets.QWidget()
+        gM2 = QtWidgets.QGridLayout(self.mid2Wrap)
+        gM2.setContentsMargins(0, 0, 0, 0)
+        gM2.setHorizontalSpacing(10)
+        gM2.setVerticalSpacing(8)
+
+        self.mid2X = QtWidgets.QSpinBox(); self.mid2X.setRange(1, 5000); self.mid2X.setValue(420)
+        self.mid2Mat = QtWidgets.QComboBox()
+        self.mid2OffT = QtWidgets.QSpinBox(); self.mid2OffT.setRange(0, 2000); self.mid2OffT.setValue(0)
+        self.mid2OffB = QtWidgets.QSpinBox(); self.mid2OffB.setRange(0, 2000); self.mid2OffB.setValue(0)
+
+        gM2.addWidget(QtWidgets.QLabel("X2 (mm)"), 0, 0); gM2.addWidget(self.mid2X, 0, 1)
+        gM2.addWidget(QtWidgets.QLabel("Materiał"), 1, 0); gM2.addWidget(self.mid2Mat, 1, 1)
+        gM2.addWidget(QtWidgets.QLabel("Offset2 góra (mm)"), 2, 0); gM2.addWidget(self.mid2OffT, 2, 1)
+        gM2.addWidget(QtWidgets.QLabel("Offset2 dół (mm)"), 3, 0); gM2.addWidget(self.mid2OffB, 3, 1)
+        self.mid2Wrap.setVisible(False)
+
+        vM.addWidget(self.midEnabled)
+        vM.addWidget(self.midWrap)
+        vM.addWidget(line)
+        vM.addWidget(self.mid2Enabled)
+        vM.addWidget(self.mid2Wrap)
+
+        hint = QtWidgets.QLabel("Półki (segmenty) — наступний крок: вибір сегмента + drag.")
+        hint.setStyleSheet("color:#6b7280;")
+        hint.setWordWrap(True)
+        vM.addWidget(hint)
+
+        self._sec_add(self.secMid, mid)
+        leftLay.addWidget(self.secMid)
+
+        # --- SECTION: Shelves ---
+        self.secShelves = CollapsibleSection("Półki (auto + extra, proto)")
+        shelves = QtWidgets.QWidget()
+        vS = QtWidgets.QVBoxLayout(shelves)
+        vS.setContentsMargins(0, 0, 0, 0)
+        vS.setSpacing(8)
+
+        rowS = QtWidgets.QHBoxLayout()
+        rowS.addWidget(QtWidgets.QLabel("Ilość półek (auto)"))
+        self.autoShelfCount = QtWidgets.QSpinBox(); self.autoShelfCount.setRange(0, 12); self.autoShelfCount.setValue(1)
+        rowS.addWidget(self.autoShelfCount, 0)
+        rowS.addStretch(1)
+        self.btnShelvesEqual = QtWidgets.QPushButton("Równo")
+        self.btnShelvesClear = QtWidgets.QPushButton("0")
+        self.btnShelvesClear.setProperty("danger", True)
+        rowS.addWidget(self.btnShelvesEqual)
+        rowS.addWidget(self.btnShelvesClear)
+        vS.addLayout(rowS)
+
+        self.shelfListWrap = QtWidgets.QWidget()
+        self.shelfListLay = QtWidgets.QVBoxLayout(self.shelfListWrap)
+        self.shelfListLay.setContentsMargins(0, 0, 0, 0)
+        self.shelfListLay.setSpacing(6)
+        vS.addWidget(self.shelfListWrap)
+
+        hr2 = QtWidgets.QFrame()
+        hr2.setFrameShape(QtWidgets.QFrame.HLine)
+        hr2.setStyleSheet("color:#e5e7eb;")
+        vS.addWidget(hr2)
+
+        vS.addWidget(QtWidgets.QLabel("Dodatkowe półki"))
+
+        rowE = QtWidgets.QHBoxLayout()
+        rowE.addWidget(QtWidgets.QLabel("Wysokość od dołu (mm)"))
+        self.extraShelfY = QtWidgets.QSpinBox(); self.extraShelfY.setRange(1, 5000); self.extraShelfY.setValue(150)
+        rowE.addWidget(self.extraShelfY)
+        self.btnAddExtraShelf = QtWidgets.QPushButton("+ Dodaj")
+        rowE.addWidget(self.btnAddExtraShelf)
+        vS.addLayout(rowE)
+
+        self.extraList = QtWidgets.QListWidget()
+        self.extraList.setMinimumHeight(70)
+        vS.addWidget(self.extraList)
+
+        self.btnRemoveExtra = QtWidgets.QPushButton("Usuń wybraną")
+        vS.addWidget(self.btnRemoveExtra)
+
+        self._sec_add(self.secShelves, shelves)
+        leftLay.addWidget(self.secShelves)
+
+        # --- SECTION: Back ---
+        self.secBack = CollapsibleSection("Plecy")
+        back = QtWidgets.QWidget()
+        gB = QtWidgets.QGridLayout(back)
+        gB.setContentsMargins(0, 0, 0, 0)
+        gB.setHorizontalSpacing(10)
+        gB.setVerticalSpacing(8)
+
+        self.backEnabled = QtWidgets.QComboBox(); self.backEnabled.addItems(["Tak", "Nie"])
+        self.backMat = QtWidgets.QComboBox()
+
+        gB.addWidget(QtWidgets.QLabel("Jest?"), 0, 0); gB.addWidget(self.backEnabled, 0, 1)
+        gB.addWidget(QtWidgets.QLabel("Materiał"), 1, 0); gB.addWidget(self.backMat, 1, 1)
+
+        self._sec_add(self.secBack, back)
+        leftLay.addWidget(self.secBack)
+
+        # --- SECTION: Fronts / Drawers ---
+        self.secFront = CollapsibleSection("Fronty / Szuflady (proto)")
+        front = QtWidgets.QWidget()
+        vF = QtWidgets.QVBoxLayout(front)
+        vF.setContentsMargins(0, 0, 0, 0)
+        vF.setSpacing(8)
+
+        gF1 = QtWidgets.QGridLayout()
+        gF1.setHorizontalSpacing(10)
+        gF1.setVerticalSpacing(8)
+
+        self.frontInset = QtWidgets.QSpinBox(); self.frontInset.setRange(0, 50); self.frontInset.setValue(2)
+        self.frontMode = QtWidgets.QComboBox(); self.frontMode.addItems(["Brak", "Drzwi", "Szuflady"])
+        self.frontCount = QtWidgets.QSpinBox(); self.frontCount.setRange(0, 12); self.frontCount.setValue(0)
+        self.frontMat = QtWidgets.QComboBox()
+        self.frontGap = QtWidgets.QSpinBox(); self.frontGap.setRange(0, 20); self.frontGap.setValue(2)
+        self.frontHeightMode = QtWidgets.QComboBox()
+        self.frontHeightMode.addItems(["Do wieńców (światło)", "Na całą wysokość korpusu", "Do podłogi (na nóżkach)"])
+        self.frontHeightMode.setCurrentIndex(1)
+
+        gF1.addWidget(QtWidgets.QLabel("Front: odstęp od boków (mm)"), 0, 0); gF1.addWidget(self.frontInset, 0, 1)
+        gF1.addWidget(QtWidgets.QLabel("Tryb"), 1, 0); gF1.addWidget(self.frontMode, 1, 1)
+        gF1.addWidget(QtWidgets.QLabel("Ilość"), 2, 0); gF1.addWidget(self.frontCount, 2, 1)
+        gF1.addWidget(QtWidgets.QLabel("Materiał frontu"), 3, 0); gF1.addWidget(self.frontMat, 3, 1)
+        gF1.addWidget(QtWidgets.QLabel("Gap (mm)"), 4, 0); gF1.addWidget(self.frontGap, 4, 1)
+        gF1.addWidget(QtWidgets.QLabel("Wysokość frontu"), 5, 0); gF1.addWidget(self.frontHeightMode, 5, 1)
+
+        vF.addLayout(gF1)
+
+        self.cornerFront = QtWidgets.QCheckBox("Corner front panel (MVP)")
+        vF.addWidget(self.cornerFront)
+
+        self.drawerRow = QtWidgets.QWidget()
+        gDr = QtWidgets.QGridLayout(self.drawerRow)
+        gDr.setContentsMargins(0, 0, 0, 0)
+        gDr.setHorizontalSpacing(10)
+        gDr.setVerticalSpacing(8)
+
+        self.drawerSystem = QtWidgets.QComboBox()
+        self.drawerSystem.addItems(["Blum — Antaro", "Blum — MerivoBox", "Blum — TandemBox (drewniana)"])
+        self.drawerHeights = QtWidgets.QLineEdit()
+        self.drawerHeights.setPlaceholderText("np. 150,320,320")
+
+        gDr.addWidget(QtWidgets.QLabel("System"), 0, 0); gDr.addWidget(self.drawerSystem, 0, 1)
+        gDr.addWidget(QtWidgets.QLabel("Wysokości frontów (opcjonalnie)"), 1, 0); gDr.addWidget(self.drawerHeights, 1, 1)
+
+        self.drawerRow.setVisible(False)
+        vF.addWidget(self.drawerRow)
+
+        self._sec_add(self.secFront, front)
+        leftLay.addWidget(self.secFront)
+
+        # --- SECTION: Hardware / drawer materials ---
+        self.secHardware = CollapsibleSection("Furnitura + materiały szuflad (proto)")
+        hw = QtWidgets.QWidget()
+        vH = QtWidgets.QVBoxLayout(hw)
+        vH.setContentsMargins(0, 0, 0, 0)
+        vH.setSpacing(8)
+
+        gH1 = QtWidgets.QGridLayout()
+        gH1.setHorizontalSpacing(10)
+        gH1.setVerticalSpacing(8)
+
+        self.hingeType = QtWidgets.QComboBox()
+        self.runnerType = QtWidgets.QComboBox()
+        self.mountType = QtWidgets.QComboBox(); self.mountType.addItems(["—", "Nóżki", "Zawieszki"]); self.mountType.setCurrentIndex(1)
+        self.mountCount = QtWidgets.QSpinBox(); self.mountCount.setRange(0, 20); self.mountCount.setValue(4)
+        self.legsH = QtWidgets.QSpinBox(); self.legsH.setRange(0, 300); self.legsH.setValue(100)
+
+        gH1.addWidget(QtWidgets.QLabel("Zawiasy"), 0, 0); gH1.addWidget(self.hingeType, 0, 1)
+        gH1.addWidget(QtWidgets.QLabel("Prowadnice"), 1, 0); gH1.addWidget(self.runnerType, 1, 1)
+        gH1.addWidget(QtWidgets.QLabel("Montaż"), 2, 0); gH1.addWidget(self.mountType, 2, 1)
+        gH1.addWidget(QtWidgets.QLabel("Ilość"), 3, 0); gH1.addWidget(self.mountCount, 3, 1)
+        gH1.addWidget(QtWidgets.QLabel("Wysokość nóżek (mm)"), 4, 0); gH1.addWidget(self.legsH, 4, 1)
+
+        vH.addLayout(gH1)
+
+        self.drawerEstimate = QtWidgets.QCheckBox("Szacuj materiały skrzynki szuflady")
+        self.drawerEstimate.setChecked(True)
+        vH.addWidget(self.drawerEstimate)
+
+        self.drawerMatWrap = QtWidgets.QWidget()
+        gH2 = QtWidgets.QGridLayout(self.drawerMatWrap)
+        gH2.setContentsMargins(0, 0, 0, 0)
+        gH2.setHorizontalSpacing(10)
+        gH2.setVerticalSpacing(8)
+
+        self.drawerBottomMat = QtWidgets.QComboBox()
+        self.drawerBackMat = QtWidgets.QComboBox()
+        self.drawerWoodMat = QtWidgets.QComboBox()
+        self.drawerClear = QtWidgets.QSpinBox(); self.drawerClear.setRange(0, 100); self.drawerClear.setValue(40)
+
+        gH2.addWidget(QtWidgets.QLabel("Materiał dna"), 0, 0); gH2.addWidget(self.drawerBottomMat, 0, 1)
+        gH2.addWidget(QtWidgets.QLabel("Materiał tyłu"), 1, 0); gH2.addWidget(self.drawerBackMat, 1, 1)
+        gH2.addWidget(QtWidgets.QLabel("Drewno (TandemBox)"), 2, 0); gH2.addWidget(self.drawerWoodMat, 2, 1)
+        gH2.addWidget(QtWidgets.QLabel("Luz (mm)"), 3, 0); gH2.addWidget(self.drawerClear, 3, 1)
+
+        vH.addWidget(self.drawerMatWrap)
+
+        self._sec_add(self.secHardware, hw)
+        leftLay.addWidget(self.secHardware)
+
+        # --- SECTION: Details ---
+        self.secDetails = CollapsibleSection("Detale (lista)")
+        det = QtWidgets.QWidget()
+        vD = QtWidgets.QVBoxLayout(det)
+        vD.setContentsMargins(0, 0, 0, 0)
+        self.parts = QtWidgets.QPlainTextEdit()
+        self.parts.setReadOnly(True)
+        self.parts.setMinimumHeight(90)
+        vD.addWidget(self.parts)
+        self._sec_add(self.secDetails, det)
+        leftLay.addWidget(self.secDetails)
+
+        leftLay.addStretch(1)
+
+        leftScroll = QtWidgets.QScrollArea()
+        leftScroll.setWidgetResizable(True)
+        leftScroll.setWidget(leftWrap)
+
+        # CENTER (view)
+        center = QtWidgets.QWidget()
+        cLay = QtWidgets.QVBoxLayout(center)
+        cLay.setContentsMargins(0, 0, 0, 0)
+        title = QtWidgets.QLabel("Widok (proto)")
+        title.setStyleSheet("font-weight:800;")
+        cLay.addWidget(title)
+
+        self.scene = QtWidgets.QGraphicsScene(self)
+        self.view = QtWidgets.QGraphicsView(self.scene)
+        self.view.setRenderHint(QtGui.QPainter.Antialiasing, True)
+        cLay.addWidget(self.view, 1)
+
+        # RIGHT (BOM)
+        right = QtWidgets.QWidget()
+        rLay = QtWidgets.QVBoxLayout(right)
+        rLay.setContentsMargins(0, 0, 0, 0)
+        rTitle = QtWidgets.QLabel("BOM (proto)")
+        rTitle.setStyleSheet("font-weight:800;")
+        self.bom = QtWidgets.QPlainTextEdit()
+        self.bom.setReadOnly(True)
+        rLay.addWidget(rTitle)
+        rLay.addWidget(self.bom, 1)
+
+        self.split.addWidget(leftScroll)
+        self.split.addWidget(center)
+        self.split.addWidget(right)
+        self.split.setStretchFactor(0, 0)
+        self.split.setStretchFactor(1, 1)
+        self.split.setStretchFactor(2, 0)
+        self.split.setSizes([360, 700, 320])
+
+    def _fill_demo_data(self):
+        # demo items; later we wire to real library
+        self.moduleGroup.clear()
+        self.moduleGroup.addItems(["Base", "Góra", "Słupek", "Custom"])
+
+        mats = ["Płyta 18", "Płyta 16", "MDF 18", "Sklejka 15"]
+        for cb in (self.midMat, self.mid2Mat, self.backMat, self.frontMat, self.drawerBottomMat, self.drawerBackMat, self.drawerWoodMat):
+            cb.clear()
+            cb.addItems(["—"] + mats)
+
+        self.hingeType.clear()
+        self.hingeType.addItems(["—", "Blum ClipTop", "Hettich Sensys"])
+        self.runnerType.clear()
+        self.runnerType.addItems(["—", "Blum Tandem", "Blum Movento", "Hettich Quadro"])
+
+    def _wire(self):
+        # live update -> recalc
+        spin_widgets = [
+            self.w, self.h, self.d,
+            self.anchorDX, self.anchorDY,
+            self.posL, self.posR, self.posT, self.posB,
+            self.midX, self.midOffT, self.midOffB,
+            self.mid2X, self.mid2OffT, self.mid2OffB,
+            self.autoShelfCount, self.extraShelfY,
+            self.frontInset, self.frontCount, self.frontGap,
+            self.mountCount, self.legsH, self.drawerClear
+        ]
+        for sp in spin_widgets:
+            sp.valueChanged.connect(self._recalc)
+
+        combo_widgets = [
+            self.anchor, self.sideMode,
+            self.moduleGroup, self.backEnabled, self.backMat,
+            self.frontMode, self.frontMat, self.frontHeightMode,
+            self.drawerSystem, self.hingeType, self.runnerType, self.mountType,
+            self.drawerBottomMat, self.drawerBackMat, self.drawerWoodMat,
+            self.midMat, self.mid2Mat
+        ]
+        for cb in combo_widgets:
+            cb.currentIndexChanged.connect(self._recalc)
+
+        check_widgets = [
+            self.hasLeft, self.hasRight, self.hasTop, self.hasBottom, self.hasBack, self.hasFront,
+            self.midEnabled, self.mid2Enabled, self.cornerFront, self.drawerEstimate
+        ]
+        for c in check_widgets:
+            c.stateChanged.connect(self._recalc)
+
+        self.moduleName.textChanged.connect(self._recalc)
+        self.drawerHeights.textChanged.connect(self._recalc)
+
+        # buttons
+        self.btnZero.clicked.connect(self._zero)
+        self.btnLR.clicked.connect(self._lr_same)
+        self.btnTB.clicked.connect(self._tb_same)
+        self.btnShelvesClear.clicked.connect(self._shelves_clear)
+        self.btnShelvesEqual.clicked.connect(self._shelves_equal)
+        self.btnAddExtraShelf.clicked.connect(self._add_extra_shelf)
+        self.btnRemoveExtra.clicked.connect(self._remove_extra_shelf)
+
+        # show/hide wrappers
+        self.midEnabled.toggled.connect(self.midWrap.setVisible)
+        self.mid2Enabled.toggled.connect(self.mid2Wrap.setVisible)
+
+    def _zero(self):
+        self.posL.setValue(0); self.posR.setValue(0); self.posT.setValue(0); self.posB.setValue(0)
+
+    def _lr_same(self):
+        self.posR.setValue(self.posL.value())
+
+    def _tb_same(self):
+        self.posB.setValue(self.posT.value())
+
+    def _shelves_clear(self):
+        self.autoShelfCount.setValue(0)
+
+    def _shelves_equal(self):
+        # set equal positions for existing shelf spinboxes (simple)
+        spins = self.shelfListWrap.findChildren(QtWidgets.QSpinBox)
+        if not spins:
+            return
+        H = self.h.value()
+        T = self.posT.value()
+        B = self.posB.value()
+        opening = max(1, H - T - B)
+        n = len(spins)
+        for i, sp in enumerate(spins, start=1):
+            sp.blockSignals(True)
+            sp.setValue(int(i * opening / (n + 1)))
+            sp.blockSignals(False)
+        self._recalc()
+
+    def _add_extra_shelf(self):
+        y = int(self.extraShelfY.value())
+        self.extra_shelves.append(ExtraShelf(y_mm=y))
+        self._refresh_extra_list()
+        self._recalc()
+
+    def _remove_extra_shelf(self):
+        row = self.extraList.currentRow()
+        if row >= 0 and row < len(self.extra_shelves):
+            self.extra_shelves.pop(row)
+            self._refresh_extra_list()
+            self._recalc()
+
+    def _refresh_extra_list(self):
+        self.extraList.clear()
+        for s in self.extra_shelves:
+            self.extraList.addItem(f"Extra shelf @ {s.y_mm} mm")
+
+    def _rebuild_shelves_ui(self):
+        # clear
+        while self.shelfListLay.count():
+            it = self.shelfListLay.takeAt(0)
+            w = it.widget()
+            if w:
+                w.deleteLater()
+
+        n = int(self.autoShelfCount.value())
+        if n <= 0:
+            lab = QtWidgets.QLabel("— brak półek auto —")
+            lab.setStyleSheet("color:#6b7280;")
+            self.shelfListLay.addWidget(lab)
+            return
+
+        # default equal
+        H = self.h.value()
+        T = self.posT.value()
+        B = self.posB.value()
+        opening = max(1, H - T - B)
+
+        for i in range(1, n + 1):
+            row = QtWidgets.QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(8)
+            lab = QtWidgets.QLabel(f"Półka #{i} (mm od dołu)")
+            sp = QtWidgets.QSpinBox()
+            sp.setRange(1, 5000)
+            sp.setValue(int(i * opening / (n + 1)))
+            sp.valueChanged.connect(self._recalc)
+            row.addWidget(lab, 1)
+            row.addWidget(sp, 0)
+            w = QtWidgets.QWidget()
+            w.setLayout(row)
+            self.shelfListLay.addWidget(w)
+
+    def _set_ok(self, ok: bool, msg: str = "OK"):
+        if ok:
+            self.status.setText("OK")
+            self.status.setStyleSheet(
+                "QLabel{padding:4px 10px;border-radius:10px;background:#d7ffe1;color:#000;font-weight:700;}"
+            )
+        else:
+            self.status.setText("ERR")
+            self.status.setStyleSheet(
+                "QLabel{padding:4px 10px;border-radius:10px;background:#ffd6d6;color:#000;font-weight:700;}"
+            )
+            self.bom.setPlainText(msg)
+
+    def _recalc(self):
+        try:
+            # show drawer row only if mode=drawers
+            mode = self.frontMode.currentText()
+            is_drawers = (mode.lower().startswith("szuf"))
+            self.drawerRow.setVisible(is_drawers)
+            self.drawerMatWrap.setVisible(bool(self.drawerEstimate.isChecked()))
+
+            # shelves UI rebuild (cheap enough)
+            self._rebuild_shelves_ui()
+            self._refresh_extra_list()
+
+            W, H, D = self.w.value(), self.h.value(), self.d.value()
+            L, R, T, B = self.posL.value(), self.posR.value(), self.posT.value(), self.posB.value()
+
+            # view: simple opening rect
+            self.scene.clear()
+            scale = 0.60
+            ow = max(1, (W - L - R)) * scale
+            oh = max(1, (H - T - B)) * scale
+            rect = QtCore.QRectF(0, 0, ow, oh)
+            self.scene.addRect(rect, QtGui.QPen(QtGui.QColor(40, 40, 40), 2))
+            self.scene.setSceneRect(rect.adjusted(-20, -20, 20, 20))
+
+            # details (proto)
+            parts_txt = []
+            parts_txt.append("PROTO parts list (dummy):")
+            parts_txt.append(f"- carcass opening: {max(1,W-L-R)} x {max(1,H-T-B)}")
+            parts_txt.append(f"- elements: L={self.hasLeft.isChecked()} R={self.hasRight.isChecked()} T={self.hasTop.isChecked()} B={self.hasBottom.isChecked()}")
+            parts_txt.append(f"- back={self.hasBack.isChecked()} front={self.hasFront.isChecked()}")
+            self.parts.setPlainText("\n".join(parts_txt))
+
+            # BOM (proto summary)
+            bom = []
+            bom.append(f"Group/Name: {self.moduleGroup.currentText()} / {self.moduleName.text().strip() or '—'}")
+            bom.append(f"W/H/D: {W} / {H} / {D}")
+            bom.append(f"Offsets L/R/T/B: {L} / {R} / {T} / {B}    mode: {self.sideMode.currentText()}")
+            bom.append(f"Anchor: {self.anchor.currentText()}  dx/dy: {self.anchorDX.value()} / {self.anchorDY.value()}")
+            bom.append("")
+            bom.append("Elements:")
+            bom.append(f"  Left:{self.hasLeft.isChecked()} Right:{self.hasRight.isChecked()} Top:{self.hasTop.isChecked()} Bottom:{self.hasBottom.isChecked()}")
+            bom.append(f"  Back:{self.hasBack.isChecked()} (enabled={self.backEnabled.currentText()} mat={self.backMat.currentText()})")
+            bom.append(f"  Front:{self.hasFront.isChecked()} (mode={self.frontMode.currentText()} count={self.frontCount.value()} mat={self.frontMat.currentText()})")
+            bom.append("")
+            bom.append("Mid panels:")
+            bom.append(f"  midA: {self.midEnabled.isChecked()} x={self.midX.value()} mat={self.midMat.currentText()}")
+            bom.append(f"  midB: {self.mid2Enabled.isChecked()} x={self.mid2X.value()} mat={self.mid2Mat.currentText()}")
+            bom.append("")
+            bom.append(f"Shelves auto: {self.autoShelfCount.value()} | extra: {len(self.extra_shelves)}")
+            bom.append("")
+            bom.append("NEXT: зробимо drag та “віконечко” для редагування як у вебі, але по 1 фічі.")
+
+            self.bom.setPlainText("\n".join(bom))
+            self._set_ok(True)
+
+        except Exception:
+            import traceback
+            self._set_ok(False, traceback.format_exc())

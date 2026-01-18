@@ -1,0 +1,53 @@
+﻿from __future__ import annotations
+from PySide6 import QtCore, QtWidgets
+
+class ProjectTreePanel(QtWidgets.QWidget):
+    """
+    Shared Project Tree component (placeholder v1).
+    Later: connect to real projects DB and selection->details views.
+    """
+    def __init__(self, ctx=None, parent=None):
+        super().__init__(parent)
+        self.ctx = ctx
+
+        self.ed = QtWidgets.QLineEdit()
+        self.ed.setPlaceholderText("Project Tree search (TODO)...")
+
+        self.tree = QtWidgets.QTreeWidget()
+        self.tree.setHeaderHidden(True)
+        root = QtWidgets.QTreeWidgetItem(["Projects (TODO)"])
+        root.addChild(QtWidgets.QTreeWidgetItem(["Example: P01"]))
+        root.addChild(QtWidgets.QTreeWidgetItem(["Example: P02"]))
+        self.tree.addTopLevelItem(root)
+        root.setExpanded(True)
+
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.addWidget(self.ed)
+        lay.addWidget(self.tree, 1)
+
+def wrap_with_project_tree(widget: QtWidgets.QWidget, ctx=None) -> QtWidgets.QWidget:
+    """
+    Wraps any tab content with a left Project Tree panel + right content.
+    Returned container exposes:
+      - container.inner_widget = original widget
+      - container.tree_panel  = ProjectTreePanel
+    """
+    container = QtWidgets.QWidget()
+    container.inner_widget = widget
+
+    splitter = QtWidgets.QSplitter()
+    splitter.setOrientation(QtCore.Qt.Horizontal)
+
+    tree = ProjectTreePanel(ctx)
+    container.tree_panel = tree
+
+    splitter.addWidget(tree)
+    splitter.addWidget(widget)
+    splitter.setStretchFactor(0, 0)
+    splitter.setStretchFactor(1, 1)
+    splitter.setSizes([260, 900])
+
+    lay = QtWidgets.QVBoxLayout(container)
+    lay.setContentsMargins(0, 0, 0, 0)
+    lay.addWidget(splitter)
+    return container

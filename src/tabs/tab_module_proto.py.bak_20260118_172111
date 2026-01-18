@@ -1,0 +1,15 @@
+﻿from __future__ import annotations
+
+from PySide6 import QtWidgets
+from .base import BaseTab
+from .module_proto_widget_v2 import ModuleProtoWidget
+class Tab(BaseTab):
+    TAB_TITLE_PL = "Moduł (proto)"
+    tab_title = "Moduł (proto)"
+    tab_id = "module_proto"
+
+    def __init__(self, ctx=None, parent=None):
+        super().__init__(ctx=ctx, parent=parent)
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(ModuleProtoWidget(ctx=ctx, parent=self))

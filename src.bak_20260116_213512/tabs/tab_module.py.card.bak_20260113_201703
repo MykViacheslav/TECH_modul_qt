@@ -1,0 +1,168 @@
+﻿from __future__ import annotations
+
+from typing import Any, Dict, Iterable, List, Optional
+
+from PySide6.QtWidgets import QVBoxLayout, QWidget, QLabel, QComboBox
+from PySide6 import QtCore
+
+from .base import BaseTab
+
+# Auto-detected module entry:
+from main import MainWindow as ModuleWidget
+
+
+def _safe_names(items: Iterable[object], attr: str = "name") -> List[str]:
+    out: List[str] = []
+    for it in items:
+        try:
+            v = getattr(it, attr, None)
+            if v:
+                out.append(str(v))
+        except Exception:
+            continue
+    return out
+
+
+def _looks_like_material_cb(cb: QComboBox) -> bool:
+    n = (cb.objectName() or "").lower()
+    if "material" in n or "płyta" in n or "plyta" in n:
+        return True
+    return False
+
+
+def _looks_like_edge_cb(cb: QComboBox) -> bool:
+    n = (cb.objectName() or "").lower()
+    if "edge" in n or "kraw" in n or "oklein" in n:
+        return True
+    return False
+
+
+def _looks_like_fitting_cb(cb: QComboBox) -> bool:
+    n = (cb.objectName() or "").lower()
+    if "fitting" in n or "okuc" in n or "hinge" in n or "handle" in n or "uchw" in n:
+        return True
+    return False
+
+
+def _should_autofill(cb: QComboBox) -> bool:
+    # nie nadpisujemy, jeśli użytkownik/autor modułu już wypełnił listy
+    if cb.count() >= 2:
+        return False
+    if cb.count() == 1:
+        t = (cb.itemText(0) or "").strip().lower()
+        # typowe placeholdery
+        if t in ("", "-", "—", "--", "wybierz", "select", "choose", "none", "brak"):
+            return True
+        # jeśli jest jedna realna pozycja - nie ruszamy
+        return False
+    return True
+
+
+def _fill_combo(cb: QComboBox, items: List[str], placeholder: str = "— wybierz —") -> None:
+    if not items:
+        return
+    cb.blockSignals(True)
+    try:
+        cb.clear()
+        cb.addItem(placeholder)
+        for it in items:
+            cb.addItem(it)
+    finally:
+        cb.blockSignals(False)
+
+
+class Tab(BaseTab):
+    TAB_KEY = "module"
+    TAB_TITLE_PL = "Moduł"
+
+    def __init__(self, ctx, parent=None) -> None:
+        super().__init__(ctx, parent)
+        layout = QVBoxLayout(self)
+
+        # 1) Twój istniejący Moduł
+        obj = ModuleWidget()
+
+        cw = None
+        if hasattr(obj, "centralWidget"):
+            try:
+                cw = obj.centralWidget()
+            except Exception:
+                cw = None
+
+        if isinstance(cw, QWidget):
+            self._root_widget = cw
+            layout.addWidget(cw)
+        elif isinstance(obj, QWidget):
+            self._root_widget = obj
+            layout.addWidget(obj)
+        else:
+            self._root_widget = self
+            layout.addWidget(QLabel("Nie udało się osadzić modułu jako QWidget (nietypowa klasa)."))
+
+        # 2) Podpięcie katalogów do comboboxów (bez logiki)
+        self._apply_catalogs_to_module()
+
+        # 3) Jeśli jest event bus i sygnał data_changed -> odśwież po zmianach "catalogs"
+        bus = getattr(self.ctx, "bus", None)
+        sig = getattr(bus, "data_changed", None)
+        if sig is not None and hasattr(sig, "connect"):
+            try:
+                sig.connect(self._on_data_changed)
+            except Exception:
+                pass
+
+    @QtCore.Slot(object)
+    def _on_data_changed(self, key: object) -> None:
+        # w różnych wersjach key może być str lub coś innego
+        try:
+            if str(key) == "catalogs":
+                self._apply_catalogs_to_module()
+        except Exception:
+            pass
+
+    def _apply_catalogs_to_module(self) -> None:
+        catalogs = getattr(self.ctx, "catalogs", None)
+        if catalogs is None:
+            return
+
+        # Pobierz nazwy (jeśli metody istnieją)
+        mats: List[str] = []
+        edges: List[str] = []
+        fits: List[str] = []
+
+        try:
+            mats = _safe_names(catalogs.get_materials())
+        except Exception:
+            pass
+        try:
+            edges = _safe_names(catalogs.get_edges())
+        except Exception:
+            pass
+        try:
+            fits = _safe_names(catalogs.get_fittings())
+        except Exception:
+            pass
+
+        # Znajdź comboboxy w module i wypełnij tylko te, które wyglądają na odpowiednie
+        try:
+            combos = self._root_widget.findChildren(QComboBox)
+        except Exception:
+            combos = []
+
+        for cb in combos:
+            try:
+                if not _should_autofill(cb):
+                    continue
+
+                if _looks_like_material_cb(cb):
+                    _fill_combo(cb, mats, "— wybierz materiał —")
+                elif _looks_like_edge_cb(cb):
+                    _fill_combo(cb, edges, "— wybierz krawędź —")
+                elif _looks_like_fitting_cb(cb):
+                    # okucia/uchwyty (jeśli masz taki combobox)
+                    _fill_combo(cb, fits, "— wybierz okucie —")
+            except Exception:
+                continue
+
+    def export_state(self) -> Dict[str, Any]:
+        return {"title": self.TAB_TITLE_PL, "ready": True}

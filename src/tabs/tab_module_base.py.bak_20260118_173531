@@ -1,0 +1,84 @@
+﻿from __future__ import annotations
+import json, subprocess, sys
+from pathlib import Path
+from PySide6 import QtCore, QtWidgets
+
+from .material_query import default_db_path
+
+class ModuleBaseTab(QtWidgets.QWidget):
+    def __init__(self, ctx=None, parent=None):
+        super().__init__(parent)
+        self.ctx = ctx
+        self.db_path = default_db_path()
+
+        self.leFilter = QtWidgets.QLineEdit()
+        self.leFilter.setPlaceholderText("Filtr (anchor / name)...")
+
+        self.btnRefresh = QtWidgets.QPushButton("Odswiez")
+        self.list = QtWidgets.QListWidget()
+        self.list.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+
+        self.btnCopy = QtWidgets.QPushButton("Kopiuj anchor")
+
+        top = QtWidgets.QHBoxLayout()
+        top.addWidget(QtWidgets.QLabel("BAZA MODULOW"))
+        top.addStretch(1)
+        top.addWidget(self.btnRefresh)
+
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.addLayout(top)
+        lay.addWidget(self.leFilter)
+        lay.addWidget(self.list, 1)
+        lay.addWidget(self.btnCopy)
+
+        self.btnRefresh.clicked.connect(self.refresh)
+        self.leFilter.textChanged.connect(self.apply_filter)
+        self.btnCopy.clicked.connect(self.copy_anchor)
+        self.list.itemDoubleClicked.connect(self.copy_anchor)
+
+        self._items = []
+        self.refresh()
+
+    def _run_cli(self, argv):
+        root = Path(__file__).resolve().parents[2]
+        cli = root / "src" / "tools" / "module_db_cli.py"
+        py  = sys.executable
+        p = subprocess.run([py, str(cli), "--db", self.db_path] + argv, capture_output=True, text=True)
+        out = (p.stdout or "") + (p.stderr or "")
+        return p.returncode, out
+
+    def refresh(self):
+        code, out = self._run_cli(["list", "--limit", "300"])
+        if code != 0:
+            QtWidgets.QMessageBox.critical(self, "DB LIST ERROR", out.strip())
+            return
+        try:
+            arr = json.loads(out)
+        except Exception:
+            arr = []
+        self._items = arr if isinstance(arr, list) else []
+        self.apply_filter()
+
+    def apply_filter(self):
+        f = self.leFilter.text().strip().lower()
+        self.list.clear()
+        for obj in self._items:
+            anchor = str(obj.get("anchor",""))
+            name   = str(obj.get("name",""))
+            w = obj.get("width", "")
+            h = obj.get("height","")
+            d = obj.get("depth","")
+            mats = str(obj.get("materials",""))
+            line = f"{anchor} | {name} | {w} x {h} x {d} | {mats}".strip()
+            if not f or (f in anchor.lower()) or (f in name.lower()) or (f in mats.lower()):
+                it = QtWidgets.QListWidgetItem(line)
+                it.setData(QtCore.Qt.UserRole, anchor)
+                self.list.addItem(it)
+
+    def copy_anchor(self):
+        it = self.list.currentItem()
+        if not it:
+            return
+        anchor = it.data(QtCore.Qt.UserRole) or ""
+        QtWidgets.QApplication.clipboard().setText(str(anchor))
+        QtWidgets.QToolTip.showText(QtGui.QCursor.pos(), f"Skopiowano: {anchor}")

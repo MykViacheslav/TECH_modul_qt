@@ -1,0 +1,14 @@
+﻿from __future__ import annotations
+
+from .tab_module import Tab as ModuleTab
+from .placeholder import PlaceholderTab
+from .tab_module_proto import Tab as ModuleProtoTab
+
+def build_tabs(ctx):
+    out = []
+    out.append(("Moduł", ModuleTab(ctx)))
+    out.append(("Baza", PlaceholderTab(ctx, "Baza")))
+    out.append(("Ściana", PlaceholderTab(ctx, "Ściana")))
+    out.append(("Komplet", PlaceholderTab(ctx, "Komplet")))
+    out.append(("Moduł (proto)", ModuleProtoTab(ctx)))
+    return out

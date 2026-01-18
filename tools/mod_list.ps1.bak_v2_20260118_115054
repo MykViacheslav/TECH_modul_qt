@@ -1,0 +1,43 @@
+﻿param(
+  [string]$DbPath = (Join-Path (Split-Path $PSScriptRoot -Parent) "data\tech.db"),
+  [int]$Limit = 200
+)
+
+. (Join-Path $PSScriptRoot "env.ps1")
+
+$Root = Split-Path $PSScriptRoot -Parent
+$Cli  = Join-Path $Root "src\tools\module_db_cli.py"
+
+# CLI list (bez limit args - bo CLI tego nie ma)
+$out = & $Py $Cli --db $DbPath list 2>&1
+if($LASTEXITCODE -ne 0){
+  $out | Out-Host
+  exit $LASTEXITCODE
+}
+
+$txt = ($out | Out-String).Trim()
+
+# 1) JSON array?
+try {
+  $parsed = $txt | ConvertFrom-Json
+  if($parsed -is [System.Collections.IEnumerable]){
+    $parsed | Select-Object -First $Limit | ConvertTo-Json -Depth 20
+    exit 0
+  }
+} catch {}
+
+# 2) JSON per line?
+$lines = $txt -split "`r?`n"
+$objs = @()
+foreach($ln in $lines){
+  $t = $ln.Trim()
+  if($t.StartsWith("{") -and $t.EndsWith("}")){
+    try { $objs += ($t | ConvertFrom-Json) } catch {}
+  }
+}
+if($objs.Count -gt 0){
+  $objs | Select-Object -First $Limit | ConvertTo-Json -Depth 20
+} else {
+  # 3) fallback: surowe linie
+  $lines | Select-Object -First $Limit
+}

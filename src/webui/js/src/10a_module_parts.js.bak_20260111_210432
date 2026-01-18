@@ -1,0 +1,93 @@
+﻿function rebuildParts(){
+  const m = state.model;
+  const {W,H,D} = m.dims;
+
+  // backward-safe defaults
+  if (!m.mid) m.mid = { enabled:false, x:Math.floor(W/2), mat:"pb18", offT:0, offB:0 };
+  if (m.mid.offT == null) m.mid.offT = 0;
+  if (m.mid.offB == null) m.mid.offB = 0;
+  if (!m.shelves) m.shelves = { autoCount:0, autoY:[], extra:[] };
+  if (!m.front) m.front = { mode:"none", count:0, mat:"mdf18", gap:2, heightMode:"carcass", drawerHeights:"", drawerSystem:"Blum|MerivoBox", cornerFront:false };
+  if (!m.front.heightMode) m.front.heightMode = "carcass";
+  if (!m.hardware) m.hardware = { legsH:100 };
+  if (m.hardware.legsH == null) m.hardware.legsH = 100;
+
+  const p = [];
+
+  if (m.has.left)   p.push(mkPart("left","Bok lewy","side","pb18", D, H));
+  if (m.has.right)  p.push(mkPart("right","Bok prawy","side","pb18", D, H));
+  if (m.has.top)    p.push(mkPart("top","Wieniec górny","top","pb18", W, D));
+  if (m.has.bottom) p.push(mkPart("bottom","Wieniec dolny","bottom","pb18", W, D));
+  if (m.back && m.back.enabled && m.has.back) p.push(mkPart("back","Plecy","back", m.back.mat || "hdf3", W, H));
+
+  // MID with offsets
+  if (m.mid.enabled){
+    const offT = Math.max(0, Math.round(num(m.mid.offT, 0)));
+    const offB = Math.max(0, Math.round(num(m.mid.offB, 0)));
+    const midH = Math.max(10, H - offT - offB);
+    p.push(mkPart("mid","Pion środkowy","mid", m.mid.mat || "pb18", D, midH, { offT, offB }));
+  }
+
+  // shelves (simple)
+  (m.shelves.autoY || []).forEach((y, idx)=>{
+    p.push(mkPart("s_auto_"+idx, `Półka auto #${idx+1}`, "shelf", "pb18", W, D, { shelfY:y, shelfType:"auto" }));
+  });
+  (m.shelves.extra || []).forEach((it)=>{
+    p.push(mkPart(it.id, `Półka extra`, "shelf", "pb18", W, D, { shelfY:it.y, shelfType:"extra" }));
+  });
+
+  // fronts / drawers (two fixes: template literals + heightMode)
+  if (m.has.front && m.front.mode !== "none" && m.front.count>0){
+    const gap = clamp(m.front.gap, 0, 10);
+    const count = clamp(m.front.count, 1, 12);
+
+    const hm = m.front.heightMode || "carcass";
+    let baseH = H;
+    if (hm === "opening"){
+      baseH = Math.max(10, H - (m.pos?.T||0) - (m.pos?.B||0));
+    } else if (hm === "floor"){
+      const legs = Math.max(0, num(m.hardware.legsH, 100));
+      baseH = Math.max(10, H + legs);
+    }
+
+    if (m.front.mode==="doors"){
+      const doorCount = count;
+      const totalGap = (doorCount+1)*gap;
+      const doorW = Math.max(10, Math.floor((W - totalGap)/doorCount));
+      const doorH = Math.max(10, baseH - 2*gap);
+      for (let i=0;i<doorCount;i++){
+        p.push(mkPart(`front_${i+1}`, `Drzwi #${i+1}`, "front", m.front.mat, doorW, doorH, { frontIndex:i+1, mode:"doors", corner:m.front.cornerFront, heightMode:hm }));
+      }
+    }
+
+    if (m.front.mode==="drawers"){
+      const drawerCount = count;
+      const list = parseHeightsList(m.front.drawerHeights);
+      let heights = [];
+      if (list.length === drawerCount){
+        heights = list;
+      } else {
+        const totalGap = (drawerCount+1)*gap;
+        const avail = Math.max(20, baseH - totalGap);
+        const each = Math.floor(avail/drawerCount);
+        heights = Array.from({length:drawerCount}, ()=> each);
+      }
+      const frontW = Math.max(10, W - 2*gap);
+      for (let i=0;i<drawerCount;i++){
+        p.push(mkPart(`front_${i+1}`, `Front szuflady #${i+1}`, "front", m.front.mat, frontW, Math.max(10, heights[i]), { frontIndex:i+1, mode:"drawers", corner:m.front.cornerFront, heightMode:hm }));
+      }
+    }
+  }
+
+  state.parts = p;
+  if (!state.selected || !state.parts.some(x=>x.id===state.selected)){
+    state.selected = state.parts[0]?.id || null;
+  }
+}
+
+function computeHingesPerDoor(doorH){
+  if (doorH <= 900) return 2;
+  if (doorH <= 1400) return 3;
+  if (doorH <= 2000) return 4;
+  return 5;
+}

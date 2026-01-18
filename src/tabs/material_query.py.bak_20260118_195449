@@ -1,0 +1,210 @@
+﻿from __future__ import annotations
+import os, sqlite3
+from PySide6 import QtCore, QtGui, QtWidgets
+
+def _default_db_path() -> str:
+    # .../src/tabs -> .../src -> project root -> data/tech.db
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    proj = os.path.dirname(root)
+    return os.path.join(proj, "data", "tech.db")
+
+class MaterialQuery(QtWidgets.QWidget):
+    """
+    MaterialQuery:
+      - QLineEdit with DB-backed suggestions (materials table: code, name, kind, thickness_mm)
+      - optional picker dialog (...)
+    Keeps plain text value (you can store "MDF18 + HPL09" later).
+    """
+    valueChanged = QtCore.Signal(str)
+
+    def __init__(self, db_path: str | None = None, parent=None):
+        super().__init__(parent)
+        self._db_path = db_path or _default_db_path()
+        self._items = []  # list of dicts from DB query
+
+        self.edit = QtWidgets.QLineEdit()
+        self.edit.setPlaceholderText("Materiał (np. MDF18, EG_U999, MDF18 + HPL09)")
+
+        self.btnPick = QtWidgets.QToolButton()
+        self.btnPick.setText("...")
+
+        lay = QtWidgets.QHBoxLayout(self)
+        lay.setContentsMargins(0,0,0,0)
+        lay.addWidget(self.edit, 1)
+        lay.addWidget(self.btnPick)
+
+        self.model = QtCore.QStringListModel(self)
+        self.completer = QtWidgets.QCompleter(self.model, self)
+        self.completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+        self.completer.setFilterMode(QtCore.Qt.MatchContains)
+        self.completer.setCompletionMode(QtWidgets.QCompleter.PopupCompletion)
+        self.edit.setCompleter(self.completer)
+
+        self._timer = QtCore.QTimer(self)
+        self._timer.setInterval(180)
+        self._timer.setSingleShot(True)
+        self._timer.timeout.connect(self._refresh_suggestions)
+
+        self.edit.textEdited.connect(lambda *_: self._timer.start())
+        self.edit.textChanged.connect(lambda t: self.valueChanged.emit(t))
+        self.completer.activated.connect(self._on_activated)
+        self.btnPick.clicked.connect(self._open_picker)
+
+        self._refresh_suggestions()
+
+    def setDbPath(self, path: str):
+        self._db_path = path
+        self._refresh_suggestions()
+
+    def text(self) -> str:
+        return self.edit.text()
+
+    def setText(self, text: str):
+        self.edit.setText(text or "")
+        self._timer.start()
+
+    def _connect(self):
+        con = sqlite3.connect(self._db_path)
+        con.row_factory = sqlite3.Row
+        return con
+
+    def _ensure_schema_exists(self) -> bool:
+        try:
+            con = self._connect()
+            try:
+                r = con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='materials'").fetchone()
+                return bool(r)
+            finally:
+                con.close()
+        except Exception:
+            return False
+
+    def _query(self, q: str, limit: int = 20):
+        if not self._ensure_schema_exists():
+            return []
+        q = (q or "").strip()
+        like = f"%{q}%"
+        try:
+            con = self._connect()
+            try:
+                if not q:
+                    rows = con.execute(
+                        "SELECT code, name, kind, thickness_mm FROM materials ORDER BY updated_at DESC LIMIT ?",
+                        (limit,)
+                    ).fetchall()
+                else:
+                    rows = con.execute(
+                        """
+                        SELECT code, name, kind, thickness_mm
+                        FROM materials
+                        WHERE code LIKE ? OR name LIKE ?
+                        ORDER BY updated_at DESC
+                        LIMIT ?
+                        """,
+                        (like, like, limit)
+                    ).fetchall()
+                out = []
+                for r in rows:
+                    out.append({
+                        "code": r["code"],
+                        "name": r["name"],
+                        "kind": r["kind"],
+                        "thickness_mm": r["thickness_mm"],
+                    })
+                return out
+            finally:
+                con.close()
+        except Exception:
+            return []
+
+    def _refresh_suggestions(self):
+        q = self.edit.text()
+        self._items = self._query(q, limit=25)
+        labels = []
+        for o in self._items:
+            th = o.get("thickness_mm", None)
+            ths = "" if th is None else f"{th:g}mm"
+            labels.append(f"{o.get('code','')} | {o.get('name','')} | {o.get('kind','')} | {ths}")
+        self.model.setStringList(labels)
+
+    def _on_activated(self, text: str):
+        # activated completer item -> set code only (clean)
+        code = (text or "").split("|")[0].strip()
+        if code:
+            self.edit.setText(code)
+            self.valueChanged.emit(code)
+
+    def _open_picker(self):
+        dlg = QtWidgets.QDialog(self)
+        dlg.setWindowTitle("Wybierz materiał")
+        dlg.resize(700, 500)
+
+        ed = QtWidgets.QLineEdit()
+        ed.setPlaceholderText("Szukaj (code lub name)...")
+        lst = QtWidgets.QListWidget()
+        txt = QtWidgets.QPlainTextEdit()
+        txt.setReadOnly(True)
+
+        btnOk = QtWidgets.QPushButton("OK")
+        btnCancel = QtWidgets.QPushButton("Anuluj")
+
+        top = QtWidgets.QHBoxLayout()
+        top.addWidget(ed, 1)
+
+        bot = QtWidgets.QHBoxLayout()
+        bot.addStretch(1)
+        bot.addWidget(btnOk)
+        bot.addWidget(btnCancel)
+
+        lay = QtWidgets.QVBoxLayout(dlg)
+        lay.addLayout(top)
+        lay.addWidget(lst, 2)
+        lay.addWidget(txt, 1)
+        lay.addLayout(bot)
+
+        def refill():
+            q = ed.text()
+            items = self._query(q, limit=200)
+            lst.clear()
+            dlg._items = items
+            for o in items:
+                th = o.get("thickness_mm", None)
+                ths = "" if th is None else f"{th:g}mm"
+                lst.addItem(f"{o.get('code','')} | {o.get('name','')} | {o.get('kind','')} | {ths}")
+            if items:
+                lst.setCurrentRow(0)
+            else:
+                txt.setPlainText("Brak wyników.")
+
+        def show_current():
+            row = lst.currentRow()
+            items = getattr(dlg, "_items", [])
+            if row < 0 or row >= len(items):
+                txt.setPlainText("")
+                return
+            o = items[row]
+            th = o.get("thickness_mm", None)
+            ths = None if th is None else float(th)
+            txt.setPlainText(
+                f"CODE: {o.get('code','')}\nNAME: {o.get('name','')}\nKIND: {o.get('kind','')}\nTHICKNESS: {ths}"
+            )
+
+        def accept():
+            row = lst.currentRow()
+            items = getattr(dlg, "_items", [])
+            if row < 0 or row >= len(items):
+                return
+            code = items[row].get("code","")
+            if code:
+                self.edit.setText(code)
+                self.valueChanged.emit(code)
+            dlg.accept()
+
+        ed.textChanged.connect(refill)
+        lst.currentRowChanged.connect(lambda *_: show_current())
+        lst.itemDoubleClicked.connect(lambda *_: accept())
+        btnOk.clicked.connect(accept)
+        btnCancel.clicked.connect(dlg.reject)
+
+        refill()
+        dlg.exec()

@@ -1,0 +1,12 @@
+﻿from __future__ import annotations
+from PySide6 import QtCore
+
+class Bus(QtCore.QObject):
+    # BAZA -> MODUL: request load module by anchor
+    module_load_requested = QtCore.Signal(str)
+
+    # request switching top-level tab by title
+    tab_requested = QtCore.Signal(str)
+
+    # project tree selection broadcast (python object: dict)
+    project_node_selected = QtCore.Signal(object)

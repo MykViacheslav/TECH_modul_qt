@@ -1,0 +1,113 @@
+﻿from __future__ import annotations
+
+from PySide6 import QtWidgets
+from app.restore_ui import restore_widget_tree  # RESTORE_TAB_UI_PATCH_V1
+
+from tabs.registry import build_tabs
+
+
+class MainWindow(QtWidgets.QMainWindow):
+    def __init__(self, ctx) -> None:
+        super().__init__()
+
+        # RESTORE_TAB_UI_PATCH_V1: Restore CURRENT tab UI (independent)
+
+        try:
+
+            from PySide6 import QtGui
+
+            QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Shift+R"), self, activated=self.restore_current_tab_ui)
+
+        except Exception:
+
+            pass
+
+    
+
+
+        for title, widget in build_tabs(ctx):
+            self.tabs.addTab(widget, title)
+
+        self.resize(1280, 820)
+
+        self.ctx = ctx
+        self.setWindowTitle("TECH — Kalkulator (GUI)")
+
+        self.tabs = QtWidgets.QTabWidget()
+        self.setCentralWidget(self.tabs)
+
+
+    def restore_current_tab_ui(self):
+
+        """Restore UI only in currently selected top-level tab (independent per tab)."""
+
+        try:
+
+            from PySide6 import QtWidgets
+
+        except Exception:
+
+            return
+
+    
+
+        # Find main QTabWidget (the one holding app tabs)
+
+        tabw = None
+
+        # common names: self.tabs, self.tabWidget, etc.
+
+        for name in ("tabs", "tabWidget", "tabsWidget", "tw", "mainTabs"):
+
+            obj = getattr(self, name, None)
+
+            if isinstance(obj, QtWidgets.QTabWidget):
+
+                tabw = obj
+
+                break
+
+        if tabw is None:
+
+            # fallback: first QTabWidget inside main window
+
+            try:
+
+                tabw = self.findChild(QtWidgets.QTabWidget)
+
+            except Exception:
+
+                tabw = None
+
+    
+
+        current = None
+
+        try:
+
+            if tabw is not None:
+
+                current = tabw.currentWidget()
+
+        except Exception:
+
+            current = None
+
+    
+
+        # If we didn't find it, use central widget as last resort
+
+        if current is None:
+
+            try:
+
+                current = self.centralWidget()
+
+            except Exception:
+
+                current = None
+
+    
+
+        restore_widget_tree(current)
+

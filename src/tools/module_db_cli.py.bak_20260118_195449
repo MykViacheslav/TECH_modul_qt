@@ -1,0 +1,292 @@
+﻿import argparse, json, os, sqlite3
+from datetime import datetime
+
+SCHEMA_VERSION = 1
+
+def now_iso():
+    return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
+def connect(db_path: str):
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    con = sqlite3.connect(db_path)
+    con.row_factory = sqlite3.Row
+    return con
+
+def table_exists(con, name: str) -> bool:
+    r = con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone()
+    return bool(r)
+
+def table_cols(con, name: str):
+    if not table_exists(con, name):
+        return []
+    return [r["name"] for r in con.execute(f"PRAGMA table_info({name})").fetchall()]
+
+def create_modules(con):
+    con.execute("""
+    CREATE TABLE IF NOT EXISTS modules (
+        anchor TEXT PRIMARY KEY,
+        payload_json TEXT NOT NULL,
+        schema_version INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """)
+
+def create_modules_history(con):
+    con.execute("""
+    CREATE TABLE IF NOT EXISTS modules_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        anchor TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        schema_version INTEGER NOT NULL,
+        saved_at TEXT NOT NULL
+    )
+    """)
+
+def migrate_legacy_modules(con, legacy: str) -> int:
+    lcols = table_cols(con, legacy)
+    if "payload_json" not in lcols:
+        return 0
+
+    rows = con.execute(f"SELECT * FROM {legacy}").fetchall()
+    copied = 0
+    for r in rows:
+        pj = r["payload_json"]
+        try:
+            obj = json.loads(pj) if pj else {}
+        except Exception:
+            obj = {}
+
+        anchor = (obj.get("anchor") or obj.get("Anchor") or obj.get("name") or obj.get("Name") or "").strip()
+        if not anchor:
+            if "id" in lcols:
+                anchor = f"M{int(r['id']):03d}"
+            else:
+                anchor = f"M{copied+1:03d}"
+
+        created_at = (r["created_at"] if "created_at" in lcols else "") or now_iso()
+        updated_at = (r["updated_at"] if "updated_at" in lcols else "") or now_iso()
+
+        obj = dict(obj)
+        obj["anchor"] = anchor
+        obj["schema_version"] = SCHEMA_VERSION
+        payload_json = json.dumps(obj, ensure_ascii=False)
+
+        con.execute("""
+            INSERT OR IGNORE INTO modules(anchor, payload_json, schema_version, created_at, updated_at)
+            VALUES(?,?,?,?,?)
+        """, (anchor, payload_json, SCHEMA_VERSION, created_at, updated_at))
+        copied += 1
+
+    con.commit()
+    return copied
+
+def migrate_legacy_history(con, legacy: str) -> int:
+    lcols = table_cols(con, legacy)
+    if "payload_json" not in lcols:
+        return 0
+
+    rows = con.execute(f"SELECT * FROM {legacy}").fetchall()
+    copied = 0
+    for r in rows:
+        pj = r["payload_json"]
+        try:
+            obj = json.loads(pj) if pj else {}
+        except Exception:
+            obj = {}
+
+        anchor = (obj.get("anchor") or obj.get("Anchor") or r["anchor"] if "anchor" in lcols else "").strip()
+        if not anchor:
+            anchor = obj.get("name", "") or "UNKNOWN"
+
+        saved_at = None
+        for cand in ("saved_at", "updated_at", "created_at", "ts", "timestamp"):
+            if cand in lcols and r[cand]:
+                saved_at = str(r[cand])
+                break
+        saved_at = saved_at or now_iso()
+
+        obj = dict(obj)
+        obj["anchor"] = anchor
+        obj["schema_version"] = SCHEMA_VERSION
+        payload_json = json.dumps(obj, ensure_ascii=False)
+
+        con.execute("""
+            INSERT INTO modules_history(anchor, payload_json, schema_version, saved_at)
+            VALUES(?,?,?,?)
+        """, (anchor, payload_json, SCHEMA_VERSION, saved_at))
+        copied += 1
+
+    con.commit()
+    return copied
+
+def ensure_schema(con: sqlite3.Connection):
+    # MODULES
+    if not table_exists(con, "modules"):
+        create_modules(con)
+        con.commit()
+    else:
+        cols = table_cols(con, "modules")
+        if "anchor" not in cols or "payload_json" not in cols:
+            legacy = "modules_legacy_" + datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            con.execute(f"ALTER TABLE modules RENAME TO {legacy}")
+            create_modules(con)
+            con.commit()
+            copied = migrate_legacy_modules(con, legacy)
+            print(f"OK: migrated legacy modules -> new schema. Copied: {copied}. Legacy table: {legacy}")
+
+    # HISTORY
+    if not table_exists(con, "modules_history"):
+        create_modules_history(con)
+        con.commit()
+    else:
+        cols = table_cols(con, "modules_history")
+        # minimal requirement: saved_at must exist
+        if "saved_at" not in cols or "anchor" not in cols or "payload_json" not in cols:
+            legacy = "modules_history_legacy_" + datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            con.execute(f"ALTER TABLE modules_history RENAME TO {legacy}")
+            create_modules_history(con)
+            con.commit()
+            try:
+                copied = migrate_legacy_history(con, legacy)
+                print(f"OK: migrated legacy modules_history -> new schema. Copied: {copied}. Legacy table: {legacy}")
+            except Exception as e:
+                print("WARN: history migration skipped:", e)
+
+def upsert(con: sqlite3.Connection, payload: dict, overwrite: bool, history: bool):
+    ensure_schema(con)
+    anchor = str(payload.get("anchor") or "").strip()
+    if not anchor:
+        raise SystemExit("ERROR: anchor is required")
+
+    row = con.execute("SELECT anchor, created_at FROM modules WHERE anchor = ?", (anchor,)).fetchone()
+    created_at = (row["created_at"] if row and row["created_at"] else now_iso())
+    updated_at = now_iso()
+
+    payload = dict(payload)
+    payload["anchor"] = anchor
+    payload["schema_version"] = SCHEMA_VERSION
+    payload_json = json.dumps(payload, ensure_ascii=False)
+
+    if row and not overwrite:
+        return anchor, False, True
+
+    con.execute("""
+        INSERT INTO modules(anchor, payload_json, schema_version, created_at, updated_at)
+        VALUES(?,?,?,?,?)
+        ON CONFLICT(anchor) DO UPDATE SET
+            payload_json=excluded.payload_json,
+            schema_version=excluded.schema_version,
+            updated_at=excluded.updated_at
+    """, (anchor, payload_json, SCHEMA_VERSION, created_at, updated_at))
+
+    if history:
+        con.execute("""
+            INSERT INTO modules_history(anchor, payload_json, schema_version, saved_at)
+            VALUES(?,?,?,?)
+        """, (anchor, payload_json, SCHEMA_VERSION, updated_at))
+
+    con.commit()
+    return anchor, True, False
+
+def cmd_init(args):
+    con = connect(args.db)
+    ensure_schema(con)
+    print(f"OK: DB initialized: {args.db}")
+    return 0
+
+def cmd_save(args):
+    con = connect(args.db)
+    payload = {
+        "anchor": args.anchor,
+        "name": args.name or "",
+        "width": args.width,
+        "height": args.height,
+        "depth": args.depth,
+        "materials": args.materials or "",
+    }
+    payload = {k:v for k,v in payload.items() if v is not None and v != ""}
+
+    anchor, saved, existed_no_overwrite = upsert(
+        con, payload,
+        overwrite=bool(args.overwrite),
+        history=not bool(args.no_history)
+    )
+    if existed_no_overwrite:
+        print(f"ERROR: '{anchor}' already exists. Use --overwrite.")
+        return 2
+    print(f"OK: saved '{anchor}'" + (" (overwritten)" if args.overwrite else ""))
+    return 0
+
+def cmd_get(args):
+    con = connect(args.db)
+    ensure_schema(con)
+    row = con.execute("SELECT payload_json FROM modules WHERE anchor = ?", (args.anchor,)).fetchone()
+    if not row:
+        print("ERROR: not found")
+        return 4
+    obj = json.loads(row["payload_json"])
+    print(json.dumps(obj, ensure_ascii=False, indent=2))
+    return 0
+
+def cmd_list(args):
+    con = connect(args.db)
+    ensure_schema(con)
+    limit = int(args.limit) if args.limit else 200
+    if limit <= 0:
+        limit = 200
+    rows = con.execute(
+        "SELECT payload_json FROM modules ORDER BY updated_at DESC LIMIT ?",
+        (limit,)
+    ).fetchall()
+    out = [json.loads(r["payload_json"]) for r in rows]
+    print(json.dumps(out, ensure_ascii=False, indent=2))
+    return 0
+
+def cmd_delete(args):
+    con = connect(args.db)
+    ensure_schema(con)
+    cur = con.execute("DELETE FROM modules WHERE anchor = ?", (args.anchor,))
+    con.commit()
+    print(f"OK: deleted '{args.anchor}'" if cur.rowcount else "OK: not found")
+    return 0
+
+def build_parser():
+    p = argparse.ArgumentParser(prog="module_db_cli")
+    p.add_argument("--db", required=True)
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("init"); s.set_defaults(fn=cmd_init)
+
+    s = sub.add_parser("save")
+    s.add_argument("--anchor", required=True)
+    s.add_argument("--name", default="")
+    s.add_argument("--width", type=float)
+    s.add_argument("--height", type=float)
+    s.add_argument("--depth", type=float)
+    s.add_argument("--materials", default="")
+    s.add_argument("--overwrite", action="store_true")
+    s.add_argument("--no-history", action="store_true")
+    s.set_defaults(fn=cmd_save)
+
+    s = sub.add_parser("get")
+    s.add_argument("--anchor", required=True)
+    s.set_defaults(fn=cmd_get)
+
+    s = sub.add_parser("list")
+    s.add_argument("--limit", type=int, default=200)
+    s.set_defaults(fn=cmd_list)
+
+    s = sub.add_parser("delete")
+    s.add_argument("--anchor", required=True)
+    s.set_defaults(fn=cmd_delete)
+
+    return p
+
+def main(argv=None):
+    p = build_parser()
+    args = p.parse_args(argv)
+    return args.fn(args)
+
+if __name__ == "__main__":
+    raise SystemExit(main())

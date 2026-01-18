@@ -1,0 +1,163 @@
+﻿from __future__ import annotations
+from PySide6 import QtCore, QtGui, QtWidgets
+
+from app.storage import connect, upsert_module, get_module
+from .material_query import MaterialQuery
+
+class ModuleTab(QtWidgets.QWidget):
+    def __init__(self, ctx=None, parent=None):
+        super().__init__(parent)
+        self.ctx = ctx
+        self._mat_code = ""
+
+        self._matq = MaterialQuery()
+
+        # UI
+        form = QtWidgets.QFormLayout()
+        form.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+
+        self.ed_anchor = QtWidgets.QLineEdit()
+        self.ed_anchor.setPlaceholderText("np. M01")
+        self.ed_name = QtWidgets.QLineEdit()
+        self.ed_name.setPlaceholderText("np. Baza M01")
+
+        self.sb_w = QtWidgets.QDoubleSpinBox(); self.sb_w.setRange(1, 10000); self.sb_w.setDecimals(1); self.sb_w.setSuffix(" mm")
+        self.sb_h = QtWidgets.QDoubleSpinBox(); self.sb_h.setRange(1, 10000); self.sb_h.setDecimals(1); self.sb_h.setSuffix(" mm")
+        self.sb_d = QtWidgets.QDoubleSpinBox(); self.sb_d.setRange(1, 10000); self.sb_d.setDecimals(1); self.sb_d.setSuffix(" mm")
+
+        self.ed_material = QtWidgets.QLineEdit()
+        self.ed_material.setPlaceholderText("zacznij pisać: EGGER / MDF / HPL ... (podpowiedzi z bazy)")
+        self._compl_model = QtGui.QStandardItemModel()
+        self._completer = QtWidgets.QCompleter(self._compl_model, self)
+        self._completer.setCaseSensitivity(QtCore.Qt.CaseSensitivity.CaseInsensitive)
+        self._completer.setFilterMode(QtCore.Qt.MatchFlag.MatchContains)
+        self.ed_material.setCompleter(self._completer)
+
+        self.cb_overwrite = QtWidgets.QCheckBox("Overwrite")
+        self.cb_overwrite.setChecked(True)
+
+        self.btn_save = QtWidgets.QPushButton("Zapisz do bazy")
+        self.btn_load = QtWidgets.QPushButton("Pobierz z bazy")
+
+        self.lbl_status = QtWidgets.QLabel("")
+        self.lbl_status.setWordWrap(True)
+
+        form.addRow("Anchor:", self.ed_anchor)
+        form.addRow("Nazwa:", self.ed_name)
+        form.addRow("Szerokość:", self.sb_w)
+        form.addRow("Wysokość:", self.sb_h)
+        form.addRow("Głębokość:", self.sb_d)
+        form.addRow("Materiał:", self.ed_material)
+
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(self.cb_overwrite)
+        row.addStretch(1)
+        row.addWidget(self.btn_load)
+        row.addWidget(self.btn_save)
+
+        box = QtWidgets.QVBoxLayout(self)
+        box.addLayout(form)
+        box.addLayout(row)
+        box.addWidget(self.lbl_status)
+
+        # debounce for query
+        self._q_timer = QtCore.QTimer(self)
+        self._q_timer.setSingleShot(True)
+        self._q_timer.setInterval(150)
+        self._q_timer.timeout.connect(self._do_query_materials)
+
+        self.ed_material.textEdited.connect(lambda _t: self._q_timer.start())
+        self._completer.activated.connect(self._on_material_selected)
+
+        self.btn_save.clicked.connect(self.on_save)
+        self.btn_load.clicked.connect(self.on_load)
+
+    def _set_status(self, msg: str):
+        self.lbl_status.setText(msg)
+
+    def _do_query_materials(self):
+        txt = self.ed_material.text().strip()
+        hits = self._matq.search(txt, limit=20)
+
+        self._compl_model.clear()
+        for h in hits:
+            disp = f"{h.code} — {h.name}"
+            if h.thickness_mm is not None:
+                disp += f" ({h.thickness_mm}mm)"
+            it = QtGui.QStandardItem(disp)
+            it.setData(h.code, QtCore.Qt.ItemDataRole.UserRole)
+            self._compl_model.appendRow(it)
+
+    def _on_material_selected(self, text_or_idx):
+        # get selected item code
+        idx = self._completer.currentIndex()
+        if idx.isValid():
+            code = idx.data(QtCore.Qt.ItemDataRole.UserRole) or ""
+            self._mat_code = str(code)
+        else:
+            self._mat_code = ""
+
+    def payload(self) -> dict:
+        anchor = self.ed_anchor.text().strip()
+        name = self.ed_name.text().strip()
+        mat_text = self.ed_material.text().strip()
+
+        # prefer picked code, fallback to text
+        materials = self._mat_code or mat_text
+
+        return {
+            "anchor": anchor,
+            "name": name,
+            "width": float(self.sb_w.value()),
+            "height": float(self.sb_h.value()),
+            "depth": float(self.sb_d.value()),
+            "materials": materials,
+            "schema_version": 1
+        }
+
+    def on_save(self):
+        p = self.payload()
+        if not p["anchor"]:
+            self._set_status("ERROR: Anchor jest wymagany.")
+            return
+
+        con = connect()
+        try:
+            ok = upsert_module(con, p, overwrite=bool(self.cb_overwrite.isChecked()), history=True)
+        except Exception as e:
+            self._set_status(f"ERROR: zapis nieudany: {e}")
+            return
+        finally:
+            con.close()
+
+        if ok:
+            self._set_status(f"OK: zapisano '{p['anchor']}' (materials: {p.get('materials','')})")
+        else:
+            self._set_status(f"ERROR: '{p['anchor']}' już istnieje (odznacz/ zaznacz Overwrite).")
+
+    def on_load(self):
+        anchor = self.ed_anchor.text().strip()
+        if not anchor:
+            self._set_status("ERROR: podaj Anchor, żeby pobrać.")
+            return
+
+        con = connect()
+        try:
+            obj = get_module(con, anchor)
+        finally:
+            con.close()
+
+        if not obj:
+            self._set_status("ERROR: nie znaleziono w bazie.")
+            return
+
+        self.ed_name.setText(str(obj.get("name","")))
+        self.sb_w.setValue(float(obj.get("width", 0) or 0))
+        self.sb_h.setValue(float(obj.get("height", 0) or 0))
+        self.sb_d.setValue(float(obj.get("depth", 0) or 0))
+
+        mat = str(obj.get("materials",""))
+        self.ed_material.setText(mat)
+        self._mat_code = mat if mat else ""
+
+        self._set_status(f"OK: pobrano '{anchor}' z bazy.")

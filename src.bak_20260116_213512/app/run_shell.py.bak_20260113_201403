@@ -1,0 +1,39 @@
+﻿from __future__ import annotations
+
+import sys
+from PySide6 import QtWidgets
+from PySide6.QtCore import QSettings
+
+from core.app_context import AppContext
+from core.event_bus import EventBus
+from core.catalog_store import CatalogStore
+from app.main_window import MainWindow
+
+# Opcjonalnie: jeśli masz już ui.theme / ui.i18n – możesz to podłączyć później w main.py
+# from ui.theme import apply_theme
+# from ui.i18n import apply_polish_i18n
+
+
+def run() -> int:
+    app = QtWidgets.QApplication(sys.argv)
+
+    # apply_polish_i18n(app)
+    # apply_theme(app)
+
+    ctx = AppContext(
+        settings=QSettings("TECH_modul", "TECH_modul_qt"),
+        bus=EventBus(),
+        catalogs=CatalogStore(),
+    )
+
+    win = MainWindow(ctx)
+    win.show()
+
+    return app.exec()
+
+
+if __name__ == "__main__":
+    raise SystemExit(run())
+
+
+

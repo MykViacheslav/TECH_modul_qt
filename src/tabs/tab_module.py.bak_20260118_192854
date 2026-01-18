@@ -1,0 +1,278 @@
+﻿from __future__ import annotations
+import json
+import os
+import sqlite3
+from PySide6 import QtCore, QtWidgets
+
+class ModuleTab(QtWidgets.QWidget):
+    """
+    MODUL: constructor/editor + save to DB (overwrite optional).
+    Receives load requests from BAZA MODULU via ctx.bus.module_load_requested(anchor).
+    """
+    def __init__(self, ctx=None, parent=None):
+        super().__init__(parent)
+        self.ctx = ctx
+        self._setup_ui()
+        self._setup_bus()
+        self._setup_material_query()
+
+        self._update_preview()
+
+    # ---------- ctx helpers ----------
+    def _db_path(self) -> str:
+        try:
+            if isinstance(self.ctx, dict) and self.ctx.get("db_path"):
+                return str(self.ctx["db_path"])
+        except Exception:
+            pass
+        try:
+            if self.ctx is not None and getattr(self.ctx, "db_path", None):
+                return str(self.ctx.db_path)
+        except Exception:
+            pass
+
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # .../src/tabs -> .../src
+        proj = os.path.dirname(root)
+        return os.path.join(proj, "data", "tech.db")
+
+    def _bus(self):
+        try:
+            if isinstance(self.ctx, dict):
+                return self.ctx.get("bus")
+            return getattr(self.ctx, "bus", None)
+        except Exception:
+            return None
+
+    # ---------- UI ----------
+    def _setup_ui(self):
+        self.edAnchor = QtWidgets.QLineEdit()
+        self.edAnchor.setPlaceholderText("Anchor (np. M01)")
+        self.edName = QtWidgets.QLineEdit()
+        self.edName.setPlaceholderText("Nazwa (opcjonalnie)")
+
+        def mk_spin():
+            sb = QtWidgets.QDoubleSpinBox()
+            sb.setRange(0, 100000)
+            sb.setDecimals(1)
+            sb.setSingleStep(1.0)
+            sb.setSuffix(" mm")
+            return sb
+
+        self.sbW = mk_spin()
+        self.sbH = mk_spin()
+        self.sbD = mk_spin()
+
+        self.edMaterials = QtWidgets.QLineEdit()
+        self.edMaterials.setPlaceholderText("Materiały (np. EG_U999 / ABS 1mm albo MDF18 + HPL09)")
+
+        self.chkOverwrite = QtWidgets.QCheckBox("Overwrite")
+        self.chkOverwrite.setChecked(True)
+
+        self.btnSave = QtWidgets.QPushButton("Zapisz do bazy")
+        self.btnClear = QtWidgets.QPushButton("Nowy / Wyczyść")
+        self.btnReload = QtWidgets.QPushButton("Wczytaj z bazy (anchor)")
+
+        form = QtWidgets.QFormLayout()
+        form.addRow("Anchor", self.edAnchor)
+        form.addRow("Nazwa", self.edName)
+        form.addRow("Szerokość", self.sbW)
+        form.addRow("Wysokość", self.sbH)
+        form.addRow("Głębokość", self.sbD)
+        form.addRow("Materiały", self.edMaterials)
+
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(self.btnSave)
+        row.addWidget(self.chkOverwrite)
+        row.addStretch(1)
+        row.addWidget(self.btnReload)
+        row.addWidget(self.btnClear)
+
+        self.preview = QtWidgets.QPlainTextEdit()
+        self.preview.setReadOnly(True)
+
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.addLayout(form)
+        lay.addLayout(row)
+        lay.addWidget(QtWidgets.QLabel("Podgląd JSON"))
+        lay.addWidget(self.preview, 1)
+
+        # signals
+        self.edAnchor.textChanged.connect(self._update_preview)
+        self.edName.textChanged.connect(self._update_preview)
+        self.sbW.valueChanged.connect(self._update_preview)
+        self.sbH.valueChanged.connect(self._update_preview)
+        self.sbD.valueChanged.connect(self._update_preview)
+        self.edMaterials.textChanged.connect(self._update_preview)
+
+        self.btnClear.clicked.connect(self._clear)
+        self.btnSave.clicked.connect(self._save)
+        self.btnReload.clicked.connect(lambda: self.load_anchor(self.edAnchor.text().strip()))
+
+    def _payload(self) -> dict:
+        return {
+            "anchor": (self.edAnchor.text() or "").strip(),
+            "name": (self.edName.text() or "").strip(),
+            "width": float(self.sbW.value()),
+            "height": float(self.sbH.value()),
+            "depth": float(self.sbD.value()),
+            "materials": (self.edMaterials.text() or "").strip(),
+        }
+
+    def _update_preview(self):
+        obj = self._payload()
+        self.preview.setPlainText(json.dumps(obj, ensure_ascii=False, indent=2))
+
+    def _clear(self):
+        self.edAnchor.setText("")
+        self.edName.setText("")
+        self.sbW.setValue(0)
+        self.sbH.setValue(0)
+        self.sbD.setValue(0)
+        self.edMaterials.setText("")
+        self._update_preview()
+
+    # ---------- DB ----------
+    def _connect_db(self):
+        # Use the same schema logic as CLI uses
+        from tools import module_db_cli
+        con = module_db_cli.connect(self._db_path())
+        module_db_cli.ensure_schema(con)
+        return con, module_db_cli
+
+    def load_anchor(self, anchor: str):
+        anchor = (anchor or "").strip()
+        if not anchor:
+            QtWidgets.QMessageBox.warning(self, "MODUL", "Podaj anchor.")
+            return
+
+        con, cli = self._connect_db()
+        row = con.execute("SELECT payload_json FROM modules WHERE anchor = ?", (anchor,)).fetchone()
+        if not row:
+            QtWidgets.QMessageBox.information(self, "MODUL", f"Nie znaleziono: {anchor}")
+            return
+
+        try:
+            obj = json.loads(row["payload_json"])
+        except Exception:
+            obj = {}
+
+        # fill
+        self.edAnchor.setText(str(obj.get("anchor", anchor)))
+        self.edName.setText(str(obj.get("name", "")))
+        self.sbW.setValue(float(obj.get("width", 0) or 0))
+        self.sbH.setValue(float(obj.get("height", 0) or 0))
+        self.sbD.setValue(float(obj.get("depth", 0) or 0))
+        self.edMaterials.setText(str(obj.get("materials", "")))
+        self._update_preview()
+
+        bus = self._bus()
+        if bus is not None and hasattr(bus, "module_loaded"):
+            try:
+                bus.module_loaded.emit(obj)
+            except Exception:
+                pass
+
+    def _save(self):
+        obj = self._payload()
+        if not obj["anchor"]:
+            QtWidgets.QMessageBox.warning(self, "MODUL", "Anchor jest wymagany.")
+            return
+
+        con, cli = self._connect_db()
+        # reuse cli.upsert to keep behaviour consistent
+        try:
+            anchor, saved, existed_no_overwrite = cli.upsert(
+                con,
+                obj,
+                overwrite=bool(self.chkOverwrite.isChecked()),
+                history=True
+            )
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "MODUL", f"Błąd zapisu:\n{e}")
+            return
+
+        if existed_no_overwrite:
+            QtWidgets.QMessageBox.warning(self, "MODUL", f"'{anchor}' już istnieje. Zaznacz Overwrite.")
+            return
+
+        QtWidgets.QMessageBox.information(self, "MODUL", f"OK: zapisano {anchor}" + (" (overwrite)" if self.chkOverwrite.isChecked() else ""))
+
+        bus = self._bus()
+        if bus is not None and hasattr(bus, "module_saved"):
+            try:
+                bus.module_saved.emit(anchor, obj)
+            except Exception:
+                pass
+
+    # ---------- BUS ----------
+    def _setup_bus(self):
+        bus = self._bus()
+        if bus is None:
+            return
+        if hasattr(bus, "module_load_requested"):
+            try:
+                bus.module_load_requested.connect(self.load_anchor)
+            except Exception:
+                pass
+
+    # ---------- MaterialQuery (autocomplete) ----------
+    def _setup_material_query(self):
+        self._mat_timer = QtCore.QTimer(self)
+        self._mat_timer.setSingleShot(True)
+        self._mat_timer.setInterval(200)
+        self._mat_timer.timeout.connect(self._refresh_material_completer)
+
+        self._mat_model = QtCore.QStringListModel(self)
+        self._mat_completer = QtWidgets.QCompleter(self._mat_model, self)
+        self._mat_completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+        self._mat_completer.setFilterMode(QtCore.Qt.MatchContains)
+        self.edMaterials.setCompleter(self._mat_completer)
+
+        self.edMaterials.textEdited.connect(lambda *_: self._mat_timer.start())
+
+    def _refresh_material_completer(self):
+        txt = (self.edMaterials.text() or "").strip()
+        # We only query for short inputs to avoid noise
+        q = txt.split("+")[-1].strip()  # last token after +
+        q = q.split("/")[-1].strip()    # last token after /
+        if len(q) < 1:
+            self._mat_model.setStringList([])
+            return
+
+        try:
+            con = sqlite3.connect(self._db_path())
+            con.row_factory = sqlite3.Row
+            # table may not exist yet
+            r = con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='materials'").fetchone()
+            if not r:
+                self._mat_model.setStringList([])
+                return
+
+            like = f"%{q}%"
+            rows = con.execute("""
+                SELECT code, name, thickness_mm
+                FROM materials
+                WHERE code LIKE ? OR name LIKE ?
+                ORDER BY updated_at DESC
+                LIMIT 20
+            """, (like, like)).fetchall()
+
+            out = []
+            for r in rows:
+                code = r["code"]
+                name = r["name"]
+                th = r["thickness_mm"]
+                if th is None:
+                    out.append(f"{code} — {name}")
+                else:
+                    out.append(f"{code} — {name} ({th}mm)")
+            # de-dup
+            seen = set()
+            uniq = []
+            for s in out:
+                if s not in seen:
+                    seen.add(s)
+                    uniq.append(s)
+            self._mat_model.setStringList(uniq)
+        except Exception:
+            self._mat_model.setStringList([])

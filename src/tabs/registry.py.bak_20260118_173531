@@ -1,0 +1,15 @@
+﻿from __future__ import annotations
+
+def build_tabs(ctx):
+    # Wszystkie zakładki na jednym poziomie (bez hierarchii)
+    from .tab_komplet import KompletTab
+    from .tab_sciana  import ScianaTab
+    from .tab_module  import ModuleTab
+    from .tab_module_base import ModuleBaseTab
+
+    return [
+        ("KOMPLET", KompletTab(ctx)),
+        ("SCIANA",  ScianaTab(ctx)),
+        ("MODUL",   ModuleTab(ctx)),
+        ("BAZA",    ModuleBaseTab(ctx)),
+    ]

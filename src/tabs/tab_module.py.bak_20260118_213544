@@ -1,0 +1,222 @@
+﻿from __future__ import annotations
+import json, os
+from PySide6 import QtCore, QtWidgets
+from .material_query import MaterialQuery
+
+class ModuleTab(QtWidgets.QWidget):
+    """
+    MODUL:
+      - anchor, name, width, height, depth
+      - materials (text) + materials_stack (list of layers)
+      - save/get via SQLite
+      - listens to bus.module_load_requested(anchor)
+    """
+    def __init__(self, ctx=None, parent=None):
+        super().__init__(parent)
+        self.ctx = ctx
+
+        self.edAnchor = QtWidgets.QLineEdit()
+        self.edAnchor.setPlaceholderText("Anchor (np. M01)")
+
+        self.edName = QtWidgets.QLineEdit()
+        self.edName.setPlaceholderText("Nazwa (opcjonalnie)")
+
+        self.sbW = QtWidgets.QDoubleSpinBox()
+        self.sbH = QtWidgets.QDoubleSpinBox()
+        self.sbD = QtWidgets.QDoubleSpinBox()
+        for sb in (self.sbW, self.sbH, self.sbD):
+            sb.setRange(0, 100000)
+            sb.setDecimals(1)
+            sb.setSingleStep(1.0)
+
+        self.mat = MaterialQuery(db_path=self._db_path())
+        self.mat.valueChanged.connect(lambda *_: self._update_preview())
+
+        self.chkOverwrite = QtWidgets.QCheckBox("Nadpisz (overwrite)")
+        self.chkHistory = QtWidgets.QCheckBox("Historia (modules_history)")
+        self.chkHistory.setChecked(True)
+
+        self.btnNew = QtWidgets.QPushButton("Nowy")
+        self.btnLoad = QtWidgets.QPushButton("Wczytaj")
+        self.btnSave = QtWidgets.QPushButton("Zapisz")
+        self.btnCopy = QtWidgets.QPushButton("Kopiuj anchor")
+
+        self.txt = QtWidgets.QPlainTextEdit()
+        self.txt.setReadOnly(True)
+
+        form = QtWidgets.QFormLayout()
+        form.addRow("Anchor:", self.edAnchor)
+        form.addRow("Nazwa:", self.edName)
+        form.addRow("Szerokość (W):", self.sbW)
+        form.addRow("Wysokość (H):", self.sbH)
+        form.addRow("Głębokość (D):", self.sbD)
+        form.addRow("Materiał:", self.mat)
+
+        btns = QtWidgets.QHBoxLayout()
+        btns.addWidget(self.btnNew)
+        btns.addWidget(self.btnLoad)
+        btns.addWidget(self.btnSave)
+        btns.addWidget(self.btnCopy)
+        btns.addStretch(1)
+        btns.addWidget(self.chkOverwrite)
+        btns.addWidget(self.chkHistory)
+
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.addLayout(form)
+        lay.addLayout(btns)
+        lay.addWidget(self.txt, 1)
+
+        self.btnNew.clicked.connect(self.reset_form)
+        self.btnLoad.clicked.connect(self.load_clicked)
+        self.btnSave.clicked.connect(self.save_clicked)
+        self.btnCopy.clicked.connect(self.copy_anchor)
+
+        bus = self._bus()
+        if bus is not None and hasattr(bus, "module_load_requested"):
+            try:
+                bus.module_load_requested.connect(self.load_from_db)
+            except Exception:
+                pass
+
+        self.reset_form()
+
+    def _bus(self):
+        try:
+            if isinstance(self.ctx, dict):
+                return self.ctx.get("bus")
+            return getattr(self.ctx, "bus", None)
+        except Exception:
+            return None
+
+    def _db_path(self) -> str:
+        try:
+            if isinstance(self.ctx, dict) and self.ctx.get("db_path"):
+                return str(self.ctx["db_path"])
+        except Exception:
+            pass
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # .../src/tabs -> .../src
+        proj = os.path.dirname(root)
+        return os.path.join(proj, "data", "tech.db")
+
+    def reset_form(self):
+        self.edAnchor.setText("")
+        self.edName.setText("")
+        self.sbW.setValue(600.0)
+        self.sbH.setValue(720.0)
+        self.sbD.setValue(560.0)
+        self.mat.setDbPath(self._db_path())
+        self.mat.setText("")
+        self.txt.setPlainText("")
+        self._update_preview()
+
+    def _payload(self) -> dict:
+        payload = {
+            "anchor": (self.edAnchor.text() or "").strip(),
+            "name": (self.edName.text() or "").strip(),
+            "width": float(self.sbW.value()),
+            "height": float(self.sbH.value()),
+            "depth": float(self.sbD.value()),
+            "materials": (self.mat.text() or "").strip(),
+        }
+        st = self.mat.stack()
+        if st:
+            payload["materials_stack"] = st
+        return payload
+
+    def _show_obj(self, obj: dict, prefix: str = ""):
+        try:
+            s = json.dumps(obj, ensure_ascii=False, indent=2)
+        except Exception:
+            s = str(obj)
+        self.txt.setPlainText((prefix + "\n" if prefix else "") + s)
+
+    def _read_db(self, anchor: str):
+        from tools import module_db_cli
+        con = module_db_cli.connect(self._db_path())
+        module_db_cli.ensure_schema(con)
+        row = con.execute("SELECT payload_json FROM modules WHERE anchor = ?", (anchor,)).fetchone()
+        if not row:
+            return None
+        return json.loads(row["payload_json"])
+
+    def _update_preview(self):
+        # lightweight preview in txt when editing materials
+        payload = self._payload()
+        try:
+            payload["materials_total_thickness_mm"] = self.mat.total_thickness_mm()
+        except Exception:
+            pass
+        self._show_obj(payload, prefix="Podgląd:")
+
+    def load_clicked(self):
+        a = (self.edAnchor.text() or "").strip()
+        if not a:
+            QtWidgets.QMessageBox.warning(self, "Brak", "Podaj anchor.")
+            return
+        self.load_from_db(a)
+
+    @QtCore.Slot(str)
+    def load_from_db(self, anchor: str):
+        anchor = (anchor or "").strip()
+        if not anchor:
+            return
+        try:
+            obj = self._read_db(anchor)
+            if not obj:
+                QtWidgets.QMessageBox.information(self, "Brak", f"Nie znaleziono: {anchor}")
+                return
+            self.edAnchor.setText(str(obj.get("anchor","")))
+            self.edName.setText(str(obj.get("name","")))
+            self.sbW.setValue(float(obj.get("width", 0) or 0))
+            self.sbH.setValue(float(obj.get("height", 0) or 0))
+            self.sbD.setValue(float(obj.get("depth", 0) or 0))
+
+            self.mat.setDbPath(self._db_path())
+            if "materials_stack" in obj and isinstance(obj["materials_stack"], list) and obj["materials_stack"]:
+                self.mat.setStack(obj["materials_stack"])
+            else:
+                self.mat.setText(str(obj.get("materials","")))
+
+            self._show_obj(obj, prefix="Wczytano z bazy:")
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Błąd", str(e))
+
+    def save_clicked(self):
+        payload = self._payload()
+        if not payload["anchor"]:
+            QtWidgets.QMessageBox.warning(self, "Brak", "Anchor jest wymagany.")
+            return
+
+        overwrite = bool(self.chkOverwrite.isChecked())
+        history = bool(self.chkHistory.isChecked())
+
+        try:
+            from tools import module_db_cli
+            con = module_db_cli.connect(self._db_path())
+            anchor, saved, existed_no_overwrite = module_db_cli.upsert(
+                con, payload,
+                overwrite=overwrite,
+                history=history
+            )
+            if existed_no_overwrite:
+                QtWidgets.QMessageBox.warning(self, "Istnieje", f"'{anchor}' istnieje. Zaznacz overwrite.")
+                return
+
+            obj = self._read_db(anchor) or payload
+            self._show_obj(obj, prefix="Zapisano:")
+            bus = self._bus()
+            if bus is not None:
+                if hasattr(bus, "module_saved"):
+                    try: bus.module_saved.emit(anchor)
+                    except Exception: pass
+                if hasattr(bus, "modules_changed"):
+                    try: bus.modules_changed.emit()
+                    except Exception: pass
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Błąd zapisu", str(e))
+
+    def copy_anchor(self):
+        a = (self.edAnchor.text() or "").strip()
+        if not a:
+            return
+        QtWidgets.QApplication.clipboard().setText(a)

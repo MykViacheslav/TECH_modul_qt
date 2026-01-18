@@ -1,0 +1,106 @@
+﻿from __future__ import annotations
+
+from typing import Any, Dict, List
+
+from PySide6.QtWidgets import (
+    QVBoxLayout,
+    QLabel,
+    QTableWidget,
+    QTableWidgetItem,
+    QPushButton,
+    QHBoxLayout,
+    QMessageBox,
+)
+
+from .base import BaseTab
+from core.catalog_store import BoardSpec
+
+
+class Tab(BaseTab):
+    TAB_KEY = "catalogs"
+    TAB_TITLE_PL = "Słowniki / Parametry"
+
+    def __init__(self, ctx, parent=None) -> None:
+        super().__init__(ctx, parent)
+
+        layout = QVBoxLayout(self)
+
+        title = QLabel("Słowniki / Parametry (wspólne dla wszystkich zakładek)")
+        title.setStyleSheet("font-size: 18px; font-weight: 600; background: transparent;")
+        layout.addWidget(title)
+
+        hint = QLabel(
+            "Tu utrzymujemy parametry, z których korzystają inne zakładki: płyty, ceny, "
+            "grubości, (później krawędzie, okucia, uchwyty itd.).\n"
+            "Na razie: przykładowa tabela płyt (szkielet)."
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: #475569; background: transparent;")
+        layout.addWidget(hint)
+
+        self.table = QTableWidget(0, 4)
+        self.table.setHorizontalHeaderLabels(["Nazwa", "Grubość (mm)", "Cena (PLN/m²)", "Waluta"])
+        layout.addWidget(self.table)
+
+        btns = QHBoxLayout()
+        self.btn_load = QPushButton("Wczytaj przykładowe")
+        self.btn_apply = QPushButton("Zastosuj do aplikacji")
+        btns.addWidget(self.btn_load)
+        btns.addWidget(self.btn_apply)
+        btns.addStretch(1)
+        layout.addLayout(btns)
+
+        self.btn_load.clicked.connect(self._load_sample)
+        self.btn_apply.clicked.connect(self._apply_to_store)
+
+        # Start: pokaż co jest w store
+        self._load_from_store()
+
+    def _load_from_store(self) -> None:
+        boards = self.ctx.catalogs.get_boards()
+        self._set_rows(boards)
+
+    def _set_rows(self, boards: List[BoardSpec]) -> None:
+        self.table.setRowCount(0)
+        for b in boards:
+            r = self.table.rowCount()
+            self.table.insertRow(r)
+            self.table.setItem(r, 0, QTableWidgetItem(b.name))
+            self.table.setItem(r, 1, QTableWidgetItem(str(b.thickness_mm)))
+            self.table.setItem(r, 2, QTableWidgetItem(str(b.price_per_m2)))
+            self.table.setItem(r, 3, QTableWidgetItem(b.currency))
+
+    def _load_sample(self) -> None:
+        sample = [
+            BoardSpec(name="Płyta laminowana (biała)", thickness_mm=18.0, price_per_m2=75.0),
+            BoardSpec(name="MDF lakier", thickness_mm=19.0, price_per_m2=140.0),
+            BoardSpec(name="Sklejka", thickness_mm=18.0, price_per_m2=160.0),
+        ]
+        self._set_rows(sample)
+
+    def _apply_to_store(self) -> None:
+        items: List[BoardSpec] = []
+        for r in range(self.table.rowCount()):
+            try:
+                name = (self.table.item(r, 0).text() if self.table.item(r, 0) else "").strip()
+                thick = float((self.table.item(r, 1).text() if self.table.item(r, 1) else "0").replace(",", "."))
+                price = float((self.table.item(r, 2).text() if self.table.item(r, 2) else "0").replace(",", "."))
+                cur = (self.table.item(r, 3).text() if self.table.item(r, 3) else "PLN").strip() or "PLN"
+                if not name:
+                    continue
+                items.append(BoardSpec(name=name, thickness_mm=thick, price_per_m2=price, currency=cur))
+            except Exception:
+                # Skip bad row silently (no new UX)
+                continue
+
+        self.ctx.catalogs.set_boards(items)
+        # Sygnał do innych zakładek: coś wspólnego się zmieniło
+        self.ctx.bus.data_changed.emit("catalogs")
+
+        QMessageBox.information(self, "Zapisano", "Zaktualizowano słowniki w pamięci aplikacji (szkielet).")
+
+    def export_state(self) -> Dict[str, Any]:
+        return {
+            "title": self.TAB_TITLE_PL,
+            "boards_count": len(self.ctx.catalogs.get_boards()),
+        }

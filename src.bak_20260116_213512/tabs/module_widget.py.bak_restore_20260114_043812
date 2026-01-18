@@ -1,0 +1,951 @@
+﻿from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Tuple
+
+from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6.QtCore import QSettings
+
+
+# -----------------------------
+# Model
+# -----------------------------
+@dataclass
+class EdgeMap:
+    # L/P/G/D = lewa/prawa/góra/dół (na elemencie)
+    L: str = ""
+    P: str = ""
+    G: str = ""
+    D: str = ""
+
+
+@dataclass
+class Part:
+    key: str
+    name_pl: str
+    w_mm: float
+    h_mm: float
+    material: str = ""
+    edges: EdgeMap = field(default_factory=EdgeMap)
+
+
+@dataclass
+class ModuleState:
+    # Wymiary
+    W: float = 600.0
+    H: float = 720.0
+    D: float = 560.0
+
+    # konstrukcja
+    thick: float = 18.0
+    back_enabled: bool = True
+    back_thick: float = 3.0
+    middle_wall: bool = False
+    shelves_count: int = 0
+    shelves_split_with_middle: bool = True
+
+    # fronty/szuflady
+    front_mode: str = "Drzwi"  # Drzwi / Szuflady / Brak
+    front_count: int = 2
+    front_gap: float = 2.0
+    front_side_offset: float = 2.0  # "Front: odstęp od boków"
+    front_height_mode: str = "Na całą wysokość"  # Na całą wysokość / Między wieńcami
+    front_material: str = ""
+
+    qty: int = 1
+
+
+def mm2_to_m2(mm2: float) -> float:
+    return mm2 / 1_000_000.0
+
+
+def mm_to_m(mm: float) -> float:
+    return mm / 1000.0
+
+
+# -----------------------------
+# Graphics items (hover/selection)
+# -----------------------------
+class PartRectItem(QtWidgets.QGraphicsRectItem):
+    def __init__(self, part_key: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.part_key = part_key
+        self.setAcceptHoverEvents(True)
+        self._hover = False
+        self._selected = False
+        self._update_pen()
+
+    def set_selected(self, val: bool):
+        self._selected = bool(val)
+        self._update_pen()
+
+    def hoverEnterEvent(self, event):
+        self._hover = True
+        self._update_pen()
+        super().hoverEnterEvent(event)
+
+    def hoverLeaveEvent(self, event):
+        self._hover = False
+        self._update_pen()
+        super().hoverLeaveEvent(event)
+
+    def _update_pen(self):
+        # hover=niebieski, selected=czerwony
+        if self._selected:
+            pen = QtGui.QPen(QtGui.QColor("#DC2626"), 2.4)
+        elif self._hover:
+            pen = QtGui.QPen(QtGui.QColor("#2563EB"), 2.0)
+        else:
+            pen = QtGui.QPen(QtGui.QColor("#111827"), 1.4)
+        self.setPen(pen)
+        self.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+
+
+# -----------------------------
+# Main widget
+# -----------------------------
+class ModuleWidget(QtWidgets.QWidget):
+    def __init__(self, ctx, parent=None) -> None:
+        super().__init__(parent)
+        self.ctx = ctx
+        self.settings: QSettings = getattr(ctx, "settings", QSettings("TECH_modul", "TECH_modul_qt"))
+        self.state = ModuleState()
+
+        self.parts: Dict[str, Part] = {}
+        self.selected_key: str = "side_left"
+
+        self._build_ui()
+        self._populate_catalogs()
+        self._load_state()
+
+        self._rebuild_parts()
+        self._refresh_views()
+        self._refresh_quick_panel()
+        self._refresh_bom()
+
+        # odśwież po zmianach katalogów (Baza)
+        bus = getattr(self.ctx, "bus", None)
+        sig = getattr(bus, "data_changed", None)
+        if sig is not None and hasattr(sig, "connect"):
+            try:
+                sig.connect(self._on_data_changed)
+            except Exception:
+                pass
+
+    @QtCore.Slot(object)
+    def _on_data_changed(self, key: object) -> None:
+        if str(key) == "catalogs":
+            self._populate_catalogs()
+
+    # ---------------- UI ----------------
+    def _build_ui(self) -> None:
+        root = QtWidgets.QHBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(12)
+
+        self.split = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
+        root.addWidget(self.split, 1)
+
+        # LEFT (controls) - scroll
+        left_scroll = QtWidgets.QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setMinimumWidth(360)
+
+        left = QtWidgets.QWidget()
+        left_scroll.setWidget(left)
+        leftL = QtWidgets.QVBoxLayout(left)
+        leftL.setContentsMargins(10, 10, 10, 10)
+        leftL.setSpacing(10)
+
+        # --- Wymiary + Anchor (jak na screenie, anchor na razie tylko zapis/odczyt) ---
+        gb_dim = QtWidgets.QGroupBox("Wymiary + Anchor")
+        f1 = QtWidgets.QFormLayout(gb_dim)
+        f1.setVerticalSpacing(10)
+
+        self.in_W = QtWidgets.QDoubleSpinBox(); self.in_W.setRange(50, 5000); self.in_W.setDecimals(1); self.in_W.setValue(600)
+        self.in_H = QtWidgets.QDoubleSpinBox(); self.in_H.setRange(50, 5000); self.in_H.setDecimals(1); self.in_H.setValue(720)
+        self.in_D = QtWidgets.QDoubleSpinBox(); self.in_D.setRange(50, 5000); self.in_D.setDecimals(1); self.in_D.setValue(560)
+
+        self.cb_anchor = QtWidgets.QComboBox()
+        self.cb_anchor.addItems(["None", "LeftTop", "Center", "RightTop", "LeftBottom", "RightBottom"])
+
+        self.in_offx = QtWidgets.QDoubleSpinBox(); self.in_offx.setRange(-9999, 9999); self.in_offx.setDecimals(1); self.in_offx.setValue(0)
+        self.in_offy = QtWidgets.QDoubleSpinBox(); self.in_offy.setRange(-9999, 9999); self.in_offy.setDecimals(1); self.in_offy.setValue(0)
+
+        f1.addRow("W (mm)", self.in_W)
+        f1.addRow("H (mm)", self.in_H)
+        f1.addRow("D (mm)", self.in_D)
+        f1.addRow("Anchor", self.cb_anchor)
+        f1.addRow("Offset X (mm)", self.in_offx)
+        f1.addRow("Offset Y (mm)", self.in_offy)
+
+        # --- Fronty / Szuflady ---
+        gb_front = QtWidgets.QGroupBox("Fronty / Szuflady")
+        f2 = QtWidgets.QFormLayout(gb_front)
+        f2.setVerticalSpacing(10)
+
+        self.in_front_side = QtWidgets.QDoubleSpinBox()
+        self.in_front_side.setRange(0, 50); self.in_front_side.setDecimals(1); self.in_front_side.setValue(2.0)
+
+        self.cb_front_mode = QtWidgets.QComboBox()
+        self.cb_front_mode.addItems(["Drzwi", "Szuflady", "Brak"])
+
+        self.in_front_count = QtWidgets.QSpinBox(); self.in_front_count.setRange(1, 20); self.in_front_count.setValue(2)
+
+        self.cb_front_mat = QtWidgets.QComboBox()
+        self.cb_front_mat.setEditable(False)
+
+        self.in_front_gap = QtWidgets.QDoubleSpinBox()
+        self.in_front_gap.setRange(0, 20); self.in_front_gap.setDecimals(1); self.in_front_gap.setValue(2.0)
+
+        self.cb_front_hmode = QtWidgets.QComboBox()
+        self.cb_front_hmode.addItems(["Na całą wysokość", "Między wieńcami"])
+
+        self.ck_corner_panel = QtWidgets.QCheckBox("Corner front panel (MVP)")
+        self.ck_corner_panel.setChecked(False)
+
+        f2.addRow("Front: odstęp od boków (mm)", self.in_front_side)
+        f2.addRow("Tryb", self.cb_front_mode)
+        f2.addRow("Ilość", self.in_front_count)
+        f2.addRow("Materiał frontu", self.cb_front_mat)
+        f2.addRow("Gap (mm)", self.in_front_gap)
+        f2.addRow("Wysokość frontu", self.cb_front_hmode)
+        f2.addRow("", self.ck_corner_panel)
+
+        # --- Korpus / dodatki ---
+        gb_struct = QtWidgets.QGroupBox("Korpus / dodatki")
+        f3 = QtWidgets.QFormLayout(gb_struct)
+        f3.setVerticalSpacing(10)
+
+        self.cb_mat_carcass = QtWidgets.QComboBox()
+        self.cb_mat_carcass.setEditable(False)
+
+        self.cb_back_mat = QtWidgets.QComboBox()
+        self.cb_back_mat.setEditable(False)
+
+        self.in_thick = QtWidgets.QDoubleSpinBox(); self.in_thick.setRange(10, 40); self.in_thick.setDecimals(1); self.in_thick.setValue(18.0)
+        self.ck_back = QtWidgets.QCheckBox("Plecy: jest?")
+        self.ck_back.setChecked(True)
+        self.in_back_thick = QtWidgets.QDoubleSpinBox(); self.in_back_thick.setRange(2, 10); self.in_back_thick.setDecimals(1); self.in_back_thick.setValue(3.0)
+
+        self.ck_middle = QtWidgets.QCheckBox("Przegroda środkowa")
+        self.ck_middle.setChecked(False)
+
+        self.in_shelves = QtWidgets.QSpinBox(); self.in_shelves.setRange(0, 20); self.in_shelves.setValue(0)
+        self.ck_split_shelves = QtWidgets.QCheckBox("Dziel półki przy przegrodzie")
+        self.ck_split_shelves.setChecked(True)
+
+        self.in_qty = QtWidgets.QSpinBox(); self.in_qty.setRange(1, 999); self.in_qty.setValue(1)
+
+        f3.addRow("Materiał korpusu", self.cb_mat_carcass)
+        f3.addRow("Grubość (mm)", self.in_thick)
+        f3.addRow("Plecy: materiał", self.cb_back_mat)
+        f3.addRow("", self.ck_back)
+        f3.addRow("Plecy: grubość (mm)", self.in_back_thick)
+        f3.addRow("", self.ck_middle)
+        f3.addRow("Dodatkowe półki", self.in_shelves)
+        f3.addRow("", self.ck_split_shelves)
+        f3.addRow("Ilość modułów", self.in_qty)
+
+        # Buttons
+        btns = QtWidgets.QHBoxLayout()
+        self.btn_reset = QtWidgets.QPushButton("Resetuj")
+        self.btn_recalc = QtWidgets.QPushButton("Przelicz")
+        btns.addWidget(self.btn_reset)
+        btns.addWidget(self.btn_recalc)
+        btns.addStretch(1)
+
+        leftL.addWidget(gb_dim)
+        leftL.addWidget(gb_front)
+        leftL.addWidget(gb_struct)
+        leftL.addLayout(btns)
+        leftL.addStretch(1)
+
+        # CENTER: views
+        center = QtWidgets.QWidget()
+        centerL = QtWidgets.QVBoxLayout(center)
+        centerL.setContentsMargins(10, 10, 10, 10)
+        centerL.setSpacing(10)
+
+        title = QtWidgets.QLabel("Widok (hover=niebieski, selected=czerwony)")
+        title.setStyleSheet("font-size: 14px; font-weight: 600;")
+        centerL.addWidget(title)
+
+        self.front_scene = QtWidgets.QGraphicsScene(self)
+        self.top_scene = QtWidgets.QGraphicsScene(self)
+
+        self.front_view = QtWidgets.QGraphicsView(self.front_scene)
+        self.top_view = QtWidgets.QGraphicsView(self.top_scene)
+        for v in (self.front_view, self.top_view):
+            v.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+            v.setDragMode(QtWidgets.QGraphicsView.DragMode.NoDrag)
+            v.setMouseTracking(True)
+
+        centerL.addWidget(QtWidgets.QLabel("Front view"))
+        centerL.addWidget(self.front_view, 1)
+        centerL.addWidget(QtWidgets.QLabel("Top view"))
+        centerL.addWidget(self.top_view, 1)
+
+        # RIGHT: Quick + BOM
+        right = QtWidgets.QWidget()
+        rightL = QtWidgets.QVBoxLayout(right)
+        rightL.setContentsMargins(10, 10, 10, 10)
+        rightL.setSpacing(10)
+        right.setMinimumWidth(360)
+
+        # Quick
+        gb_quick = QtWidgets.QGroupBox("Quick: materiał + okleina")
+        ql = QtWidgets.QVBoxLayout(gb_quick)
+        ql.setSpacing(8)
+
+        row_sel = QtWidgets.QHBoxLayout()
+        self.lbl_selected = QtWidgets.QLabel("Selected: —")
+        self.lbl_selected.setStyleSheet("font-weight: 600;")
+        row_sel.addWidget(self.lbl_selected)
+        row_sel.addStretch(1)
+        ql.addLayout(row_sel)
+
+        formQ = QtWidgets.QFormLayout()
+        self.cb_q_material = QtWidgets.QComboBox()
+        self.cb_q_edge = QtWidgets.QComboBox()
+        formQ.addRow("Materiał", self.cb_q_material)
+        formQ.addRow("ABS", self.cb_q_edge)
+        ql.addLayout(formQ)
+
+        self.edge_hint = QtWidgets.QLabel("Krawędź: klikaj po stronie L / P / G / D")
+        self.edge_hint.setStyleSheet("color: #475569;")
+        ql.addWidget(self.edge_hint)
+
+        btnRow2 = QtWidgets.QHBoxLayout()
+        self.btn_all_08 = QtWidgets.QPushButton("All 0.8")
+        self.btn_all_20 = QtWidgets.QPushButton("All 2.0")
+        btnRow2.addWidget(self.btn_all_08)
+        btnRow2.addWidget(self.btn_all_20)
+        ql.addLayout(btnRow2)
+
+        btnRow3 = QtWidgets.QHBoxLayout()
+        self.btn_clear_edges = QtWidgets.QPushButton("Clear")
+        self.btn_apply_type = QtWidgets.QPushButton("→ ten typ")
+        btnRow3.addWidget(self.btn_clear_edges)
+        btnRow3.addWidget(self.btn_apply_type)
+        ql.addLayout(btnRow3)
+
+        gridE = QtWidgets.QGridLayout()
+        self.btn_L = QtWidgets.QPushButton("LEWA")
+        self.btn_P = QtWidgets.QPushButton("PRAWA")
+        self.btn_G = QtWidgets.QPushButton("GÓRA")
+        self.btn_D = QtWidgets.QPushButton("DÓŁ")
+        self.val_L = QtWidgets.QLabel("—")
+        self.val_P = QtWidgets.QLabel("—")
+        self.val_G = QtWidgets.QLabel("—")
+        self.val_D = QtWidgets.QLabel("—")
+        for lab in (self.val_L, self.val_P, self.val_G, self.val_D):
+            lab.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
+            lab.setStyleSheet("color:#334155;")
+
+        gridE.addWidget(self.btn_L, 0, 0); gridE.addWidget(self.val_L, 0, 1)
+        gridE.addWidget(self.btn_P, 1, 0); gridE.addWidget(self.val_P, 1, 1)
+        gridE.addWidget(self.btn_G, 2, 0); gridE.addWidget(self.val_G, 2, 1)
+        gridE.addWidget(self.btn_D, 3, 0); gridE.addWidget(self.val_D, 3, 1)
+        ql.addLayout(gridE)
+
+        # BOM
+        gb_bom = QtWidgets.QGroupBox("BOM")
+        bl = QtWidgets.QVBoxLayout(gb_bom)
+        self.lbl_parts = QtWidgets.QLabel("parts: 0")
+        self.txt_bom = QtWidgets.QPlainTextEdit()
+        self.txt_bom.setReadOnly(True)
+        bl.addWidget(self.lbl_parts)
+        bl.addWidget(self.txt_bom, 1)
+
+        rightL.addWidget(gb_quick)
+        rightL.addWidget(gb_bom, 1)
+
+        # splitter
+        self.split.addWidget(left_scroll)
+        self.split.addWidget(center)
+        self.split.addWidget(right)
+        self.split.setStretchFactor(0, 0)
+        self.split.setStretchFactor(1, 1)
+        self.split.setStretchFactor(2, 0)
+
+        # --- signals ---
+        self.btn_reset.clicked.connect(self._on_reset)
+        self.btn_recalc.clicked.connect(self._on_recalc)
+
+        def hook(w):
+            if hasattr(w, "valueChanged"):
+                w.valueChanged.connect(self._on_recalc)
+            if hasattr(w, "currentIndexChanged"):
+                w.currentIndexChanged.connect(self._on_recalc)
+            if hasattr(w, "toggled"):
+                w.toggled.connect(self._on_recalc)
+            if hasattr(w, "stateChanged"):
+                w.stateChanged.connect(self._on_recalc)
+
+        for w in [
+            self.in_W, self.in_H, self.in_D,
+            self.cb_anchor, self.in_offx, self.in_offy,
+            self.in_front_side, self.cb_front_mode, self.in_front_count, self.cb_front_mat,
+            self.in_front_gap, self.cb_front_hmode,
+            self.cb_mat_carcass, self.in_thick, self.cb_back_mat, self.ck_back, self.in_back_thick,
+            self.ck_middle, self.in_shelves, self.ck_split_shelves,
+            self.in_qty,
+        ]:
+            hook(w)
+
+        # Quick actions
+        self.cb_q_material.currentIndexChanged.connect(self._apply_quick_material)
+        self.btn_L.clicked.connect(lambda: self._set_edge_side("L"))
+        self.btn_P.clicked.connect(lambda: self._set_edge_side("P"))
+        self.btn_G.clicked.connect(lambda: self._set_edge_side("G"))
+        self.btn_D.clicked.connect(lambda: self._set_edge_side("D"))
+        self.btn_clear_edges.clicked.connect(self._clear_edges_selected)
+        self.btn_apply_type.clicked.connect(self._apply_edge_to_all_sides_selected)
+        self.btn_all_08.clicked.connect(lambda: self._apply_preset_edge("0.8"))
+        self.btn_all_20.clicked.connect(lambda: self._apply_preset_edge("2.0"))
+
+        # click selection in scenes
+        self.front_scene.selectionChanged.connect(self._scene_selection_changed)
+        self.top_scene.selectionChanged.connect(self._scene_selection_changed)
+
+    # ------------- catalogs -------------
+    def _populate_catalogs(self) -> None:
+        catalogs = getattr(self.ctx, "catalogs", None)
+
+        mats: List[str] = []
+        edges: List[str] = []
+
+        try:
+            if catalogs and hasattr(catalogs, "get_materials"):
+                mats = [getattr(x, "name", str(x)) for x in catalogs.get_materials()]
+        except Exception:
+            mats = []
+
+        try:
+            if catalogs and hasattr(catalogs, "get_edges"):
+                edges = [getattr(x, "name", str(x)) for x in catalogs.get_edges()]
+        except Exception:
+            edges = []
+
+        def fill(cb: QtWidgets.QComboBox, placeholder: str, items: List[str]):
+            cur = cb.currentText()
+            cb.blockSignals(True)
+            try:
+                cb.clear()
+                cb.addItem(placeholder)
+                for it in items:
+                    cb.addItem(it)
+                idx = cb.findText(cur)
+                if idx >= 0:
+                    cb.setCurrentIndex(idx)
+            finally:
+                cb.blockSignals(False)
+
+        fill(self.cb_mat_carcass, "Płyta wiórowa 18 mm (domyślnie)", mats)
+        fill(self.cb_front_mat, "MDF 18 mm (domyślnie)", mats)
+        fill(self.cb_back_mat, "HDF 3 mm (domyślnie)", mats)
+        fill(self.cb_q_material, "— wybierz materiał —", mats)
+        fill(self.cb_q_edge, "ABS 0.8 (domyślnie)", edges)
+
+    # ---------------- state ----------------
+    def _load_state(self) -> None:
+        s = self.settings
+        s.beginGroup("module")
+        try:
+            self.in_W.setValue(float(s.value("W", 600.0)))
+            self.in_H.setValue(float(s.value("H", 720.0)))
+            self.in_D.setValue(float(s.value("D", 560.0)))
+
+            anc = str(s.value("anchor", "None"))
+            idx = self.cb_anchor.findText(anc)
+            if idx >= 0: self.cb_anchor.setCurrentIndex(idx)
+
+            self.in_offx.setValue(float(s.value("offx", 0.0)))
+            self.in_offy.setValue(float(s.value("offy", 0.0)))
+
+            fm = str(s.value("front_mode", "Drzwi"))
+            idx = self.cb_front_mode.findText(fm)
+            if idx >= 0: self.cb_front_mode.setCurrentIndex(idx)
+
+            self.in_front_count.setValue(int(s.value("front_count", 2)))
+            self.in_front_gap.setValue(float(s.value("front_gap", 2.0)))
+            self.in_front_side.setValue(float(s.value("front_side_offset", 2.0)))
+
+            hm = str(s.value("front_hmode", "Na całą wysokość"))
+            idx = self.cb_front_hmode.findText(hm)
+            if idx >= 0: self.cb_front_hmode.setCurrentIndex(idx)
+
+            self.in_thick.setValue(float(s.value("thick", 18.0)))
+            self.ck_back.setChecked(str(s.value("back_enabled", "true")).lower() in ("1","true","tak","yes"))
+            self.in_back_thick.setValue(float(s.value("back_thick", 3.0)))
+
+            self.ck_middle.setChecked(str(s.value("middle_wall", "false")).lower() in ("1","true","tak","yes"))
+            self.in_shelves.setValue(int(s.value("shelves_count", 0)))
+            self.ck_split_shelves.setChecked(str(s.value("shelves_split", "true")).lower() in ("1","true","tak","yes"))
+
+            self.in_qty.setValue(int(s.value("qty", 1)))
+
+            sel = str(s.value("selected_key", "side_left"))
+            self.selected_key = sel
+        finally:
+            s.endGroup()
+
+    def _save_state(self) -> None:
+        s = self.settings
+        s.beginGroup("module")
+        try:
+            s.setValue("W", self.in_W.value())
+            s.setValue("H", self.in_H.value())
+            s.setValue("D", self.in_D.value())
+            s.setValue("anchor", self.cb_anchor.currentText())
+            s.setValue("offx", self.in_offx.value())
+            s.setValue("offy", self.in_offy.value())
+
+            s.setValue("front_mode", self.cb_front_mode.currentText())
+            s.setValue("front_count", self.in_front_count.value())
+            s.setValue("front_gap", self.in_front_gap.value())
+            s.setValue("front_side_offset", self.in_front_side.value())
+            s.setValue("front_hmode", self.cb_front_hmode.currentText())
+
+            s.setValue("thick", self.in_thick.value())
+            s.setValue("back_enabled", "true" if self.ck_back.isChecked() else "false")
+            s.setValue("back_thick", self.in_back_thick.value())
+            s.setValue("middle_wall", "true" if self.ck_middle.isChecked() else "false")
+            s.setValue("shelves_count", self.in_shelves.value())
+            s.setValue("shelves_split", "true" if self.ck_split_shelves.isChecked() else "false")
+            s.setValue("qty", self.in_qty.value())
+
+            s.setValue("selected_key", self.selected_key)
+        finally:
+            s.endGroup()
+
+    def closeEvent(self, e) -> None:
+        try:
+            self._save_state()
+        except Exception:
+            pass
+        super().closeEvent(e)
+
+    # ---------------- rebuild parts ----------------
+    def _rebuild_parts(self) -> None:
+        W = float(self.in_W.value())
+        H = float(self.in_H.value())
+        D = float(self.in_D.value())
+        t = float(self.in_thick.value())
+        back_on = bool(self.ck_back.isChecked())
+        mw_on = bool(self.ck_middle.isChecked())
+        shelves = int(self.in_shelves.value())
+        split = bool(self.ck_split_shelves.isChecked())
+
+        carcass_mat = self.cb_mat_carcass.currentText().strip()
+        if self.cb_mat_carcass.currentIndex() == 0:
+            carcass_mat = "Płyta wiórowa 18 mm"
+        back_mat = self.cb_back_mat.currentText().strip()
+        if self.cb_back_mat.currentIndex() == 0:
+            back_mat = "HDF 3 mm"
+        front_mat = self.cb_front_mat.currentText().strip()
+        if self.cb_front_mat.currentIndex() == 0:
+            front_mat = "MDF 18 mm"
+
+        # internal width between sides
+        iW = max(0.0, W - 2*t)
+        iH = max(0.0, H - 2*t)
+
+        parts: Dict[str, Part] = {}
+
+        # basic carcass
+        parts["side_left"]  = self.parts.get("side_left",  Part("side_left",  "Bok lewy",  D, H, carcass_mat))
+        parts["side_right"] = self.parts.get("side_right", Part("side_right", "Bok prawy", D, H, carcass_mat))
+        parts["top"]        = self.parts.get("top",        Part("top",        "Wieniec góra",  iW, D, carcass_mat))
+        parts["bottom"]     = self.parts.get("bottom",     Part("bottom",     "Wieniec dół",   iW, D, carcass_mat))
+
+        if back_on:
+            parts["back"] = self.parts.get("back", Part("back", "Plecy", W, H, back_mat))
+
+        if mw_on:
+            parts["middle"] = self.parts.get("middle", Part("middle", "Przegroda", D, iH, carcass_mat))
+
+        # shelves (we keep stable keys shelf_1..n)
+        if shelves > 0:
+            for i in range(1, shelves + 1):
+                key = f"shelf_{i}"
+                if mw_on and split:
+                    # two half shelves -> represent as two parts (left/right)
+                    keyL = f"{key}_L"
+                    keyR = f"{key}_R"
+                    w_half = max(0.0, (iW - t) / 2.0)
+                    parts[keyL] = self.parts.get(keyL, Part(keyL, f"Półka {i} (lewa)", w_half, D, carcass_mat))
+                    parts[keyR] = self.parts.get(keyR, Part(keyR, f"Półka {i} (prawa)", w_half, D, carcass_mat))
+                else:
+                    parts[key] = self.parts.get(key, Part(key, f"Półka {i}", iW, D, carcass_mat))
+
+        # front panels as parts (for BOM area) — keys front_1..n
+        mode = self.cb_front_mode.currentText()
+        n = int(self.in_front_count.value())
+        gap = float(self.in_front_gap.value())
+        side_off = float(self.in_front_side.value())
+        hmode = self.cb_front_hmode.currentText()
+
+        if mode != "Brak":
+            openH = H if hmode == "Na całą wysokość" else max(0.0, H - 2*t)
+            if mode == "Drzwi":
+                availW = max(0.0, W - 2*side_off)
+                panelW = max(0.0, (availW - gap*(n-1)) / max(1, n))
+                for i in range(1, n+1):
+                    key = f"front_{i}"
+                    parts[key] = self.parts.get(key, Part(key, f"Front {i}", panelW, openH, front_mat))
+            else:
+                availH = max(0.0, openH)
+                panelH = max(0.0, (availH - gap*(n-1)) / max(1, n))
+                availW = max(0.0, W - 2*side_off)
+                for i in range(1, n+1):
+                    key = f"front_{i}"
+                    parts[key] = self.parts.get(key, Part(key, f"Front {i}", availW, panelH, front_mat))
+
+        # Ensure all parts dims updated + default materials updated only if empty
+        for p in parts.values():
+            # update dims from current computed sizes
+            # (p.w_mm/p.h_mm already set on creation for new; for existing keep edges/material but update dims)
+            if p.key in ("side_left","side_right"):
+                p.w_mm, p.h_mm = D, H
+                if not p.material: p.material = carcass_mat
+            elif p.key in ("top","bottom"):
+                p.w_mm, p.h_mm = iW, D
+                if not p.material: p.material = carcass_mat
+            elif p.key == "back":
+                p.w_mm, p.h_mm = W, H
+                if not p.material: p.material = back_mat
+            elif p.key == "middle":
+                p.w_mm, p.h_mm = D, iH
+                if not p.material: p.material = carcass_mat
+            elif p.key.startswith("shelf_"):
+                # kept from creation (already computed)
+                if not p.material: p.material = carcass_mat
+            elif p.key.startswith("front_"):
+                if not p.material: p.material = front_mat
+
+        self.parts = parts
+
+        # keep selection valid
+        if self.selected_key not in self.parts:
+            # fallback to a stable part
+            self.selected_key = "side_left" if "side_left" in self.parts else next(iter(self.parts.keys()))
+
+    # ---------------- Views ----------------
+    def _scene_selection_changed(self):
+        # prefer selection from front_scene, else top_scene
+        sel = self.front_scene.selectedItems()
+        if not sel:
+            sel = self.top_scene.selectedItems()
+        if not sel:
+            return
+        item = sel[0]
+        if isinstance(item, PartRectItem):
+            self._select_part(item.part_key)
+
+    def _select_part(self, key: str) -> None:
+        if key not in self.parts:
+            return
+        self.selected_key = key
+        self._refresh_views()        # update selection highlight
+        self._refresh_quick_panel()  # update quick controls
+
+    def _refresh_views(self) -> None:
+        # rebuild scenes each time (prostota, stabilność)
+        self.front_scene.clear()
+        self.top_scene.clear()
+
+        W = float(self.in_W.value())
+        H = float(self.in_H.value())
+        D = float(self.in_D.value())
+        t = float(self.in_thick.value())
+        mw_on = bool(self.ck_middle.isChecked())
+        shelves = int(self.in_shelves.value())
+        split = bool(self.ck_split_shelves.isChecked())
+
+        # scale into 520x360 area
+        def build_view(scene: QtWidgets.QGraphicsScene, w_mm: float, h_mm: float) -> Tuple[float, float, float, float, float]:
+            # returns (sx, sy, s, pad, pad)
+            vw, vh = 520.0, 360.0
+            pad = 24.0
+            s = min((vw - 2*pad) / max(1.0, w_mm), (vh - 2*pad) / max(1.0, h_mm))
+            # top-left origin
+            x0 = pad
+            y0 = pad
+            scene.setSceneRect(0, 0, vw, vh)
+            return x0, y0, s, vw, vh
+
+        # FRONT view: W x H
+        fx0, fy0, fs, _, _ = build_view(self.front_scene, W, H)
+
+        # outline
+        outline = QtWidgets.QGraphicsRectItem(fx0, fy0, W*fs, H*fs)
+        outline.setPen(QtGui.QPen(QtGui.QColor("#111827"), 1.2))
+        self.front_scene.addItem(outline)
+
+        # carcass strips (selectable)
+        # left side strip
+        strip = max(2.0, t*fs)
+        self._add_part_rect(self.front_scene, "side_left", fx0, fy0, strip, H*fs)
+        self._add_part_rect(self.front_scene, "side_right", fx0 + W*fs - strip, fy0, strip, H*fs)
+        self._add_part_rect(self.front_scene, "top", fx0+strip, fy0, W*fs - 2*strip, strip)
+        self._add_part_rect(self.front_scene, "bottom", fx0+strip, fy0 + H*fs - strip, W*fs - 2*strip, strip)
+
+        # middle wall (vertical strip)
+        if mw_on:
+            xmid = fx0 + (W*fs)/2.0 - (strip/2.0)
+            self._add_part_rect(self.front_scene, "middle", xmid, fy0+strip, strip, H*fs - 2*strip)
+
+        # shelves (thin strips) - selectable (we pick first shelf key if split, still clickable by strip -> select shelf_1...)
+        if shelves > 0:
+            for i in range(1, shelves+1):
+                y = fy0 + (H*fs) * (i/(shelves+1))
+                shelf_h = max(2.0, strip*0.55)
+                if mw_on and split:
+                    # two strips -> select shelf_i_L / shelf_i_R
+                    xmid = fx0 + (W*fs)/2.0
+                    self._add_part_rect(self.front_scene, f"shelf_{i}_L", fx0+strip, y - shelf_h/2, (xmid - (fx0+strip)) - strip/2, shelf_h)
+                    self._add_part_rect(self.front_scene, f"shelf_{i}_R", xmid + strip/2, y - shelf_h/2, (fx0+W*fs-strip) - (xmid + strip/2), shelf_h)
+                else:
+                    self._add_part_rect(self.front_scene, f"shelf_{i}", fx0+strip, y - shelf_h/2, W*fs - 2*strip, shelf_h)
+
+        # front panels (rects)
+        mode = self.cb_front_mode.currentText()
+        n = int(self.in_front_count.value())
+        gap = float(self.in_front_gap.value())
+        side_off = float(self.in_front_side.value())
+        hmode = self.cb_front_hmode.currentText()
+        openH = H if hmode == "Na całą wysokość" else max(0.0, H - 2*t)
+
+        if mode != "Brak":
+            # draw in front plane within offsets
+            xF = fx0 + side_off*fs
+            yF = fy0 + (0 if hmode == "Na całą wysokość" else t*fs)
+            wF = max(0.0, (W - 2*side_off)*fs)
+            hF = max(0.0, openH*fs)
+
+            if mode == "Drzwi":
+                pw = (wF - gap*fs*(n-1)) / max(1, n)
+                x = xF
+                for i in range(1, n+1):
+                    self._add_part_rect(self.front_scene, f"front_{i}", x, yF, max(0.0, pw), hF, radius=6)
+                    x += pw + gap*fs
+            else:
+                ph = (hF - gap*fs*(n-1)) / max(1, n)
+                y = yF
+                for i in range(1, n+1):
+                    self._add_part_rect(self.front_scene, f"front_{i}", xF, y, wF, max(0.0, ph), radius=6)
+                    y += ph + gap*fs
+
+        # TOP view: W x D
+        tx0, ty0, ts, _, _ = build_view(self.top_scene, W, D)
+
+        outline2 = QtWidgets.QGraphicsRectItem(tx0, ty0, W*ts, D*ts)
+        outline2.setPen(QtGui.QPen(QtGui.QColor("#111827"), 1.2))
+        self.top_scene.addItem(outline2)
+
+        strip2 = max(2.0, t*ts)
+        self._add_part_rect(self.top_scene, "side_left", tx0, ty0, strip2, D*ts)
+        self._add_part_rect(self.top_scene, "side_right", tx0 + W*ts - strip2, ty0, strip2, D*ts)
+        # top/bottom not visible in top-view, but ok: we keep them selectable elsewhere
+
+        if mw_on:
+            xmid = tx0 + (W*ts)/2.0 - (strip2/2.0)
+            self._add_part_rect(self.top_scene, "middle", xmid, ty0, strip2, D*ts)
+
+        # Fit views
+        self.front_view.fitInView(self.front_scene.sceneRect(), QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+        self.top_view.fitInView(self.top_scene.sceneRect(), QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+
+    def _add_part_rect(self, scene: QtWidgets.QGraphicsScene, key: str, x: float, y: float, w: float, h: float, radius: int = 8):
+        if key not in self.parts:
+            return
+        item = PartRectItem(key, x, y, w, h)
+        item.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
+        item.setToolTip(self.parts[key].name_pl)
+        item.set_selected(key == self.selected_key)
+        scene.addItem(item)
+
+    # ---------------- Quick panel actions ----------------
+    def _get_selected_part(self) -> Optional[Part]:
+        return self.parts.get(self.selected_key)
+
+    def _refresh_quick_panel(self) -> None:
+        p = self._get_selected_part()
+        if not p:
+            self.lbl_selected.setText("Selected: —")
+            return
+
+        self.lbl_selected.setText(f"Selected: {p.name_pl}")
+
+        # material combobox set to part.material if exists
+        cur_mat = p.material or ""
+        idx = self.cb_q_material.findText(cur_mat)
+        if idx >= 0:
+            self.cb_q_material.blockSignals(True)
+            self.cb_q_material.setCurrentIndex(idx)
+            self.cb_q_material.blockSignals(False)
+
+        # show edge values
+        self.val_L.setText(p.edges.L or "—")
+        self.val_P.setText(p.edges.P or "—")
+        self.val_G.setText(p.edges.G or "—")
+        self.val_D.setText(p.edges.D or "—")
+
+    def _apply_quick_material(self) -> None:
+        p = self._get_selected_part()
+        if not p:
+            return
+        if self.cb_q_material.currentIndex() <= 0:
+            return
+        p.material = self.cb_q_material.currentText()
+        self._refresh_bom()
+
+    def _current_edge_type(self) -> str:
+        # if placeholder, keep empty
+        if self.cb_q_edge.currentIndex() <= 0:
+            return ""
+        return self.cb_q_edge.currentText()
+
+    def _set_edge_side(self, side: str) -> None:
+        p = self._get_selected_part()
+        if not p:
+            return
+        typ = self._current_edge_type()
+        if side == "L":
+            p.edges.L = typ
+        elif side == "P":
+            p.edges.P = typ
+        elif side == "G":
+            p.edges.G = typ
+        elif side == "D":
+            p.edges.D = typ
+        self._refresh_quick_panel()
+        self._refresh_bom()
+
+    def _clear_edges_selected(self) -> None:
+        p = self._get_selected_part()
+        if not p:
+            return
+        p.edges = EdgeMap()
+        self._refresh_quick_panel()
+        self._refresh_bom()
+
+    def _apply_edge_to_all_sides_selected(self) -> None:
+        p = self._get_selected_part()
+        if not p:
+            return
+        typ = self._current_edge_type()
+        p.edges = EdgeMap(L=typ, P=typ, G=typ, D=typ)
+        self._refresh_quick_panel()
+        self._refresh_bom()
+
+    def _apply_preset_edge(self, needle: str) -> None:
+        # find edge containing "0.8" or "2.0" and set to all sides
+        p = self._get_selected_part()
+        if not p:
+            return
+        target = ""
+        for i in range(1, self.cb_q_edge.count()):
+            t = self.cb_q_edge.itemText(i)
+            if needle in t:
+                target = t
+                break
+        if not target and self.cb_q_edge.count() > 1:
+            target = self.cb_q_edge.itemText(1)
+        p.edges = EdgeMap(L=target, P=target, G=target, D=target)
+        self._refresh_quick_panel()
+        self._refresh_bom()
+
+    # ---------------- BOM ----------------
+    def _edge_len_m_for_part(self, part: Part) -> float:
+        # Edge length approx: L+P use part.h, G+D use part.w
+        total_mm = 0.0
+        if part.edges.L: total_mm += part.h_mm
+        if part.edges.P: total_mm += part.h_mm
+        if part.edges.G: total_mm += part.w_mm
+        if part.edges.D: total_mm += part.w_mm
+        return mm_to_m(total_mm)
+
+    def _refresh_bom(self) -> None:
+        # Aggregate materials by name -> total area
+        mats: Dict[str, float] = {}
+        edges: Dict[str, float] = {}
+
+        for part in self.parts.values():
+            mat = (part.material or "").strip()
+            if not mat:
+                mat = "— (brak materiału)"
+            area = mm2_to_m2(part.w_mm * part.h_mm)
+            mats[mat] = mats.get(mat, 0.0) + area
+
+            # edges by type
+            for side, et in (("L", part.edges.L), ("P", part.edges.P), ("G", part.edges.G), ("D", part.edges.D)):
+                if et:
+                    # count length for this edge only
+                    if side in ("L","P"):
+                        edges[et] = edges.get(et, 0.0) + mm_to_m(part.h_mm)
+                    else:
+                        edges[et] = edges.get(et, 0.0) + mm_to_m(part.w_mm)
+
+        qty = int(self.in_qty.value())
+        self.lbl_parts.setText(f"parts: {len(self.parts)}   |   qty: {qty}")
+
+        lines: List[str] = []
+        lines.append("Materiały (m²) — na 1 moduł")
+        for k in sorted(mats.keys()):
+            lines.append(f"- {k}: {mats[k]:.3f} m²")
+        lines.append("")
+        lines.append("Okleina (m) — na 1 moduł")
+        if edges:
+            for k in sorted(edges.keys()):
+                lines.append(f"- {k}: {edges[k]:.3f} m")
+        else:
+            lines.append("- (brak)")
+        lines.append("")
+        lines.append(f"RAZEM x{qty}")
+        for k in sorted(mats.keys()):
+            lines.append(f"- {k}: {mats[k]*qty:.3f} m²")
+        if edges:
+            for k in sorted(edges.keys()):
+                lines.append(f"- {k}: {edges[k]*qty:.3f} m")
+
+        self.txt_bom.setPlainText("\n".join(lines))
+
+    # ---------------- actions ----------------
+    def _on_reset(self) -> None:
+        self.in_W.setValue(600.0)
+        self.in_H.setValue(720.0)
+        self.in_D.setValue(560.0)
+        self.cb_anchor.setCurrentIndex(0)
+        self.in_offx.setValue(0.0)
+        self.in_offy.setValue(0.0)
+
+        self.cb_front_mode.setCurrentIndex(0)
+        self.in_front_count.setValue(2)
+        self.in_front_gap.setValue(2.0)
+        self.in_front_side.setValue(2.0)
+        self.cb_front_hmode.setCurrentIndex(0)
+
+        self.in_thick.setValue(18.0)
+        self.ck_back.setChecked(True)
+        self.in_back_thick.setValue(3.0)
+        self.ck_middle.setChecked(False)
+        self.in_shelves.setValue(0)
+        self.ck_split_shelves.setChecked(True)
+        self.in_qty.setValue(1)
+
+        self.parts = {}
+        self.selected_key = "side_left"
+        self._on_recalc()
+
+    def _on_recalc(self) -> None:
+        self._rebuild_parts()
+        self._refresh_views()
+        self._refresh_quick_panel()
+        self._refresh_bom()
+        try:
+            self._save_state()
+        except Exception:
+            pass

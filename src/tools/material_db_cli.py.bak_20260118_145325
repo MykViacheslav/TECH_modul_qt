@@ -1,0 +1,275 @@
+﻿import argparse, json, os, sqlite3
+from datetime import datetime
+
+SCHEMA_VERSION = 1
+
+def now_iso():
+    return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
+def connect(db_path: str):
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    con = sqlite3.connect(db_path)
+    con.row_factory = sqlite3.Row
+    return con
+
+def table_info(con, table: str):
+    try:
+        rows = con.execute(f"PRAGMA table_info({table})").fetchall()
+        return [r["name"] for r in rows]
+    except sqlite3.Error:
+        return []
+
+def ensure_column(con, table: str, col: str, coldef_sql: str):
+    cols = table_info(con, table)
+    if col in cols:
+        return
+    con.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coldef_sql}")
+
+def ensure_schema(con: sqlite3.Connection):
+    con.execute("""
+    CREATE TABLE IF NOT EXISTS materials (
+        anchor TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        name TEXT NOT NULL,
+        thickness_mm REAL,
+        payload_json TEXT NOT NULL,
+        schema_version INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """)
+    con.execute("""
+    CREATE TABLE IF NOT EXISTS materials_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        anchor TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        schema_version INTEGER NOT NULL,
+        saved_at TEXT NOT NULL
+    )
+    """)
+    con.commit()
+
+    # migrations for existing tables
+    cols = table_info(con, "materials")
+    if cols:
+        if "created_at" not in cols:
+            ensure_column(con, "materials", "created_at", "TEXT")
+            con.execute("UPDATE materials SET created_at = ? WHERE created_at IS NULL", (now_iso(),))
+        if "updated_at" not in cols:
+            ensure_column(con, "materials", "updated_at", "TEXT")
+            con.execute("UPDATE materials SET updated_at = ? WHERE updated_at IS NULL", (now_iso(),))
+        if "schema_version" not in cols:
+            ensure_column(con, "materials", "schema_version", "INTEGER")
+            con.execute("UPDATE materials SET schema_version = ? WHERE schema_version IS NULL", (SCHEMA_VERSION,))
+        if "payload_json" not in cols:
+            ensure_column(con, "materials", "payload_json", "TEXT")
+        if "thickness_mm" not in cols:
+            ensure_column(con, "materials", "thickness_mm", "REAL")
+        if "name" not in cols:
+            ensure_column(con, "materials", "name", "TEXT")
+        if "kind" not in cols:
+            ensure_column(con, "materials", "kind", "TEXT")
+        con.commit()
+
+    cols_h = table_info(con, "materials_history")
+    if cols_h:
+        if "saved_at" not in cols_h:
+            ensure_column(con, "materials_history", "saved_at", "TEXT")
+            if "created_at" in cols_h:
+                con.execute("UPDATE materials_history SET saved_at = created_at WHERE saved_at IS NULL")
+            con.execute("UPDATE materials_history SET saved_at = ? WHERE saved_at IS NULL", (now_iso(),))
+        if "schema_version" not in cols_h:
+            ensure_column(con, "materials_history", "schema_version", "INTEGER")
+            con.execute("UPDATE materials_history SET schema_version = ? WHERE schema_version IS NULL", (SCHEMA_VERSION,))
+        if "payload_json" not in cols_h:
+            ensure_column(con, "materials_history", "payload_json", "TEXT")
+        if "anchor" not in cols_h:
+            ensure_column(con, "materials_history", "anchor", "TEXT")
+        con.commit()
+
+def compute_thickness_from_layers(payload: dict):
+    layers = payload.get("layers")
+    if not isinstance(layers, list):
+        return None
+    total = 0.0
+    ok = False
+    for it in layers:
+        if not isinstance(it, dict):
+            continue
+        t = it.get("thickness_mm")
+        if t is None:
+            continue
+        try:
+            total += float(t)
+            ok = True
+        except Exception:
+            pass
+    return total if ok else None
+
+def upsert(con: sqlite3.Connection, payload: dict, overwrite: bool, history: bool):
+    ensure_schema(con)
+    anchor = str(payload.get("anchor") or "").strip()
+    if not anchor:
+        raise SystemExit("ERROR: anchor is required")
+
+    kind = str(payload.get("kind") or "").strip()
+    name = str(payload.get("name") or "").strip()
+    if not kind:
+        raise SystemExit("ERROR: kind is required")
+    if not name:
+        raise SystemExit("ERROR: name is required")
+
+    row = con.execute("SELECT anchor, created_at FROM materials WHERE anchor = ?", (anchor,)).fetchone()
+    created_at = row["created_at"] if row and "created_at" in row.keys() else now_iso()
+    updated_at = now_iso()
+
+    payload = dict(payload)
+    payload["anchor"] = anchor
+    payload["kind"] = kind
+    payload["name"] = name
+    payload["schema_version"] = SCHEMA_VERSION
+
+    # thickness: prefer explicit; else for composite try compute from layers
+    thickness = payload.get("thickness_mm", None)
+    if thickness is None and kind.lower() == "composite":
+        thickness = compute_thickness_from_layers(payload)
+        if thickness is not None:
+            payload["thickness_mm"] = thickness
+
+    payload_json = json.dumps(payload, ensure_ascii=False)
+
+    if row and not overwrite:
+        return anchor, False, True
+
+    con.execute("""
+        INSERT INTO materials(anchor, kind, name, thickness_mm, payload_json, schema_version, created_at, updated_at)
+        VALUES(?,?,?,?,?,?,?,?)
+        ON CONFLICT(anchor) DO UPDATE SET
+            kind=excluded.kind,
+            name=excluded.name,
+            thickness_mm=excluded.thickness_mm,
+            payload_json=excluded.payload_json,
+            schema_version=excluded.schema_version,
+            updated_at=excluded.updated_at
+    """, (anchor, kind, name, thickness, payload_json, SCHEMA_VERSION, created_at, updated_at))
+
+    if history:
+        con.execute("""
+            INSERT INTO materials_history(anchor, payload_json, schema_version, saved_at)
+            VALUES(?,?,?,?)
+        """, (anchor, payload_json, SCHEMA_VERSION, updated_at))
+
+    con.commit()
+    return anchor, True, False
+
+def cmd_init(args):
+    con = connect(args.db)
+    ensure_schema(con)
+    print(f"OK: Materials DB ready in: {args.db}")
+    return 0
+
+def cmd_save(args):
+    con = connect(args.db)
+    payload = {
+        "anchor": args.anchor,
+        "kind": args.kind,
+        "name": args.name,
+        "thickness_mm": args.thickness,
+    }
+
+    if args.payload_json:
+        try:
+            extra = json.loads(args.payload_json)
+            if isinstance(extra, dict):
+                payload.update(extra)
+        except Exception:
+            raise SystemExit("ERROR: payload_json is not valid JSON")
+
+    payload = {k:v for k,v in payload.items() if v is not None and v != ""}
+
+    anchor, saved, existed_no_overwrite = upsert(con, payload, overwrite=bool(args.overwrite), history=not bool(args.no_history))
+    if existed_no_overwrite:
+        print(f"ERROR: '{anchor}' already exists. Use --overwrite.")
+        return 2
+    if saved and args.overwrite:
+        print(f"OK: saved '{anchor}' (overwritten)")
+    else:
+        print(f"OK: saved '{anchor}'")
+    return 0
+
+def cmd_get(args):
+    con = connect(args.db)
+    ensure_schema(con)
+    row = con.execute("SELECT payload_json FROM materials WHERE anchor = ?", (args.anchor,)).fetchone()
+    if not row:
+        print("ERROR: not found")
+        return 4
+    obj = json.loads(row["payload_json"])
+    print(json.dumps(obj, ensure_ascii=False, indent=2))
+    return 0
+
+def cmd_list(args):
+    con = connect(args.db)
+    ensure_schema(con)
+    limit = int(args.limit) if args.limit is not None else 200
+    if limit <= 0:
+        limit = 200
+    rows = con.execute(
+        "SELECT payload_json FROM materials ORDER BY updated_at DESC LIMIT ?",
+        (limit,)
+    ).fetchall()
+    out = [json.loads(r["payload_json"]) for r in rows]
+    print(json.dumps(out, ensure_ascii=False, indent=2))
+    return 0
+
+def cmd_delete(args):
+    con = connect(args.db)
+    ensure_schema(con)
+    cur = con.execute("DELETE FROM materials WHERE anchor = ?", (args.anchor,))
+    con.commit()
+    if cur.rowcount:
+        print(f"OK: deleted '{args.anchor}'")
+    else:
+        print("OK: not found")
+    return 0
+
+def build_parser():
+    p = argparse.ArgumentParser(prog="material_db_cli")
+    p.add_argument("--db", required=True)
+
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("init")
+    s.set_defaults(fn=cmd_init)
+
+    s = sub.add_parser("save")
+    s.add_argument("--anchor", required=True)
+    s.add_argument("--kind", required=True)     # board / hpl / veneer / composite ...
+    s.add_argument("--name", required=True)
+    s.add_argument("--thickness", type=float, default=None)
+    s.add_argument("--payload-json", default="")  # JSON dict, e.g. {"layers":[...]}
+    s.add_argument("--overwrite", action="store_true")
+    s.add_argument("--no-history", action="store_true")
+    s.set_defaults(fn=cmd_save)
+
+    s = sub.add_parser("get")
+    s.add_argument("--anchor", required=True)
+    s.set_defaults(fn=cmd_get)
+
+    s = sub.add_parser("list")
+    s.add_argument("--limit", type=int, default=200)
+    s.set_defaults(fn=cmd_list)
+
+    s = sub.add_parser("delete")
+    s.add_argument("--anchor", required=True)
+    s.set_defaults(fn=cmd_delete)
+
+    return p
+
+def main(argv=None):
+    p = build_parser()
+    args = p.parse_args(argv)
+    return args.fn(args)
+
+if __name__ == "__main__":
+    raise SystemExit(main())

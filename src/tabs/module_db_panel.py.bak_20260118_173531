@@ -1,0 +1,269 @@
+﻿from __future__ import annotations
+import json, subprocess, sys
+from pathlib import Path
+from PySide6 import QtCore, QtWidgets
+
+from .material_query import MaterialQuery, default_db_path
+
+def _try_get_spin(widget, names):
+    for nm in names:
+        w = getattr(widget, nm, None)
+        if w is None:
+            continue
+        if isinstance(w, (QtWidgets.QSpinBox, QtWidgets.QDoubleSpinBox)):
+            return w
+    return None
+
+def _try_get_line(widget, names):
+    for nm in names:
+        w = getattr(widget, nm, None)
+        if w is None:
+            continue
+        if isinstance(w, QtWidgets.QLineEdit):
+            return w
+    return None
+
+def _try_get_combo(widget, names):
+    for nm in names:
+        w = getattr(widget, nm, None)
+        if w is None:
+            continue
+        if isinstance(w, QtWidgets.QComboBox):
+            return w
+    return None
+
+def _read_dim(core, which: str):
+    # Try known method
+    if hasattr(core, "get_dimensions"):
+        try:
+            d = core.get_dimensions()
+            return float(d.get(which))
+        except Exception:
+            pass
+
+    nm_map = {
+        "width":  ["sbW","spW","width_sb","widthSpin","spinW","w_sb","wSpin","W_sb","WSpin","sb_width"],
+        "height": ["sbH","spH","height_sb","heightSpin","spinH","h_sb","hSpin","H_sb","HSpin","sb_height"],
+        "depth":  ["sbD","spD","depth_sb","depthSpin","spinD","d_sb","dSpin","D_sb","DSpin","sb_depth"],
+    }
+    sb = _try_get_spin(core, nm_map.get(which, []))
+    if sb is not None:
+        try:
+            return float(sb.value())
+        except Exception:
+            return None
+    # last resort: attributes
+    for nm in [which, which[0].upper(), which[0].lower()]:
+        if hasattr(core, nm):
+            try:
+                return float(getattr(core, nm))
+            except Exception:
+                pass
+    return None
+
+def _write_dim(core, which: str, val: float):
+    nm_map = {
+        "width":  ["sbW","spW","width_sb","widthSpin","spinW","w_sb","wSpin","W_sb","WSpin","sb_width"],
+        "height": ["sbH","spH","height_sb","heightSpin","spinH","h_sb","hSpin","H_sb","HSpin","sb_height"],
+        "depth":  ["sbD","spD","depth_sb","depthSpin","spinD","d_sb","dSpin","D_sb","DSpin","sb_depth"],
+    }
+    sb = _try_get_spin(core, nm_map.get(which, []))
+    if sb is not None:
+        try:
+            sb.setValue(float(val))
+            return True
+        except Exception:
+            pass
+    # if core has set_dimensions
+    if hasattr(core, "set_dimensions"):
+        try:
+            core.set_dimensions({which: float(val)})
+            return True
+        except Exception:
+            pass
+    return False
+
+def _read_material(core):
+    le = _try_get_line(core, ["mat","materials","material","matEdit","materialsEdit","leMaterial","leMaterials"])
+    if le is not None:
+        return le.text().strip()
+    cb = _try_get_combo(core, ["cbMat","cbMaterial","cbMaterials","materialCb","materialsCb"])
+    if cb is not None:
+        return cb.currentText().strip()
+    if hasattr(core, "materials"):
+        try:
+            return str(getattr(core, "materials")).strip()
+        except Exception:
+            pass
+    return ""
+
+def _write_material(core, txt: str):
+    le = _try_get_line(core, ["mat","materials","material","matEdit","materialsEdit","leMaterial","leMaterials"])
+    if le is not None:
+        le.setText(txt)
+        return True
+    cb = _try_get_combo(core, ["cbMat","cbMaterial","cbMaterials","materialCb","materialsCb"])
+    if cb is not None:
+        cb.setCurrentText(txt)
+        return True
+    return False
+
+class ModuleDbPanel(QtWidgets.QWidget):
+    """
+    Panel do zapisu/odczytu MODULU do DB.
+    Działa z legacy konstruktorem: próbuje z niego pobrać W/H/D/material i też potrafi je wstawić.
+    """
+    def __init__(self, legacy_core: QtWidgets.QWidget, ctx=None, parent=None):
+        super().__init__(parent)
+        self.core = legacy_core
+        self.ctx = ctx
+        self.db_path = default_db_path()
+
+        self.leAnchor = QtWidgets.QLineEdit()
+        self.leName   = QtWidgets.QLineEdit()
+        self.spW = QtWidgets.QDoubleSpinBox(); self.spW.setRange(0, 99999); self.spW.setDecimals(2)
+        self.spH = QtWidgets.QDoubleSpinBox(); self.spH.setRange(0, 99999); self.spH.setDecimals(2)
+        self.spD = QtWidgets.QDoubleSpinBox(); self.spD.setRange(0, 99999); self.spD.setDecimals(2)
+        self.leMat = QtWidgets.QLineEdit()
+
+        self.cbOverwrite = QtWidgets.QCheckBox("Overwrite")
+        self.cbHistory   = QtWidgets.QCheckBox("NoHistory")
+        self.btnSync = QtWidgets.QPushButton("Pobierz z konstruktora")
+        self.btnSave = QtWidgets.QPushButton("Zapisz do bazy")
+        self.btnLoad = QtWidgets.QPushButton("Pobierz z bazy")
+
+        self.lbl = QtWidgets.QLabel("MODUL → BAZA (DB)")
+        self.lbl.setStyleSheet("font-weight:600;")
+
+        form = QtWidgets.QFormLayout()
+        form.addRow("Anchor:", self.leAnchor)
+        form.addRow("Name:", self.leName)
+
+        rowDims = QtWidgets.QHBoxLayout()
+        rowDims.addWidget(QtWidgets.QLabel("W")); rowDims.addWidget(self.spW)
+        rowDims.addWidget(QtWidgets.QLabel("H")); rowDims.addWidget(self.spH)
+        rowDims.addWidget(QtWidgets.QLabel("D")); rowDims.addWidget(self.spD)
+        form.addRow("W/H/D:", rowDims)
+
+        form.addRow("Materials:", self.leMat)
+
+        rowBtns = QtWidgets.QHBoxLayout()
+        rowBtns.addWidget(self.btnSync)
+        rowBtns.addStretch(1)
+        rowBtns.addWidget(self.cbOverwrite)
+        rowBtns.addWidget(self.cbHistory)
+        rowBtns.addWidget(self.btnLoad)
+        rowBtns.addWidget(self.btnSave)
+
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.addWidget(self.lbl)
+        lay.addLayout(form)
+        lay.addLayout(rowBtns)
+
+        # material autocomplete (DB)
+        self._mq = MaterialQuery(self.leMat, db_path=self.db_path, limit=12, parent=self)
+
+        # try attach to legacy material line edit too (if exists)
+        try:
+            legacy_le = _try_get_line(self.core, ["mat","materials","material","matEdit","materialsEdit","leMaterial","leMaterials"])
+            if legacy_le is not None and legacy_le is not self.leMat:
+                MaterialQuery(legacy_le, db_path=self.db_path, limit=12, parent=self)
+        except Exception:
+            pass
+
+        self.btnSync.clicked.connect(self.sync_from_legacy)
+        self.btnSave.clicked.connect(self.save_to_db)
+        self.btnLoad.clicked.connect(self.load_from_db)
+
+        self.sync_from_legacy()
+
+    def sync_from_legacy(self):
+        w = _read_dim(self.core, "width")
+        h = _read_dim(self.core, "height")
+        d = _read_dim(self.core, "depth")
+        m = _read_material(self.core)
+
+        if w is not None: self.spW.setValue(w)
+        if h is not None: self.spH.setValue(h)
+        if d is not None: self.spD.setValue(d)
+        if m: self.leMat.setText(m)
+
+    def apply_to_legacy(self):
+        _write_dim(self.core, "width", self.spW.value())
+        _write_dim(self.core, "height", self.spH.value())
+        _write_dim(self.core, "depth", self.spD.value())
+        _write_material(self.core, self.leMat.text().strip())
+        # try recalc if exists
+        if hasattr(self.core, "_recalc"):
+            try: self.core._recalc()
+            except Exception: pass
+
+    def _run_cli(self, argv: list[str]) -> tuple[int, str]:
+        root = Path(__file__).resolve().parents[2]
+        cli = root / "src" / "tools" / "module_db_cli.py"
+        py  = sys.executable
+        try:
+            p = subprocess.run([py, str(cli), "--db", self.db_path] + argv, capture_output=True, text=True)
+            out = (p.stdout or "") + (p.stderr or "")
+            return p.returncode, out
+        except Exception as e:
+            return 99, str(e)
+
+    def save_to_db(self):
+        self.sync_from_legacy()
+
+        anchor = self.leAnchor.text().strip()
+        if not anchor:
+            QtWidgets.QMessageBox.warning(self, "DB", "Anchor jest wymagany")
+            return
+
+        argv = [
+            "save",
+            "--anchor", anchor,
+            "--width",  str(self.spW.value()),
+            "--height", str(self.spH.value()),
+            "--depth",  str(self.spD.value()),
+            "--materials", self.leMat.text().strip()
+        ]
+        name = self.leName.text().strip()
+        if name:
+            argv += ["--name", name]
+        if self.cbOverwrite.isChecked():
+            argv += ["--overwrite"]
+        if self.cbHistory.isChecked():
+            argv += ["--no-history"]
+
+        code, out = self._run_cli(argv)
+        if code != 0:
+            QtWidgets.QMessageBox.critical(self, "DB SAVE ERROR", out.strip())
+        else:
+            QtWidgets.QMessageBox.information(self, "DB", out.strip() or "OK")
+
+    def load_from_db(self):
+        anchor = self.leAnchor.text().strip()
+        if not anchor:
+            QtWidgets.QMessageBox.warning(self, "DB", "Anchor jest wymagany")
+            return
+
+        code, out = self._run_cli(["get", "--anchor", anchor])
+        if code != 0:
+            QtWidgets.QMessageBox.critical(self, "DB GET ERROR", out.strip())
+            return
+
+        try:
+            obj = json.loads(out)
+        except Exception:
+            # sometimes CLI prints indented json; try strip
+            try:
+                obj = json.loads(out.strip())
+            except Exception:
+                QtWidgets.QMessageBox.critical(self, "DB GET ERROR", out.strip())
+                return
+
+        if "name" in obj: self.leName.setText(str(obj.get("name") or ""))
+        if "width" in obj and obj["width"] is not None: self.spW.setValue(float(obj["width"]))
+        if "height" in obj and obj["height"] is not None: self.spH.setValue(float(obj["height"]))
+        if "depth" in obj and obj["depth"] is not None: self.spD.setValue(float(obj["depth"]))
+        if "materials" in obj: self.leMat.setText(str(obj.get("materials") or ""))
+
+        self.apply_to_legacy()

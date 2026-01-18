@@ -1,0 +1,9 @@
+﻿from __future__ import annotations
+from PySide6 import QtCore
+
+class AppBus(QtCore.QObject):
+    # Cross-tab communication (no hierarchy, one level)
+    module_load_requested = QtCore.Signal(str)  # anchor
+    module_saved = QtCore.Signal(str)           # anchor
+    modules_changed = QtCore.Signal()           # generic refresh
+    materials_changed = QtCore.Signal()         # later

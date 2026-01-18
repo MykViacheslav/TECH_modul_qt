@@ -1,0 +1,1601 @@
+﻿
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
+
+from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6.QtCore import QSettings
+
+from core.module_library import ModuleLibrary, ModuleRecord
+from widgets.collapsible import CollapsibleSection
+
+
+# -----------------------------
+# Helpers / model
+# -----------------------------
+@dataclass
+class EdgeMap:
+    L: str = ""
+    P: str = ""
+    G: str = ""
+    D: str = ""
+
+
+@dataclass
+class Part:
+    key: str
+    name_pl: str
+    w_mm: float
+    h_mm: float
+    material: str = ""
+    edges: EdgeMap = field(default_factory=EdgeMap)
+
+
+def mm2_to_m2(mm2: float) -> float:
+    return mm2 / 1_000_000.0
+
+
+def mm_to_m(mm: float) -> float:
+    return mm / 1000.0
+
+
+def safe_float(v: Any, default: float = 0.0) -> float:
+    try:
+        return float(v)
+    except Exception:
+        return default
+
+
+def safe_int(v: Any, default: int = 0) -> int:
+    try:
+        return int(v)
+    except Exception:
+        return default
+
+
+def clamp(v: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, v))
+
+
+# -----------------------------
+# Graphics items
+# -----------------------------
+class PartRectItem(QtWidgets.QGraphicsRectItem):
+    def __init__(self, part_key: str, rect: QtCore.QRectF):
+        super().__init__(rect)
+        self.part_key = part_key
+        self.setAcceptHoverEvents(True)
+        self.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
+        self._hover = False
+        self._selected = False
+        self._update_pen()
+
+    def set_selected(self, val: bool):
+        self._selected = bool(val)
+        self._update_pen()
+
+    def hoverEnterEvent(self, event):
+        self._hover = True
+        self._update_pen()
+        super().hoverEnterEvent(event)
+
+    def hoverLeaveEvent(self, event):
+        self._hover = False
+        self._update_pen()
+        super().hoverLeaveEvent(event)
+
+    def _update_pen(self):
+        if self._selected:
+            pen = QtGui.QPen(QtGui.QColor("#DC2626"), 2.4)
+        elif self._hover:
+            pen = QtGui.QPen(QtGui.QColor("#2563EB"), 2.0)
+        else:
+            pen = QtGui.QPen(QtGui.QColor("#111827"), 1.4)
+        self.setPen(pen)
+        self.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+
+
+# -----------------------------
+# Main widget
+# -----------------------------
+class ModuleWidget(QtWidgets.QWidget):
+    def __init__(self, ctx, parent=None) -> None:
+        super().__init__(parent)
+        self.ctx = ctx
+        self.settings: QSettings = getattr(ctx, "settings", QSettings("TECH_modul", "TECH_modul_qt"))
+
+        proj_root = Path(__file__).resolve().parents[2]  # TECH_modul_qt
+        self.library = ModuleLibrary(proj_root / "data" / "modules.json")
+
+        self.parts: Dict[str, Part] = {}
+        self.selected_key: str = "side_left"
+
+        # дополнительные окucia (wybierane z bazy)
+        self.extra_fittings: Dict[str, int] = {}
+
+        self._build_ui()
+        self._populate_catalogs()
+        self._load_state()
+
+        self._rebuild_parts()
+        self._refresh_scene()
+        self._refresh_quick_panel()
+        self._refresh_bom()
+
+        bus = getattr(self.ctx, "bus", None)
+        sig = getattr(bus, "data_changed", None)
+        if sig is not None and hasattr(sig, "connect"):
+            try:
+                sig.connect(self._on_data_changed)
+            except Exception:
+                pass
+
+    # -----------------------------
+    # Events
+    # -----------------------------
+    @QtCore.Slot(object)
+    def _on_data_changed(self, key: object) -> None:
+        if str(key) == "catalogs":
+            self._populate_catalogs()
+
+    def closeEvent(self, e) -> None:
+        try:
+            self._save_state()
+        except Exception:
+            pass
+        super().closeEvent(e)
+
+    # -----------------------------
+    # UI
+    # -----------------------------
+    def _build_ui(self) -> None:
+        root = QtWidgets.QHBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(10)
+
+        self.split = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
+        root.addWidget(self.split, 1)
+
+        NUM_W = 92
+        CB_W = 240
+
+        def prep_spin(sp: QtWidgets.QAbstractSpinBox):
+            sp.setMaximumWidth(NUM_W)
+            sp.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)  # wąsko
+            sp.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
+
+        def prep_cb(cb: QtWidgets.QComboBox):
+            cb.setMaximumWidth(CB_W)
+
+        # LEFT
+        left_scroll = QtWidgets.QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setMinimumWidth(360)
+
+        left = QtWidgets.QWidget()
+        left_scroll.setWidget(left)
+        leftL = QtWidgets.QVBoxLayout(left)
+        leftL.setContentsMargins(8, 8, 8, 8)
+        leftL.setSpacing(10)
+
+        self.sections_box = QtWidgets.QVBoxLayout()
+        self.sections_box.setContentsMargins(0, 0, 0, 0)
+        self.sections_box.setSpacing(10)
+        leftL.addLayout(self.sections_box, 1)
+
+        def mk_page() -> Tuple[QtWidgets.QWidget, QtWidgets.QVBoxLayout]:
+            w = QtWidgets.QWidget()
+            l = QtWidgets.QVBoxLayout(w)
+            l.setContentsMargins(0, 0, 0, 0)
+            l.setSpacing(8)
+            return w, l
+
+        # ---- Section: Nazwa + baza
+        p, pl = mk_page()
+        f = QtWidgets.QFormLayout()
+        f.setVerticalSpacing(6)
+        self.in_name = QtWidgets.QLineEdit()
+        self.btn_save_db = QtWidgets.QPushButton("Zapisz do bazy")
+        self.btn_load_db = QtWidgets.QPushButton("Wczytaj z bazy")
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(self.btn_save_db)
+        row.addWidget(self.btn_load_db)
+        f.addRow("Nazwa modułu", self.in_name)
+        pl.addLayout(f)
+        pl.addLayout(row)
+        sec_name = CollapsibleSection("Moduł: nazwa + baza", p, opened=True)
+        self.sections_box.addWidget(sec_name)
+
+        # ---- Section: Wymiary
+        p, pl = mk_page()
+        f = QtWidgets.QFormLayout()
+        f.setVerticalSpacing(6)
+        self.in_W = QtWidgets.QDoubleSpinBox(); self.in_W.setRange(50, 5000); self.in_W.setDecimals(1); self.in_W.setValue(600.0); prep_spin(self.in_W)
+        self.in_H = QtWidgets.QDoubleSpinBox(); self.in_H.setRange(50, 5000); self.in_H.setDecimals(1); self.in_H.setValue(720.0); prep_spin(self.in_H)
+        self.in_D = QtWidgets.QDoubleSpinBox(); self.in_D.setRange(50, 5000); self.in_D.setDecimals(1); self.in_D.setValue(560.0); prep_spin(self.in_D)
+        f.addRow("W (mm)", self.in_W)
+        f.addRow("H (mm)", self.in_H)
+        f.addRow("D (mm)", self.in_D)
+        pl.addLayout(f)
+        sec_dims = CollapsibleSection("Wymiary", p, opened=True)
+        self.sections_box.addWidget(sec_dims)
+
+        # ---- Section: Elementy korpusu
+        p, pl = mk_page()
+        grid = QtWidgets.QGridLayout()
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(8)
+
+        def chk(label: str, default: bool) -> QtWidgets.QCheckBox:
+            c = QtWidgets.QCheckBox(label)
+            c.setChecked(default)
+            return c
+
+        self.ck_side_left  = chk("Bok lewy", True)
+        self.ck_side_right = chk("Bok prawy", True)
+        self.ck_top        = chk("Wieniec góra", True)
+        self.ck_bottom     = chk("Wieniec dół", True)
+        self.ck_front      = chk("Front", True)
+        self.ck_back       = chk("Plecy", True)
+        self.ck_middle     = chk("Środkowa ścianka", False)
+        self.ck_shelves    = chk("Półki (dodatkowe)", True)
+
+        grid.addWidget(self.ck_side_left,  0, 0)
+        grid.addWidget(self.ck_side_right, 0, 1)
+        grid.addWidget(self.ck_top,        1, 0)
+        grid.addWidget(self.ck_bottom,     1, 1)
+        grid.addWidget(self.ck_front,      2, 0)
+        grid.addWidget(self.ck_back,       2, 1)
+        grid.addWidget(self.ck_middle,     3, 0)
+        grid.addWidget(self.ck_shelves,    3, 1)
+
+        pl.addLayout(grid)
+        sec_parts = CollapsibleSection("Elementy korpusu", p, opened=True)
+        self.sections_box.addWidget(sec_parts)
+
+        # ---- Section: Offsety (X/Y)
+        p, pl = mk_page()
+
+        def mk_off() -> QtWidgets.QDoubleSpinBox:
+            sp = QtWidgets.QDoubleSpinBox()
+            sp.setRange(-5000, 5000)
+            sp.setDecimals(1)
+            sp.setSingleStep(10.0)
+            sp.setValue(0.0)
+            prep_spin(sp)
+            return sp
+
+        hdr = QtWidgets.QLabel("Offsety w rysunku (mm): X = lewo/prawo, Y = góra/dół")
+        hdr.setWordWrap(True)
+        hdr.setStyleSheet("color:#475569; font-weight:800;")
+        pl.addWidget(hdr)
+
+        g2 = QtWidgets.QGridLayout()
+        g2.setHorizontalSpacing(6)
+        g2.setVerticalSpacing(6)
+        g2.addWidget(QtWidgets.QLabel("Element"), 0, 0)
+        g2.addWidget(QtWidgets.QLabel("X"), 0, 1)
+        g2.addWidget(QtWidgets.QLabel("Y"), 0, 2)
+
+        def row_off(r: int, name: str) -> Tuple[QtWidgets.QDoubleSpinBox, QtWidgets.QDoubleSpinBox]:
+            g2.addWidget(QtWidgets.QLabel(name), r, 0)
+            ox = mk_off(); oy = mk_off()
+            g2.addWidget(ox, r, 1)
+            g2.addWidget(oy, r, 2)
+            return ox, oy
+
+        self.off_top_x, self.off_top_y = row_off(1, "Wieniec góra")
+        self.off_bottom_x, self.off_bottom_y = row_off(2, "Wieniec dół")
+        self.off_side_left_x, self.off_side_left_y = row_off(3, "Bok lewy")
+        self.off_side_right_x, self.off_side_right_y = row_off(4, "Bok prawy")
+        self.off_front_x, self.off_front_y = row_off(5, "Front")
+        self.off_back_x, self.off_back_y = row_off(6, "Plecy")
+        self.off_middle_x, self.off_middle_y = row_off(7, "Środkowa ścianka")
+        self.off_shelves_x, self.off_shelves_y = row_off(8, "Półki")
+
+        pl.addLayout(g2)
+        sec_off = CollapsibleSection("Offsety (dla elementów)", p, opened=False)
+        self.sections_box.addWidget(sec_off)
+
+        # ---- Section: Piony: SKRÓCENIE + pozycja (NIE docelowa długość)
+        p, pl = mk_page()
+
+        def mk_cut() -> QtWidgets.QDoubleSpinBox:
+            sp = QtWidgets.QDoubleSpinBox()
+            sp.setRange(-5000, 5000)    # można wpisać -100 (traktujemy jak 100)
+            sp.setDecimals(1)
+            sp.setSingleStep(10.0)
+            sp.setValue(0.0)            # 0 = bez skrócenia
+            prep_spin(sp)
+            return sp
+
+        def mk_pos() -> QtWidgets.QComboBox:
+            cb = QtWidgets.QComboBox()
+            cb.addItems(["Od góry", "Od dołu"])
+            cb.setMaximumWidth(140)
+            return cb
+
+        g3 = QtWidgets.QGridLayout()
+        g3.setHorizontalSpacing(6)
+        g3.setVerticalSpacing(6)
+        g3.addWidget(QtWidgets.QLabel("Element"), 0, 0)
+        g3.addWidget(QtWidgets.QLabel("Pozycja luzu"), 0, 1)
+        g3.addWidget(QtWidgets.QLabel("Skrócenie (mm)"), 0, 2)
+
+        self.cb_len_side_left_pos = mk_pos()
+        self.in_len_side_left = mk_cut()   # zostawiamy nazwę dla kompatybilności stanu
+        g3.addWidget(QtWidgets.QLabel("Bok lewy"), 1, 0)
+        g3.addWidget(self.cb_len_side_left_pos, 1, 1)
+        g3.addWidget(self.in_len_side_left, 1, 2)
+
+        self.cb_len_side_right_pos = mk_pos()
+        self.in_len_side_right = mk_cut()
+        g3.addWidget(QtWidgets.QLabel("Bok prawy"), 2, 0)
+        g3.addWidget(self.cb_len_side_right_pos, 2, 1)
+        g3.addWidget(self.in_len_side_right, 2, 2)
+
+        self.cb_len_middle_pos = mk_pos()
+        self.in_len_middle = mk_cut()
+        g3.addWidget(QtWidgets.QLabel("Środkowa ścianka"), 3, 0)
+        g3.addWidget(self.cb_len_middle_pos, 3, 1)
+        g3.addWidget(self.in_len_middle, 3, 2)
+
+        tip = QtWidgets.QLabel(
+            "Wpisz np. 100 → skróci o 100 mm. Wpisz -100 → też skróci o 100 mm.\n"
+            "Pozycja luzu: 'Od góry' = zostawia 100 mm od góry, 'Od dołu' = zostawia 100 mm od dołu."
+        )
+        tip.setWordWrap(True)
+        tip.setStyleSheet("color:#475569; font-weight:800;")
+        pl.addLayout(g3)
+        pl.addWidget(tip)
+
+        sec_len = CollapsibleSection("Piony: skrócenie + pozycja", p, opened=False)
+        self.sections_box.addWidget(sec_len)
+
+        # ---- Section: Fronty / Szuflady
+        p, pl = mk_page()
+        f = QtWidgets.QFormLayout()
+        f.setVerticalSpacing(6)
+
+        self.cb_front_mode = QtWidgets.QComboBox()
+        self.cb_front_mode.addItems(["Drzwi", "Szuflady", "Brak"])
+
+        self.cb_front_hmode = QtWidgets.QComboBox()
+        self.cb_front_hmode.addItems(["Na całą wysokość", "Między wieńcami"])
+
+        self.in_front_count = QtWidgets.QSpinBox(); self.in_front_count.setRange(1, 20); self.in_front_count.setValue(2); prep_spin(self.in_front_count)
+        self.in_front_gap = QtWidgets.QDoubleSpinBox(); self.in_front_gap.setRange(0, 20); self.in_front_gap.setDecimals(1); self.in_front_gap.setValue(2.0); prep_spin(self.in_front_gap)
+        self.in_front_side = QtWidgets.QDoubleSpinBox(); self.in_front_side.setRange(0, 50); self.in_front_side.setDecimals(1); self.in_front_side.setValue(2.0); prep_spin(self.in_front_side)
+
+        self.cb_front_mat = QtWidgets.QComboBox(); prep_cb(self.cb_front_mat)
+
+        f.addRow("Tryb", self.cb_front_mode)
+        f.addRow("Front: wysokość", self.cb_front_hmode)
+        f.addRow("Ilość", self.in_front_count)
+        f.addRow("Gap (mm)", self.in_front_gap)
+        f.addRow("Odstęp boków (mm)", self.in_front_side)
+        f.addRow("Materiał frontu", self.cb_front_mat)
+
+        pl.addLayout(f)
+        sec_front = CollapsibleSection("Fronty / Szuflady", p, opened=True)
+        self.sections_box.addWidget(sec_front)
+
+        # ---- Section: Materiały / ilości
+        p, pl = mk_page()
+        f = QtWidgets.QFormLayout()
+        f.setVerticalSpacing(6)
+
+        self.cb_mat_carcass = QtWidgets.QComboBox(); prep_cb(self.cb_mat_carcass)
+        self.in_thick = QtWidgets.QDoubleSpinBox(); self.in_thick.setRange(10, 40); self.in_thick.setDecimals(1); self.in_thick.setValue(18.0); prep_spin(self.in_thick)
+
+        self.cb_back_mat = QtWidgets.QComboBox(); prep_cb(self.cb_back_mat)
+        self.in_back_thick = QtWidgets.QDoubleSpinBox(); self.in_back_thick.setRange(2, 10); self.in_back_thick.setDecimals(1); self.in_back_thick.setValue(3.0); prep_spin(self.in_back_thick)
+
+        self.in_shelves = QtWidgets.QSpinBox(); self.in_shelves.setRange(0, 20); self.in_shelves.setValue(0); prep_spin(self.in_shelves)
+        self.ck_split_shelves = QtWidgets.QCheckBox("Dziel półki przy przegrodzie")
+        self.ck_split_shelves.setChecked(True)
+
+        self.in_qty = QtWidgets.QSpinBox(); self.in_qty.setRange(1, 999); self.in_qty.setValue(1); prep_spin(self.in_qty)
+
+        f.addRow("Materiał korpusu", self.cb_mat_carcass)
+        f.addRow("Grubość korpusu (mm)", self.in_thick)
+        f.addRow("Plecy: materiał", self.cb_back_mat)
+        f.addRow("Plecy: grubość (mm)", self.in_back_thick)
+        f.addRow("Półki dodatkowe (szt)", self.in_shelves)
+        f.addRow("", self.ck_split_shelves)
+        f.addRow("Ilość modułów", self.in_qty)
+
+        pl.addLayout(f)
+        sec_mat = CollapsibleSection("Materiały / ilości", p, opened=True)
+        self.sections_box.addWidget(sec_mat)
+
+        # ---- Section: Okucia (BOM) + dodatkowe z bazy
+        p, pl = mk_page()
+        f = QtWidgets.QFormLayout()
+        f.setVerticalSpacing(6)
+
+        self.ck_hinges_auto = QtWidgets.QCheckBox("Auto: zawiasy wg wysokości frontu")
+        self.ck_hinges_auto.setChecked(True)
+        self.in_hinges_override = QtWidgets.QSpinBox(); self.in_hinges_override.setRange(0, 200); self.in_hinges_override.setValue(0); prep_spin(self.in_hinges_override)
+        self.in_legs = QtWidgets.QSpinBox(); self.in_legs.setRange(0, 50); self.in_legs.setValue(4); prep_spin(self.in_legs)
+        self.in_hangers = QtWidgets.QSpinBox(); self.in_hangers.setRange(0, 50); self.in_hangers.setValue(2); prep_spin(self.in_hangers)
+        self.in_pins_per_shelf = QtWidgets.QSpinBox(); self.in_pins_per_shelf.setRange(0, 20); self.in_pins_per_shelf.setValue(4); prep_spin(self.in_pins_per_shelf)
+
+        f.addRow("", self.ck_hinges_auto)
+        f.addRow("Zawiasy: override (0=auto)", self.in_hinges_override)
+        f.addRow("Nóżki (szafka dolna)", self.in_legs)
+        f.addRow("Zawieszki (wisząca)", self.in_hangers)
+        f.addRow("Podpórki półek / półkę", self.in_pins_per_shelf)
+        pl.addLayout(f)
+
+        line = QtWidgets.QFrame()
+        line.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        line.setStyleSheet("border:1px solid #CBD5E1;")
+        pl.addWidget(line)
+
+        lbl = QtWidgets.QLabel("Dodatkowe okucia z bazy (wybierz + ilość → dodaj do BOM):")
+        lbl.setWordWrap(True)
+        lbl.setStyleSheet("font-weight:900; color:#334155;")
+        pl.addWidget(lbl)
+
+        rowX = QtWidgets.QHBoxLayout()
+        self.cb_extra_fit = QtWidgets.QComboBox()
+        self.cb_extra_fit.setMaximumWidth(260)
+        self.in_extra_fit_qty = QtWidgets.QSpinBox()
+        self.in_extra_fit_qty.setRange(1, 999)
+        self.in_extra_fit_qty.setValue(1)
+        prep_spin(self.in_extra_fit_qty)
+        self.btn_add_extra_fit = QtWidgets.QPushButton("Dodaj")
+        rowX.addWidget(self.cb_extra_fit, 1)
+        rowX.addWidget(self.in_extra_fit_qty)
+        rowX.addWidget(self.btn_add_extra_fit)
+        pl.addLayout(rowX)
+
+        self.tbl_extra_fit = QtWidgets.QTableWidget(0, 2)
+        self.tbl_extra_fit.setHorizontalHeaderLabels(["Okucie", "Ilość"])
+        self.tbl_extra_fit.horizontalHeader().setStretchLastSection(True)
+        self.tbl_extra_fit.setMaximumHeight(150)
+        pl.addWidget(self.tbl_extra_fit)
+
+        rowY = QtWidgets.QHBoxLayout()
+        self.btn_remove_extra_fit = QtWidgets.QPushButton("Usuń zaznaczone")
+        rowY.addWidget(self.btn_remove_extra_fit)
+        rowY.addStretch(1)
+        pl.addLayout(rowY)
+
+        sec_fit = CollapsibleSection("Okucia (BOM) + dodatkowe", p, opened=False)
+        self.sections_box.addWidget(sec_fit)
+
+        # Bottom buttons
+        btns = QtWidgets.QHBoxLayout()
+        self.btn_reset = QtWidgets.QPushButton("Resetuj")
+        self.btn_recalc = QtWidgets.QPushButton("Przelicz")
+        btns.addWidget(self.btn_reset)
+        btns.addWidget(self.btn_recalc)
+        btns.addStretch(1)
+        leftL.addLayout(btns)
+
+        leftL.addStretch(1)
+
+        # CENTER (one view, vertical layout inside scene)
+        center = QtWidgets.QWidget()
+        centerL = QtWidgets.QVBoxLayout(center)
+        centerL.setContentsMargins(8, 8, 8, 8)
+        centerL.setSpacing(6)
+
+        self.lbl_front_title = QtWidgets.QLabel("Widok z przodu")
+        self.lbl_top_title = QtWidgets.QLabel("Widok z góry")
+        for lab in (self.lbl_front_title, self.lbl_top_title):
+            lab.setStyleSheet("font-weight: 900; color:#0f172a;")
+
+        # małe nagłówki nad rysunkiem (po prostu informacyjne)
+        rowH = QtWidgets.QHBoxLayout()
+        rowH.addWidget(self.lbl_front_title)
+        rowH.addStretch(1)
+        centerL.addLayout(rowH)
+
+        self.scene = QtWidgets.QGraphicsScene(self)
+        self.view = QtWidgets.QGraphicsView(self.scene)
+        self.view.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+        self.view.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)  # zawsze środek
+        self.view.setMouseTracking(True)
+        centerL.addWidget(self.view, 1)
+
+        rowH2 = QtWidgets.QHBoxLayout()
+        rowH2.addWidget(self.lbl_top_title)
+        rowH2.addStretch(1)
+        centerL.addLayout(rowH2)
+
+        # RIGHT
+        right = QtWidgets.QWidget()
+        rightL = QtWidgets.QVBoxLayout(right)
+        rightL.setContentsMargins(8, 8, 8, 8)
+        rightL.setSpacing(10)
+        right.setMinimumWidth(380)
+
+        gb_quick = QtWidgets.QGroupBox("Wybrany element: materiał + okleina")
+        ql = QtWidgets.QVBoxLayout(gb_quick)
+        ql.setSpacing(8)
+
+        self.lbl_selected = QtWidgets.QLabel("Wybrany: —")
+        self.lbl_selected.setStyleSheet("font-weight: 900;")
+        ql.addWidget(self.lbl_selected)
+
+        formQ = QtWidgets.QFormLayout()
+        formQ.setVerticalSpacing(6)
+
+        self.cb_q_material = QtWidgets.QComboBox(); prep_cb(self.cb_q_material)
+        self.cb_q_edge = QtWidgets.QComboBox(); prep_cb(self.cb_q_edge)
+
+        formQ.addRow("Materiał", self.cb_q_material)
+        formQ.addRow("Okleina (typ)", self.cb_q_edge)
+        ql.addLayout(formQ)
+
+        rowA = QtWidgets.QHBoxLayout()
+        self.btn_all_08 = QtWidgets.QPushButton("All 0.8")
+        self.btn_all_20 = QtWidgets.QPushButton("All 2.0")
+        rowA.addWidget(self.btn_all_08)
+        rowA.addWidget(self.btn_all_20)
+        ql.addLayout(rowA)
+
+        rowB = QtWidgets.QHBoxLayout()
+        self.btn_clear_edges = QtWidgets.QPushButton("Clear")
+        self.btn_apply_type = QtWidgets.QPushButton("→ ten typ")
+        rowB.addWidget(self.btn_clear_edges)
+        rowB.addWidget(self.btn_apply_type)
+        ql.addLayout(rowB)
+
+        rowC = QtWidgets.QHBoxLayout()
+        self.btn_L = QtWidgets.QPushButton("LEWA")
+        self.btn_P = QtWidgets.QPushButton("PRAWA")
+        self.btn_G = QtWidgets.QPushButton("GÓRA")
+        self.btn_D = QtWidgets.QPushButton("DÓŁ")
+        for b in (self.btn_L, self.btn_P, self.btn_G, self.btn_D):
+            b.setMinimumWidth(72)
+        rowC.addWidget(self.btn_L)
+        rowC.addWidget(self.btn_P)
+        rowC.addWidget(self.btn_G)
+        rowC.addWidget(self.btn_D)
+        ql.addLayout(rowC)
+
+        rowVals = QtWidgets.QGridLayout()
+        self.val_L = QtWidgets.QLabel("—")
+        self.val_P = QtWidgets.QLabel("—")
+        self.val_G = QtWidgets.QLabel("—")
+        self.val_D = QtWidgets.QLabel("—")
+        for lab in (self.val_L, self.val_P, self.val_G, self.val_D):
+            lab.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
+            lab.setStyleSheet("color:#334155; font-weight:900;")
+        rowVals.addWidget(QtWidgets.QLabel("L:"), 0, 0); rowVals.addWidget(self.val_L, 0, 1)
+        rowVals.addWidget(QtWidgets.QLabel("P:"), 1, 0); rowVals.addWidget(self.val_P, 1, 1)
+        rowVals.addWidget(QtWidgets.QLabel("G:"), 2, 0); rowVals.addWidget(self.val_G, 2, 1)
+        rowVals.addWidget(QtWidgets.QLabel("D:"), 3, 0); rowVals.addWidget(self.val_D, 3, 1)
+        ql.addLayout(rowVals)
+
+        gb_bom = QtWidgets.QGroupBox("BOM: materiały + okleina + okucia")
+        bl = QtWidgets.QVBoxLayout(gb_bom)
+        self.lbl_parts = QtWidgets.QLabel("parts: 0")
+        self.txt_bom = QtWidgets.QPlainTextEdit()
+        self.txt_bom.setReadOnly(True)
+        bl.addWidget(self.lbl_parts)
+        bl.addWidget(self.txt_bom, 1)
+
+        rightL.addWidget(gb_quick)
+        rightL.addWidget(gb_bom, 1)
+
+        self.split.addWidget(left_scroll)
+        self.split.addWidget(center)
+        self.split.addWidget(right)
+        self.split.setStretchFactor(0, 0)
+        self.split.setStretchFactor(1, 1)
+        self.split.setStretchFactor(2, 0)
+
+        # signals
+        def hook(w):
+            if hasattr(w, "valueChanged"):
+                w.valueChanged.connect(self._on_recalc)
+            if hasattr(w, "currentIndexChanged"):
+                w.currentIndexChanged.connect(self._on_recalc)
+            if hasattr(w, "toggled"):
+                w.toggled.connect(self._on_recalc)
+            if hasattr(w, "stateChanged"):
+                w.stateChanged.connect(self._on_recalc)
+            if isinstance(w, QtWidgets.QLineEdit):
+                w.textChanged.connect(self._on_recalc)
+
+        for w in [
+            self.in_name,
+            self.in_W, self.in_H, self.in_D,
+            self.ck_side_left, self.ck_side_right, self.ck_top, self.ck_bottom, self.ck_front, self.ck_back, self.ck_middle, self.ck_shelves,
+            self.off_top_x, self.off_top_y, self.off_bottom_x, self.off_bottom_y,
+            self.off_side_left_x, self.off_side_left_y, self.off_side_right_x, self.off_side_right_y,
+            self.off_front_x, self.off_front_y, self.off_back_x, self.off_back_y, self.off_middle_x, self.off_middle_y, self.off_shelves_x, self.off_shelves_y,
+            self.cb_len_side_left_pos, self.in_len_side_left, self.cb_len_side_right_pos, self.in_len_side_right, self.cb_len_middle_pos, self.in_len_middle,
+            self.cb_front_mode, self.cb_front_hmode, self.in_front_count, self.in_front_gap, self.in_front_side, self.cb_front_mat,
+            self.cb_mat_carcass, self.in_thick, self.cb_back_mat, self.in_back_thick, self.in_shelves, self.ck_split_shelves, self.in_qty,
+            self.ck_hinges_auto, self.in_hinges_override, self.in_legs, self.in_hangers, self.in_pins_per_shelf,
+        ]:
+            hook(w)
+
+        self.btn_reset.clicked.connect(self._on_reset)
+        self.btn_recalc.clicked.connect(self._on_recalc)
+        self.btn_save_db.clicked.connect(self._save_to_db)
+        self.btn_load_db.clicked.connect(self._load_from_db)
+
+        # quick
+        self.cb_q_material.currentIndexChanged.connect(self._apply_quick_material)
+        self.btn_L.clicked.connect(lambda: self._set_edge_side("L"))
+        self.btn_P.clicked.connect(lambda: self._set_edge_side("P"))
+        self.btn_G.clicked.connect(lambda: self._set_edge_side("G"))
+        self.btn_D.clicked.connect(lambda: self._set_edge_side("D"))
+        self.btn_clear_edges.clicked.connect(self._clear_edges_selected)
+        self.btn_apply_type.clicked.connect(self._apply_edge_to_all_sides_selected)
+        self.btn_all_08.clicked.connect(lambda: self._apply_preset_edge("0.8"))
+        self.btn_all_20.clicked.connect(lambda: self._apply_preset_edge("2.0"))
+
+        # extra fittings
+        self.btn_add_extra_fit.clicked.connect(self._add_extra_fitting)
+        self.btn_remove_extra_fit.clicked.connect(self._remove_selected_extra_fittings)
+
+        self.scene.selectionChanged.connect(self._scene_selection_changed)
+
+
+    # -----------------------------
+    # Catalogs
+    # -----------------------------
+    def _populate_catalogs(self) -> None:
+        catalogs = getattr(self.ctx, "catalogs", None)
+
+        mats: List[str] = []
+        edges: List[str] = []
+        fits: List[str] = []
+
+        try:
+            if catalogs and hasattr(catalogs, "get_materials"):
+                mats = [getattr(x, "name", str(x)) for x in catalogs.get_materials()]
+        except Exception:
+            mats = []
+
+        try:
+            if catalogs and hasattr(catalogs, "get_edges"):
+                edges = [getattr(x, "name", str(x)) for x in catalogs.get_edges()]
+        except Exception:
+            edges = []
+
+        try:
+            if catalogs and hasattr(catalogs, "get_fittings"):
+                fits = [getattr(x, "name", str(x)) for x in catalogs.get_fittings()]
+        except Exception:
+            fits = []
+
+        def fill(cb: QtWidgets.QComboBox, placeholder: str, items: List[str]):
+            cur = cb.currentText()
+            cb.blockSignals(True)
+            try:
+                cb.clear()
+                cb.addItem(placeholder)
+                for it in items:
+                    cb.addItem(it)
+                idx = cb.findText(cur)
+                if idx >= 0:
+                    cb.setCurrentIndex(idx)
+            finally:
+                cb.blockSignals(False)
+
+        fill(self.cb_mat_carcass, "Płyta wiórowa 18 mm (domyślnie)", mats)
+        fill(self.cb_front_mat, "MDF 18 mm (domyślnie)", mats)
+        fill(self.cb_back_mat, "HDF 3 mm (domyślnie)", mats)
+        fill(self.cb_q_material, "— wybierz materiał —", mats)
+        fill(self.cb_q_edge, "ABS 0.8 (domyślnie)", edges)
+        fill(self.cb_extra_fit, "— wybierz okucie z bazy —", fits)
+
+    # -----------------------------
+    # Extra fittings (from base)
+    # -----------------------------
+    def _sync_extra_table(self) -> None:
+        self.tbl_extra_fit.setRowCount(0)
+        for name in sorted(self.extra_fittings.keys()):
+            r = self.tbl_extra_fit.rowCount()
+            self.tbl_extra_fit.insertRow(r)
+            self.tbl_extra_fit.setItem(r, 0, QtWidgets.QTableWidgetItem(name))
+            self.tbl_extra_fit.setItem(r, 1, QtWidgets.QTableWidgetItem(str(self.extra_fittings[name])))
+
+    def _add_extra_fitting(self) -> None:
+        name = (self.cb_extra_fit.currentText() or "").strip()
+        if not name or name.startswith("—"):
+            return
+        qty = int(self.in_extra_fit_qty.value())
+        self.extra_fittings[name] = self.extra_fittings.get(name, 0) + qty
+        self._sync_extra_table()
+        self._refresh_bom()
+        self._save_state()
+
+    def _remove_selected_extra_fittings(self) -> None:
+        rows = sorted({i.row() for i in self.tbl_extra_fit.selectedIndexes()})
+        if not rows:
+            return
+        for r in reversed(rows):
+            item = self.tbl_extra_fit.item(r, 0)
+            if item:
+                name = (item.text() or "").strip()
+                if name in self.extra_fittings:
+                    del self.extra_fittings[name]
+        self._sync_extra_table()
+        self._refresh_bom()
+        self._save_state()
+
+    # -----------------------------
+    # Selection handling
+    # -----------------------------
+    def _scene_selection_changed(self):
+        sel = self.scene.selectedItems()
+        if not sel:
+            return
+        it = sel[0]
+        if isinstance(it, PartRectItem):
+            self._select_part(it.part_key)
+
+    def _select_part(self, key: str) -> None:
+        if key not in self.parts:
+            return
+        self.selected_key = key
+        self._refresh_scene()
+        self._refresh_quick_panel()
+        self._save_state()
+
+    # -----------------------------
+    # State load/save
+    # -----------------------------
+    def _load_state(self) -> None:
+        s = self.settings
+        s.beginGroup("module")
+        try:
+            self.in_name.setText(str(s.value("name", "Moduł 1")))
+
+            self.in_W.setValue(safe_float(s.value("W", 600.0), 600.0))
+            self.in_H.setValue(safe_float(s.value("H", 720.0), 720.0))
+            self.in_D.setValue(safe_float(s.value("D", 560.0), 560.0))
+
+            def b(key: str, default: str) -> bool:
+                return str(s.value(key, default)).lower() in ("1", "true", "tak", "yes")
+
+            self.ck_side_left.setChecked(b("part_side_left", "true"))
+            self.ck_side_right.setChecked(b("part_side_right", "true"))
+            self.ck_top.setChecked(b("part_top", "true"))
+            self.ck_bottom.setChecked(b("part_bottom", "true"))
+            self.ck_front.setChecked(b("part_front", "true"))
+            self.ck_back.setChecked(b("part_back", "true"))
+            self.ck_middle.setChecked(b("part_middle", "false"))
+            self.ck_shelves.setChecked(b("part_shelves", "true"))
+
+            for name, sp in [
+                ("off_top_x", self.off_top_x), ("off_top_y", self.off_top_y),
+                ("off_bottom_x", self.off_bottom_x), ("off_bottom_y", self.off_bottom_y),
+                ("off_side_left_x", self.off_side_left_x), ("off_side_left_y", self.off_side_left_y),
+                ("off_side_right_x", self.off_side_right_x), ("off_side_right_y", self.off_side_right_y),
+                ("off_front_x", self.off_front_x), ("off_front_y", self.off_front_y),
+                ("off_back_x", self.off_back_x), ("off_back_y", self.off_back_y),
+                ("off_middle_x", self.off_middle_x), ("off_middle_y", self.off_middle_y),
+                ("off_shelves_x", self.off_shelves_x), ("off_shelves_y", self.off_shelves_y),
+            ]:
+                sp.setValue(safe_float(s.value(name, 0.0), 0.0))
+
+            # skrócenia (zostawiamy klucze kompatybilne)
+            self.cb_len_side_left_pos.setCurrentIndex(safe_int(s.value("len_side_left_pos", 0), 0))
+            self.in_len_side_left.setValue(safe_float(s.value("len_side_left", 0.0), 0.0))
+            self.cb_len_side_right_pos.setCurrentIndex(safe_int(s.value("len_side_right_pos", 0), 0))
+            self.in_len_side_right.setValue(safe_float(s.value("len_side_right", 0.0), 0.0))
+            self.cb_len_middle_pos.setCurrentIndex(safe_int(s.value("len_middle_pos", 0), 0))
+            self.in_len_middle.setValue(safe_float(s.value("len_middle", 0.0), 0.0))
+
+            fm = str(s.value("front_mode", "Drzwi"))
+            idx = self.cb_front_mode.findText(fm)
+            if idx >= 0:
+                self.cb_front_mode.setCurrentIndex(idx)
+
+            hm = str(s.value("front_hmode", "Na całą wysokość"))
+            idx = self.cb_front_hmode.findText(hm)
+            if idx >= 0:
+                self.cb_front_hmode.setCurrentIndex(idx)
+
+            self.in_front_count.setValue(safe_int(s.value("front_count", 2), 2))
+            self.in_front_gap.setValue(safe_float(s.value("front_gap", 2.0), 2.0))
+            self.in_front_side.setValue(safe_float(s.value("front_side_offset", 2.0), 2.0))
+
+            self.in_thick.setValue(safe_float(s.value("thick", 18.0), 18.0))
+            self.in_back_thick.setValue(safe_float(s.value("back_thick", 3.0), 3.0))
+            self.in_shelves.setValue(safe_int(s.value("shelves_count", 0), 0))
+            self.ck_split_shelves.setChecked(b("shelves_split", "true"))
+            self.in_qty.setValue(safe_int(s.value("qty", 1), 1))
+
+            self.ck_hinges_auto.setChecked(b("hinges_auto", "true"))
+            self.in_hinges_override.setValue(safe_int(s.value("hinges_override", 0), 0))
+            self.in_legs.setValue(safe_int(s.value("legs", 4), 4))
+            self.in_hangers.setValue(safe_int(s.value("hangers", 2), 2))
+            self.in_pins_per_shelf.setValue(safe_int(s.value("pins_per_shelf", 4), 4))
+
+            self.selected_key = str(s.value("selected_key", "side_left"))
+
+            # extra fittings stored as json string
+            raw = str(s.value("extra_fittings_json", "") or "")
+            try:
+                self.extra_fittings = {k: int(v) for k, v in (json.loads(raw) or {}).items()}
+            except Exception:
+                self.extra_fittings = {}
+            self._sync_extra_table()
+        finally:
+            s.endGroup()
+
+    def _save_state(self) -> Dict[str, Any]:
+        s = self.settings
+        s.beginGroup("module")
+        try:
+            s.setValue("name", self.in_name.text())
+            s.setValue("W", self.in_W.value())
+            s.setValue("H", self.in_H.value())
+            s.setValue("D", self.in_D.value())
+
+            s.setValue("part_side_left", "true" if self.ck_side_left.isChecked() else "false")
+            s.setValue("part_side_right", "true" if self.ck_side_right.isChecked() else "false")
+            s.setValue("part_top", "true" if self.ck_top.isChecked() else "false")
+            s.setValue("part_bottom", "true" if self.ck_bottom.isChecked() else "false")
+            s.setValue("part_front", "true" if self.ck_front.isChecked() else "false")
+            s.setValue("part_back", "true" if self.ck_back.isChecked() else "false")
+            s.setValue("part_middle", "true" if self.ck_middle.isChecked() else "false")
+            s.setValue("part_shelves", "true" if self.ck_shelves.isChecked() else "false")
+
+            for name, sp in [
+                ("off_top_x", self.off_top_x), ("off_top_y", self.off_top_y),
+                ("off_bottom_x", self.off_bottom_x), ("off_bottom_y", self.off_bottom_y),
+                ("off_side_left_x", self.off_side_left_x), ("off_side_left_y", self.off_side_left_y),
+                ("off_side_right_x", self.off_side_right_x), ("off_side_right_y", self.off_side_right_y),
+                ("off_front_x", self.off_front_x), ("off_front_y", self.off_front_y),
+                ("off_back_x", self.off_back_x), ("off_back_y", self.off_back_y),
+                ("off_middle_x", self.off_middle_x), ("off_middle_y", self.off_middle_y),
+                ("off_shelves_x", self.off_shelves_x), ("off_shelves_y", self.off_shelves_y),
+            ]:
+                s.setValue(name, sp.value())
+
+            s.setValue("len_side_left_pos", self.cb_len_side_left_pos.currentIndex())
+            s.setValue("len_side_left", self.in_len_side_left.value())     # skrócenie
+            s.setValue("len_side_right_pos", self.cb_len_side_right_pos.currentIndex())
+            s.setValue("len_side_right", self.in_len_side_right.value())
+            s.setValue("len_middle_pos", self.cb_len_middle_pos.currentIndex())
+            s.setValue("len_middle", self.in_len_middle.value())
+
+            s.setValue("front_mode", self.cb_front_mode.currentText())
+            s.setValue("front_hmode", self.cb_front_hmode.currentText())
+            s.setValue("front_count", self.in_front_count.value())
+            s.setValue("front_gap", self.in_front_gap.value())
+            s.setValue("front_side_offset", self.in_front_side.value())
+
+            s.setValue("thick", self.in_thick.value())
+            s.setValue("back_thick", self.in_back_thick.value())
+            s.setValue("shelves_count", self.in_shelves.value())
+            s.setValue("shelves_split", "true" if self.ck_split_shelves.isChecked() else "false")
+            s.setValue("qty", self.in_qty.value())
+
+            s.setValue("hinges_auto", "true" if self.ck_hinges_auto.isChecked() else "false")
+            s.setValue("hinges_override", self.in_hinges_override.value())
+            s.setValue("legs", self.in_legs.value())
+            s.setValue("hangers", self.in_hangers.value())
+            s.setValue("pins_per_shelf", self.in_pins_per_shelf.value())
+
+            s.setValue("selected_key", self.selected_key)
+
+            s.setValue("extra_fittings_json", json.dumps(self.extra_fittings, ensure_ascii=False))
+
+            return self._export_state()
+        finally:
+            s.endGroup()
+
+    def _export_state(self) -> Dict[str, Any]:
+        return {
+            "name": self.in_name.text(),
+            "W": self.in_W.value(),
+            "H": self.in_H.value(),
+            "D": self.in_D.value(),
+            "parts_enabled": {
+                "side_left": self.ck_side_left.isChecked(),
+                "side_right": self.ck_side_right.isChecked(),
+                "top": self.ck_top.isChecked(),
+                "bottom": self.ck_bottom.isChecked(),
+                "front": self.ck_front.isChecked(),
+                "back": self.ck_back.isChecked(),
+                "middle": self.ck_middle.isChecked(),
+                "shelves": self.ck_shelves.isChecked(),
+            },
+            "offsets": {
+                "top": [self.off_top_x.value(), self.off_top_y.value()],
+                "bottom": [self.off_bottom_x.value(), self.off_bottom_y.value()],
+                "side_left": [self.off_side_left_x.value(), self.off_side_left_y.value()],
+                "side_right": [self.off_side_right_x.value(), self.off_side_right_y.value()],
+                "front": [self.off_front_x.value(), self.off_front_y.value()],
+                "back": [self.off_back_x.value(), self.off_back_y.value()],
+                "middle": [self.off_middle_x.value(), self.off_middle_y.value()],
+                "shelves": [self.off_shelves_x.value(), self.off_shelves_y.value()],
+            },
+            "cuts": {  # skrócenia
+                "side_left": {"pos": self.cb_len_side_left_pos.currentIndex(), "cut": self.in_len_side_left.value()},
+                "side_right": {"pos": self.cb_len_side_right_pos.currentIndex(), "cut": self.in_len_side_right.value()},
+                "middle": {"pos": self.cb_len_middle_pos.currentIndex(), "cut": self.in_len_middle.value()},
+            },
+            "front": {
+                "mode": self.cb_front_mode.currentText(),
+                "hmode": self.cb_front_hmode.currentText(),
+                "count": self.in_front_count.value(),
+                "gap": self.in_front_gap.value(),
+                "side_off": self.in_front_side.value(),
+                "mat": self.cb_front_mat.currentText(),
+            },
+            "materials": {
+                "carcass_mat": self.cb_mat_carcass.currentText(),
+                "thick": self.in_thick.value(),
+                "back_mat": self.cb_back_mat.currentText(),
+                "back_thick": self.in_back_thick.value(),
+            },
+            "shelves": {
+                "count": self.in_shelves.value(),
+                "split": self.ck_split_shelves.isChecked(),
+            },
+            "qty": self.in_qty.value(),
+            "fittings": {
+                "hinges_auto": self.ck_hinges_auto.isChecked(),
+                "hinges_override": self.in_hinges_override.value(),
+                "legs": self.in_legs.value(),
+                "hangers": self.in_hangers.value(),
+                "pins_per_shelf": self.in_pins_per_shelf.value(),
+            },
+            "extra_fittings": dict(self.extra_fittings),
+            "selected_key": self.selected_key,
+            "parts": {k: {"material": p.material, "edges": p.edges.__dict__} for k, p in self.parts.items()},
+        }
+
+    # -----------------------------
+    # Core rebuild parts
+    # -----------------------------
+    def _len_and_y_from_cut(self, totalH: float, cut_mm: float, pos_idx: int) -> Tuple[float, float]:
+        """
+        cut_mm: o ile skracamy (abs). 0 = pełna długość.
+        pos_idx: 0 'Od góry' => luz na górze => y = cut
+                 1 'Od dołu' => luz na dole => y = 0
+        """
+        c = abs(float(cut_mm))
+        c = clamp(c, 0.0, totalH)
+        length = max(0.0, totalH - c)
+        y = c if pos_idx == 0 else 0.0
+        return length, y
+
+    def _rebuild_parts(self) -> None:
+        W = float(self.in_W.value())
+        H = float(self.in_H.value())
+        D = float(self.in_D.value())
+        t = float(self.in_thick.value())
+
+        has_L = bool(self.ck_side_left.isChecked())
+        has_R = bool(self.ck_side_right.isChecked())
+        has_T = bool(self.ck_top.isChecked())
+        has_B = bool(self.ck_bottom.isChecked())
+
+        front_enabled = bool(self.ck_front.isChecked())
+        back_enabled = bool(self.ck_back.isChecked())
+        middle_on = bool(self.ck_middle.isChecked())
+
+        shelves_on = bool(self.ck_shelves.isChecked())
+        shelves_cnt = int(self.in_shelves.value()) if shelves_on else 0
+        split_shelves = bool(self.ck_split_shelves.isChecked())
+
+        carcass_mat = self.cb_mat_carcass.currentText().strip()
+        if self.cb_mat_carcass.currentIndex() == 0:
+            carcass_mat = "Płyta wiórowa 18 mm"
+
+        back_mat = self.cb_back_mat.currentText().strip()
+        if self.cb_back_mat.currentIndex() == 0:
+            back_mat = "HDF 3 mm"
+
+        front_mat = self.cb_front_mat.currentText().strip()
+        if self.cb_front_mat.currentIndex() == 0:
+            front_mat = "MDF 18 mm"
+
+        innerW = W - (t if has_L else 0.0) - (t if has_R else 0.0)
+        innerH = H - (t if has_T else 0.0) - (t if has_B else 0.0)
+        innerW = max(0.0, innerW)
+        innerH = max(0.0, innerH)
+
+        parts: Dict[str, Part] = {}
+
+        def ensure(key: str, name: str, wmm: float, hmm: float, default_mat: str):
+            old = self.parts.get(key)
+            if old is None:
+                parts[key] = Part(key, name, wmm, hmm, default_mat)
+            else:
+                old.name_pl = name
+                old.w_mm, old.h_mm = wmm, hmm
+                if not old.material:
+                    old.material = default_mat
+                parts[key] = old
+
+        # lengths based on CUT
+        L_left, _ = self._len_and_y_from_cut(H, float(self.in_len_side_left.value()), self.cb_len_side_left_pos.currentIndex())
+        L_right, _ = self._len_and_y_from_cut(H, float(self.in_len_side_right.value()), self.cb_len_side_right_pos.currentIndex())
+        L_mid, _ = self._len_and_y_from_cut(innerH, float(self.in_len_middle.value()), self.cb_len_middle_pos.currentIndex())
+
+        if has_L:
+            ensure("side_left", "Bok lewy", D, L_left, carcass_mat)
+        if has_R:
+            ensure("side_right", "Bok prawy", D, L_right, carcass_mat)
+        if has_T:
+            ensure("top", "Wieniec góra", innerW, D, carcass_mat)
+        if has_B:
+            ensure("bottom", "Wieniec dół", innerW, D, carcass_mat)
+
+        if back_enabled:
+            ensure("back", "Plecy", W, H, back_mat)
+
+        if middle_on:
+            ensure("middle", "Środkowa ścianka", D, L_mid, carcass_mat)
+
+        if shelves_cnt > 0:
+            for i in range(1, shelves_cnt + 1):
+                if middle_on and split_shelves:
+                    w_half = max(0.0, (innerW - t) / 2.0)
+                    ensure(f"shelf_{i}_L", f"Półka {i} (lewa)", w_half, D, carcass_mat)
+                    ensure(f"shelf_{i}_R", f"Półka {i} (prawa)", w_half, D, carcass_mat)
+                else:
+                    ensure(f"shelf_{i}", f"Półka {i}", innerW, D, carcass_mat)
+
+        if front_enabled and self.cb_front_mode.currentText() != "Brak":
+            mode = self.cb_front_mode.currentText()
+            n = int(self.in_front_count.value())
+            gap = float(self.in_front_gap.value())
+            side_off = float(self.in_front_side.value())
+            hmode = self.cb_front_hmode.currentText()
+
+            openH = H if hmode == "Na całą wysokość" else max(0.0, H - (t if has_T else 0.0) - (t if has_B else 0.0))
+
+            if mode == "Drzwi":
+                availW = max(0.0, W - 2 * side_off)
+                panelW = max(0.0, (availW - gap * (n - 1)) / max(1, n))
+                for i in range(1, n + 1):
+                    ensure(f"front_{i}", f"Front {i}", panelW, openH, front_mat)
+            else:
+                availW = max(0.0, W - 2 * side_off)
+                availH = max(0.0, openH)
+                panelH = max(0.0, (availH - gap * (n - 1)) / max(1, n))
+                for i in range(1, n + 1):
+                    ensure(f"front_{i}", f"Front {i}", availW, panelH, front_mat)
+
+        self.parts = parts
+        if self.selected_key not in self.parts and self.parts:
+            self.selected_key = next(iter(self.parts.keys()))
+
+    # -----------------------------
+    # Draw (Front above, Top below) => always centered
+    # -----------------------------
+    def _refresh_scene(self) -> None:
+        self.scene.blockSignals(True)
+        try:
+            self.scene.clear()
+
+            W = float(self.in_W.value())
+            H = float(self.in_H.value())
+            D = float(self.in_D.value())
+            t = float(self.in_thick.value())
+
+            gap = 90.0    # odstęp między front i top
+            margin = 50.0
+
+            front_origin = QtCore.QPointF(0.0, 0.0)
+            top_origin = QtCore.QPointF(0.0, H + gap)
+
+            front_rect = QtCore.QRectF(front_origin.x(), front_origin.y(), W, H)
+            top_rect = QtCore.QRectF(top_origin.x(), top_origin.y(), W, D)
+
+            pen_outer = QtGui.QPen(QtGui.QColor("#0f172a"), 2.0)
+            self.scene.addRect(front_rect, pen_outer)
+            self.scene.addRect(top_rect, pen_outer)
+
+            def add_part(key: str, rect: QtCore.QRectF):
+                if key not in self.parts:
+                    return None
+                it = PartRectItem(key, rect)
+                it.set_selected(key == self.selected_key)
+                self.scene.addItem(it)
+                return it
+
+            off = {
+                "top": (self.off_top_x.value(), self.off_top_y.value()),
+                "bottom": (self.off_bottom_x.value(), self.off_bottom_y.value()),
+                "side_left": (self.off_side_left_x.value(), self.off_side_left_y.value()),
+                "side_right": (self.off_side_right_x.value(), self.off_side_right_y.value()),
+                "front": (self.off_front_x.value(), self.off_front_y.value()),
+                "back": (self.off_back_x.value(), self.off_back_y.value()),
+                "middle": (self.off_middle_x.value(), self.off_middle_y.value()),
+                "shelves": (self.off_shelves_x.value(), self.off_shelves_y.value()),
+            }
+
+            has_L = self.ck_side_left.isChecked()
+            has_R = self.ck_side_right.isChecked()
+            has_T = self.ck_top.isChecked()
+            has_B = self.ck_bottom.isChecked()
+            middle_on = self.ck_middle.isChecked()
+
+            innerW = W - (t if has_L else 0) - (t if has_R else 0)
+            innerH = H - (t if has_T else 0) - (t if has_B else 0)
+            innerW = max(0.0, innerW)
+            innerH = max(0.0, innerH)
+
+            # cuts -> y offsets
+            L_left, y_left = self._len_and_y_from_cut(H, float(self.in_len_side_left.value()), self.cb_len_side_left_pos.currentIndex())
+            L_right, y_right = self._len_and_y_from_cut(H, float(self.in_len_side_right.value()), self.cb_len_side_right_pos.currentIndex())
+            L_mid, y_mid = self._len_and_y_from_cut(innerH, float(self.in_len_middle.value()), self.cb_len_middle_pos.currentIndex())
+
+            # FRONT VIEW
+            if has_L and "side_left" in self.parts:
+                ox, oy = off["side_left"]
+                r = QtCore.QRectF(front_origin.x() + 0 + ox, front_origin.y() + y_left + oy, t, L_left)
+                add_part("side_left", r)
+            if has_R and "side_right" in self.parts:
+                ox, oy = off["side_right"]
+                r = QtCore.QRectF(front_origin.x() + (W - t) + ox, front_origin.y() + y_right + oy, t, L_right)
+                add_part("side_right", r)
+
+            if has_T and "top" in self.parts:
+                ox, oy = off["top"]
+                x = (t if has_L else 0.0)
+                r = QtCore.QRectF(front_origin.x() + x + ox, front_origin.y() + 0 + oy, innerW, t)
+                add_part("top", r)
+            if has_B and "bottom" in self.parts:
+                ox, oy = off["bottom"]
+                x = (t if has_L else 0.0)
+                r = QtCore.QRectF(front_origin.x() + x + ox, front_origin.y() + (H - t) + oy, innerW, t)
+                add_part("bottom", r)
+
+            if middle_on and "middle" in self.parts:
+                ox, oy = off["middle"]
+                x = (t if has_L else 0.0) + (innerW - t) / 2.0
+                y0 = (t if has_T else 0.0) + y_mid
+                r = QtCore.QRectF(front_origin.x() + x + ox, front_origin.y() + y0 + oy, t, L_mid)
+                add_part("middle", r)
+
+            shelves_cnt = int(self.in_shelves.value()) if (self.ck_shelves.isChecked() and self.in_shelves.value() > 0) else 0
+            if shelves_cnt > 0:
+                y0 = (t if has_T else 0.0)
+                y1 = H - (t if has_B else 0.0)
+                span = max(0.0, y1 - y0)
+                step = span / (shelves_cnt + 1)
+
+                for i in range(1, shelves_cnt + 1):
+                    y = y0 + step * i
+                    ox, oy = off["shelves"]
+                    if middle_on and self.ck_split_shelves.isChecked():
+                        left_w = max(0.0, (innerW - t) / 2.0)
+                        xL = (t if has_L else 0.0)
+                        xR = (t if has_L else 0.0) + left_w + t
+                        rL = QtCore.QRectF(front_origin.x() + xL + ox, front_origin.y() + y + oy, left_w, t)
+                        rR = QtCore.QRectF(front_origin.x() + xR + ox, front_origin.y() + y + oy, left_w, t)
+                        add_part(f"shelf_{i}_L", rL)
+                        add_part(f"shelf_{i}_R", rR)
+                    else:
+                        x = (t if has_L else 0.0)
+                        r = QtCore.QRectF(front_origin.x() + x + ox, front_origin.y() + y + oy, innerW, t)
+                        add_part(f"shelf_{i}", r)
+
+            if self.ck_front.isChecked():
+                mode = self.cb_front_mode.currentText()
+                if mode != "Brak":
+                    n = int(self.in_front_count.value())
+                    gapF = float(self.in_front_gap.value())
+                    side_off = float(self.in_front_side.value())
+                    hmode = self.cb_front_hmode.currentText()
+                    openH = H if hmode == "Na całą wysokość" else max(0.0, H - (t if has_T else 0.0) - (t if has_B else 0.0))
+                    baseY = 0.0 if hmode == "Na całą wysokość" else (t if has_T else 0.0)
+                    ox, oy = off["front"]
+
+                    if mode == "Drzwi":
+                        availW = max(0.0, W - 2 * side_off)
+                        panelW = max(0.0, (availW - gapF * (n - 1)) / max(1, n))
+                        for i in range(1, n + 1):
+                            x = side_off + (i - 1) * (panelW + gapF)
+                            r = QtCore.QRectF(front_origin.x() + x + ox, front_origin.y() + baseY + oy, panelW, openH)
+                            add_part(f"front_{i}", r)
+                    else:
+                        availW = max(0.0, W - 2 * side_off)
+                        availH = max(0.0, openH)
+                        panelH = max(0.0, (availH - gapF * (n - 1)) / max(1, n))
+                        for i in range(1, n + 1):
+                            y = baseY + (i - 1) * (panelH + gapF)
+                            r = QtCore.QRectF(front_origin.x() + side_off + ox, front_origin.y() + y + oy, availW, panelH)
+                            add_part(f"front_{i}", r)
+
+            # TOP VIEW (below)
+            if has_L and "side_left" in self.parts:
+                r = QtCore.QRectF(top_origin.x() + 0, top_origin.y() + 0, t, D)
+                self.scene.addRect(r, QtGui.QPen(QtGui.QColor("#334155"), 1.2))
+            if has_R and "side_right" in self.parts:
+                r = QtCore.QRectF(top_origin.x() + (W - t), top_origin.y() + 0, t, D)
+                self.scene.addRect(r, QtGui.QPen(QtGui.QColor("#334155"), 1.2))
+
+            if middle_on and "middle" in self.parts:
+                x = (t if has_L else 0.0) + (innerW - t) / 2.0
+                r = QtCore.QRectF(top_origin.x() + x, top_origin.y() + 0, t, D)
+                self.scene.addRect(r, QtGui.QPen(QtGui.QColor("#334155"), 1.2))
+
+            # dimensions outside
+            dim_pen = QtGui.QPen(QtGui.QColor("#2563eb"), 1.6)
+            dim_pen.setCosmetic(True)
+
+            # W above front
+            y_dim = front_rect.top() - 24
+            self.scene.addLine(front_rect.left(), y_dim, front_rect.right(), y_dim, dim_pen)
+            tx = self.scene.addText(f"W = {W:.0f} mm"); tx.setPos(front_rect.center().x() - 45, y_dim - 18)
+
+            # H left of front
+            x_dim = front_rect.left() - 34
+            self.scene.addLine(x_dim, front_rect.top(), x_dim, front_rect.bottom(), dim_pen)
+            ty = self.scene.addText(f"H = {H:.0f} mm"); ty.setPos(x_dim - 10, front_rect.center().y() - 10)
+
+            # D left of top
+            x_dim2 = top_rect.left() - 34
+            self.scene.addLine(x_dim2, top_rect.top(), x_dim2, top_rect.bottom(), dim_pen)
+            tz = self.scene.addText(f"D = {D:.0f} mm"); tz.setPos(x_dim2 - 10, top_rect.center().y() - 10)
+
+            all_rect = front_rect.united(top_rect).adjusted(-margin, -margin, margin, margin)
+            self.scene.setSceneRect(all_rect)
+            self.view.fitInView(all_rect, QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+
+            for it in self.scene.items():
+                if isinstance(it, PartRectItem):
+                    it.set_selected(it.part_key == self.selected_key)
+                    if it.part_key == self.selected_key:
+                        it.setSelected(True)
+
+        finally:
+            self.scene.blockSignals(False)
+
+    # -----------------------------
+    # Quick panel
+    # -----------------------------
+    def _refresh_quick_panel(self) -> None:
+        p = self.parts.get(self.selected_key)
+        if not p:
+            self.lbl_selected.setText("Wybrany: —")
+            return
+        self.lbl_selected.setText(f"Wybrany: {p.name_pl}  [{p.key}]")
+
+        self.val_L.setText(p.edges.L or "—")
+        self.val_P.setText(p.edges.P or "—")
+        self.val_G.setText(p.edges.G or "—")
+        self.val_D.setText(p.edges.D or "—")
+
+        if p.material:
+            idx = self.cb_q_material.findText(p.material)
+            if idx >= 0:
+                self.cb_q_material.blockSignals(True)
+                self.cb_q_material.setCurrentIndex(idx)
+                self.cb_q_material.blockSignals(False)
+
+    def _apply_quick_material(self) -> None:
+        p = self.parts.get(self.selected_key)
+        if not p:
+            return
+        txt = self.cb_q_material.currentText().strip()
+        if txt.startswith("—"):
+            return
+        p.material = txt
+        self._refresh_bom()
+        self._save_state()
+
+    def _apply_preset_edge(self, thickness: str) -> None:
+        idx = -1
+        for i in range(self.cb_q_edge.count()):
+            t = self.cb_q_edge.itemText(i)
+            if thickness in t:
+                idx = i
+                break
+        if idx >= 0:
+            self.cb_q_edge.setCurrentIndex(idx)
+
+    def _edge_type_current(self) -> str:
+        t = self.cb_q_edge.currentText().strip()
+        if t.startswith("—"):
+            return ""
+        return t
+
+    def _set_edge_side(self, side: str) -> None:
+        p = self.parts.get(self.selected_key)
+        if not p:
+            return
+        et = self._edge_type_current()
+        if not et:
+            return
+        if side == "L":
+            p.edges.L = et
+        elif side == "P":
+            p.edges.P = et
+        elif side == "G":
+            p.edges.G = et
+        elif side == "D":
+            p.edges.D = et
+        self._refresh_quick_panel()
+        self._refresh_bom()
+        self._save_state()
+
+    def _apply_edge_to_all_sides_selected(self) -> None:
+        p = self.parts.get(self.selected_key)
+        if not p:
+            return
+        et = self._edge_type_current()
+        if not et:
+            return
+        p.edges.L = et
+        p.edges.P = et
+        p.edges.G = et
+        p.edges.D = et
+        self._refresh_quick_panel()
+        self._refresh_bom()
+        self._save_state()
+
+    def _clear_edges_selected(self) -> None:
+        p = self.parts.get(self.selected_key)
+        if not p:
+            return
+        p.edges = EdgeMap()
+        self._refresh_quick_panel()
+        self._refresh_bom()
+        self._save_state()
+
+    # -----------------------------
+    # BOM
+    # -----------------------------
+    def _hinges_for_height(self, h_mm: float) -> int:
+        if h_mm <= 900:
+            return 3
+        if h_mm <= 1600:
+            return 4
+        return 5
+
+    def _refresh_bom(self) -> None:
+        qty = int(self.in_qty.value())
+        lines: List[str] = []
+        lines.append(f"Moduł: {self.in_name.text().strip() or '—'}   x{qty}")
+        lines.append("")
+
+        mats_m2: Dict[str, float] = {}
+        edges_mb: Dict[str, float] = {}
+
+        def add_area(mat: str, mm_w: float, mm_h: float):
+            if not mat:
+                mat = "—"
+            mats_m2[mat] = mats_m2.get(mat, 0.0) + mm2_to_m2(mm_w * mm_h)
+
+        def add_edge(et: str, mm_len: float):
+            if not et:
+                return
+            edges_mb[et] = edges_mb.get(et, 0.0) + mm_to_m(mm_len)
+
+        part_list = list(self.parts.values())
+        self.lbl_parts.setText(f"parts: {len(part_list)}")
+
+        for p in part_list:
+            add_area(p.material or "—", p.w_mm, p.h_mm)
+            add_edge(p.edges.L, p.h_mm)
+            add_edge(p.edges.P, p.h_mm)
+            add_edge(p.edges.G, p.w_mm)
+            add_edge(p.edges.D, p.w_mm)
+
+        lines.append("ELEMENTY:")
+        for p in part_list:
+            lines.append(f"- {p.name_pl:22s}  {p.w_mm:.0f} x {p.h_mm:.0f} mm   | mat: {p.material or '—'}")
+        lines.append("")
+
+        lines.append("MATERIAŁY (m²):")
+        for k in sorted(mats_m2.keys()):
+            lines.append(f"- {k}: {mats_m2[k] * qty:.3f} m²")
+        lines.append("")
+
+        lines.append("OKLEINA (mb):")
+        for k in sorted(edges_mb.keys()):
+            lines.append(f"- {k}: {edges_mb[k] * qty:.2f} mb")
+        lines.append("")
+
+        lines.append("OKUCIA:")
+        hinges_override = int(self.in_hinges_override.value())
+        hinges_auto = bool(self.ck_hinges_auto.isChecked())
+
+        hinges_total = 0
+        if self.ck_front.isChecked() and self.cb_front_mode.currentText() == "Drzwi":
+            for p in part_list:
+                if p.key.startswith("front_"):
+                    if hinges_override > 0:
+                        hinges_total += hinges_override
+                    else:
+                        hinges_total += self._hinges_for_height(p.h_mm) if hinges_auto else 0
+
+        legs = int(self.in_legs.value())
+        hangers = int(self.in_hangers.value())
+        pins_per_shelf = int(self.in_pins_per_shelf.value())
+
+        shelf_count = sum(1 for p in part_list if p.key.startswith("shelf_"))
+
+        if hinges_total:
+            lines.append(f"- Zawiasy: {hinges_total * qty} szt")
+        if legs:
+            lines.append(f"- Nóżki: {legs * qty} szt")
+        if hangers:
+            lines.append(f"- Zawieszki: {hangers * qty} szt")
+        if shelf_count and pins_per_shelf:
+            lines.append(f"- Podpórki półek: {shelf_count * pins_per_shelf * qty} szt")
+
+        # extra fittings from base
+        if self.extra_fittings:
+            lines.append("")
+            lines.append("DODATKOWE OKUCIA (z bazy):")
+            for name in sorted(self.extra_fittings.keys()):
+                lines.append(f"- {name}: {self.extra_fittings[name] * qty} szt")
+
+        self.txt_bom.setPlainText("\n".join(lines))
+
+    # -----------------------------
+    # Actions
+    # -----------------------------
+    def _on_recalc(self) -> None:
+        self._rebuild_parts()
+        self._refresh_scene()
+        self._refresh_quick_panel()
+        self._refresh_bom()
+        self._save_state()
+
+    def _on_reset(self) -> None:
+        self.in_W.setValue(600.0)
+        self.in_H.setValue(720.0)
+        self.in_D.setValue(560.0)
+        self.in_thick.setValue(18.0)
+        self.in_back_thick.setValue(3.0)
+        self.in_shelves.setValue(0)
+        self.in_qty.setValue(1)
+        self.ck_middle.setChecked(False)
+        self.ck_split_shelves.setChecked(True)
+        self.extra_fittings = {}
+        self._sync_extra_table()
+        self._on_recalc()
+
+    # -----------------------------
+    # DB: save/load module record
+    # -----------------------------
+    def _save_to_db(self) -> None:
+        name = (self.in_name.text() or "").strip()
+        if not name:
+            QtWidgets.QMessageBox.warning(self, "Brak nazwy", "Podaj nazwę modułu przed zapisem.")
+            return
+
+        state = self._export_state()
+        record = ModuleRecord(name=name, state=state)
+
+        exists = False
+        try:
+            _ = self.library.get(name)
+            exists = True
+        except Exception:
+            exists = False
+
+        if exists:
+            res = QtWidgets.QMessageBox.question(
+                self,
+                "Nadpisać?",
+                f"Moduł '{name}' już istnieje w bazie.\nCzy chcesz go NADPISAĆ?",
+                QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+            )
+            if res != QtWidgets.QMessageBox.StandardButton.Yes:
+                return
+
+        self.library.upsert(record)
+        QtWidgets.QMessageBox.information(self, "Zapisano", f"Zapisano moduł do bazy: {name}")
+
+    def _load_from_db(self) -> None:
+        name = (self.in_name.text() or "").strip()
+        if not name:
+            QtWidgets.QMessageBox.warning(self, "Brak nazwy", "Wpisz nazwę modułu do wczytania.")
+            return
+
+        try:
+            rec = self.library.get(name)
+        except Exception:
+            QtWidgets.QMessageBox.warning(self, "Nie znaleziono", f"Nie znaleziono modułu: {name}")
+            return
+
+        st = rec.state or {}
+        self.in_W.setValue(safe_float(st.get("W", 600.0), 600.0))
+        self.in_H.setValue(safe_float(st.get("H", 720.0), 720.0))
+        self.in_D.setValue(safe_float(st.get("D", 560.0), 560.0))
+
+        pe = st.get("parts_enabled", {}) or {}
+        self.ck_side_left.setChecked(bool(pe.get("side_left", True)))
+        self.ck_side_right.setChecked(bool(pe.get("side_right", True)))
+        self.ck_top.setChecked(bool(pe.get("top", True)))
+        self.ck_bottom.setChecked(bool(pe.get("bottom", True)))
+        self.ck_front.setChecked(bool(pe.get("front", True)))
+        self.ck_back.setChecked(bool(pe.get("back", True)))
+        self.ck_middle.setChecked(bool(pe.get("middle", False)))
+        self.ck_shelves.setChecked(bool(pe.get("shelves", True)))
+
+        offs = st.get("offsets", {}) or {}
+        def set_off(key: str, spx, spy):
+            v = offs.get(key, [0.0, 0.0])
+            spx.setValue(safe_float(v[0], 0.0))
+            spy.setValue(safe_float(v[1], 0.0))
+
+        set_off("top", self.off_top_x, self.off_top_y)
+        set_off("bottom", self.off_bottom_x, self.off_bottom_y)
+        set_off("side_left", self.off_side_left_x, self.off_side_left_y)
+        set_off("side_right", self.off_side_right_x, self.off_side_right_y)
+        set_off("front", self.off_front_x, self.off_front_y)
+        set_off("back", self.off_back_x, self.off_back_y)
+        set_off("middle", self.off_middle_x, self.off_middle_y)
+        set_off("shelves", self.off_shelves_x, self.off_shelves_y)
+
+        cuts = st.get("cuts", {}) or {}
+        def set_cut(key: str, cb, sp):
+            v = cuts.get(key, {}) or {}
+            cb.setCurrentIndex(safe_int(v.get("pos", 0), 0))
+            sp.setValue(safe_float(v.get("cut", 0.0), 0.0))
+
+        set_cut("side_left", self.cb_len_side_left_pos, self.in_len_side_left)
+        set_cut("side_right", self.cb_len_side_right_pos, self.in_len_side_right)
+        set_cut("middle", self.cb_len_middle_pos, self.in_len_middle)
+
+        fr = st.get("front", {}) or {}
+        m = str(fr.get("mode", "Drzwi"))
+        idx = self.cb_front_mode.findText(m)
+        if idx >= 0:
+            self.cb_front_mode.setCurrentIndex(idx)
+        hm = str(fr.get("hmode", "Na całą wysokość"))
+        idx = self.cb_front_hmode.findText(hm)
+        if idx >= 0:
+            self.cb_front_hmode.setCurrentIndex(idx)
+        self.in_front_count.setValue(safe_int(fr.get("count", 2), 2))
+        self.in_front_gap.setValue(safe_float(fr.get("gap", 2.0), 2.0))
+        self.in_front_side.setValue(safe_float(fr.get("side_off", 2.0), 2.0))
+
+        sh = st.get("shelves", {}) or {}
+        self.in_shelves.setValue(safe_int(sh.get("count", 0), 0))
+        self.ck_split_shelves.setChecked(bool(sh.get("split", True)))
+
+        self.in_qty.setValue(safe_int(st.get("qty", 1), 1))
+
+        fi = st.get("fittings", {}) or {}
+        self.ck_hinges_auto.setChecked(bool(fi.get("hinges_auto", True)))
+        self.in_hinges_override.setValue(safe_int(fi.get("hinges_override", 0), 0))
+        self.in_legs.setValue(safe_int(fi.get("legs", 4), 4))
+        self.in_hangers.setValue(safe_int(fi.get("hangers", 2), 2))
+        self.in_pins_per_shelf.setValue(safe_int(fi.get("pins_per_shelf", 4), 4))
+
+        self.extra_fittings = {k: int(v) for k, v in (st.get("extra_fittings", {}) or {}).items()}
+        self._sync_extra_table()
+
+        saved_parts = st.get("parts", {}) or {}
+        self._rebuild_parts()
+        for k, meta in saved_parts.items():
+            if k not in self.parts:
+                continue
+            mat = (meta.get("material") or "").strip()
+            if mat:
+                self.parts[k].material = mat
+            ed = meta.get("edges", {}) or {}
+            self.parts[k].edges = EdgeMap(
+                L=str(ed.get("L", "")) if ed.get("L") else "",
+                P=str(ed.get("P", "")) if ed.get("P") else "",
+                G=str(ed.get("G", "")) if ed.get("G") else "",
+                D=str(ed.get("D", "")) if ed.get("D") else "",
+            )
+
+        self.selected_key = str(st.get("selected_key", self.selected_key))
+        self._refresh_scene()
+        self._refresh_quick_panel()
+        self._refresh_bom()
+        self._save_state()
+
+        QtWidgets.QMessageBox.information(self, "Wczytano", f"Wczytano moduł z bazy: {name}")

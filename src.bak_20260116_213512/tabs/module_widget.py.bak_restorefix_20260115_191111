@@ -1,0 +1,759 @@
+﻿from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import List, Tuple, Optional, Dict
+
+from PySide6 import QtCore, QtWidgets
+from PySide6.QtCore import QSettings
+from PySide6.QtSvgWidgets import QSvgWidget
+
+
+@dataclass
+class EdgeFlags:
+    przod: bool = True   # okleina na krawędzi frontowej
+    boki: bool = False   # okleina na bocznych krawędziach (lewa+prawa)
+    gora: bool = False   # okleina na górnej krawędzi
+    dol: bool = False    # okleina na dolnej krawędzi
+
+
+@dataclass
+class ModuleParams:
+    # wymiary zewnętrzne
+    w_mm: float = 600.0
+    h_mm: float = 720.0
+    d_mm: float = 560.0
+
+    # fronty
+    front_mode: str = "Drzwi"   # "Drzwi" | "Szuflady" | "Brak"
+    front_count: int = 2
+    qty: int = 1
+    inset_mm: float = 0.0
+    gap_mm: float = 2.0
+    handles: bool = True
+
+    # baza
+    material: str = ""
+    edge: str = ""
+
+    # konstrukcja
+    thickness_mm: float = 18.0
+    back_panel: bool = True
+    back_thickness_mm: float = 3.0
+
+    middle_wall: bool = False
+    shelves_count: int = 0
+    shelves_split_with_middle: bool = True
+
+    # okleinowanie (na typach elementów)
+    edge_carcass: EdgeFlags = EdgeFlags(przod=True, boki=False, gora=False, dol=False)
+    edge_shelves: EdgeFlags = EdgeFlags(przod=True, boki=False, gora=False, dol=False)
+    edge_middle: EdgeFlags = EdgeFlags(przod=True, boki=False, gora=False, dol=False)
+    edge_top: EdgeFlags = EdgeFlags(przod=True, boki=True, gora=False, dol=False)
+
+
+def _clamp_int(v: int, lo: int, hi: int) -> int:
+    return max(lo, min(hi, v))
+
+
+def _mm_to_m(mm: float) -> float:
+    return mm / 1000.0
+
+
+def _mm_to_m2(area_mm2: float) -> float:
+    return area_mm2 / 1_000_000.0
+
+
+def _safe_float(x, default: float) -> float:
+    try:
+        return float(x)
+    except Exception:
+        return default
+
+
+class ModuleWidget(QtWidgets.QWidget):
+    """
+    Moduł — przywracamy logikę jak wcześniej:
+    - widok przód + widok góra w tej samej skali
+    - W/H/D, fronty, ilość, gap, inset, uchwyty
+    - przegroda środkowa, półki
+    - okleinowanie części + BOM (w tym metry okleiny)
+    """
+
+    def __init__(self, ctx, parent=None) -> None:
+        super().__init__(parent)
+        self.ctx = ctx
+        self.settings: QSettings = getattr(ctx, "settings", QSettings("TECH_modul", "TECH_modul_qt"))
+        self._build_ui()
+        self._populate_catalogs()
+        self._load_state()
+        self._refresh_all()
+
+        bus = getattr(self.ctx, "bus", None)
+        sig = getattr(bus, "data_changed", None)
+        if sig is not None and hasattr(sig, "connect"):
+            try:
+                sig.connect(self._on_data_changed)
+            except Exception:
+                pass
+
+    @QtCore.Slot(object)
+    def _on_data_changed(self, key: object) -> None:
+        if str(key) == "catalogs":
+            self._populate_catalogs()
+
+    # ---------------- UI ----------------
+    def _build_ui(self) -> None:
+        root = QtWidgets.QHBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(12)
+
+        self.split = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
+        root.addWidget(self.split, 1)
+
+        # LEFT
+        left = QtWidgets.QWidget()
+        leftL = QtWidgets.QVBoxLayout(left)
+        leftL.setContentsMargins(0, 0, 0, 0)
+        leftL.setSpacing(10)
+
+        # Wymiary
+        gb_dim = QtWidgets.QGroupBox("Wymiary modułu (mm)")
+        f = QtWidgets.QFormLayout(gb_dim)
+        f.setVerticalSpacing(10)
+
+        self.sp_w = QtWidgets.QDoubleSpinBox(); self.sp_w.setRange(50, 5000); self.sp_w.setDecimals(1); self.sp_w.setSuffix(" mm"); self.sp_w.setValue(600)
+        self.sp_h = QtWidgets.QDoubleSpinBox(); self.sp_h.setRange(50, 5000); self.sp_h.setDecimals(1); self.sp_h.setSuffix(" mm"); self.sp_h.setValue(720)
+        self.sp_d = QtWidgets.QDoubleSpinBox(); self.sp_d.setRange(50, 5000); self.sp_d.setDecimals(1); self.sp_d.setSuffix(" mm"); self.sp_d.setValue(560)
+
+        f.addRow("Szerokość (W):", self.sp_w)
+        f.addRow("Wysokość (H):", self.sp_h)
+        f.addRow("Głębokość (D):", self.sp_d)
+
+        # Fronty
+        gb_front = QtWidgets.QGroupBox("Fronty")
+        f2 = QtWidgets.QFormLayout(gb_front)
+        f2.setVerticalSpacing(10)
+
+        self.cb_mode = QtWidgets.QComboBox()
+        self.cb_mode.addItems(["Drzwi", "Szuflady", "Brak"])
+
+        self.sp_front_count = QtWidgets.QSpinBox(); self.sp_front_count.setRange(1, 12); self.sp_front_count.setValue(2)
+        self.sp_gap = QtWidgets.QDoubleSpinBox(); self.sp_gap.setRange(0, 50); self.sp_gap.setDecimals(1); self.sp_gap.setSuffix(" mm"); self.sp_gap.setValue(2.0)
+        self.sp_inset = QtWidgets.QDoubleSpinBox(); self.sp_inset.setRange(0, 100); self.sp_inset.setDecimals(1); self.sp_inset.setSuffix(" mm"); self.sp_inset.setValue(0.0)
+
+        f2.addRow("Tryb:", self.cb_mode)
+        f2.addRow("Ilość (drzwi/szuflad):", self.sp_front_count)
+        f2.addRow("Szczelina (gap):", self.sp_gap)
+        f2.addRow("Wpuszczenie (inset):", self.sp_inset)
+
+        # Korpus / konstrukcja
+        gb_struct = QtWidgets.QGroupBox("Korpus / konstrukcja")
+        f3 = QtWidgets.QFormLayout(gb_struct)
+        f3.setVerticalSpacing(10)
+
+        self.sp_qty = QtWidgets.QSpinBox(); self.sp_qty.setRange(1, 999); self.sp_qty.setValue(1)
+        self.ck_handles = QtWidgets.QCheckBox("Uchwyty"); self.ck_handles.setChecked(True)
+
+        self.cb_material = QtWidgets.QComboBox(); self.cb_material.setObjectName("material_cb")
+        self.cb_edge = QtWidgets.QComboBox(); self.cb_edge.setObjectName("edge_cb")
+
+        self.sp_thick = QtWidgets.QDoubleSpinBox(); self.sp_thick.setRange(10, 40); self.sp_thick.setDecimals(1); self.sp_thick.setSuffix(" mm"); self.sp_thick.setValue(18.0)
+        self.ck_back = QtWidgets.QCheckBox("Plecy (HDF)"); self.ck_back.setChecked(True)
+        self.sp_back_thick = QtWidgets.QDoubleSpinBox(); self.sp_back_thick.setRange(2, 10); self.sp_back_thick.setDecimals(1); self.sp_back_thick.setSuffix(" mm"); self.sp_back_thick.setValue(3.0)
+
+        self.ck_middle = QtWidgets.QCheckBox("Przegroda środkowa (pionowa)")
+        self.ck_middle.setChecked(False)
+
+        self.sp_shelves = QtWidgets.QSpinBox(); self.sp_shelves.setRange(0, 20); self.sp_shelves.setValue(0)
+        self.ck_split_shelves = QtWidgets.QCheckBox("Dziel półki, gdy jest przegroda")
+        self.ck_split_shelves.setChecked(True)
+
+        f3.addRow("Ilość modułów:", self.sp_qty)
+        f3.addRow("", self.ck_handles)
+        f3.addRow("Materiał:", self.cb_material)
+        f3.addRow("Krawędź:", self.cb_edge)
+        f3.addRow("Grubość płyty:", self.sp_thick)
+        f3.addRow("", self.ck_back)
+        f3.addRow("Grubość pleców:", self.sp_back_thick)
+        f3.addRow("", self.ck_middle)
+        f3.addRow("Dodatkowe półki:", self.sp_shelves)
+        f3.addRow("", self.ck_split_shelves)
+
+        # Okleinowanie
+        gb_edge = QtWidgets.QGroupBox("Okleinowanie (zaznacz co oklejamy)")
+        grid = QtWidgets.QGridLayout(gb_edge)
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(8)
+
+        def edge_row(r: int, title: str) -> Dict[str, QtWidgets.QCheckBox]:
+            lbl = QtWidgets.QLabel(title)
+            grid.addWidget(lbl, r, 0)
+            c1 = QtWidgets.QCheckBox("Przód")
+            c2 = QtWidgets.QCheckBox("Boki")
+            c3 = QtWidgets.QCheckBox("Góra")
+            c4 = QtWidgets.QCheckBox("Dół")
+            grid.addWidget(c1, r, 1)
+            grid.addWidget(c2, r, 2)
+            grid.addWidget(c3, r, 3)
+            grid.addWidget(c4, r, 4)
+            return {"przod": c1, "boki": c2, "gora": c3, "dol": c4}
+
+        grid.addWidget(QtWidgets.QLabel(""), 0, 0)
+        grid.addWidget(QtWidgets.QLabel(""), 0, 1)
+        grid.addWidget(QtWidgets.QLabel(""), 0, 2)
+        grid.addWidget(QtWidgets.QLabel(""), 0, 3)
+        grid.addWidget(QtWidgets.QLabel(""), 0, 4)
+
+        self.edge_carcass = edge_row(1, "Korpus (boki/góra/dół)")
+        self.edge_shelves = edge_row(2, "Półki")
+        self.edge_middle  = edge_row(3, "Przegroda")
+        self.edge_top     = edge_row(4, "Blat")
+
+        # defaulty (jak było typowo: przód okleinowany)
+        self.edge_carcass["przod"].setChecked(True)
+        self.edge_shelves["przod"].setChecked(True)
+        self.edge_middle["przod"].setChecked(True)
+        self.edge_top["przod"].setChecked(True)
+        self.edge_top["boki"].setChecked(True)
+
+        # Buttons
+        btnRow = QtWidgets.QHBoxLayout()
+        self.btn_reset = QtWidgets.QPushButton("Resetuj")
+        self.btn_calc  = QtWidgets.QPushButton("Oblicz")
+        btnRow.addWidget(self.btn_reset)
+        btnRow.addWidget(self.btn_calc)
+        btnRow.addStretch(1)
+
+        leftL.addWidget(gb_dim)
+        leftL.addWidget(gb_front)
+        leftL.addWidget(gb_struct)
+        leftL.addWidget(gb_edge)
+        leftL.addLayout(btnRow)
+        leftL.addStretch(1)
+
+        # CENTER: SVG
+        center = QtWidgets.QWidget()
+        centerL = QtWidgets.QVBoxLayout(center)
+        centerL.setContentsMargins(0, 0, 0, 0)
+        centerL.setSpacing(10)
+
+        title = QtWidgets.QLabel("Rysunek: przód + góra (wspólna skala 1:1)")
+        title.setStyleSheet("font-size: 14px; font-weight: 600;")
+        centerL.addWidget(title)
+
+        self.svg = QSvgWidget()
+        self.svg.setMinimumSize(520, 520)
+        centerL.addWidget(self.svg, 1)
+
+        # RIGHT: BOM
+        right = QtWidgets.QWidget()
+        rightL = QtWidgets.QVBoxLayout(right)
+        rightL.setContentsMargins(0, 0, 0, 0)
+        rightL.setSpacing(10)
+
+        gb_bom = QtWidgets.QGroupBox("BOM / Podsumowanie")
+        vb = QtWidgets.QVBoxLayout(gb_bom)
+        self.txt_bom = QtWidgets.QPlainTextEdit()
+        self.txt_bom.setReadOnly(True)
+        vb.addWidget(self.txt_bom)
+        rightL.addWidget(gb_bom, 1)
+
+        # splitter
+        self.split.addWidget(left)
+        self.split.addWidget(center)
+        self.split.addWidget(right)
+        self.split.setStretchFactor(0, 0)
+        self.split.setStretchFactor(1, 1)
+        self.split.setStretchFactor(2, 0)
+
+        # signals
+        self.btn_reset.clicked.connect(self._on_reset)
+        self.btn_calc.clicked.connect(self._refresh_all)
+
+        def hook(w):
+            if hasattr(w, "valueChanged"):
+                w.valueChanged.connect(self._refresh_all)
+            if hasattr(w, "currentIndexChanged"):
+                w.currentIndexChanged.connect(self._refresh_all)
+            if hasattr(w, "toggled"):
+                w.toggled.connect(self._refresh_all)
+            if hasattr(w, "stateChanged"):
+                w.stateChanged.connect(self._refresh_all)
+
+        for w in [
+            self.sp_w, self.sp_h, self.sp_d,
+            self.cb_mode, self.sp_front_count, self.sp_gap, self.sp_inset,
+            self.sp_qty, self.ck_handles,
+            self.cb_material, self.cb_edge,
+            self.sp_thick, self.ck_back, self.sp_back_thick,
+            self.ck_middle, self.sp_shelves, self.ck_split_shelves,
+        ]:
+            hook(w)
+
+        for d in [self.edge_carcass, self.edge_shelves, self.edge_middle, self.edge_top]:
+            for cb in d.values():
+                hook(cb)
+
+    def _populate_catalogs(self) -> None:
+        def fill(cb: QtWidgets.QComboBox, names: List[str], placeholder: str):
+            cb.blockSignals(True)
+            try:
+                cur = cb.currentText()
+                cb.clear()
+                cb.addItem(placeholder)
+                for n in names:
+                    cb.addItem(n)
+                # try restore
+                idx = cb.findText(cur)
+                if idx >= 0:
+                    cb.setCurrentIndex(idx)
+            finally:
+                cb.blockSignals(False)
+
+        catalogs = getattr(self.ctx, "catalogs", None)
+        mats: List[str] = []
+        edges: List[str] = []
+
+        try:
+            if catalogs and hasattr(catalogs, "get_materials"):
+                mats = [getattr(x, "name", str(x)) for x in catalogs.get_materials()]
+        except Exception:
+            mats = []
+        try:
+            if catalogs and hasattr(catalogs, "get_edges"):
+                edges = [getattr(x, "name", str(x)) for x in catalogs.get_edges()]
+        except Exception:
+            edges = []
+
+        fill(self.cb_material, mats, "— wybierz materiał —")
+        fill(self.cb_edge, edges, "— wybierz krawędź —")
+
+    # ------------- state -------------
+    def _load_state(self) -> None:
+        s = self.settings
+        s.beginGroup("module")
+        try:
+            self.sp_w.setValue(_safe_float(s.value("w_mm", 600), 600))
+            self.sp_h.setValue(_safe_float(s.value("h_mm", 720), 720))
+            self.sp_d.setValue(_safe_float(s.value("d_mm", 560), 560))
+
+            mode = str(s.value("front_mode", "Drzwi"))
+            idx = self.cb_mode.findText(mode)
+            if idx >= 0:
+                self.cb_mode.setCurrentIndex(idx)
+
+            self.sp_front_count.setValue(int(_safe_float(s.value("front_count", 2), 2)))
+            self.sp_gap.setValue(_safe_float(s.value("gap_mm", 2.0), 2.0))
+            self.sp_inset.setValue(_safe_float(s.value("inset_mm", 0.0), 0.0))
+            self.sp_qty.setValue(int(_safe_float(s.value("qty", 1), 1)))
+            self.ck_handles.setChecked(str(s.value("handles", "true")).lower() in ("1","true","tak","yes"))
+
+            self.sp_thick.setValue(_safe_float(s.value("thickness_mm", 18.0), 18.0))
+            self.ck_back.setChecked(str(s.value("back_panel", "true")).lower() in ("1","true","tak","yes"))
+            self.sp_back_thick.setValue(_safe_float(s.value("back_thickness_mm", 3.0), 3.0))
+
+            self.ck_middle.setChecked(str(s.value("middle_wall", "false")).lower() in ("1","true","tak","yes"))
+            self.sp_shelves.setValue(int(_safe_float(s.value("shelves_count", 0), 0)))
+            self.ck_split_shelves.setChecked(str(s.value("shelves_split", "true")).lower() in ("1","true","tak","yes"))
+
+            # edge flags
+            def load_flags(prefix: str, d: Dict[str, QtWidgets.QCheckBox], defaults: Dict[str, bool]):
+                for k, cb in d.items():
+                    cb.setChecked(str(s.value(f"{prefix}_{k}", "true" if defaults.get(k, False) else "false")).lower() in ("1","true","tak","yes"))
+
+            load_flags("edge_carcass", self.edge_carcass, {"przod": True})
+            load_flags("edge_shelves", self.edge_shelves, {"przod": True})
+            load_flags("edge_middle",  self.edge_middle,  {"przod": True})
+            load_flags("edge_top",     self.edge_top,     {"przod": True, "boki": True})
+
+            sizes = s.value("split_sizes", None)
+            if sizes:
+                try:
+                    self.split.setSizes([int(x) for x in sizes])
+                except Exception:
+                    pass
+        finally:
+            s.endGroup()
+
+    def _save_state(self) -> None:
+        s = self.settings
+        s.beginGroup("module")
+        try:
+            s.setValue("w_mm", self.sp_w.value())
+            s.setValue("h_mm", self.sp_h.value())
+            s.setValue("d_mm", self.sp_d.value())
+            s.setValue("front_mode", self.cb_mode.currentText())
+            s.setValue("front_count", self.sp_front_count.value())
+            s.setValue("gap_mm", self.sp_gap.value())
+            s.setValue("inset_mm", self.sp_inset.value())
+            s.setValue("qty", self.sp_qty.value())
+            s.setValue("handles", "true" if self.ck_handles.isChecked() else "false")
+
+            s.setValue("thickness_mm", self.sp_thick.value())
+            s.setValue("back_panel", "true" if self.ck_back.isChecked() else "false")
+            s.setValue("back_thickness_mm", self.sp_back_thick.value())
+
+            s.setValue("middle_wall", "true" if self.ck_middle.isChecked() else "false")
+            s.setValue("shelves_count", self.sp_shelves.value())
+            s.setValue("shelves_split", "true" if self.ck_split_shelves.isChecked() else "false")
+
+            def save_flags(prefix: str, d: Dict[str, QtWidgets.QCheckBox]):
+                for k, cb in d.items():
+                    s.setValue(f"{prefix}_{k}", "true" if cb.isChecked() else "false")
+
+            save_flags("edge_carcass", self.edge_carcass)
+            save_flags("edge_shelves", self.edge_shelves)
+            save_flags("edge_middle",  self.edge_middle)
+            save_flags("edge_top",     self.edge_top)
+
+            s.setValue("split_sizes", self.split.sizes())
+        finally:
+            s.endGroup()
+
+    def closeEvent(self, e) -> None:
+        try:
+            self._save_state()
+        except Exception:
+            pass
+        super().closeEvent(e)
+
+    # ------------- actions -------------
+    def _on_reset(self) -> None:
+        self.sp_w.setValue(600.0)
+        self.sp_h.setValue(720.0)
+        self.sp_d.setValue(560.0)
+        self.cb_mode.setCurrentIndex(0)
+        self.sp_front_count.setValue(2)
+        self.sp_gap.setValue(2.0)
+        self.sp_inset.setValue(0.0)
+        self.sp_qty.setValue(1)
+        self.ck_handles.setChecked(True)
+
+        self.sp_thick.setValue(18.0)
+        self.ck_back.setChecked(True)
+        self.sp_back_thick.setValue(3.0)
+        self.ck_middle.setChecked(False)
+        self.sp_shelves.setValue(0)
+        self.ck_split_shelves.setChecked(True)
+
+        # okleiny default
+        for cb in self.edge_carcass.values(): cb.setChecked(False)
+        self.edge_carcass["przod"].setChecked(True)
+        for cb in self.edge_shelves.values(): cb.setChecked(False)
+        self.edge_shelves["przod"].setChecked(True)
+        for cb in self.edge_middle.values(): cb.setChecked(False)
+        self.edge_middle["przod"].setChecked(True)
+        for cb in self.edge_top.values(): cb.setChecked(False)
+        self.edge_top["przod"].setChecked(True)
+        self.edge_top["boki"].setChecked(True)
+
+        self._refresh_all()
+
+    # ---------------- geometry helpers ----------------
+    def _get_params(self) -> ModuleParams:
+        p = ModuleParams(
+            w_mm=float(self.sp_w.value()),
+            h_mm=float(self.sp_h.value()),
+            d_mm=float(self.sp_d.value()),
+            front_mode=self.cb_mode.currentText(),
+            front_count=_clamp_int(int(self.sp_front_count.value()), 1, 12),
+            qty=_clamp_int(int(self.sp_qty.value()), 1, 999),
+            inset_mm=float(self.sp_inset.value()),
+            gap_mm=float(self.sp_gap.value()),
+            handles=bool(self.ck_handles.isChecked()),
+            material=self.cb_material.currentText() if self.cb_material.currentIndex() >= 1 else "",
+            edge=self.cb_edge.currentText() if self.cb_edge.currentIndex() >= 1 else "",
+            thickness_mm=float(self.sp_thick.value()),
+            back_panel=bool(self.ck_back.isChecked()),
+            back_thickness_mm=float(self.sp_back_thick.value()),
+            middle_wall=bool(self.ck_middle.isChecked()),
+            shelves_count=int(self.sp_shelves.value()),
+            shelves_split_with_middle=bool(self.ck_split_shelves.isChecked()),
+            edge_carcass=EdgeFlags(
+                przod=self.edge_carcass["przod"].isChecked(),
+                boki=self.edge_carcass["boki"].isChecked(),
+                gora=self.edge_carcass["gora"].isChecked(),
+                dol=self.edge_carcass["dol"].isChecked(),
+            ),
+            edge_shelves=EdgeFlags(
+                przod=self.edge_shelves["przod"].isChecked(),
+                boki=self.edge_shelves["boki"].isChecked(),
+                gora=self.edge_shelves["gora"].isChecked(),
+                dol=self.edge_shelves["dol"].isChecked(),
+            ),
+            edge_middle=EdgeFlags(
+                przod=self.edge_middle["przod"].isChecked(),
+                boki=self.edge_middle["boki"].isChecked(),
+                gora=self.edge_middle["gora"].isChecked(),
+                dol=self.edge_middle["dol"].isChecked(),
+            ),
+            edge_top=EdgeFlags(
+                przod=self.edge_top["przod"].isChecked(),
+                boki=self.edge_top["boki"].isChecked(),
+                gora=self.edge_top["gora"].isChecked(),
+                dol=self.edge_top["dol"].isChecked(),
+            ),
+        )
+        return p
+
+    def _internal_dims(self, p: ModuleParams) -> Tuple[float, float, float]:
+        t = max(0.0, p.thickness_mm)
+        iw = max(0.0, p.w_mm - 2*t)
+        ih = max(0.0, p.h_mm - 2*t)
+        idp = max(0.0, p.d_mm)  # w uproszczeniu: pełna głębokość
+        return iw, ih, idp
+
+    def _calc_front_panels(self, p: ModuleParams) -> List[Tuple[float, float, float, float]]:
+        rects: List[Tuple[float, float, float, float]] = []
+        if p.front_mode == "Brak":
+            return rects
+        n = max(1, p.front_count)
+        gap = max(0.0, p.gap_mm)
+        if p.front_mode == "Drzwi":
+            total_gap = gap * (n - 1)
+            panel_w = max(0.0, (p.w_mm - total_gap) / n)
+            x = 0.0
+            for _ in range(n):
+                rects.append((x, 0.0, panel_w, p.h_mm))
+                x += panel_w + gap
+        else:
+            total_gap = gap * (n - 1)
+            panel_h = max(0.0, (p.h_mm - total_gap) / n)
+            y = 0.0
+            for _ in range(n):
+                rects.append((0.0, y, p.w_mm, panel_h))
+                y += panel_h + gap
+        return rects
+
+    # ---------------- BOM helpers ----------------
+    def _edge_len_for_rect(self, w: float, h: float, flags: EdgeFlags) -> float:
+        """
+        Długość okleiny (mm) dla elementu (prostokąt w x h).
+        Interpretacja:
+        - przód -> krawędź "frontowa" = szerokość (w)
+        - boki  -> dwie krawędzie boczne = 2*h
+        - góra  -> górna krawędź = w
+        - dół   -> dolna krawędź = w
+        To jest praktyczny model dla półki/blatu. Dla boków/przegrody traktujemy:
+        - "przód" = wysokość (h), "góra/dół" = głębokość (w) — ustawiamy świadomie przy wywołaniu.
+        """
+        total = 0.0
+        if flags.przod:
+            total += w
+        if flags.boki:
+            total += 2*h
+        if flags.gora:
+            total += w
+        if flags.dol:
+            total += w
+        return total
+
+    def _build_bom(self, p: ModuleParams) -> str:
+        t = max(0.0, p.thickness_mm)
+        iw, ih, idp = self._internal_dims(p)
+
+        lines: List[str] = []
+        lines.append("PARAMETRY")
+        lines.append(f"- W: {p.w_mm:.1f} mm, H: {p.h_mm:.1f} mm, D: {p.d_mm:.1f} mm")
+        lines.append(f"- Grubość płyty: {t:.1f} mm  |  Plecy: {'Tak' if p.back_panel else 'Nie'} ({p.back_thickness_mm:.1f} mm)")
+        lines.append(f"- Fronty: {p.front_mode}  |  ilość: {p.front_count}  |  gap: {p.gap_mm:.1f} mm  |  inset: {p.inset_mm:.1f} mm")
+        lines.append(f"- Przegroda: {'Tak' if p.middle_wall else 'Nie'}  |  Półki: {p.shelves_count}  |  Dziel półki: {'Tak' if p.shelves_split_with_middle else 'Nie'}")
+        lines.append(f"- Ilość modułów: {p.qty}")
+        if p.material:
+            lines.append(f"- Materiał: {p.material}")
+        if p.edge:
+            lines.append(f"- Krawędź: {p.edge}")
+
+        lines.append("")
+        lines.append("ELEMENTY (na 1 moduł)")
+
+        # Korpus: boki, góra, dół
+        # Boki: H x D
+        # dla boków przyjmujemy: "przód" = H, "góra/dół" = D, "boki" ignorujemy (sens mniej jasny)
+        def edge_len_side(H: float, D: float, flags: EdgeFlags) -> float:
+            total = 0.0
+            if flags.przod: total += H
+            if flags.gora:  total += D
+            if flags.dol:   total += D
+            # flags.boki pomijamy dla boków
+            return total
+
+        edge_m_total = 0.0
+
+        side_edge = edge_len_side(p.h_mm, p.d_mm, p.edge_carcass)
+        edge_m_total += 2 * _mm_to_m(side_edge)
+
+        lines.append(f"- Bok lewy:  {p.h_mm:.1f} x {p.d_mm:.1f} mm  | okleina: { _mm_to_m(side_edge):.3f} m")
+        lines.append(f"- Bok prawy: {p.h_mm:.1f} x {p.d_mm:.1f} mm  | okleina: { _mm_to_m(side_edge):.3f} m")
+
+        # Góra i dół: W-2t x D
+        top_w = max(0.0, p.w_mm - 2*t)
+        top_h = max(0.0, p.d_mm)
+        top_edge_len_mm = self._edge_len_for_rect(top_w, top_h, p.edge_carcass)
+        edge_m_total += 2 * _mm_to_m(top_edge_len_mm)
+
+        lines.append(f"- Góra (wew.): {top_w:.1f} x {top_h:.1f} mm  | okleina: { _mm_to_m(top_edge_len_mm):.3f} m")
+        lines.append(f"- Dół  (wew.): {top_w:.1f} x {top_h:.1f} mm  | okleina: { _mm_to_m(top_edge_len_mm):.3f} m")
+
+        # Plecy: W x H (HDF) - bez okleiny
+        if p.back_panel:
+            lines.append(f"- Plecy: {p.w_mm:.1f} x {p.h_mm:.1f} mm  (HDF)")
+
+        # Przegroda środkowa: (H-2t) x D
+        if p.middle_wall:
+            mw_h = max(0.0, p.h_mm - 2*t)
+            mw_d = max(0.0, p.d_mm)
+            mw_edge = edge_len_side(mw_h, mw_d, p.edge_middle)
+            edge_m_total += _mm_to_m(mw_edge)
+            lines.append(f"- Przegroda: {mw_h:.1f} x {mw_d:.1f} mm  | okleina: { _mm_to_m(mw_edge):.3f} m")
+
+        # Półki
+        if p.shelves_count > 0:
+            if p.middle_wall and p.shelves_split_with_middle:
+                # dwie półki na poziom (lewa+ prawa)
+                shelf_w = max(0.0, (iw - t) / 2.0)  # iw = W-2t, minus przegroda
+                shelf_d = max(0.0, p.d_mm)
+                shelf_edge_len_mm = self._edge_len_for_rect(shelf_w, shelf_d, p.edge_shelves)
+                qty_parts = p.shelves_count * 2
+                edge_m_total += qty_parts * _mm_to_m(shelf_edge_len_mm)
+                lines.append(f"- Półki (dzielone): {qty_parts} szt | {shelf_w:.1f} x {shelf_d:.1f} mm | okleina/szt: {_mm_to_m(shelf_edge_len_mm):.3f} m")
+            else:
+                shelf_w = max(0.0, iw)
+                shelf_d = max(0.0, p.d_mm)
+                shelf_edge_len_mm = self._edge_len_for_rect(shelf_w, shelf_d, p.edge_shelves)
+                qty_parts = p.shelves_count
+                edge_m_total += qty_parts * _mm_to_m(shelf_edge_len_mm)
+                lines.append(f"- Półki: {qty_parts} szt | {shelf_w:.1f} x {shelf_d:.1f} mm | okleina/szt: {_mm_to_m(shelf_edge_len_mm):.3f} m")
+
+        # Blat: W x D (często okleinowany przód + boki)
+        top_edge_mm = self._edge_len_for_rect(p.w_mm, p.d_mm, p.edge_top)
+        edge_m_total += _mm_to_m(top_edge_mm)
+        lines.append(f"- Blat: {p.w_mm:.1f} x {p.d_mm:.1f} mm | okleina: {_mm_to_m(top_edge_mm):.3f} m")
+
+        # Fronty
+        panels = self._calc_front_panels(p)
+        if p.front_mode != "Brak":
+            area_m2 = 0.0
+            for (_, _, w, h) in panels:
+                area_m2 += _mm_to_m2(w*h)
+            lines.append(f"- Fronty: {len(panels)} szt | suma powierzchni: {area_m2:.3f} m²")
+
+        lines.append("")
+        lines.append("OKLEINA (SUMA)")
+        lines.append(f"- Okleina na 1 moduł: {edge_m_total:.3f} m")
+        lines.append(f"- Okleina x{p.qty}: {edge_m_total * p.qty:.3f} m")
+
+        return "\n".join(lines)
+
+    # ---------------- SVG ----------------
+    def _build_svg(self, p: ModuleParams) -> bytes:
+        box_w = 320.0
+        box_h = 320.0
+        pad = 22.0
+        gap_boxes = 36.0
+
+        s = min(
+            (box_w - 2*pad) / max(p.w_mm, 1.0),
+            (box_h - 2*pad) / max(p.h_mm, 1.0),
+            (box_w - 2*pad) / max(p.w_mm, 1.0),
+            (box_h - 2*pad) / max(p.d_mm, 1.0)
+        )
+
+        front_x = 0.0
+        top_x = box_w + gap_boxes
+        view_w = box_w*2 + gap_boxes
+        view_h = box_h
+
+        stroke = 1.2
+        col_main = "#334155"
+        col_inset = "#F59E0B"
+        col_soft = "#64748B"
+
+        def rect(x,y,w,h,stroke_col,sw,rx=8):
+            return f'<rect x="{x:.2f}" y="{y:.2f}" width="{w:.2f}" height="{h:.2f}" fill="none" stroke="{stroke_col}" stroke-width="{sw}" rx="{rx}"/>'
+
+        def line(x1,y1,x2,y2,col,sw, dash=False):
+            ds = ' stroke-dasharray="6 4"' if dash else ""
+            return f'<line x1="{x1:.2f}" y1="{y1:.2f}" x2="{x2:.2f}" y2="{y2:.2f}" stroke="{col}" stroke-width="{sw}"{ds}/>'
+
+        label = lambda x,y,t: f'<text x="{x:.2f}" y="{y:.2f}" font-size="14" font-family="Segoe UI" fill="#0B1220">{t}</text>'
+
+        # FRONT outline
+        fw = p.w_mm * s
+        fh = p.h_mm * s
+        fx = front_x + (box_w - fw)/2
+        fy = (box_h - fh)/2
+        front_outline = rect(fx, fy, fw, fh, col_main, stroke)
+
+        inset = max(0.0, p.inset_mm) * s
+        inset_outline = ""
+        if inset > 0.1 and fw - 2*inset > 2 and fh - 2*inset > 2:
+            inset_outline = rect(fx+inset, fy+inset, fw-2*inset, fh-2*inset, col_inset, stroke)
+
+        # Front panels
+        panels_svg = ""
+        for (x,y,w,h) in self._calc_front_panels(p):
+            px = fx + x*s
+            py = fy + y*s
+            pw = w*s
+            ph = h*s
+            if pw > 1 and ph > 1:
+                panels_svg += rect(px, py, pw, ph, col_main, stroke, rx=6)
+
+        # Middle wall in FRONT view (dashed vertical line)
+        mw_svg = ""
+        if p.middle_wall:
+            t = max(0.0, p.thickness_mm) * s
+            xmid = fx + fw/2.0
+            mw_svg = line(xmid, fy+inset, xmid, fy+fh-inset, col_soft, 1.0, dash=True)
+
+        # Shelves in FRONT view (dashed horizontal lines)
+        shelves_svg = ""
+        if p.shelves_count > 0:
+            # równy podział przestrzeni wewnętrznej (wizualnie)
+            n = p.shelves_count
+            for i in range(1, n+1):
+                yline = fy + (fh * i) / (n+1)
+                shelves_svg += line(fx+inset, yline, fx+fw-inset, yline, col_soft, 1.0, dash=True)
+
+        # TOP outline (W x D)
+        tw = p.w_mm * s
+        th = p.d_mm * s
+        tx = top_x + (box_w - tw)/2
+        ty = (box_h - th)/2
+        top_outline = rect(tx, ty, tw, th, col_main, stroke)
+
+        # Middle wall in TOP view (dashed line)
+        mw_top = ""
+        if p.middle_wall:
+            xmid = tx + tw/2.0
+            mw_top = line(xmid, ty+inset, xmid, ty+th-inset, col_soft, 1.0, dash=True)
+
+        svg = f'''<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="{view_w:.0f}" height="{view_h:.0f}" viewBox="0 0 {view_w:.0f} {view_h:.0f}">
+  {label(front_x + 10, 22, "Widok przód")}
+  {label(top_x + 10, 22, "Widok góra")}
+  {front_outline}
+  {inset_outline}
+  {panels_svg}
+  {mw_svg}
+  {shelves_svg}
+  {top_outline}
+  {mw_top}
+</svg>
+'''
+        return svg.encode("utf-8")
+
+    # ------------- refresh -------------
+    def _refresh_all(self) -> None:
+        p = self._get_params()
+        try:
+            self.svg.load(self._build_svg(p))
+        except Exception:
+            self.txt_bom.setPlainText("Błąd rysowania SVG (sprawdź QtSvgWidgets).")
+            return
+        self.txt_bom.setPlainText(self._build_bom(p))
+        try:
+            self._save_state()
+        except Exception:
+            pass

@@ -1,0 +1,17 @@
+﻿from __future__ import annotations
+from PySide6 import QtWidgets
+
+def build_tabs(ctx) -> list[tuple[str, QtWidgets.QWidget]]:
+    """
+    TOP-LEVEL TABS (only):
+      - MODUL
+      - BAZA modułu
+    """
+    out: list[tuple[str, QtWidgets.QWidget]] = []
+
+    from tabs.tab_modul import ModulTab
+    from tabs.tab_baza_modulu import BazaModuluTab
+
+    out.append(("MODUL", ModulTab(ctx)))
+    out.append(("BAZA modułu", BazaModuluTab(ctx)))
+    return out

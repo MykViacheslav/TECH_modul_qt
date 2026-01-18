@@ -1,0 +1,21 @@
+﻿from __future__ import annotations
+from PySide6 import QtWidgets
+
+class ScianaPage(QtWidgets.QWidget):
+    """MODUL -> Ściana (independent page/file)."""
+
+    def __init__(self, ctx=None, parent=None):
+        super().__init__(parent)
+        self.ctx = ctx
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(6, 6, 6, 6)
+
+        # Try reuse existing widget (your drawing/logic lives there)
+        try:
+            from tabs.module_proto_widget import ModuleProtoWidget
+            w = ModuleProtoWidget(ctx=ctx, parent=self)
+            lay.addWidget(w)
+        except Exception as e:
+            msg = QtWidgets.QLabel("Ściana: placeholder (nie udało się załadować ModuleProtoWidget).\n" + str(e))
+            msg.setWordWrap(True)
+            lay.addWidget(msg)

@@ -1,0 +1,382 @@
+﻿(() => {
+  const $ = (id) => document.getElementById(id);
+
+  const state = {
+    W: 600, H: 720, D: 560,
+    uiScale: 1,
+    front: { mode:"none", count:0, inset:8, gap:2, mat:"mdf18" },
+    mats: [
+      {id:"pb18",  name:"Płyta wiórowa 18 mm (PB18)"},
+      {id:"mdf18", name:"MDF 18 mm"},
+      {id:"mdf16", name:"MDF 16 mm"},
+      {id:"hdf3",  name:"HDF 3 mm"},
+      {id:"ply12", name:"Sklejka 12 mm"},
+    ],
+    carcassMat:"pb18",
+    backMat:"hdf3",
+    selected:null,
+  };
+
+  function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
+  function num(v,def=0){ const n = Number(v); return Number.isFinite(n)? n : def; }
+
+  // ---------- TIP ----------
+  const tip = {
+    el: $("dragTip"),
+    title: $("dragTipTitle"),
+    input: $("dragTipInput"),
+    close: $("dragTipClose"),
+    active: null,
+    showAt(x,y){
+      if(!tip.el) return;
+      tip.el.style.display = "block";
+      tip.el.style.left = (x+12)+"px";
+      tip.el.style.top  = (y+12)+"px";
+    },
+    hide(){ if(tip.el) tip.el.style.display="none"; tip.active=null; },
+    bind(active, x, y){
+      tip.active = active;
+      tip.title.textContent = active.label;
+      tip.input.value = String(active.get());
+      tip.showAt(x,y);
+      tip.input.focus({preventScroll:true});
+      tip.input.select();
+    },
+    commit(){
+      if(!tip.active) return;
+      const v = Math.round(num(tip.input.value, tip.active.get()));
+      tip.active.set(v);
+      renderAll();
+    }
+  };
+  if(tip.close) tip.close.onclick = ()=>tip.hide();
+  if(tip.input){
+    tip.input.addEventListener("keydown",(e)=>{
+      if(e.key==="Enter"){ tip.commit(); tip.hide(); }
+      if(e.key==="Escape"){ tip.hide(); }
+    });
+  }
+  window.addEventListener("pointerdown",(e)=>{
+    if(tip.el && tip.el.style.display==="block"){
+      if(!tip.el.contains(e.target)) tip.hide();
+    }
+  }, {capture:true});
+
+  // ---------- UI ----------
+  function fillSelect(id, list, val){
+    const s = $(id);
+    if(!s) return;
+    s.innerHTML = "";
+    for(const it of list){
+      const o = document.createElement("option");
+      o.value = it.id; o.textContent = it.name;
+      s.appendChild(o);
+    }
+    s.value = val ?? (list[0]?.id ?? "");
+  }
+
+  function syncUI(){
+    $("w").value = state.W;
+    $("h").value = state.H;
+    $("d").value = state.D;
+    $("uiScale").value = state.uiScale;
+
+    $("frontMode").value = state.front.mode;
+    $("frontCount").value = state.front.count;
+    $("frontInset").value = state.front.inset;
+    $("frontGap").value = state.front.gap;
+
+    fillSelect("frontMat", state.mats, state.front.mat);
+    fillSelect("carcassMat", state.mats, state.carcassMat);
+    fillSelect("backMat", state.mats, state.backMat);
+  }
+
+  function bindUI(){
+    $("w").addEventListener("input", ()=>{ state.W = clamp(Math.round(num($("w").value,600)), 200, 5000); renderAll(); });
+    $("h").addEventListener("input", ()=>{ state.H = clamp(Math.round(num($("h").value,720)), 200, 5000); renderAll(); });
+    $("d").addEventListener("input", ()=>{ state.D = clamp(Math.round(num($("d").value,560)), 100, 2000); renderAll(); });
+    $("uiScale").addEventListener("input", ()=>{ state.uiScale = clamp(num($("uiScale").value,1), 0.5, 3); renderAll(); });
+
+    $("frontMode").addEventListener("change", ()=>{ state.front.mode = $("frontMode").value; renderAll(); });
+    $("frontCount").addEventListener("input", ()=>{ state.front.count = clamp(Math.round(num($("frontCount").value,0)), 0, 12); renderAll(); });
+    $("frontInset").addEventListener("input", ()=>{ state.front.inset = clamp(Math.round(num($("frontInset").value,8)), 0, 50); renderAll(); });
+    $("frontGap").addEventListener("input", ()=>{ state.front.gap = clamp(Math.round(num($("frontGap").value,2)), 0, 10); renderAll(); });
+
+    $("frontMat").addEventListener("change", ()=>{ state.front.mat = $("frontMat").value; renderAll(); });
+    $("carcassMat").addEventListener("change", ()=>{ state.carcassMat = $("carcassMat").value; renderAll(); });
+    $("backMat").addEventListener("change", ()=>{ state.backMat = $("backMat").value; renderAll(); });
+
+    $("hardReset").addEventListener("click", ()=>{
+      localStorage.removeItem("tech_modul_reset_state");
+      location.reload();
+    });
+  }
+
+  function saveState(){
+    localStorage.setItem("tech_modul_reset_state", JSON.stringify(state));
+  }
+  function loadState(){
+    try{
+      const s = JSON.parse(localStorage.getItem("tech_modul_reset_state")||"null");
+      if(s && typeof s==="object"){
+        Object.assign(state, s);
+        // ensure nested defaults
+        state.front = Object.assign({mode:"none",count:0,inset:2,gap:2,mat:"mdf18"}, state.front||{});
+        state.mats  = Array.isArray(state.mats) && state.mats.length ? state.mats : [
+          {id:"pb18",name:"Płyta wiórowa 18 mm (PB18)"},
+          {id:"mdf18",name:"MDF 18 mm"},
+          {id:"mdf16",name:"MDF 16 mm"},
+          {id:"hdf3",name:"HDF 3 mm"},
+          {id:"ply12",name:"Sklejka 12 mm"},
+        ];
+      }
+    }catch{}
+  }
+
+  // ---------- SVG RENDER ----------
+  function el(tag, attrs={}){
+    const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    for(const k of Object.keys(attrs)) n.setAttribute(k, String(attrs[k]));
+    return n;
+  }
+
+  function clear(svg){ while(svg.firstChild) svg.removeChild(svg.firstChild); }
+
+  function addSelectable(svg, shape, label, getterSetter){
+    shape.style.cursor = "pointer";
+    shape.addEventListener("pointerdown",(e)=>{
+      e.preventDefault();
+      e.stopPropagation();
+      state.selected = label;
+      $("selBadge").textContent = "Selected: " + label;
+      tip.bind({ label, get:getterSetter.get, set:getterSetter.set }, e.clientX, e.clientY);
+    });
+    svg.appendChild(shape);
+  }
+
+  function renderAll(){
+    saveState();
+    $("statusPill").textContent = "OK";
+    $("debugLine").textContent = `W=${state.W} H=${state.H} D=${state.D} • front=${state.front.mode}/${state.front.count} • inset=${state.front.inset}`;
+
+    const svg = $("moduleView");
+    clear(svg);
+
+    // viewport margins
+    const pad = 50;
+    const vw = 900, vh = 520;
+
+    // map model to screen (front view only)
+    const scale = Math.min((vw - pad*2) / state.W, (vh - pad*2) / state.H) * state.uiScale;
+
+    const x0 = (vw - state.W*scale)/2;
+    const y0 = (vh - state.H*scale)/2;
+
+    // carcass outer
+    svg.appendChild(el("rect", {x:x0, y:y0, width:state.W*scale, height:state.H*scale, fill:"none", stroke:"#e8e8ea", "stroke-width":2}));
+
+    // inner opening (simple): pretend sides=18mm, top/bottom=18mm
+    const t = 18;
+    const ix = x0 + t*scale;
+    const iy = y0 + t*scale;
+    const iW = (state.W - 2*t)*scale;
+    const iH = (state.H - 2*t)*scale;
+
+    svg.appendChild(el("rect", {x:ix, y:iy, width:iW, height:iH, fill:"none", stroke:"#9aa3b2", "stroke-width":1, "stroke-dasharray":"4 4"}));
+
+    // FRONT overlay area equals opening with inset/gaps
+    const inset = clamp(state.front.inset, 0, 50);
+    const gap = clamp(state.front.gap, 0, 10);
+
+    const fx = ix + inset*scale;
+    const fy = iy + inset*scale;
+    const fW = iW - 2*inset*scale;
+    const fH = iH - 2*inset*scale;
+
+    // draw fronts
+    if(state.front.mode === "doors"){
+      const n = clamp(state.front.count||0, 0, 4);
+      if(n > 0){
+        const gaps = (n-1) * gap*scale;
+        const doorW = (fW - gaps) / n;
+        for(let i=0;i<n;i++){
+          const rx = fx + i*(doorW + gap*scale);
+          const r = el("rect", {x:rx, y:fy, width:doorW, height:fH, fill:"none", stroke:"#e8e8ea", "stroke-width":2});
+          addSelectable(svg, r, `Front drzwi #${i+1}`, {
+            get: ()=> state.front.inset,
+            set: (v)=> { state.front.inset = clamp(v, 0, 80); $("frontInset").value=state.front.inset; }
+          });
+        }
+      }
+    }
+
+    if(state.front.mode === "drawers"){
+      const n = clamp(state.front.count||0, 0, 12);
+      if(n > 0){
+        const gaps = (n-1) * gap*scale;
+        const drawerH = (fH - gaps) / n;
+        for(let i=0;i<n;i++){
+          const ry = fy + i*(drawerH + gap*scale);
+          const r = el("rect", {
+            x:fx, y:ry, width:fW, height:drawerH,
+            fill:"none", stroke:"#e8e8ea", "stroke-width":2,
+            // dash-dot: kreska-kropka (штрих-пунктир)
+            "stroke-dasharray":"10 4 2 4"
+          });
+          addSelectable(svg, r, `Front szuflady #${i+1}`, {
+            get: ()=> state.front.count,
+            set: (v)=> { state.front.count = clamp(v,0,12); $("frontCount").value=state.front.count; }
+          });
+        }
+      }
+    }
+
+    // label
+    svg.appendChild(el("text", {x:20, y:24, fill:"#9aa3b2", "font-size":14}));
+    svg.lastChild.textContent = "Kliknij w front (drzwi/szuflada) → TIP. Jeśli nie ma TIPa, JS nie działa.";
+
+    // click background clears selection
+    svg.addEventListener("pointerdown", (e)=>{
+      if(e.target === svg){
+        state.selected = null;
+        $("selBadge").textContent = "Selected: —";
+      }
+    }, {once:true});
+  }
+
+  // boot
+  function boot(){
+    loadState();
+    syncUI();
+    bindUI();
+
+    // force cache bust indicator
+    $("statusPill").textContent = "RUN ✅";
+    renderAll();
+
+    // show one tip after load as proof
+    setTimeout(()=>{
+      tip.bind({label:"TIP TEST (auto)", get:()=>state.front.inset, set:(v)=>{state.front.inset = clamp(v, 0, 80); $("frontInset").value=state.front.inset;}}, 40, 40);
+    }, 250);
+  }
+
+  window.addEventListener("load", boot);
+})();
+
+;(()=> {
+  // === AUTO_FRONT_DRAWER_RECOLOR_OBSERVER__V1 ===
+  // Cel: zawsze widoczne fronty/szuflady (kolor + grubość), niezależnie od tego jak działa render.
+  const FD_COLOR = "#ff6a00";     // mocny pomarańcz
+  const FD_W     = "3";           // grubsza linia
+  const FD_DASH  = "10 4 2 4";    // dash-dot dla szuflad
+
+  function _fdText(el){
+    try{
+      return (
+        (el.getAttribute("id")||"") + " " +
+        (el.getAttribute("data-id")||"") + " " +
+        (el.getAttribute("data-key")||"") + " " +
+        (el.getAttribute("class")||"")
+      ).toLowerCase();
+    }catch(e){ return ""; }
+  }
+
+  function recolor(){
+    const svg = document.getElementById("moduleView");
+    if(!svg) return;
+
+    const nodes = svg.querySelectorAll("path,rect,line,polyline,polygon");
+    nodes.forEach(el=>{
+      const s = _fdText(el);
+
+      // łapiemy różne nazwy (PL/UA/EN) — dopasuj jak chcesz
+      const isFront  = s.includes("front") || s.includes("fasad") || s.includes("facade") || s.includes("door") || s.includes("drzwi");
+      const isDrawer = s.includes("drawer") || s.includes("szuf")  || s.includes("shuf")  || s.includes("box");
+
+      if(isFront || isDrawer){
+        try{
+          el.setAttribute("stroke", FD_COLOR);
+          el.setAttribute("stroke-width", FD_W);
+          // dash-dot tylko dla szuflad
+          if(isDrawer){
+            el.setAttribute("stroke-dasharray", FD_DASH);
+          }
+        }catch(e){}
+      }
+    });
+  }
+
+  // 1) spróbuj owinąć renderAll / render jeśli istnieje (zero ryzyka)
+  function wrapRender(){
+    const cand = [
+      "renderAll","render","drawAll","draw","rerender","redraw",
+      "renderModule","renderModuleView","drawModule","drawModuleView"
+    ];
+    for(const name of cand){
+      const fn = window[name];
+      if(typeof fn === "function" && !fn.__fdWrapped){
+        const wrapped = function(){
+          const r = fn.apply(this, arguments);
+          try{ recolor(); }catch(e){}
+          return r;
+        };
+        wrapped.__fdWrapped = true;
+        window[name] = wrapped;
+      }
+    }
+  }
+
+  // 2) observer: jak tylko SVG się zmieni (render), to recolor
+  function installObserver(){
+    const svg = document.getElementById("moduleView");
+    if(!svg) return false;
+    if(svg.__fdObserverInstalled) return true;
+
+    const mo = new MutationObserver(()=>{ try{ recolor(); }catch(e){} });
+    mo.observe(svg, { childList:true, subtree:true, attributes:true });
+
+    svg.__fdObserverInstalled = true;
+    recolor();
+    return true;
+  }
+
+  window.addEventListener("DOMContentLoaded", ()=>{
+    wrapRender();
+    if(!installObserver()){
+      // jeśli svg tworzy się później, próbuj przez chwilę
+      const t = setInterval(()=>{
+        wrapRender();
+        if(installObserver()) clearInterval(t);
+      }, 250);
+      setTimeout(()=> clearInterval(t), 12000);
+    }
+  });
+})();
+
+;(()=> {
+  // === AUTO_DUMP_MODULEVIEW__V1 ===
+  function dump(){
+    try{
+      const el = document.getElementById("moduleView");
+      const s  = el ? el.outerHTML : "NO #moduleView FOUND";
+      const blob = new Blob([s], {type:"text/plain"});
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "dump_moduleView.html";
+      a.textContent = "download";
+      a.style.position="fixed";
+      a.style.left="10px";
+      a.style.bottom="10px";
+      a.style.padding="8px 10px";
+      a.style.background="#222";
+      a.style.color="#fff";
+      a.style.zIndex=999999;
+      document.body.appendChild(a);
+      console.log("DUMP READY:", s.slice(0,2000));
+    }catch(e){
+      console.log("DUMP ERROR", e);
+    }
+  }
+  window.addEventListener("load", ()=> setTimeout(dump, 2000));
+})();
+

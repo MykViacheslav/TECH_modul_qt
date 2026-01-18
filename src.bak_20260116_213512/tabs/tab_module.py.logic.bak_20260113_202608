@@ -1,0 +1,237 @@
+﻿from __future__ import annotations
+
+from typing import Any, Dict, Iterable, List
+from PySide6.QtWidgets import (
+    QVBoxLayout, QWidget, QLabel, QComboBox, QFrame,
+    QPushButton, QGroupBox, QStyle
+)
+from PySide6 import QtCore
+
+from .base import BaseTab
+
+# Twoja istniejąca klasa Modułu (w main.py)
+from main import MainWindow as ModuleWidget
+
+
+def _safe_names(items: Iterable[object], attr: str = "name") -> List[str]:
+    out: List[str] = []
+    for it in items:
+        try:
+            v = getattr(it, attr, None)
+            if v:
+                out.append(str(v))
+        except Exception:
+            continue
+    return out
+
+
+def _looks_like_material_cb(cb: QComboBox) -> bool:
+    n = (cb.objectName() or "").lower()
+    return ("material" in n) or ("plyta" in n) or ("płyta" in n) or ("mater" in n)
+
+
+def _looks_like_edge_cb(cb: QComboBox) -> bool:
+    n = (cb.objectName() or "").lower()
+    return ("edge" in n) or ("kraw" in n) or ("oklein" in n) or ("obrze" in n)
+
+
+def _looks_like_fitting_cb(cb: QComboBox) -> bool:
+    n = (cb.objectName() or "").lower()
+    return ("fitting" in n) or ("okuc" in n) or ("hinge" in n) or ("uchw" in n) or ("handle" in n)
+
+
+def _should_autofill(cb: QComboBox) -> bool:
+    if cb.count() >= 2:
+        return False
+    if cb.count() == 1:
+        t = (cb.itemText(0) or "").strip().lower()
+        return t in ("", "-", "—", "--", "wybierz", "select", "choose", "none", "brak")
+    return True
+
+
+def _fill_combo(cb: QComboBox, items: List[str], placeholder: str) -> None:
+    if not items:
+        return
+    cb.blockSignals(True)
+    try:
+        cb.clear()
+        cb.addItem(placeholder)
+        for it in items:
+            cb.addItem(it)
+    finally:
+        cb.blockSignals(False)
+
+
+class Tab(BaseTab):
+    TAB_KEY = "module"
+    TAB_TITLE_PL = "Moduł"
+
+    def __init__(self, ctx, parent=None) -> None:
+        super().__init__(ctx, parent)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(14, 14, 14, 14)
+        root.setSpacing(12)
+
+        # Karta/pojemnik (tylko wygląd)
+        card = QFrame()
+        card.setObjectName("cardContainer")
+        card.setStyleSheet("""
+            QFrame#cardContainer {
+                background: #F6F7F9;
+                border: 1px solid #CCD5E1;
+                border-radius: 14px;
+            }
+        """)
+        cardLayout = QVBoxLayout(card)
+        cardLayout.setContentsMargins(14, 14, 14, 14)
+        cardLayout.setSpacing(10)
+        root.addWidget(card)
+
+        # Twój istniejący Moduł
+        obj = ModuleWidget()
+
+        cw = None
+        if hasattr(obj, "centralWidget"):
+            try:
+                cw = obj.centralWidget()
+            except Exception:
+                cw = None
+
+        if isinstance(cw, QWidget):
+            self._root_widget = cw
+            cardLayout.addWidget(cw)
+        elif isinstance(obj, QWidget):
+            self._root_widget = obj
+            cardLayout.addWidget(obj)
+        else:
+            self._root_widget = self
+            cardLayout.addWidget(QLabel("Nie udało się osadzić modułu jako QWidget (nietypowa klasa)."))
+
+        # 1) Wypełnij comboboxy z bazy (bez logiki)
+        self._apply_catalogs_to_module()
+
+        # 2) Kosmetyka: ikonki + sekcje (bez logiki)
+        self._decorate_ui()
+
+        # 3) Odświeżanie po zmianach katalogów (jeśli sygnał istnieje)
+        bus = getattr(self.ctx, "bus", None)
+        sig = getattr(bus, "data_changed", None)
+        if sig is not None and hasattr(sig, "connect"):
+            try:
+                sig.connect(self._on_data_changed)
+            except Exception:
+                pass
+
+    @QtCore.Slot(object)
+    def _on_data_changed(self, key: object) -> None:
+        try:
+            if str(key) == "catalogs":
+                self._apply_catalogs_to_module()
+        except Exception:
+            pass
+
+    def _apply_catalogs_to_module(self) -> None:
+        catalogs = getattr(self.ctx, "catalogs", None)
+        if catalogs is None:
+            return
+
+        mats: List[str] = []
+        edges: List[str] = []
+        fits: List[str] = []
+
+        try:
+            mats = _safe_names(catalogs.get_materials())
+        except Exception:
+            pass
+        try:
+            edges = _safe_names(catalogs.get_edges())
+        except Exception:
+            pass
+        try:
+            fits = _safe_names(catalogs.get_fittings())
+        except Exception:
+            pass
+
+        try:
+            combos = self._root_widget.findChildren(QComboBox)
+        except Exception:
+            combos = []
+
+        for cb in combos:
+            try:
+                if not _should_autofill(cb):
+                    continue
+                if _looks_like_material_cb(cb):
+                    _fill_combo(cb, mats, "— wybierz materiał —")
+                elif _looks_like_edge_cb(cb):
+                    _fill_combo(cb, edges, "— wybierz krawędź —")
+                elif _looks_like_fitting_cb(cb):
+                    _fill_combo(cb, fits, "— wybierz okucie —")
+            except Exception:
+                continue
+
+    # -----------------------------
+    # UI cosmetics (no logic)
+    # -----------------------------
+    def _decorate_ui(self) -> None:
+        # 1) GroupBox: spójne marginesy i subtelne wyróżnienie
+        try:
+            gbs = self._root_widget.findChildren(QGroupBox)
+        except Exception:
+            gbs = []
+        for gb in gbs:
+            try:
+                gb.setProperty("role", "section")
+                # lekkie odstępy wewnątrz
+                gb.setStyleSheet(gb.styleSheet() + """
+                    QGroupBox {
+                        padding-top: 10px;
+                    }
+                """)
+            except Exception:
+                continue
+
+        # 2) Ikonki na przyciskach (standardowe Qt, bez zasobów)
+        style = self.style()
+        icon_map = [
+            # PL
+            (("zapisz", "save"), QStyle.SP_DialogSaveButton),
+            (("wczytaj", "load", "otwórz", "open"), QStyle.SP_DialogOpenButton),
+            (("resetuj", "reset"), QStyle.SP_BrowserReload),
+            (("wyczyść", "clear"), QStyle.SP_DialogResetButton),
+            (("zastosuj", "apply"), QStyle.SP_DialogApplyButton),
+            (("oblicz", "calculate", "przelicz"), QStyle.SP_CommandLink),
+        ]
+
+        try:
+            btns = self._root_widget.findChildren(QPushButton)
+        except Exception:
+            btns = []
+
+        for b in btns:
+            try:
+                txt = (b.text() or "").strip().lower()
+                if not txt:
+                    continue
+                # nie nadpisuj jeśli ktoś ustawił ikonę
+                if not b.icon().isNull():
+                    continue
+
+                for keys, sp in icon_map:
+                    if any(k in txt for k in keys):
+                        b.setIcon(style.standardIcon(sp))
+                        b.setProperty("role", "action")
+                        break
+            except Exception:
+                continue
+
+        # wymuś odświeżenie stylu po property
+        try:
+            self._root_widget.style().unpolish(self._root_widget)
+            self._root_widget.style().polish(self._root_widget)
+        except Exception:
+            pass
+
+    def export_state(self) -> Dict[str, Any]:
+        return {"title": self.TAB_TITLE_PL, "ready": True}

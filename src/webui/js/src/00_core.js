@@ -1,0 +1,245 @@
+﻿/* RUNTIME FIX: APP_READY + computeHingesPerDoor */
+;(()=>{ try { window.__APP_READY__ = true; } catch(e){} })();
+
+/* If missing, provide safe default hinge count per door height (mm) */
+function computeHingesPerDoor(doorH, hingeType){
+  try{
+    const h = Math.max(0, Math.round(Number(doorH)||0));
+    // very safe heuristic (can refine later)
+    if(h <= 900) return 2;
+    if(h <= 1500) return 3;
+    return 4;
+  }catch(e){
+    return 2;
+  }
+}
+const $ = (id) => document.getElementById(id);
+const on = (id, evt, fn) => { const el = $(id); if (el) el.addEventListener(evt, fn); };
+const esc = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+const num = (v,def=0)=>{ const n=Number(v); return Number.isFinite(n)?n:def; };
+const nowISO = ()=> new Date().toISOString();
+
+// ---- Storage keys
+const KEY_TEMPL = "tech_modul_templates_v10";
+const KEY_GROUP = "tech_modul_groups_v1";
+const KEY_LEFTW = "tech_modul_left_width_v4";
+const KEY_SIDEW = "tech_modul_side_width_v4";
+
+// ---- Drag tip
+const dragTip = {
+  el: $("dragTip"),
+  title: $("dragTipTitle"),
+  input: $("dragTipInput"),
+  close: $("dragTipClose"),
+  active: null, // { label, get, set }
+  showAt(clientX, clientY){
+    const pad = 14;
+    if (!dragTip.el) return;
+    dragTip.el.style.left = (clientX + pad) + "px";
+    dragTip.el.style.top  = (clientY + pad) + "px";
+    dragTip.el.style.display = "block";
+  },
+  hide(){
+    if (!dragTip.el) return;
+    dragTip.el.style.display = "none";
+    dragTip.active = null;
+  },
+  bindActive(active, clientX, clientY){
+    dragTip.active = active;
+    if (dragTip.title) dragTip.title.textContent = active.label;
+    if (dragTip.input){
+      dragTip.input.value = String(active.get());
+      dragTip.showAt(clientX, clientY);
+      dragTip.input.focus({preventScroll:true});
+      dragTip.input.select();
+    }
+  },
+  syncValue(){
+    if (!dragTip.active || !dragTip.input) return;
+    dragTip.input.value = String(dragTip.active.get());
+  },
+  commit(){
+    if (!dragTip.active) return;
+    const v = Math.round(num(dragTip.input?.value, dragTip.active.get()));
+    dragTip.active.set(v);
+    dragTip.syncValue();
+  }
+};
+
+if (dragTip.close) dragTip.close.onclick = ()=> dragTip.hide();
+if (dragTip.input){
+  dragTip.input.addEventListener("keydown",(e)=>{
+    if (e.key==="Enter"){ dragTip.commit(); dragTip.hide(); }
+    if (e.key==="Escape"){ dragTip.hide(); }
+  });
+}
+window.addEventListener("pointerdown",(e)=>{
+  if (dragTip.el && dragTip.el.style.display==="block"){
+    const inside = dragTip.el.contains(e.target);
+    if (!inside) dragTip.hide();
+  }
+}, {capture:true});
+
+// ===== BAZA MATERIAŁÓW =====
+const materials = [
+  { id:"pb18",  name:"Płyta wiórowa 18 mm (PB18)" },
+  { id:"pb16",  name:"Płyta wiórowa 16 mm (PB16)" },
+  { id:"pb10",  name:"Płyta wiórowa 10 mm (PB10)" },
+  { id:"mdf18", name:"MDF 18 mm" },
+  { id:"mdf16", name:"MDF 16 mm" },
+  { id:"hdf3",  name:"HDF 3 mm" },
+  { id:"hdf2_5",name:"HDF 2.5 mm" },
+  { id:"ply6",  name:"Sklejka 6 mm" },
+  { id:"ply12", name:"Sklejka 12 mm" },
+  { id:"wood16",name:"Drewno 16 mm" },
+  { id:"glass4",name:"Szkło 4 mm" }
+];
+
+const edgeBands = [
+  { id:"abs04", name:"ABS 0.4" },
+  { id:"abs08", name:"ABS 0.8" },
+  { id:"abs1",  name:"ABS 1.0" },
+  { id:"abs2",  name:"ABS 2.0" }
+];
+
+const matName = (id)=> (materials.find(m=>m.id===id)||materials[0]).name;
+const ebName  = (id)=> (edgeBands.find(e=>e.id===id)||edgeBands[0]).name;
+
+// ===== BAZA OKUĆ (katalog – MVP) =====
+const hardwareCatalog = {
+  hinges: [
+    { id:"hinge_110_soft", name:"Zawias puszkowy 110° + BLUMOTION" },
+    { id:"hinge_155",      name:"Zawias 155° (narożne)" },
+    { id:"hinge_170",      name:"Zawias 170° (szerokie otwarcie)" }
+  ],
+  runners: [
+    { id:"blum_tandem",     name:"Prowadnica Blum TANDEM" },
+    { id:"blum_movento",    name:"Prowadnica Blum MOVENTO" },
+    { id:"blum_merivobox",  name:"System Blum MERIVOBOX" }
+  ],
+  legs: [
+    { id:"leg_std",   name:"Nóżka standard (regulowana)" },
+    { id:"leg_heavy", name:"Nóżka wzmocniona" }
+  ],
+  hangers: [
+    { id:"hanger_std",   name:"Zawieszka standard" },
+    { id:"hanger_heavy", name:"Zawieszka wzmocniona" }
+  ]
+};
+
+const defaultGroups = ["Kitchen","RTV","Łazienka","Inne"];
+
+function loadGroups(){
+  try{
+    const g = JSON.parse(localStorage.getItem(KEY_GROUP) || "null");
+    if (Array.isArray(g) && g.length) return g;
+  }catch{}
+  localStorage.setItem(KEY_GROUP, JSON.stringify(defaultGroups));
+  return [...defaultGroups];
+}
+function loadTemplates(){
+  try{
+    const t = JSON.parse(localStorage.getItem(KEY_TEMPL) || "[]");
+    if (Array.isArray(t)) return t;
+  }catch{}
+  return [];
+}
+function saveTemplates(list){
+  localStorage.setItem(KEY_TEMPL, JSON.stringify(list));
+}
+function uid(prefix="x"){
+  return prefix + "_" + Math.random().toString(16).slice(2) + "_" + Date.now().toString(16);
+}
+
+const state = {
+  tab: "module",
+  groups: loadGroups(),
+  templates: loadTemplates(),
+  loadedTemplateId: null,
+
+  model: {
+    group: "Kitchen",
+    name: "",
+    dims: { W:600, H:720, D:560 },
+    anchor: { corner:"NONE", dx:0, dy:0 },
+    pos: { L:0, R:0, T:0, B:0 },
+    sideMode: "full",
+    has: { left:true, right:true, top:true, bottom:true, back:true, front:true },
+
+    // mid #1 + #2 + offsety
+    mid:  { enabled:false, x:300, mat:"pb18", offT:0, offB:0 },
+    mid2: { enabled:false, x:420, mat:"pb18", offT:0, offB:0 },
+
+    // shelves: span map baseId -> mode (depends on mid count)
+    shelves: {
+      seg:"ALL",
+ autoCount:1, autoY:[360], extra:[], span:{} },
+
+    back: { enabled:true, mat:"hdf3" },
+
+    front: {
+      
+      inset:2,
+mode:"none",
+      count:0,
+      mat:"mdf18",
+      gap:2,
+      heightMode:"carcass",     // opening | carcass | floor
+      drawerSystem:"Blum|MerivoBox",
+      drawerHeights:"",
+      cornerFront:false
+    },
+
+    hardware: {
+      mountType:"legs",
+      mountCount:4,
+      legsH:100,
+
+      drawerEstimate:true,
+      drawerBottomMat:"pb16",
+      drawerBackMat:"pb16",
+      drawerWoodMat:"wood16",
+      drawerClear:40,
+
+      hingeType:"hinge_110_soft",
+      runnerType:"blum_merivobox"
+    }
+  },
+
+  wall: {
+    type:"I",
+    H:2700,
+    A:4000, th:120,
+    LA:3000, LB:2500, Lth:120,
+    CA:3500, CB:2200, CC:1600, Cth:120,
+
+    island:{ on:false, W:900, D:600, x:1200, y:800 },
+    obs: [],
+    selectedObsId:null,
+    drag:null,
+    view:null
+  },
+
+  parts: [],
+  selected: null,
+  hover: null,
+  view: null,
+  drag: null
+};
+
+function defaultEdgesForKind(kind){
+  if (kind==="front") return {L:"abs2",R:"abs2",T:"abs2",B:"abs2"};
+  return {L:null,R:null,T:null,B:null};
+}
+function mkPart(id,name,kind,mat,dimW,dimH,meta={}){
+  return { id,name,kind,mat,dimW,dimH, edges: defaultEdgesForKind(kind), meta };
+}
+
+function parseHeightsList(s){
+  const arr = String(s||"").split(",").map(x=>Number(x.trim())).filter(x=>Number.isFinite(x) && x>0);
+  return arr;
+}
+
+console.log("[TECH] build: FULL4_core_mid_mid2_front_dashdot");
+

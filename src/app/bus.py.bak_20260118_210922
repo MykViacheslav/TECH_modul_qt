@@ -1,0 +1,12 @@
+﻿from __future__ import annotations
+from PySide6 import QtCore
+
+class AppBus(QtCore.QObject):
+    # request: load module by anchor into MODUL tab
+    module_load_requested = QtCore.Signal(str)
+
+    # notification: module loaded (payload dict)
+    module_loaded = QtCore.Signal(dict)
+
+    # notification: module saved (anchor, payload dict)
+    module_saved = QtCore.Signal(str, dict)

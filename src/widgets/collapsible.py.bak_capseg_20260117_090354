@@ -1,0 +1,43 @@
+﻿from __future__ import annotations
+
+from PySide6 import QtWidgets, QtCore
+
+
+class CollapsibleSection(QtWidgets.QWidget):
+    """
+    Stable collapsible panel:
+      - toolbutton header with arrow
+      - content widget with contentLayout
+      - toggle hides/shows content properly
+    """
+    def __init__(self, title: str = "", parent=None, start_open: bool = True):
+        super().__init__(parent)
+
+        self._btn = QtWidgets.QToolButton(self)
+        self._btn.setText(title)
+        self._btn.setCheckable(True)
+        self._btn.setChecked(bool(start_open))
+        self._btn.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+        self._btn.setArrowType(QtCore.Qt.DownArrow if start_open else QtCore.Qt.RightArrow)
+        self._btn.clicked.connect(self._toggle)
+
+        self.content = QtWidgets.QWidget(self)
+        self.contentLayout = QtWidgets.QVBoxLayout(self.content)
+        self.contentLayout.setContentsMargins(0, 0, 0, 0)
+        self.contentLayout.setSpacing(6)
+        self.content.setVisible(bool(start_open))
+
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(6)
+        lay.addWidget(self._btn)
+        lay.addWidget(self.content)
+
+    def _toggle(self):
+        on = self._btn.isChecked()
+        self.content.setVisible(on)
+        self._btn.setArrowType(QtCore.Qt.DownArrow if on else QtCore.Qt.RightArrow)
+
+    def setOpen(self, on: bool):
+        self._btn.setChecked(bool(on))
+        self._toggle()

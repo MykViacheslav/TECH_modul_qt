@@ -1,0 +1,212 @@
+﻿from __future__ import annotations
+
+from PySide6 import QtCore, QtWidgets, QtGui
+
+from widgets.collapsible import CollapsibleSection
+
+
+class ModuleProtoWidget(QtWidgets.QWidget):
+    """
+    SAFE proto UI based on web mock (NO dependency on core/module_widget logic).
+    Purpose: never-empty tab + stable base to port features step-by-step.
+    """
+    def __init__(self, ctx=None, parent=None):
+        super().__init__(parent)
+        self.ctx = ctx
+
+        self._build_ui()
+        self._wire()
+        self._recalc()
+
+    # ---- CollapsibleSection compatibility layer ----
+    def _sec_add(self, sec: QtWidgets.QWidget, w: QtWidgets.QWidget) -> None:
+        # 0) some implementations expose addWidget()
+        fn = getattr(sec, "addWidget", None)
+        if callable(fn):
+            try:
+                fn(w)
+                return
+            except Exception:
+                pass
+
+        # 1) common layout attribute names
+        for name in ("contentLayout", "content_layout", "innerLayout", "bodyLayout", "containerLayout"):
+            lay = getattr(sec, name, None)
+            if isinstance(lay, QtWidgets.QLayout):
+                lay.addWidget(w)
+                return
+
+        # 2) common content widget attribute names
+        for name in ("content", "container", "body", "panel", "frame"):
+            cw = getattr(sec, name, None)
+            if isinstance(cw, QtWidgets.QWidget):
+                lay = cw.layout()
+                if lay is None:
+                    lay = QtWidgets.QVBoxLayout(cw)
+                    lay.setContentsMargins(0, 0, 0, 0)
+                lay.addWidget(w)
+                return
+
+        # 3) last resort: put into sec's own layout
+        lay = sec.layout()
+        if lay is None:
+            lay = QtWidgets.QVBoxLayout(sec)
+            lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(w)
+
+    def _build_ui(self):
+        root = QtWidgets.QVBoxLayout(self)
+        root.setContentsMargins(8, 8, 8, 8)
+        root.setSpacing(8)
+
+        # status pill like web OK/ERR
+        top = QtWidgets.QHBoxLayout()
+        top.addStretch(1)
+        self.status = QtWidgets.QLabel("OK")
+        self.status.setAlignment(QtCore.Qt.AlignCenter)
+        self.status.setFixedWidth(60)
+        self.status.setStyleSheet(
+            "QLabel{padding:4px 10px;border-radius:10px;background:#d7ffe1;color:#000;font-weight:700;}"
+        )
+        top.addWidget(self.status)
+        root.addLayout(top)
+
+        self.split = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        root.addWidget(self.split, 1)
+
+        # LEFT (controls)
+        leftWrap = QtWidgets.QWidget()
+        leftLay = QtWidgets.QVBoxLayout(leftWrap)
+        leftLay.setContentsMargins(0, 0, 0, 0)
+        leftLay.setSpacing(8)
+
+        self.secDims = CollapsibleSection("Wymiary + Anchor")
+        dims = QtWidgets.QWidget()
+        g = QtWidgets.QGridLayout(dims)
+        g.setContentsMargins(0, 0, 0, 0)
+
+        self.w = QtWidgets.QSpinBox(); self.w.setRange(50, 5000); self.w.setValue(600)
+        self.h = QtWidgets.QSpinBox(); self.h.setRange(50, 5000); self.h.setValue(720)
+        self.d = QtWidgets.QSpinBox(); self.d.setRange(50, 2000); self.d.setValue(560)
+
+        self.anchor = QtWidgets.QComboBox()
+        self.anchor.addItems(["NONE", "LT", "RT", "LB", "RB"])
+
+        g.addWidget(QtWidgets.QLabel("W (mm)"), 0, 0); g.addWidget(self.w, 0, 1)
+        g.addWidget(QtWidgets.QLabel("H (mm)"), 1, 0); g.addWidget(self.h, 1, 1)
+        g.addWidget(QtWidgets.QLabel("D (mm)"), 2, 0); g.addWidget(self.d, 2, 1)
+        g.addWidget(QtWidgets.QLabel("Anchor"), 3, 0); g.addWidget(self.anchor, 3, 1)
+
+        self._sec_add(self.secDims, dims)
+        leftLay.addWidget(self.secDims)
+
+        self.secPos = CollapsibleSection("Przesunięcia (offset)")
+        pos = QtWidgets.QWidget()
+        g2 = QtWidgets.QGridLayout(pos)
+        g2.setContentsMargins(0, 0, 0, 0)
+
+        self.posL = QtWidgets.QSpinBox(); self.posL.setRange(0, 2000); self.posL.setValue(0)
+        self.posR = QtWidgets.QSpinBox(); self.posR.setRange(0, 2000); self.posR.setValue(0)
+        self.posT = QtWidgets.QSpinBox(); self.posT.setRange(0, 2000); self.posT.setValue(0)
+        self.posB = QtWidgets.QSpinBox(); self.posB.setRange(0, 2000); self.posB.setValue(0)
+
+        self.btnZero = QtWidgets.QPushButton("Zeruj")
+
+        g2.addWidget(QtWidgets.QLabel("Left"), 0, 0);   g2.addWidget(self.posL, 0, 1)
+        g2.addWidget(QtWidgets.QLabel("Right"), 1, 0);  g2.addWidget(self.posR, 1, 1)
+        g2.addWidget(QtWidgets.QLabel("Top"), 2, 0);    g2.addWidget(self.posT, 2, 1)
+        g2.addWidget(QtWidgets.QLabel("Bottom"), 3, 0); g2.addWidget(self.posB, 3, 1)
+        g2.addWidget(self.btnZero, 4, 0, 1, 2)
+
+        self._sec_add(self.secPos, pos)
+        leftLay.addWidget(self.secPos)
+
+        leftLay.addStretch(1)
+
+        leftScroll = QtWidgets.QScrollArea()
+        leftScroll.setWidgetResizable(True)
+        leftScroll.setWidget(leftWrap)
+
+        # CENTER (view)
+        center = QtWidgets.QWidget()
+        cLay = QtWidgets.QVBoxLayout(center)
+        cLay.setContentsMargins(0, 0, 0, 0)
+        title = QtWidgets.QLabel("Widok (proto)")
+        title.setStyleSheet("font-weight:800;")
+        cLay.addWidget(title)
+
+        self.scene = QtWidgets.QGraphicsScene(self)
+        self.view = QtWidgets.QGraphicsView(self.scene)
+        self.view.setRenderHint(QtGui.QPainter.Antialiasing, True)
+        cLay.addWidget(self.view, 1)
+
+        # RIGHT (BOM)
+        right = QtWidgets.QWidget()
+        rLay = QtWidgets.QVBoxLayout(right)
+        rLay.setContentsMargins(0, 0, 0, 0)
+        rTitle = QtWidgets.QLabel("BOM (proto)")
+        rTitle.setStyleSheet("font-weight:800;")
+        self.bom = QtWidgets.QPlainTextEdit()
+        self.bom.setReadOnly(True)
+        rLay.addWidget(rTitle)
+        rLay.addWidget(self.bom, 1)
+
+        self.split.addWidget(leftScroll)
+        self.split.addWidget(center)
+        self.split.addWidget(right)
+        self.split.setStretchFactor(0, 0)
+        self.split.setStretchFactor(1, 1)
+        self.split.setStretchFactor(2, 0)
+        self.split.setSizes([340, 700, 320])
+
+    def _wire(self):
+        for sp in (self.w, self.h, self.d, self.posL, self.posR, self.posT, self.posB):
+            sp.valueChanged.connect(self._recalc)
+        self.anchor.currentIndexChanged.connect(self._recalc)
+        self.btnZero.clicked.connect(self._zero)
+
+    def _zero(self):
+        self.posL.setValue(0)
+        self.posR.setValue(0)
+        self.posT.setValue(0)
+        self.posB.setValue(0)
+
+    def _set_ok(self, ok: bool, msg: str = "OK"):
+        if ok:
+            self.status.setText("OK")
+            self.status.setStyleSheet(
+                "QLabel{padding:4px 10px;border-radius:10px;background:#d7ffe1;color:#000;font-weight:700;}"
+            )
+        else:
+            self.status.setText("ERR")
+            self.status.setStyleSheet(
+                "QLabel{padding:4px 10px;border-radius:10px;background:#ffd6d6;color:#000;font-weight:700;}"
+            )
+            self.bom.setPlainText(msg)
+
+    def _recalc(self):
+        try:
+            W, H, D = self.w.value(), self.h.value(), self.d.value()
+            L, R, T, B = self.posL.value(), self.posR.value(), self.posT.value(), self.posB.value()
+
+            # view: simple front "opening" rectangle
+            self.scene.clear()
+            scale = 0.60
+            ow = max(1, (W - L - R)) * scale
+            oh = max(1, (H - T - B)) * scale
+            rect = QtCore.QRectF(0, 0, ow, oh)
+            self.scene.addRect(rect, QtGui.QPen(QtGui.QColor(40, 40, 40), 2))
+            self.scene.setSceneRect(rect.adjusted(-20, -20, 20, 20))
+
+            txt = []
+            txt.append(f"W/H/D: {W} / {H} / {D}")
+            txt.append(f"Offsets L/R/T/B: {L} / {R} / {T} / {B}")
+            txt.append(f"Anchor: {self.anchor.currentText()}")
+            txt.append("")
+            txt.append("NEXT (small steps): shelves -> mid panels -> fronts -> materials -> real BOM -> drag.")
+            self.bom.setPlainText("\n".join(txt))
+
+            self._set_ok(True)
+        except Exception:
+            import traceback
+            self._set_ok(False, traceback.format_exc())

@@ -1,0 +1,65 @@
+﻿from __future__ import annotations
+
+from typing import Dict
+from PySide6.QtWidgets import QMainWindow, QTabWidget
+
+from core.app_context import AppContext
+from core.reporting import build_company_report, ReportProvider
+
+# Zakładki
+from tabs.tab_module import Tab as ModuleTab
+from tabs.tab_wall import Tab as WallTab
+from tabs.tab_furniture_set import Tab as FurnitureSetTab
+from tabs.tab_material_stock import Tab as MaterialStockTab
+from tabs.tab_clients import Tab as ClientsTab
+from tabs.tab_employees import Tab as EmployeesTab
+from tabs.tab_fixed_costs import Tab as FixedCostsTab
+from tabs.tab_machines import Tab as MachinesTab
+from tabs.tab_leasing import Tab as LeasingTab
+from tabs.tab_materials_base import Tab as MaterialsBaseTab
+from tabs.tab_activities import Tab as ActivitiesTab
+from tabs.tab_summary import Tab as SummaryTab
+
+
+class MainWindow(QMainWindow):
+    """
+    Główne okno: tylko składa zakładki.
+    Zakładki nie wchodzą sobie w drogę – kontakt przez AppContext i export_state().
+    """
+    def __init__(self, ctx: AppContext) -> None:
+        super().__init__()
+        self.ctx = ctx
+        self.setWindowTitle("TECH — Kalkulator / Zarządzanie (PL)")
+
+        self.tabs = QTabWidget()
+        self.setCentralWidget(self.tabs)
+
+        # Instancje zakładek
+        self._tab_instances = [
+            ModuleTab(ctx),
+            WallTab(ctx),
+            FurnitureSetTab(ctx),
+            MaterialStockTab(ctx),
+            ClientsTab(ctx),
+            EmployeesTab(ctx),
+            FixedCostsTab(ctx),
+            MachinesTab(ctx),
+            LeasingTab(ctx),
+            MaterialsBaseTab(ctx),
+            ActivitiesTab(ctx),
+            SummaryTab(ctx),
+        ]
+
+        for t in self._tab_instances:
+            self.tabs.addTab(t, t.TAB_TITLE_PL)
+
+        # Provider map do raportu (pień)
+        self.providers: Dict[str, ReportProvider] = {t.TAB_KEY: t for t in self._tab_instances}
+
+    def build_report(self):
+        """
+        Buduje wspólny raport firmy.
+        Na razie: zbiera stany placeholderów.
+        """
+        return build_company_report(self.providers)
+

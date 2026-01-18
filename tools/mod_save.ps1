@@ -1,0 +1,37 @@
+﻿param(
+  [Parameter(Mandatory=$true)][string]$Anchor,
+  [string]$Name = "",
+  [Parameter(Mandatory=$true)][double]$Width,
+  [Parameter(Mandatory=$true)][double]$Height,
+  [Parameter(Mandatory=$true)][double]$Depth,
+  [string]$Materials = "",
+  [string]$MaterialsStackJson = "",
+  [switch]$Overwrite,
+  [switch]$NoHistory,
+  [string]$DbPath = (Join-Path (Split-Path $PSScriptRoot -Parent) "data\tech.db")
+)
+
+. (Join-Path $PSScriptRoot "env.ps1")
+
+$Root = Split-Path $PSScriptRoot -Parent
+$Cli  = Join-Path $Root "src\tools\module_db_cli.py"
+
+$args = @(
+  $Cli, "--db", $DbPath, "save",
+  "--anchor", $Anchor,
+  "--width",  $Width,
+  "--height", $Height,
+  "--depth",  $Depth,
+  "--materials", $Materials
+)
+
+if($Name -and $Name.Trim().Length -gt 0){
+  $args += @("--name", $Name)
+}
+if($MaterialsStackJson -and $MaterialsStackJson.Trim().Length -gt 0){
+  $args += @("--materials-stack-json", $MaterialsStackJson)
+}
+if($Overwrite){ $args += "--overwrite" }
+if($NoHistory){ $args += "--no-history" }
+
+& $Py @args

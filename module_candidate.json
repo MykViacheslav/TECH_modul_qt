@@ -1,0 +1,70 @@
+{
+  "best": {
+    "path": "C:\\PythonProject\\TECH_modul\\TECH_modul_qt\\src\\tools\\pl_ui_patch.py",
+    "class": null,
+    "score": 52,
+    "error": "SyntaxError"
+  },
+  "top10": [
+    {
+      "path": "C:\\PythonProject\\TECH_modul\\TECH_modul_qt\\src\\tools\\pl_ui_patch.py",
+      "class": null,
+      "score": 52,
+      "error": "SyntaxError"
+    },
+    {
+      "path": "C:\\PythonProject\\TECH_modul\\TECH_modul_qt\\src\\tools\\pl_ui_patch_v2.py",
+      "class": null,
+      "score": 52,
+      "error": "SyntaxError"
+    },
+    {
+      "path": "C:\\PythonProject\\TECH_modul\\TECH_modul_qt\\src\\tools\\pl_ui_patch_v3.py",
+      "class": null,
+      "score": 52,
+      "error": "SyntaxError"
+    },
+    {
+      "path": "C:\\PythonProject\\TECH_modul\\TECH_modul_qt\\src\\tools\\regen_module_candidate.py",
+      "class": null,
+      "score": 52,
+      "error": "SyntaxError"
+    },
+    {
+      "path": "C:\\PythonProject\\TECH_modul\\TECH_modul_qt\\src\\tools\\find_module_candidate.py",
+      "class": null,
+      "score": 38,
+      "error": "SyntaxError"
+    },
+    {
+      "path": "C:\\PythonProject\\TECH_modul\\TECH_modul_qt\\src\\main.py",
+      "class": null,
+      "score": 32,
+      "error": "SyntaxError"
+    },
+    {
+      "path": "C:\\PythonProject\\TECH_modul\\TECH_modul_qt\\src\\tabs\\tab_catalogs.py",
+      "class": null,
+      "score": 22,
+      "error": "SyntaxError"
+    },
+    {
+      "path": "C:\\PythonProject\\TECH_modul\\TECH_modul_qt\\src\\core\\materials_store.py",
+      "class": null,
+      "score": 18,
+      "error": "SyntaxError"
+    },
+    {
+      "path": "C:\\PythonProject\\TECH_modul\\TECH_modul_qt\\src\\ui\\theme.py",
+      "class": null,
+      "score": 14,
+      "error": "SyntaxError"
+    },
+    {
+      "path": "C:\\PythonProject\\TECH_modul\\TECH_modul_qt\\src\\app\\context_factory.py",
+      "class": null,
+      "score": 12,
+      "error": "SyntaxError"
+    }
+  ]
+}

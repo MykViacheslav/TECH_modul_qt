@@ -1,0 +1,133 @@
+﻿from PySide6.QtWidgets import QApplication
+
+QSS = """
+/* ========== Base ========== */
+QWidget {
+    background: #eef1f5;          /* Background */
+    color: #0f172a;               /* Text */
+    font-size: 12px;
+}
+
+QLabel { background: transparent; }
+
+QFrame, QGroupBox {
+    background: #f7f8fb;          /* Panels */
+    border: 1px solid #d6dbe3;    /* Card border */
+    border-radius: 10px;
+}
+
+QGroupBox {
+    margin-top: 10px;
+    padding: 10px;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 6px;
+    color: #0f172a;
+}
+
+/* ========== Inputs ========== */
+QLineEdit, QPlainTextEdit, QTextEdit,
+QSpinBox, QDoubleSpinBox, QComboBox {
+    background: #f7f8fb;
+    border: 1px solid #d6dbe3;
+    border-radius: 10px;
+    padding: 6px 8px;
+    selection-background-color: #f59e0b; /* Accent */
+    selection-color: #0f172a;
+}
+
+QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus,
+QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {
+    border: 1px solid #f59e0b;     /* subtle focus ring */
+}
+
+/* Combo dropdown arrow spacing */
+QComboBox::drop-down { border: none; width: 24px; }
+QComboBox::down-arrow { width: 10px; height: 10px; }
+
+/* ========== Buttons ========== */
+QPushButton {
+    background: #f2f4f8;          /* Button bg */
+    border: 1px solid #d6dbe3;
+    border-radius: 10px;
+    padding: 7px 12px;
+}
+QPushButton:hover {
+    background: #e6eaf2;          /* Button hover */
+}
+QPushButton:pressed {
+    background: #dde3ee;
+}
+QPushButton:disabled {
+    color: #475569;               /* Muted */
+    background: #eef1f5;
+}
+
+/* ========== Tabs (slightly lighter) ========== */
+QTabWidget::pane {
+    border: 1px solid #d6dbe3;
+    border-radius: 12px;
+    background: #f7f8fb;
+    top: -1px;
+}
+
+QTabBar::tab {
+    background: #f2f4f8;          /* normal tab: soft */
+    border: 1px solid #d6dbe3;
+    border-bottom: none;
+    padding: 8px 14px;
+    margin-right: 6px;
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+    color: #0f172a;
+}
+QTabBar::tab:hover {
+    background: #e6eaf2;
+}
+QTabBar::tab:selected {
+    background: #ffffff;          /* active tab: brighter */
+    border-color: #d6dbe3;
+}
+QTabBar::tab:selected {
+    border-top: 2px solid #f59e0b;
+}
+
+/* ========== Tables (if any) ========== */
+QTableView, QTreeView {
+    background: #f7f8fb;
+    border: 1px solid #d6dbe3;
+    border-radius: 10px;
+    gridline-color: #d6dbe3;
+    alternate-background-color: #eef1f5;
+}
+QHeaderView::section {
+    background: #f2f4f8;
+    border: 1px solid #d6dbe3;
+    padding: 6px 8px;
+}
+
+/* ========== Scrollbars (soft) ========== */
+QScrollBar:vertical {
+    background: transparent;
+    width: 12px;
+    margin: 2px;
+}
+QScrollBar::handle:vertical {
+    background: #d6dbe3;
+    border-radius: 6px;
+    min-height: 24px;
+}
+QScrollBar::handle:vertical:hover {
+    background: #c7ced8;
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+"""
+
+def apply_theme(app: QApplication) -> None:
+    # Important: apply once, avoid additional setStyleSheet elsewhere.
+    app.setStyle("Fusion")
+    app.setStyleSheet(QSS)

@@ -1,0 +1,442 @@
+﻿(() => {
+  "use strict";
+
+  // ===== helpers =====
+  const $ = (id) => document.getElementById(id);
+  const num = (v, def=0) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : def;
+  };
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+  const errBar = () => $("errBar");
+  const showErr = (msg) => {
+    const el = errBar();
+    if(!el) return;
+    el.style.display = "block";
+    el.textContent = "JS ERROR: " + msg;
+    $("statusPill").textContent = "ERR";
+  };
+  const clearErr = () => {
+    const el = errBar();
+    if(el){ el.style.display = "none"; el.textContent = ""; }
+    $("statusPill").textContent = "OK";
+  };
+
+  window.addEventListener("error", (e) => {
+    showErr(e && e.message ? e.message : String(e));
+  });
+
+  // ===== materials =====
+  const MATERIALS = [
+    { id:"PB18",  name:"Płyta wiórowa 18 mm (PB18)" },
+    { id:"MDF18", name:"MDF 18 mm (MDF18)" },
+    { id:"HDF3",  name:"HDF 3 mm (HDF3)" },
+    { id:"PLY15", name:"Sklejka 15 mm (PLY15)" }
+  ];
+
+  function fillSelect(selId, ids, defId){
+    const sel = $(selId);
+    if(!sel) return;
+    sel.innerHTML = "";
+    for(const it of MATERIALS){
+      if(ids && !ids.includes(it.id)) continue;
+      const o = document.createElement("option");
+      o.value = it.id; o.textContent = it.name;
+      sel.appendChild(o);
+    }
+    sel.value = defId || (sel.options[0] ? sel.options[0].value : "");
+  }
+
+  // ===== state =====
+  const state = {
+    w: 600, h: 720, d: 560,
+    uiScale: 1,
+    frontMode: "none",
+    frontCount: 0,
+    frontInset: 4,
+    frontGap: 3,
+    frontMat: "MDF18",
+    matCarcass: "PB18",
+    matBack: "HDF3",
+    selected: "—",
+
+    // door config per leaf:
+    // hinge: "L" or "R"   (side of rotation)
+    // handle: "AUTO" or "L" or "R"
+    doors: []
+  };
+
+  function ensureDoorCfg(){
+    const n = clamp(state.frontCount, 0, 10);
+    if(state.frontMode !== "doors" || n < 1){
+      state.doors = [];
+      return;
+    }
+    if(state.doors.length !== n){
+      const arr = [];
+      for(let i=0;i<n;i++){
+        // default: left door hinge left, right door hinge right (for n=2)
+        let hinge = "L";
+        if(n === 2) hinge = (i===0 ? "L" : "R");
+        arr.push({ hinge, handle: "AUTO" });
+      }
+      state.doors = arr;
+    }
+  }
+
+  function syncFromInputs(){
+    state.w = clamp(Math.round(num($("w")?.value, 600)), 50, 5000);
+    state.h = clamp(Math.round(num($("h")?.value, 720)), 50, 5000);
+    state.d = clamp(Math.round(num($("d")?.value, 560)), 50, 5000);
+    state.uiScale = clamp(num($("uiScale")?.value, 1), 0.5, 3);
+
+    state.frontMode = $("frontMode")?.value || "none";
+    state.frontCount = clamp(Math.round(num($("frontCount")?.value, 0)), 0, 20);
+    state.frontInset = clamp(Math.round(num($("frontInset")?.value, 4)), 0, 50);
+    state.frontGap = clamp(Math.round(num($("frontGap")?.value, 3)), 0, 20);
+
+    state.frontMat = $("frontMat")?.value || "MDF18";
+    state.matCarcass = $("matCarcass")?.value || "PB18";
+    state.matBack = $("matBack")?.value || "HDF3";
+
+    ensureDoorCfg();
+
+    $("dimBadge").textContent = `${state.w}×${state.h}×${state.d}`;
+    $("dbg").textContent = `frontMode=${state.frontMode}, count=${state.frontCount}, inset=${state.frontInset}, gap=${state.frontGap}`;
+  }
+
+  // ===== SVG drawing =====
+  const SVGNS = "http://www.w3.org/2000/svg";
+  const create = (tag) => document.createElementNS(SVGNS, tag);
+  const set = (el, k, v) => el.setAttribute(k, String(v));
+
+  function clearSVG(svg){
+    while(svg.firstChild) svg.removeChild(svg.firstChild);
+  }
+
+  function addText(svg, x, y, txt, opts={}){
+    const t = create("text");
+    set(t,"x",x); set(t,"y",y);
+    set(t,"font-size", opts.size || "16");
+    set(t,"fill", opts.fill || "#111");
+    set(t,"font-weight", opts.weight || "600");
+    t.textContent = txt;
+    svg.appendChild(t);
+    return t;
+  }
+
+  function addRect(svg, x, y, w, h, opts={}){
+    const r = create("rect");
+    set(r,"x",x); set(r,"y",y);
+    set(r,"width",w); set(r,"height",h);
+    set(r,"fill", opts.fill ?? "none");
+    set(r,"stroke", opts.stroke ?? "#111");
+    set(r,"stroke-width", opts.sw ?? "2");
+    if(opts.dash) set(r,"stroke-dasharray", opts.dash);
+    if(opts.rx) set(r,"rx", opts.rx);
+    r.style.cursor = opts.cursor || "default";
+    svg.appendChild(r);
+    return r;
+  }
+
+  function addCircle(svg, cx, cy, r, opts={}){
+    const c = create("circle");
+    set(c,"cx",cx); set(c,"cy",cy); set(c,"r",r);
+    set(c,"fill", opts.fill ?? "none");
+    set(c,"stroke", opts.stroke ?? "#111");
+    set(c,"stroke-width", opts.sw ?? "2");
+    svg.appendChild(c);
+    return c;
+  }
+
+  function addPath(svg, d, opts={}){
+    const p = create("path");
+    set(p,"d", d);
+    set(p,"fill", opts.fill ?? "none");
+    set(p,"stroke", opts.stroke ?? "#111");
+    set(p,"stroke-width", opts.sw ?? "2");
+    if(opts.dash) set(p,"stroke-dasharray", opts.dash);
+    if(opts.markerEnd) set(p,"marker-end", opts.markerEnd);
+    svg.appendChild(p);
+    return p;
+  }
+
+  function ensureDefs(svg){
+    const defs = create("defs");
+
+    const marker = create("marker");
+    set(marker, "id", "arrowHead");
+    set(marker, "viewBox", "0 0 10 10");
+    set(marker, "refX", "9");
+    set(marker, "refY", "5");
+    set(marker, "markerWidth", "8");
+    set(marker, "markerHeight", "8");
+    set(marker, "orient", "auto-start-reverse");
+
+    const path = create("path");
+    set(path, "d", "M 0 0 L 10 5 L 0 10 z");
+    set(path, "fill", "#ff8a00");
+    marker.appendChild(path);
+    defs.appendChild(marker);
+    svg.appendChild(defs);
+  }
+
+  function renderDoors(svg, fx, fy, fw, fh, scale){
+    const n = clamp(state.frontCount, 1, 10);
+    const gap = state.frontGap * scale;
+
+    // drawing style
+    const strokeFront = "#ff8a00";
+    const swFront = 4;
+    const hingeR = Math.max(2.5, 3.2*scale); // hinge dot size
+    const handleW = Math.max(5, 6*scale);
+    const handleH = Math.max(40, 120*scale); // long handle
+    const edgeInset = Math.max(6, 12*scale);
+
+    const cellW = (fw - gap*(n-1)) / n;
+
+    for(let i=0;i<n;i++){
+      const rx = fx + i*(cellW + gap);
+      const rr = addRect(svg, rx, fy, cellW, fh, {
+        stroke: strokeFront, sw: swFront, fill:"none", rx:4, cursor:"pointer"
+      });
+
+      const doorName = (n===2 ? (i===0 ? "Drzwi LEWE" : "Drzwi PRAWE") : `Drzwi #${i+1}`);
+      rr.addEventListener("click", () => {
+        state.selected = doorName;
+        $("selBadge").textContent = "Selected: " + state.selected;
+      });
+
+      // label inside
+      addText(svg, rx + 10, fy + 22, (n===2 ? (i===0 ? "L" : "P") : String(i+1)), {
+        size: 16, fill:"#666", weight:"900"
+      });
+
+      // hinge side
+      const cfg = state.doors[i] || { hinge:"L", handle:"AUTO" };
+      const hingeSide = (cfg.hinge === "R" ? "R" : "L");
+      const hingeX = hingeSide === "L" ? (rx + edgeInset) : (rx + cellW - edgeInset);
+
+      // hinges (3 dots)
+      addCircle(svg, hingeX, fy + fh*0.25, hingeR, { stroke: strokeFront, sw: swFront, fill:"#fff" });
+      addCircle(svg, hingeX, fy + fh*0.50, hingeR, { stroke: strokeFront, sw: swFront, fill:"#fff" });
+      addCircle(svg, hingeX, fy + fh*0.75, hingeR, { stroke: strokeFront, sw: swFront, fill:"#fff" });
+
+      // handle side
+      let handleSide = cfg.handle;
+      if(handleSide !== "L" && handleSide !== "R") handleSide = (hingeSide === "L" ? "R" : "L");
+      const handleX = handleSide === "L"
+        ? (rx + edgeInset)
+        : (rx + cellW - edgeInset - handleW);
+
+      const handleY = fy + (fh - handleH)/2;
+      addRect(svg, handleX, handleY, handleW, handleH, { stroke: strokeFront, sw: swFront, fill:"#fff", rx:2 });
+
+      // opening direction arrow (curved) near top
+      // hinge left -> arrow curves left; hinge right -> curves right
+      const ax = hingeSide === "L" ? (rx + cellW*0.25) : (rx + cellW*0.75);
+      const ay = fy + 34;
+      const dir = hingeSide === "L" ? -1 : 1;
+      const r = Math.max(18, 34*scale);
+      // Quadratic curve
+      const x1 = ax;
+      const y1 = ay;
+      const cx = ax + dir*r;
+      const cy = ay + r;
+      const x2 = ax + dir*(r*0.9);
+      const y2 = ay + r*1.6;
+      addPath(svg, `M ${x1} ${y1} Q ${cx} ${cy} ${x2} ${y2}`, {
+        stroke: "#ff8a00", sw: 3.2, markerEnd: "url(#arrowHead)"
+      });
+    }
+  }
+
+  function render(){
+    clearErr();
+    syncFromInputs();
+
+    const svg = $("moduleView");
+    if(!svg) return;
+
+    clearSVG(svg);
+    ensureDefs(svg);
+
+    // layout
+    const pad = 60;
+    const areaW = 900 - pad*2;
+    const areaH = 560 - pad*2 - 20;
+
+    // scale based on W/H
+    const scale = Math.min(areaW / state.w, areaH / state.h) * state.uiScale;
+
+    const boxW = state.w * scale;
+    const boxH = state.h * scale;
+    const x0 = (900 - boxW)/2;
+    const y0 = 60;
+
+    addText(svg, 60, 32, "Front view", { size: 16, fill:"#111", weight:"800" });
+
+    // carcass
+    addRect(svg, x0, y0, boxW, boxH, { stroke:"#111", sw:2 });
+
+    // dims labels
+    addText(svg, x0 + boxW + 12, y0 + boxH/2, `H ${state.h} mm`, { size: 14, fill:"#111", weight:"600" });
+    addText(svg, x0 + boxW/2 - 30, y0 + boxH + 26, `W ${state.w} mm`, { size: 14, fill:"#111", weight:"600" });
+
+    // fronts area
+    const inset = state.frontInset * scale;
+    const fx = x0 + inset;
+    const fy = y0 + inset;
+    const fw = Math.max(0, boxW - inset*2);
+    const fh = Math.max(0, boxH - inset*2);
+
+    // info line
+    if(state.frontMode === "doors" && state.frontCount > 0){
+      addText(svg, 60, 52, `Fronty: DRZWI • ${state.frontCount} • ${state.frontMat}`, { size: 12, fill:"#666", weight:"700" });
+      renderDoors(svg, fx, fy, fw, fh, scale);
+    } else if(state.frontMode === "drawers" && state.frontCount > 0){
+      addText(svg, 60, 52, `Fronty: SZUFLADY • ${state.frontCount} • ${state.frontMat}`, { size: 12, fill:"#666", weight:"700" });
+
+      const strokeFront = "#ff8a00";
+      const swFront = 4;
+      const dashDot = "14 6 2 6";
+      const gap = state.frontGap * scale;
+      const n = clamp(state.frontCount, 1, 12);
+      const cellH = (fh - gap*(n-1)) / n;
+
+      for(let i=0;i<n;i++){
+        const ry = fy + i*(cellH + gap);
+        const rr = addRect(svg, fx, ry, fw, cellH, { stroke: strokeFront, sw: swFront, fill:"none", dash: dashDot, rx:4, cursor:"pointer" });
+        rr.addEventListener("click", () => {
+          state.selected = `Szuflada #${i+1}`;
+          $("selBadge").textContent = "Selected: " + state.selected;
+        });
+      }
+    } else {
+      addText(svg, 60, 52, `Fronty: BRAK`, { size: 12, fill:"#666", weight:"700" });
+    }
+
+    // door config UI show/hide
+    const wrap = $("doorCfgWrap");
+    if(wrap){
+      wrap.style.display = (state.frontMode === "doors" && state.frontCount > 0) ? "block" : "none";
+    }
+    renderDoorCfgUI();
+  }
+
+  function renderDoorCfgUI(){
+    const box = $("doorCfg");
+    const wrap = $("doorCfgWrap");
+    if(!box || !wrap) return;
+
+    if(!(state.frontMode === "doors" && state.frontCount > 0)){
+      box.innerHTML = "";
+      return;
+    }
+
+    box.innerHTML = "";
+    const n = clamp(state.frontCount, 1, 10);
+
+    for(let i=0;i<n;i++){
+      const cfg = state.doors[i] || { hinge:"L", handle:"AUTO" };
+
+      const item = document.createElement("div");
+      item.className = "doorCfgItem";
+
+      const title = document.createElement("div");
+      title.className = "doorCfgTitle";
+      title.textContent = (n===2 ? (i===0 ? "Drzwi LEWE" : "Drzwi PRAWE") : `Drzwi #${i+1}`);
+      item.appendChild(title);
+
+      const row = document.createElement("div");
+      row.className = "doorCfgRow";
+
+      // hinge select
+      const w1 = document.createElement("div");
+      const l1 = document.createElement("label");
+      l1.textContent = "Zawias (strona)";
+      const s1 = document.createElement("select");
+      s1.innerHTML = `
+        <option value="L">Lewy</option>
+        <option value="R">Prawy</option>
+      `;
+      s1.value = (cfg.hinge === "R" ? "R" : "L");
+      s1.addEventListener("change", () => {
+        cfg.hinge = s1.value;
+        state.doors[i] = cfg;
+        render();
+      });
+      w1.appendChild(l1); w1.appendChild(s1);
+
+      // handle select
+      const w2 = document.createElement("div");
+      const l2 = document.createElement("label");
+      l2.textContent = "Uchwyt";
+      const s2 = document.createElement("select");
+      s2.innerHTML = `
+        <option value="AUTO">Auto (przeciw zawiasowi)</option>
+        <option value="L">Lewy</option>
+        <option value="R">Prawy</option>
+      `;
+      s2.value = (cfg.handle === "L" || cfg.handle === "R") ? cfg.handle : "AUTO";
+      s2.addEventListener("change", () => {
+        cfg.handle = s2.value;
+        state.doors[i] = cfg;
+        render();
+      });
+      w2.appendChild(l2); w2.appendChild(s2);
+
+      row.appendChild(w1);
+      row.appendChild(w2);
+      item.appendChild(row);
+
+      const hint = document.createElement("div");
+      hint.className = "doorHint";
+      const dir = (s1.value === "L") ? "otwieranie w lewo (łuk ←)" : "otwieranie w prawo (łuk →)";
+      hint.textContent = `Kierunek: ${dir}`;
+      item.appendChild(hint);
+
+      box.appendChild(item);
+    }
+  }
+
+  function bind(){
+    fillSelect("frontMat", ["MDF18","PB18","PLY15"], "MDF18");
+    fillSelect("matCarcass", ["PB18","MDF18","PLY15"], "PB18");
+    fillSelect("matBack", ["HDF3"], "HDF3");
+
+    const ids = ["w","h","d","uiScale","frontMode","frontCount","frontInset","frontGap","frontMat","matCarcass","matBack"];
+    for(const id of ids){
+      const el = $(id);
+      if(!el) continue;
+      el.addEventListener("input", render);
+      el.addEventListener("change", render);
+    }
+
+    $("resetBtn")?.addEventListener("click", () => {
+      $("w").value = 600;
+      $("h").value = 720;
+      $("d").value = 560;
+      $("uiScale").value = 1;
+
+      $("frontMode").value = "none";
+      $("frontCount").value = 0;
+      $("frontInset").value = 4;
+      $("frontGap").value = 3;
+
+      $("frontMat").value = "MDF18";
+      $("matCarcass").value = "PB18";
+      $("matBack").value = "HDF3";
+
+      state.selected = "—";
+      $("selBadge").textContent = "Selected: —";
+      render();
+    });
+
+    render();
+    window.__APP_READY__ = true;
+  }
+
+  window.addEventListener("load", bind);
+})();

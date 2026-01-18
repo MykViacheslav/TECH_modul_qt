@@ -1,0 +1,99 @@
+﻿from __future__ import annotations
+
+import importlib
+import inspect
+import pkgutil
+
+from PySide6 import QtWidgets
+
+
+def build_tabs(ctx):
+    """
+    Auto-discover: wszystkie moduły tabs.tab_*.py
+    i klasy kończące się na *Tab (QWidget).
+    Każda zakładka jest niezależnym widgetem. Błędy logujemy i pomijamy tylko wadliwą zakładkę.
+    """
+    out = []
+
+    import tabs  # package
+
+    mods = []
+    for m in pkgutil.iter_modules(tabs.__path__):
+        if m.name.startswith("tab_"):
+            mods.append(m.name)
+    mods.sort()
+
+    for short in mods:
+        modname = f"tabs.{short}"
+        try:
+            mod = importlib.import_module(modname)
+        except Exception as e:
+            print(f"[tabs] import FAIL: {modname}: {e}")
+            continue
+
+        candidates = []
+        for name, obj in inspect.getmembers(mod, inspect.isclass):
+            if obj.__module__ != mod.__name__:
+                continue
+            if not name.endswith("Tab"):
+                continue
+            try:
+                if issubclass(obj, QtWidgets.QWidget):
+                    candidates.append((name, obj))
+            except Exception:
+                pass
+
+        if not candidates:
+            continue
+
+        # Preferuj klasę z TITLE, w innym wypadku pierwszą alfabetycznie
+        def score(item):
+            nm, cls = item
+            return (0 if getattr(cls, "TITLE", None) else 1, nm.lower())
+
+        candidates.sort(key=score)
+        cls_name, cls = candidates[0]
+
+        title = getattr(cls, "TITLE", None) or getattr(mod, "TITLE", None) or cls_name.replace("Tab", "")
+
+        try:
+            w = cls(ctx)
+            out.append((title, w))
+        except Exception as e:
+            import traceback
+            print(f"[tabs] create FAIL: {modname}.{cls_name}: {e}")
+            print(traceback.format_exc())
+            continue
+
+    if not out:
+        out.append(("Info", QtWidgets.QLabel("Brak zakładek. Sprawdź konsolę pod kątem błędów importu.")))
+
+    
+    # add independent tabs (safe)
+    try:
+        from .tab_wymiary import WymiaryTab
+        out.append(("Wymiary", WymiaryTab(ctx)))
+    except Exception as e:
+        print("WARN: cannot build WymiaryTab:", e)
+
+    try:
+        from .tab_parametry import ParametryTab
+        out.append(("Parametry", ParametryTab(ctx)))
+    except Exception as e:
+        print("WARN: cannot build ParametryTab:", e)
+
+
+    # NORMALIZE_TAB_TITLES_V1
+    fixed = []
+    for title, widget in out:
+        t = (str(title).strip() if title is not None else "")
+        if not t:
+            try:
+                t = str(widget.windowTitle() or "").strip()
+            except Exception:
+                t = ""
+        if not t:
+            t = getattr(widget, "TITLE", "") or widget.__class__.__name__
+        fixed.append((t, widget))
+    return fixed
+

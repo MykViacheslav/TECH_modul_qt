@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "roots": [
+    {
+      "id": "ROOT_PROJECTS",
+      "type": "folder",
+      "label": "PROJEKTY",
+      "children": [
+        {
+          "id": "PRJ001",
+          "type": "project",
+          "label": "PRJ001",
+          "children": [
+            {
+              "id": "MOD_M01",
+              "type": "module",
+              "label": "M01",
+              "anchor": "M01",
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

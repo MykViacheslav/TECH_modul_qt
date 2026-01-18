@@ -1,0 +1,504 @@
+﻿from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import List, Tuple
+
+from PySide6 import QtCore, QtWidgets
+from PySide6.QtCore import QSettings
+
+from PySide6.QtSvgWidgets import QSvgWidget
+
+
+@dataclass
+class ModuleParams:
+    w_mm: float = 600.0
+    h_mm: float = 720.0
+    d_mm: float = 560.0
+
+    front_mode: str = "Drzwi"   # "Drzwi" | "Szuflady" | "Brak"
+    front_count: int = 2        # drzwi lub szuflady (zależnie od trybu)
+
+    qty: int = 1                # ilość modułów
+    inset_mm: float = 0.0       # wpuszczenie (kontur wewnętrzny)
+    gap_mm: float = 2.0         # szczelina między frontami
+
+    handles: bool = True
+    material: str = ""
+    edge: str = ""
+
+
+def _clamp_int(v: int, lo: int, hi: int) -> int:
+    return max(lo, min(hi, v))
+
+
+def _mm_to_m2(area_mm2: float) -> float:
+    return area_mm2 / 1_000_000.0
+
+
+class ModuleWidget(QtWidgets.QWidget):
+    """
+    Moduł: UI + logika (bez “nowej funkcjonalności” poza tym co było: parametry + rysunek + BOM).
+    """
+
+    def __init__(self, ctx, parent=None) -> None:
+        super().__init__(parent)
+        self.ctx = ctx
+        self.settings: QSettings = getattr(ctx, "settings", QSettings("TECH_modul", "TECH_modul_qt"))
+
+        self.params = ModuleParams()
+
+        self._build_ui()
+        self._load_state()
+
+        self._refresh_all()
+
+        # odśwież po zmianach katalogów
+        bus = getattr(self.ctx, "bus", None)
+        sig = getattr(bus, "data_changed", None)
+        if sig is not None and hasattr(sig, "connect"):
+            try:
+                sig.connect(self._on_data_changed)
+            except Exception:
+                pass
+
+    @QtCore.Slot(object)
+    def _on_data_changed(self, key: object) -> None:
+        if str(key) == "catalogs":
+            self._populate_catalogs()
+
+    # ---------------- UI ----------------
+    def _build_ui(self) -> None:
+        root = QtWidgets.QHBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(12)
+
+        self.split = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
+        root.addWidget(self.split, 1)
+
+        # LEFT: Parametry
+        left = QtWidgets.QWidget()
+        leftL = QtWidgets.QVBoxLayout(left)
+        leftL.setContentsMargins(0, 0, 0, 0)
+        leftL.setSpacing(10)
+
+        gb_dim = QtWidgets.QGroupBox("Wymiary (mm)")
+        f = QtWidgets.QFormLayout(gb_dim)
+        f.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
+        f.setFormAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
+        f.setVerticalSpacing(10)
+
+        self.sp_w = QtWidgets.QDoubleSpinBox()
+        self.sp_w.setRange(50, 5000); self.sp_w.setDecimals(1); self.sp_w.setValue(self.params.w_mm)
+        self.sp_w.setSuffix(" mm")
+
+        self.sp_h = QtWidgets.QDoubleSpinBox()
+        self.sp_h.setRange(50, 5000); self.sp_h.setDecimals(1); self.sp_h.setValue(self.params.h_mm)
+        self.sp_h.setSuffix(" mm")
+
+        self.sp_d = QtWidgets.QDoubleSpinBox()
+        self.sp_d.setRange(50, 5000); self.sp_d.setDecimals(1); self.sp_d.setValue(self.params.d_mm)
+        self.sp_d.setSuffix(" mm")
+
+        f.addRow("Szerokość (W):", self.sp_w)
+        f.addRow("Wysokość (H):", self.sp_h)
+        f.addRow("Głębokość (D):", self.sp_d)
+
+        gb_front = QtWidgets.QGroupBox("Front")
+        f2 = QtWidgets.QFormLayout(gb_front)
+        f2.setVerticalSpacing(10)
+
+        self.cb_mode = QtWidgets.QComboBox()
+        self.cb_mode.addItems(["Drzwi", "Szuflady", "Brak"])
+
+        self.sp_front_count = QtWidgets.QSpinBox()
+        self.sp_front_count.setRange(1, 12)
+        self.sp_front_count.setValue(self.params.front_count)
+
+        self.sp_gap = QtWidgets.QDoubleSpinBox()
+        self.sp_gap.setRange(0, 50); self.sp_gap.setDecimals(1); self.sp_gap.setValue(self.params.gap_mm)
+        self.sp_gap.setSuffix(" mm")
+
+        self.sp_inset = QtWidgets.QDoubleSpinBox()
+        self.sp_inset.setRange(0, 100); self.sp_inset.setDecimals(1); self.sp_inset.setValue(self.params.inset_mm)
+        self.sp_inset.setSuffix(" mm")
+
+        f2.addRow("Tryb:", self.cb_mode)
+        f2.addRow("Ilość (drzwi/szuflad):", self.sp_front_count)
+        f2.addRow("Szczelina (gap):", self.sp_gap)
+        f2.addRow("Wpuszczenie (inset):", self.sp_inset)
+
+        gb_other = QtWidgets.QGroupBox("Pozostałe")
+        f3 = QtWidgets.QFormLayout(gb_other)
+        f3.setVerticalSpacing(10)
+
+        self.sp_qty = QtWidgets.QSpinBox()
+        self.sp_qty.setRange(1, 999)
+        self.sp_qty.setValue(self.params.qty)
+
+        self.ck_handles = QtWidgets.QCheckBox("Uchwyty")
+        self.ck_handles.setChecked(self.params.handles)
+
+        self.cb_material = QtWidgets.QComboBox()
+        self.cb_material.setObjectName("material_cb")
+        self.cb_material.setEditable(False)
+
+        self.cb_edge = QtWidgets.QComboBox()
+        self.cb_edge.setObjectName("edge_cb")
+        self.cb_edge.setEditable(False)
+
+        f3.addRow("Ilość modułów:", self.sp_qty)
+        f3.addRow("", self.ck_handles)
+        f3.addRow("Materiał:", self.cb_material)
+        f3.addRow("Krawędź:", self.cb_edge)
+
+        # Buttons
+        btnRow = QtWidgets.QHBoxLayout()
+        self.btn_reset = QtWidgets.QPushButton("Resetuj")
+        self.btn_calc  = QtWidgets.QPushButton("Oblicz")
+        btnRow.addWidget(self.btn_reset)
+        btnRow.addWidget(self.btn_calc)
+        btnRow.addStretch(1)
+
+        leftL.addWidget(gb_dim)
+        leftL.addWidget(gb_front)
+        leftL.addWidget(gb_other)
+        leftL.addLayout(btnRow)
+        leftL.addStretch(1)
+
+        # CENTER: Rysunek (SVG)
+        center = QtWidgets.QWidget()
+        centerL = QtWidgets.QVBoxLayout(center)
+        centerL.setContentsMargins(0, 0, 0, 0)
+        centerL.setSpacing(10)
+
+        title = QtWidgets.QLabel("Rysunek: Front + Blat (1:1 skala)")
+        title.setStyleSheet("font-size: 14px; font-weight: 600;")
+        centerL.addWidget(title)
+
+        self.svg = QSvgWidget()
+        self.svg.setMinimumSize(520, 520)
+        centerL.addWidget(self.svg, 1)
+
+        # RIGHT: BOM / podsumowanie
+        right = QtWidgets.QWidget()
+        rightL = QtWidgets.QVBoxLayout(right)
+        rightL.setContentsMargins(0, 0, 0, 0)
+        rightL.setSpacing(10)
+
+        gb_bom = QtWidgets.QGroupBox("BOM / Podsumowanie")
+        vb = QtWidgets.QVBoxLayout(gb_bom)
+        self.txt_bom = QtWidgets.QPlainTextEdit()
+        self.txt_bom.setReadOnly(True)
+        vb.addWidget(self.txt_bom)
+
+        rightL.addWidget(gb_bom, 1)
+
+        # splitter
+        self.split.addWidget(left)
+        self.split.addWidget(center)
+        self.split.addWidget(right)
+        self.split.setStretchFactor(0, 0)
+        self.split.setStretchFactor(1, 1)
+        self.split.setStretchFactor(2, 0)
+
+        # signals
+        self.btn_reset.clicked.connect(self._on_reset)
+        self.btn_calc.clicked.connect(self._refresh_all)
+
+        for w in [self.sp_w, self.sp_h, self.sp_d, self.cb_mode, self.sp_front_count, self.sp_gap, self.sp_inset, self.sp_qty, self.ck_handles]:
+            if hasattr(w, "valueChanged"):
+                w.valueChanged.connect(self._refresh_all)
+            if hasattr(w, "currentIndexChanged"):
+                w.currentIndexChanged.connect(self._refresh_all)
+            if hasattr(w, "toggled"):
+                w.toggled.connect(self._refresh_all)
+
+        self.cb_material.currentIndexChanged.connect(self._refresh_all)
+        self.cb_edge.currentIndexChanged.connect(self._refresh_all)
+
+        self._populate_catalogs()
+
+    def _populate_catalogs(self) -> None:
+        # Nie psujemy jeśli user ma już coś w comboboxie i jest wypełnione
+        def fill(cb: QtWidgets.QComboBox, names: List[str], placeholder: str):
+            if cb.count() >= 2:
+                return
+            cb.blockSignals(True)
+            try:
+                cb.clear()
+                cb.addItem(placeholder)
+                for n in names:
+                    cb.addItem(n)
+            finally:
+                cb.blockSignals(False)
+
+        catalogs = getattr(self.ctx, "catalogs", None)
+        mats: List[str] = []
+        edges: List[str] = []
+        try:
+            if catalogs and hasattr(catalogs, "get_materials"):
+                mats = [getattr(x, "name", str(x)) for x in catalogs.get_materials()]
+        except Exception:
+            mats = []
+        try:
+            if catalogs and hasattr(catalogs, "get_edges"):
+                edges = [getattr(x, "name", str(x)) for x in catalogs.get_edges()]
+        except Exception:
+            edges = []
+
+        fill(self.cb_material, mats, "— wybierz materiał —")
+        fill(self.cb_edge, edges, "— wybierz krawędź —")
+
+    # ------------- state -------------
+    def _load_state(self) -> None:
+        s = self.settings
+        s.beginGroup("module")
+        try:
+            self.sp_w.setValue(float(s.value("w_mm", self.params.w_mm)))
+            self.sp_h.setValue(float(s.value("h_mm", self.params.h_mm)))
+            self.sp_d.setValue(float(s.value("d_mm", self.params.d_mm)))
+
+            mode = str(s.value("front_mode", self.params.front_mode))
+            idx = self.cb_mode.findText(mode)
+            if idx >= 0:
+                self.cb_mode.setCurrentIndex(idx)
+
+            self.sp_front_count.setValue(int(s.value("front_count", self.params.front_count)))
+            self.sp_gap.setValue(float(s.value("gap_mm", self.params.gap_mm)))
+            self.sp_inset.setValue(float(s.value("inset_mm", self.params.inset_mm)))
+            self.sp_qty.setValue(int(s.value("qty", self.params.qty)))
+            self.ck_handles.setChecked(str(s.value("handles", "true")).lower() in ("1", "true", "yes", "tak"))
+
+            # splitter sizes
+            sizes = s.value("split_sizes", None)
+            if sizes:
+                try:
+                    self.split.setSizes([int(x) for x in sizes])
+                except Exception:
+                    pass
+        finally:
+            s.endGroup()
+
+    def _save_state(self) -> None:
+        s = self.settings
+        s.beginGroup("module")
+        try:
+            s.setValue("w_mm", self.sp_w.value())
+            s.setValue("h_mm", self.sp_h.value())
+            s.setValue("d_mm", self.sp_d.value())
+            s.setValue("front_mode", self.cb_mode.currentText())
+            s.setValue("front_count", self.sp_front_count.value())
+            s.setValue("gap_mm", self.sp_gap.value())
+            s.setValue("inset_mm", self.sp_inset.value())
+            s.setValue("qty", self.sp_qty.value())
+            s.setValue("handles", "true" if self.ck_handles.isChecked() else "false")
+            s.setValue("split_sizes", self.split.sizes())
+        finally:
+            s.endGroup()
+
+    def closeEvent(self, e) -> None:
+        try:
+            self._save_state()
+        except Exception:
+            pass
+        super().closeEvent(e)
+
+    # ------------- actions -------------
+    def _on_reset(self) -> None:
+        self.sp_w.setValue(600.0)
+        self.sp_h.setValue(720.0)
+        self.sp_d.setValue(560.0)
+        self.cb_mode.setCurrentIndex(0)
+        self.sp_front_count.setValue(2)
+        self.sp_gap.setValue(2.0)
+        self.sp_inset.setValue(0.0)
+        self.sp_qty.setValue(1)
+        self.ck_handles.setChecked(True)
+        self._refresh_all()
+
+    def _get_params(self) -> ModuleParams:
+        p = ModuleParams(
+            w_mm=float(self.sp_w.value()),
+            h_mm=float(self.sp_h.value()),
+            d_mm=float(self.sp_d.value()),
+            front_mode=self.cb_mode.currentText(),
+            front_count=_clamp_int(int(self.sp_front_count.value()), 1, 12),
+            qty=_clamp_int(int(self.sp_qty.value()), 1, 999),
+            inset_mm=float(self.sp_inset.value()),
+            gap_mm=float(self.sp_gap.value()),
+            handles=bool(self.ck_handles.isChecked()),
+            material=self.cb_material.currentText() if self.cb_material.currentIndex() >= 1 else "",
+            edge=self.cb_edge.currentText() if self.cb_edge.currentIndex() >= 1 else "",
+        )
+        return p
+
+    # ------------- core logic -------------
+    def _calc_front_panels(self, p: ModuleParams) -> List[Tuple[float, float, float, float]]:
+        """
+        Zwraca listę prostokątów (x,y,w,h) dla frontów w mm,
+        w układzie lokalnym frontu (0..W, 0..H).
+        """
+        rects: List[Tuple[float, float, float, float]] = []
+        if p.front_mode == "Brak":
+            return rects
+
+        n = max(1, p.front_count)
+        gap = max(0.0, p.gap_mm)
+
+        if p.front_mode == "Drzwi":
+            # podział po szerokości
+            total_gap = gap * (n - 1)
+            panel_w = max(0.0, (p.w_mm - total_gap) / n)
+            x = 0.0
+            for i in range(n):
+                rects.append((x, 0.0, panel_w, p.h_mm))
+                x += panel_w + gap
+        else:
+            # Szuflady: podział po wysokości
+            total_gap = gap * (n - 1)
+            panel_h = max(0.0, (p.h_mm - total_gap) / n)
+            y = 0.0
+            for i in range(n):
+                rects.append((0.0, y, p.w_mm, panel_h))
+                y += panel_h + gap
+
+        return rects
+
+    def _build_svg(self, p: ModuleParams) -> bytes:
+        """
+        Rysunek: dwa boksy (Front i Blat) w jednej skali.
+        """
+        # stałe boksy (dla czytelności)
+        box_w = 320.0
+        box_h = 320.0
+        pad = 22.0
+
+        # skala 1:1 między frontem i blatem
+        # topBox ma ten sam rozmiar co frontBox (spec)
+        s = min((box_w - 2*pad) / max(p.w_mm, 1.0),
+                (box_h - 2*pad) / max(p.h_mm, 1.0),
+                (box_w - 2*pad) / max(p.w_mm, 1.0),
+                (box_h - 2*pad) / max(p.d_mm, 1.0))
+
+        # pozycje
+        gap_boxes = 36.0
+        front_x = 0.0
+        top_x = box_w + gap_boxes
+
+        view_w = box_w*2 + gap_boxes
+        view_h = box_h
+
+        stroke = 1.2
+        col_main = "#334155"      # linie
+        col_inset = "#F59E0B"     # akcent wpuszczenia
+        col_fill = "none"
+
+        def rect(x,y,w,h,stroke_col,sw,rx=8):
+            return f'<rect x="{x:.2f}" y="{y:.2f}" width="{w:.2f}" height="{h:.2f}" fill="{col_fill}" stroke="{stroke_col}" stroke-width="{sw}" rx="{rx}"/>'
+
+        # FRONT outline
+        fw = p.w_mm * s
+        fh = p.h_mm * s
+        fx = front_x + (box_w - fw)/2
+        fy = (box_h - fh)/2
+        front_outline = rect(fx, fy, fw, fh, col_main, stroke)
+
+        # Inset outline (secondary)
+        inset = max(0.0, p.inset_mm) * s
+        inset_outline = ""
+        if inset > 0.1 and fw - 2*inset > 2 and fh - 2*inset > 2:
+            inset_outline = rect(fx+inset, fy+inset, fw-2*inset, fh-2*inset, col_inset, stroke)
+
+        # Front panels
+        panels_svg = ""
+        panels = self._calc_front_panels(p)
+        for (x,y,w,h) in panels:
+            px = fx + x*s
+            py = fy + y*s
+            pw = w*s
+            ph = h*s
+            if pw > 1 and ph > 1:
+                panels_svg += rect(px, py, pw, ph, col_main, stroke, rx=6)
+
+        # TOP outline (W x D) in same scale
+        tw = p.w_mm * s
+        th = p.d_mm * s
+        tx = top_x + (box_w - tw)/2
+        ty = (box_h - th)/2
+        top_outline = rect(tx, ty, tw, th, col_main, stroke)
+
+        # Labels
+        label = lambda x,y,t: f'<text x="{x:.2f}" y="{y:.2f}" font-size="14" font-family="Segoe UI" fill="#0B1220">{t}</text>'
+        l_front = label(front_x + 10, 22, "Front")
+        l_top   = label(top_x + 10, 22, "Blat")
+
+        svg = f'''<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="{view_w:.0f}" height="{view_h:.0f}" viewBox="0 0 {view_w:.0f} {view_h:.0f}">
+  <rect x="0" y="0" width="{view_w:.0f}" height="{view_h:.0f}" fill="none"/>
+  {l_front}
+  {l_top}
+  {front_outline}
+  {inset_outline}
+  {panels_svg}
+  {top_outline}
+</svg>
+'''
+        return svg.encode("utf-8")
+
+    def _build_bom_text(self, p: ModuleParams) -> str:
+        # podstawowe pola (front + blat)
+        front_area_m2 = _mm_to_m2(p.w_mm * p.h_mm)
+        top_area_m2   = _mm_to_m2(p.w_mm * p.d_mm)
+
+        panels = self._calc_front_panels(p)
+        panels_area_m2 = 0.0
+        for (_, _, w, h) in panels:
+            panels_area_m2 += _mm_to_m2(w*h)
+
+        lines: List[str] = []
+        lines.append("PARAMETRY")
+        lines.append(f"- W: {p.w_mm:.1f} mm, H: {p.h_mm:.1f} mm, D: {p.d_mm:.1f} mm")
+        lines.append(f"- Tryb frontu: {p.front_mode}  |  ilość: {p.front_count}")
+        lines.append(f"- Szczelina: {p.gap_mm:.1f} mm  |  wpuszczenie: {p.inset_mm:.1f} mm")
+        lines.append(f"- Ilość modułów: {p.qty}")
+        lines.append(f"- Uchwyty: {'Tak' if p.handles else 'Nie'}")
+        if p.material:
+            lines.append(f"- Materiał: {p.material}")
+        if p.edge:
+            lines.append(f"- Krawędź: {p.edge}")
+
+        lines.append("")
+        lines.append("POWIERZCHNIE (na 1 moduł)")
+        lines.append(f"- Front (całość): {front_area_m2:.3f} m²")
+        lines.append(f"- Blat (całość):  {top_area_m2:.3f} m²")
+
+        if p.front_mode != "Brak":
+            lines.append(f"- Fronty (podział): {panels_area_m2:.3f} m²  (suma paneli)")
+            lines.append(f"- Liczba elementów frontów: {len(panels)}")
+
+        lines.append("")
+        lines.append("RAZEM (dla ilości)")
+        lines.append(f"- Front (całość) x{p.qty}: {front_area_m2*p.qty:.3f} m²")
+        lines.append(f"- Blat (całość)  x{p.qty}: {top_area_m2*p.qty:.3f} m²")
+
+        return "\n".join(lines)
+
+    # ------------- refresh -------------
+    def _refresh_all(self) -> None:
+        p = self._get_params()
+        # SVG
+        try:
+            self.svg.load(self._build_svg(p))
+        except Exception:
+            # fallback: nie wywalaj UI
+            self.txt_bom.setPlainText("Błąd rysowania SVG (sprawdź QtSvgWidgets).")
+            return
+
+        # BOM
+        self.txt_bom.setPlainText(self._build_bom_text(p))
+
+        # save form state lightly
+        try:
+            self._save_state()
+        except Exception:
+            pass

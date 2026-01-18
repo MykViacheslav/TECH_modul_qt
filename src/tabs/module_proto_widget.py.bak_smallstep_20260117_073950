@@ -1,0 +1,388 @@
+﻿from __future__ import annotations
+
+from PySide6 import QtCore, QtWidgets, QtGui
+from widgets.collapsible import CollapsibleSection
+
+
+class ModuleProtoWidget(QtWidgets.QWidget):
+    """
+    SAFE proto UI based on web mock (NO dependency on core/module_widget logic).
+    Goal: stable, never-empty UI + port features step-by-step.
+
+    This step:
+      - mid panels (A/B): adjustable height
+      - above mid end: cap = Shelf / Bottom
+      - cap span: Left / Right / Full (not always across whole module)
+    """
+    def __init__(self, ctx=None, parent=None):
+        super().__init__(parent)
+        self.ctx = ctx
+
+        self._build_ui()
+        self._wire()
+        self._recalc()
+
+    def _build_ui(self):
+        root = QtWidgets.QVBoxLayout(self)
+        root.setContentsMargins(8, 8, 8, 8)
+        root.setSpacing(8)
+
+        # status pill (OK/ERR)
+        top = QtWidgets.QHBoxLayout()
+        top.addStretch(1)
+        self.status = QtWidgets.QLabel("OK")
+        self.status.setAlignment(QtCore.Qt.AlignCenter)
+        self.status.setFixedWidth(60)
+        self.status.setStyleSheet(
+            "QLabel{padding:4px 10px;border-radius:10px;background:#d7ffe1;color:#000;font-weight:700;}"
+        )
+        top.addWidget(self.status)
+        root.addLayout(top)
+
+        self.split = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        root.addWidget(self.split, 1)
+
+        # LEFT (controls)
+        leftWrap = QtWidgets.QWidget()
+        leftLay = QtWidgets.QVBoxLayout(leftWrap)
+        leftLay.setContentsMargins(0, 0, 0, 0)
+        leftLay.setSpacing(8)
+
+        # --- dims ---
+        self.secDims = CollapsibleSection("Wymiary + Anchor")
+        dims = QtWidgets.QWidget()
+        g = QtWidgets.QGridLayout(dims)
+        g.setContentsMargins(0, 0, 0, 0)
+
+        self.w = QtWidgets.QSpinBox(); self.w.setRange(50, 5000); self.w.setValue(600)
+        self.h = QtWidgets.QSpinBox(); self.h.setRange(50, 5000); self.h.setValue(720)
+        self.d = QtWidgets.QSpinBox(); self.d.setRange(50, 2000); self.d.setValue(560)
+
+        self.anchor = QtWidgets.QComboBox()
+        self.anchor.addItems(["NONE", "LT", "RT", "LB", "RB"])
+
+        g.addWidget(QtWidgets.QLabel("W (mm)"), 0, 0); g.addWidget(self.w, 0, 1)
+        g.addWidget(QtWidgets.QLabel("H (mm)"), 1, 0); g.addWidget(self.h, 1, 1)
+        g.addWidget(QtWidgets.QLabel("D (mm)"), 2, 0); g.addWidget(self.d, 2, 1)
+        g.addWidget(QtWidgets.QLabel("Anchor"), 3, 0); g.addWidget(self.anchor, 3, 1)
+
+        self.secDims.contentLayout.addWidget(dims)
+        leftLay.addWidget(self.secDims)
+
+        # --- offsets ---
+        self.secPos = CollapsibleSection("Przesunięcia (offset)")
+        pos = QtWidgets.QWidget()
+        g2 = QtWidgets.QGridLayout(pos)
+        g2.setContentsMargins(0, 0, 0, 0)
+
+        self.posL = QtWidgets.QSpinBox(); self.posL.setRange(0, 2000); self.posL.setValue(0)
+        self.posR = QtWidgets.QSpinBox(); self.posR.setRange(0, 2000); self.posR.setValue(0)
+        self.posT = QtWidgets.QSpinBox(); self.posT.setRange(0, 2000); self.posT.setValue(0)
+        self.posB = QtWidgets.QSpinBox(); self.posB.setRange(0, 2000); self.posB.setValue(0)
+
+        self.btnZero = QtWidgets.QPushButton("Zeruj")
+
+        g2.addWidget(QtWidgets.QLabel("Left"), 0, 0);   g2.addWidget(self.posL, 0, 1)
+        g2.addWidget(QtWidgets.QLabel("Right"), 1, 0);  g2.addWidget(self.posR, 1, 1)
+        g2.addWidget(QtWidgets.QLabel("Top"), 2, 0);    g2.addWidget(self.posT, 2, 1)
+        g2.addWidget(QtWidgets.QLabel("Bottom"), 3, 0); g2.addWidget(self.posB, 3, 1)
+        g2.addWidget(self.btnZero, 4, 0, 1, 2)
+
+        self.secPos.contentLayout.addWidget(pos)
+        leftLay.addWidget(self.secPos)
+
+        # --- mid panels ---
+        self.secMid = CollapsibleSection("Piony środkowe (mid) — wysokość + cap nad końcem")
+        mid = QtWidgets.QWidget()
+        gm = QtWidgets.QGridLayout(mid)
+        gm.setContentsMargins(0, 0, 0, 0)
+        gm.setHorizontalSpacing(10)
+        gm.setVerticalSpacing(8)
+
+        # helper: spans
+        def span_combo():
+            cb = QtWidgets.QComboBox()
+            cb.addItems(["Full", "Left", "Right"])
+            return cb
+
+        # Mid A
+        self.midA_on = QtWidgets.QCheckBox("Pion #1 (midA)"); self.midA_on.setObjectName("midA_on")
+        self.midA_x  = QtWidgets.QSpinBox(); self.midA_x.setRange(1, 5000); self.midA_x.setValue(300); self.midA_x.setObjectName("midA_x")
+        self.midA_full = QtWidgets.QCheckBox("Do góry (pełna wysokość)"); self.midA_full.setChecked(True); self.midA_full.setObjectName("midA_full")
+        self.midA_h  = QtWidgets.QSpinBox(); self.midA_h.setRange(10, 5000); self.midA_h.setValue(720); self.midA_h.setObjectName("midA_h")
+        self.midA_cap = QtWidgets.QComboBox(); self.midA_cap.addItems(["Brak", "Półka", "Dno"]); self.midA_cap.setObjectName("midA_cap")
+        self.midA_span = span_combo(); self.midA_span.setObjectName("midA_span")
+
+        # Mid B
+        self.midB_on = QtWidgets.QCheckBox("Pion #2 (midB)"); self.midB_on.setObjectName("midB_on")
+        self.midB_x  = QtWidgets.QSpinBox(); self.midB_x.setRange(1, 5000); self.midB_x.setValue(420); self.midB_x.setObjectName("midB_x")
+        self.midB_full = QtWidgets.QCheckBox("Do góry (pełna wysokość)"); self.midB_full.setChecked(True); self.midB_full.setObjectName("midB_full")
+        self.midB_h  = QtWidgets.QSpinBox(); self.midB_h.setRange(10, 5000); self.midB_h.setValue(720); self.midB_h.setObjectName("midB_h")
+        self.midB_cap = QtWidgets.QComboBox(); self.midB_cap.addItems(["Brak", "Półka", "Dno"]); self.midB_cap.setObjectName("midB_cap")
+        self.midB_span = span_combo(); self.midB_span.setObjectName("midB_span")
+
+        row = 0
+        gm.addWidget(self.midA_on, row, 0, 1, 2); row += 1
+        gm.addWidget(QtWidgets.QLabel("X (mm)"), row, 0); gm.addWidget(self.midA_x, row, 1); row += 1
+        gm.addWidget(self.midA_full, row, 0, 1, 2); row += 1
+        gm.addWidget(QtWidgets.QLabel("Wysokość (mm) od dołu"), row, 0); gm.addWidget(self.midA_h, row, 1); row += 1
+        gm.addWidget(QtWidgets.QLabel("Nad końcem midA"), row, 0); gm.addWidget(self.midA_cap, row, 1); row += 1
+        gm.addWidget(QtWidgets.QLabel("Cap strona (span)"), row, 0); gm.addWidget(self.midA_span, row, 1); row += 1
+
+        line = QtWidgets.QFrame(); line.setFrameShape(QtWidgets.QFrame.HLine); line.setFrameShadow(QtWidgets.QFrame.Sunken)
+        gm.addWidget(line, row, 0, 1, 2); row += 1
+
+        gm.addWidget(self.midB_on, row, 0, 1, 2); row += 1
+        gm.addWidget(QtWidgets.QLabel("X2 (mm)"), row, 0); gm.addWidget(self.midB_x, row, 1); row += 1
+        gm.addWidget(self.midB_full, row, 0, 1, 2); row += 1
+        gm.addWidget(QtWidgets.QLabel("Wysokość2 (mm) od dołu"), row, 0); gm.addWidget(self.midB_h, row, 1); row += 1
+        gm.addWidget(QtWidgets.QLabel("Nad końcem midB"), row, 0); gm.addWidget(self.midB_cap, row, 1); row += 1
+        gm.addWidget(QtWidgets.QLabel("Cap strona (span)"), row, 0); gm.addWidget(self.midB_span, row, 1); row += 1
+
+        note = QtWidgets.QLabel(
+            "Cap (Półka/Dno) można ograniczyć do LEWEJ/PRAWEJ strony mid.\n"
+            "Następny krok: segmenty + półki tylko w wybranym segmencie (jak moduły)."
+        )
+        note.setStyleSheet("color: #666; font-size: 11px;")
+        gm.addWidget(note, row, 0, 1, 2)
+
+        self.secMid.contentLayout.addWidget(mid)
+        leftLay.addWidget(self.secMid)
+
+        leftLay.addStretch(1)
+
+        leftScroll = QtWidgets.QScrollArea()
+        leftScroll.setWidgetResizable(True)
+        leftScroll.setWidget(leftWrap)
+
+        # CENTER (view)
+        center = QtWidgets.QWidget()
+        cLay = QtWidgets.QVBoxLayout(center)
+        cLay.setContentsMargins(0, 0, 0, 0)
+        title = QtWidgets.QLabel("Widok (proto)")
+        title.setStyleSheet("font-weight:800;")
+        cLay.addWidget(title)
+
+        self.scene = QtWidgets.QGraphicsScene(self)
+        self.view = QtWidgets.QGraphicsView(self.scene)
+        self.view.setRenderHint(QtGui.QPainter.Antialiasing, True)
+        cLay.addWidget(self.view, 1)
+
+        # RIGHT (BOM)
+        right = QtWidgets.QWidget()
+        rLay = QtWidgets.QVBoxLayout(right)
+        rLay.setContentsMargins(0, 0, 0, 0)
+        rTitle = QtWidgets.QLabel("BOM (proto)")
+        rTitle.setStyleSheet("font-weight:800;")
+        self.bom = QtWidgets.QPlainTextEdit()
+        self.bom.setReadOnly(True)
+        rLay.addWidget(rTitle)
+        rLay.addWidget(self.bom, 1)
+
+        self.split.addWidget(leftScroll)
+        self.split.addWidget(center)
+        self.split.addWidget(right)
+        self.split.setStretchFactor(0, 0)
+        self.split.setStretchFactor(1, 1)
+        self.split.setStretchFactor(2, 0)
+        self.split.setSizes([380, 720, 320])
+
+        self._sync_mid_controls()
+
+    def _wire(self):
+        for sp in (
+            self.w, self.h, self.d,
+            self.posL, self.posR, self.posT, self.posB,
+            self.midA_x, self.midA_h, self.midB_x, self.midB_h,
+        ):
+            sp.valueChanged.connect(self._recalc)
+
+        self.anchor.currentIndexChanged.connect(self._recalc)
+        self.btnZero.clicked.connect(self._zero)
+
+        for cb in (self.midA_on, self.midB_on, self.midA_full, self.midB_full):
+            cb.toggled.connect(self._on_mid_toggle)
+
+        self.midA_cap.currentIndexChanged.connect(self._recalc)
+        self.midB_cap.currentIndexChanged.connect(self._recalc)
+        self.midA_span.currentIndexChanged.connect(self._recalc)
+        self.midB_span.currentIndexChanged.connect(self._recalc)
+
+    def _zero(self):
+        self.posL.setValue(0)
+        self.posR.setValue(0)
+        self.posT.setValue(0)
+        self.posB.setValue(0)
+
+    def _set_ok(self, ok: bool, msg: str = "OK"):
+        if ok:
+            self.status.setText("OK")
+            self.status.setStyleSheet(
+                "QLabel{padding:4px 10px;border-radius:10px;background:#d7ffe1;color:#000;font-weight:700;}"
+            )
+        else:
+            self.status.setText("ERR")
+            self.status.setStyleSheet(
+                "QLabel{padding:4px 10px;border-radius:10px;background:#ffd6d6;color:#000;font-weight:700;}"
+            )
+            self.bom.setPlainText(msg)
+
+    def _on_mid_toggle(self, *_):
+        self._sync_mid_controls()
+        self._recalc()
+
+    def _sync_mid_controls(self):
+        # enable/disable fields depending on "on" + "full height"
+        def sync(on, full, x, h, cap, span):
+            en = on.isChecked()
+            x.setEnabled(en)
+            full.setEnabled(en)
+            partial = en and (not full.isChecked())
+            h.setEnabled(partial)
+            cap.setEnabled(partial)
+            # span only matters when partial AND cap != Brak
+            span.setEnabled(partial and (cap.currentText() != "Brak"))
+
+        sync(self.midA_on, self.midA_full, self.midA_x, self.midA_h, self.midA_cap, self.midA_span)
+        sync(self.midB_on, self.midB_full, self.midB_x, self.midB_h, self.midB_cap, self.midB_span)
+
+    @staticmethod
+    def _segments_from_mids(ow: float, scale: float, mids_x_mm: list[int]) -> list[tuple[float, float]]:
+        # compute segments based on active mid x positions (in mm)
+        xs = [0.0, float(ow)]
+        for x_mm in mids_x_mm:
+            x = float(x_mm) * scale
+            if 0.0 < x < float(ow):
+                xs.append(x)
+        xs = sorted(set(xs))
+        segs = []
+        for i in range(len(xs) - 1):
+            a, b = xs[i], xs[i + 1]
+            if b - a >= 1.0:
+                segs.append((a, b))
+        return segs
+
+    def _draw_mid_and_cap(self, ow, oh, scale, x_mm: int, full: bool, h_mm: int, cap: str, span: str):
+        """Draw vertical mid and optional cap line with span."""
+        pen_mid = QtGui.QPen(QtGui.QColor(80, 140, 255), 2)   # blue
+        pen_cap = QtGui.QPen(QtGui.QColor(255, 120, 120), 2)  # red-ish
+
+        x = float(x_mm) * scale
+        x = max(0.0, min(float(ow), float(x)))
+
+        if full:
+            y_top = 0.0
+        else:
+            h = max(1, h_mm) * scale
+            h = max(1.0, min(float(oh), float(h)))
+            y_top = float(oh) - float(h)
+
+        # mid line
+        self.scene.addLine(x, y_top, x, float(oh), pen_mid)
+
+        # cap line at end of mid (only when mid is not full)
+        if (not full) and cap and cap != "Brak":
+            if span == "Left":
+                x1, x2 = 0.0, x
+            elif span == "Right":
+                x1, x2 = x, float(ow)
+            else:
+                x1, x2 = 0.0, float(ow)
+
+            # avoid zero-length
+            if abs(x2 - x1) >= 1.0:
+                self.scene.addLine(x1, y_top, x2, y_top, pen_cap)
+
+        return y_top, x
+
+    def _recalc(self):
+        try:
+            W, H, D = self.w.value(), self.h.value(), self.d.value()
+            L, R, T, B = self.posL.value(), self.posR.value(), self.posT.value(), self.posB.value()
+
+            # view: front "opening" rectangle
+            self.scene.clear()
+            scale = 0.60
+
+            ow = max(1, (W - L - R)) * scale
+            oh = max(1, (H - T - B)) * scale
+
+            rect = QtCore.QRectF(0, 0, ow, oh)
+            self.scene.addRect(rect, QtGui.QPen(QtGui.QColor(40, 40, 40), 2))
+            self.scene.setSceneRect(rect.adjusted(-20, -20, 20, 20))
+
+            # keep UI enabled states in sync (cap span depends on cap!=Brak)
+            self._sync_mid_controls()
+
+            mids_info = []
+            mids_x_for_segments = []
+
+            # mid A
+            if self.midA_on.isChecked():
+                ytop, x = self._draw_mid_and_cap(
+                    ow, oh, scale,
+                    x_mm=self.midA_x.value(),
+                    full=self.midA_full.isChecked(),
+                    h_mm=self.midA_h.value(),
+                    cap=self.midA_cap.currentText(),
+                    span=self.midA_span.currentText(),
+                )
+                mids_x_for_segments.append(self.midA_x.value())
+                mids_info.append(("midA", self.midA_x.value(), self.midA_full.isChecked(), self.midA_h.value(),
+                                  self.midA_cap.currentText(), self.midA_span.currentText(), ytop))
+
+            # mid B
+            if self.midB_on.isChecked():
+                ytop, x = self._draw_mid_and_cap(
+                    ow, oh, scale,
+                    x_mm=self.midB_x.value(),
+                    full=self.midB_full.isChecked(),
+                    h_mm=self.midB_h.value(),
+                    cap=self.midB_cap.currentText(),
+                    span=self.midB_span.currentText(),
+                )
+                mids_x_for_segments.append(self.midB_x.value())
+                mids_info.append(("midB", self.midB_x.value(), self.midB_full.isChecked(), self.midB_h.value(),
+                                  self.midB_cap.currentText(), self.midB_span.currentText(), ytop))
+
+            # segments foundation (for "modules": shelves/drawers/fronts per segment)
+            segs = self._segments_from_mids(ow, scale, mids_x_for_segments)
+
+            # BOM text
+            txt = []
+            txt.append(f"W/H/D: {W} / {H} / {D}")
+            txt.append(f"Offsets L/R/T/B: {L} / {R} / {T} / {B}")
+            txt.append(f"Anchor: {self.anchor.currentText()}")
+            txt.append("")
+            txt.append("Segments (foundation for future 'modules'):")
+            if not segs:
+                txt.append(" - one segment: FULL")
+            else:
+                for i, (a, b) in enumerate(segs, 1):
+                    # convert back to mm approx:
+                    a_mm = int(round(a / scale))
+                    b_mm = int(round(b / scale))
+                    txt.append(f" - S{i}: {a_mm}..{b_mm} mm")
+
+            txt.append("")
+            txt.append("Mids + cap:")
+            if not mids_info:
+                txt.append(" - (none)")
+            else:
+                for name, x, full, hval, cap, span, ytop in mids_info:
+                    if full:
+                        txt.append(f" - {name}: X={x} mm, full height")
+                    else:
+                        if cap != "Brak":
+                            txt.append(f" - {name}: X={x} mm, height={hval} mm, cap={cap}, span={span}")
+                        else:
+                            txt.append(f" - {name}: X={x} mm, height={hval} mm, cap=Brak")
+
+            txt.append("")
+            txt.append("NEXT (small steps): półki jako 'modules' przypięte do segmentu (S1/S2/...).")
+            self.bom.setPlainText("\n".join(txt))
+
+            self._set_ok(True)
+        except Exception:
+            import traceback
+            self._set_ok(False, traceback.format_exc())

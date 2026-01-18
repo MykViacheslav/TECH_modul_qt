@@ -1,0 +1,53 @@
+﻿from __future__ import annotations
+
+from PySide6 import QtCore, QtWidgets
+
+
+class CollapsibleSection(QtWidgets.QWidget):
+    """
+    Stable collapsible section:
+    - always provides .contentLayout (compat)
+    - collapses content properly (no ghost space)
+    - safe API: addWidget/addLayout
+    """
+    def __init__(self, title: str = "", parent=None):
+        super().__init__(parent)
+
+        self._btn = QtWidgets.QToolButton(self)
+        self._btn.setText(title)
+        self._btn.setCheckable(True)
+        self._btn.setChecked(True)
+        self._btn.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+        self._btn.setArrowType(QtCore.Qt.DownArrow)
+        self._btn.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+
+        # container for content
+        self.content = QtWidgets.QWidget(self)
+        self.content.setVisible(True)
+
+        # IMPORTANT: keep this name for compatibility with existing code
+        self.contentLayout = QtWidgets.QVBoxLayout(self.content)
+        self.contentLayout.setContentsMargins(0, 0, 0, 0)
+        self.contentLayout.setSpacing(6)
+
+        root = QtWidgets.QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(6)
+        root.addWidget(self._btn)
+        root.addWidget(self.content)
+
+        self._btn.clicked.connect(self._toggle)
+
+    # convenience helpers
+    def addWidget(self, w: QtWidgets.QWidget):
+        self.contentLayout.addWidget(w)
+
+    def addLayout(self, lay: QtWidgets.QLayout):
+        self.contentLayout.addLayout(lay)
+
+    def _toggle(self):
+        on = self._btn.isChecked()
+        self.content.setVisible(on)
+        self._btn.setArrowType(QtCore.Qt.DownArrow if on else QtCore.Qt.RightArrow)
+        # ensure parent layouts recalc
+        self.updateGeometry()
