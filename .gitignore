@@ -14,3 +14,9 @@ _undo/
 
 # backupy
 *.bak_*
+.venv/
+__pycache__/
+*.pyc
+data/*.db
+_handoff/
+_undo/
