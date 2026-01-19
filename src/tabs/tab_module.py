@@ -69,6 +69,8 @@ class ModuleTab(QtWidgets.QWidget):
         # whenever formatki changed -> update ctx.state + notify tree
         if bus is not None and hasattr(bus, "formatki_changed"):
             bus.formatki_changed.connect(self._sync_state_from_ui)
+        if bus is not None and hasattr(bus, "formatka_selected"):
+            bus.formatka_selected.connect(self._on_formatka_selected)
 
         self._ensure_state()
 
@@ -154,6 +156,11 @@ class ModuleTab(QtWidgets.QWidget):
     def _on_load_requested(self, anchor: str):
         self.edAnchor.setText(str(anchor or ""))
         self.load_module()
+
+    def _on_formatka_selected(self, _fid: str):
+        idx = self.subtabs.indexOf(self.paneFormatki)
+        if idx >= 0:
+            self.subtabs.setCurrentIndex(idx)
 
     def load_module(self):
         anchor = (self.edAnchor.text() or "").strip()
