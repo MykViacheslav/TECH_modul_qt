@@ -1,0 +1,76 @@
+GITHUB - SHVYDKYI START DLA TECH_modul
+Aktualizacja: 2026-03-15
+
+Shcho vzhe zrobleno lokalno:
+- git repo vzhe stvorene v папci projektu
+- glavna gilka: main
+- pershyi local commit vzhe ye
+- .gitignore i .gitattributes vzhe nalashtovani
+
+Faily, yaki varto znaty:
+- .gitignore
+- .gitattributes
+- GITHUB_SETUP_PL.txt
+- tools/github_first_push.ps1
+
+Shcho ne yde do GitHub:
+- .venv/
+- data/
+- archiw/
+- qa_flow_screens*
+- qa_flow_data*
+- pytest_*.txt
+- lokalni backup-faily typu *.bak
+
+SHCHO TOBI TREBA ZROBYTY ZARAZ
+
+KROK 1 - stvory private repo na GitHub
+- zailohynsya na GitHub
+- natisny "New repository"
+- nazva, napryklad: TECH_modul
+- repo ma buty PRIVATE
+- ne dodavai README, .gitignore abo license na GitHub
+
+KROK 2 - vkopiiui URL repo
+Pryklad:
+https://github.com/TWOJ_LOGIN/TECH_modul.git
+
+KROK 3 - vykonai push z tsoho kompiutera
+Variant A - ruchno:
+
+Set-Location "C:\PythonProject\TECH_modul"
+git remote add origin https://github.com/TWOJ_LOGIN/TECH_modul.git
+git push -u origin main
+
+Variant B - hotovym skryptom:
+
+Set-Location "C:\PythonProject\TECH_modul"
+.\tools\github_first_push.ps1 -RepoUrl "https://github.com/TWOJ_LOGIN/TECH_modul.git"
+
+KROK 4 - na drugomu kompiuteri
+
+git clone https://github.com/TWOJ_LOGIN/TECH_modul.git
+
+Potim:
+- stvory lokalno .venv
+- vstanovy zalezhnosti
+- pratsyui z kodom
+
+SHCHODENNA PRATsIA
+
+Pislia bilshykh zmin:
+
+git add .
+git commit -m "korotkyi opys zmin"
+git push
+
+Na drugomu kompiuteri pered robotou:
+
+git pull
+
+VAZHLYVO
+
+- tse repo potribne dlia roboty nad prohramoiu i synchronizatsii mizh kompiuteramy
+- repo ma buty private
+- ne zberihai tam spravzhni klientski dani, yakshcho tse ne potribno
+- yakshcho piznishe zakhochete synkhnizuvaty shche i robochi bazy danykh, tse treba robyty okremo
