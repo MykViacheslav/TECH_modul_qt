@@ -1,0 +1,30 @@
+GITHUB - 2 KOMPYUTERY
+
+1. STVORY PRIVATE REPO NA GITHUB
+- nazva: TECH_modul
+- nic ne dodavai z GitHub
+
+2. PERSHYI KOMPYUTER
+
+Set-Location "C:\PythonProject\TECH_modul"
+git remote add origin https://github.com/TWOJ_LOGIN/TECH_modul.git
+git push -u origin main
+
+3. DRUHYI KOMPYUTER
+
+git clone https://github.com/TWOJ_LOGIN/TECH_modul.git
+
+4. ROBOTA DALI
+
+Pislia zmin:
+git add .
+git commit -m "korotkyi opys zmin"
+git push
+
+Na drugomu kompiuteri pered robotou:
+git pull
+
+5. VAZHLYVO
+
+- repo ma buty private
+- .venv i data ne ydut do GitHub
