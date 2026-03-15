@@ -1,0 +1,1 @@
+# Pakiet: blok / taby zwiazane z rysunkiem i preview.

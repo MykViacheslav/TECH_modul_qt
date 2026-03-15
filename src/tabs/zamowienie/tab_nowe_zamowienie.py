@@ -1,0 +1,1151 @@
+from __future__ import annotations
+
+from collections import defaultdict
+
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QComboBox,
+    QFrame,
+    QFormLayout,
+    QHBoxLayout,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QTextEdit,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+
+from src.app.app_settings import load_drawing_settings
+from src.domain.assembly_resolution_service import resolve_assembly_items
+from src.domain.client_models import ClientDef
+from src.domain.order_models import OrderDef
+from src.domain.worker_models import WorkerDef
+from src.storage.assembly_store_json import AssemblyStoreJson
+from src.storage.catalog_store_json import CatalogStoreJson
+from src.storage.client_store_json import ClientStoreJson
+from src.storage.order_draft_store_json import OrderDraftStoreJson
+from src.storage.order_store_json import OrderStoreJson
+from src.storage.wall_store_json import WallStoreJson
+from src.storage.worker_store_json import WorkerStoreJson
+from src.ui.collapsible_block import CollapsibleBlock
+
+
+ORDER_STATUS_ITEMS: tuple[str, ...] = (
+    "Nowe",
+    "Wycena",
+    "W produkcji",
+    "Gotowe",
+    "Zakonczone",
+)
+
+
+class TabNoweZamowienie(QWidget):
+    sig_open_clients_base_requested = pyqtSignal()
+    sig_open_orders_base_requested = pyqtSignal()
+    sig_open_workers_base_requested = pyqtSignal()
+    sig_open_sciana_requested = pyqtSignal(dict)
+    sig_open_existing_sciana_requested = pyqtSignal(str)
+
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        client_store: ClientStoreJson | None = None,
+        order_store: OrderStoreJson | None = None,
+        worker_store: WorkerStoreJson | None = None,
+        wall_store: WallStoreJson | None = None,
+        assembly_store: AssemblyStoreJson | None = None,
+        catalog: CatalogStoreJson | None = None,
+        draft_store: OrderDraftStoreJson | None = None,
+    ) -> None:
+        super().__init__(parent)
+
+        self._client_store = client_store if client_store is not None else ClientStoreJson()
+        self._order_store = order_store if order_store is not None else OrderStoreJson()
+        self._worker_store = worker_store if worker_store is not None else WorkerStoreJson()
+        self._wall_store = wall_store if wall_store is not None else WallStoreJson()
+        self._assembly_store = assembly_store if assembly_store is not None else AssemblyStoreJson()
+        self._catalog = catalog if catalog is not None else CatalogStoreJson()
+        self._draft_store = draft_store if draft_store is not None else OrderDraftStoreJson()
+        self._is_restoring_draft = False
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(18, 18, 18, 18)
+        root.setSpacing(14)
+
+        title = QLabel("NOWE ZAMOWIENIE")
+        title.setStyleSheet("font-size: 22px; font-weight: 800; letter-spacing: 0.5px;")
+        root.addWidget(title, 0, Qt.AlignmentFlag.AlignLeft)
+
+        subtitle = QLabel(
+            "To jest osobna karta robocza. Tutaj wpisujesz dane klienta, zamowienia i pracownika, "
+            "a program zapisuje je bezposrednio do odpowiednich baz."
+        )
+        subtitle.setWordWrap(True)
+        subtitle.setStyleSheet("color:#555555;")
+        root.addWidget(subtitle, 0, Qt.AlignmentFlag.AlignLeft)
+
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        root.addWidget(self.scroll_area, 1)
+
+        self.page_widget = QWidget(self.scroll_area)
+        self.scroll_area.setWidget(self.page_widget)
+
+        page_root = QVBoxLayout(self.page_widget)
+        page_root.setContentsMargins(0, 0, 0, 0)
+        page_root.setSpacing(14)
+
+        body = QVBoxLayout()
+        body.setSpacing(12)
+        page_root.addLayout(body, 1)
+        self.body_layout = body
+
+        self.grp_client = CollapsibleBlock("Klient", self)
+        self.grp_order = CollapsibleBlock("Zamowienie", self)
+        self.grp_worker = CollapsibleBlock("Pracownik", self)
+        self.grp_actions = CollapsibleBlock("Akcje", self)
+        self.grp_walls = CollapsibleBlock("Sciany zamowienia", self)
+        self.grp_summary = CollapsibleBlock("Podsumowanie zamowienia", self)
+
+        body.addWidget(self.grp_client)
+        body.addWidget(self.grp_order)
+        body.addWidget(self.grp_worker)
+        body.addWidget(self.grp_actions)
+        body.addWidget(self.grp_walls)
+        body.addWidget(self.grp_summary)
+        body.addStretch(1)
+
+        for block in (
+            self.grp_client,
+            self.grp_order,
+            self.grp_worker,
+            self.grp_actions,
+            self.grp_walls,
+            self.grp_summary,
+        ):
+            block.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+
+        self._build_client_group()
+        self._build_order_group()
+        self._build_worker_group()
+        self._build_actions_group()
+        self._build_walls_group()
+        self._build_summary_group()
+
+        self.grp_worker.set_expanded(False)
+
+        self.lab_status = QLabel("")
+        self.lab_status.setWordWrap(True)
+        self.lab_status.setStyleSheet("color:#666666;")
+        page_root.addWidget(self.lab_status)
+
+        page_root.addStretch(1)
+
+        self.cb_client_name.currentTextChanged.connect(self._on_client_name_changed)
+        self.cb_worker_name.currentTextChanged.connect(self._on_worker_name_changed)
+        self.ed_order_code.textChanged.connect(self._refresh_summary)
+        self.cb_order_status.currentTextChanged.connect(self._refresh_summary)
+        self.ed_order_address.textChanged.connect(self._refresh_summary)
+        self.ed_client_phone.textChanged.connect(self._refresh_summary)
+        self.ed_client_email.textChanged.connect(self._refresh_summary)
+        self.ed_client_city.textChanged.connect(self._refresh_summary)
+        self.ed_worker_role.textChanged.connect(self._refresh_summary)
+        self.ed_worker_phone.textChanged.connect(self._refresh_summary)
+        self.ed_worker_email.textChanged.connect(self._refresh_summary)
+
+        self.btn_pick_client.clicked.connect(self._on_pick_client_from_base)
+        self.btn_save_client.clicked.connect(self._on_save_client_to_base)
+        self.btn_pick_order.clicked.connect(self._on_pick_order_from_base)
+        self.btn_save_order.clicked.connect(self._on_save_order_to_base)
+        self.btn_pick_worker.clicked.connect(self._on_pick_worker_from_base)
+        self.btn_save_worker.clicked.connect(self._on_save_worker_to_base)
+        self.btn_open_clients_base.clicked.connect(self.sig_open_clients_base_requested.emit)
+        self.btn_open_orders_base.clicked.connect(self.sig_open_orders_base_requested.emit)
+        self.btn_open_workers_base.clicked.connect(self.sig_open_workers_base_requested.emit)
+        self.btn_go_to_sciana.clicked.connect(self._on_go_to_sciana)
+        self.btn_save_new.clicked.connect(self._on_save_new)
+        self.btn_overwrite_all.clicked.connect(self._on_overwrite_all)
+        self.btn_save_draft.clicked.connect(lambda: self._save_draft(show_status=True))
+        self.btn_clear.clicked.connect(lambda: self.start_new_order(force_blank=True))
+        self.btn_new_wall.clicked.connect(self._on_go_to_sciana)
+        self.btn_open_wall.clicked.connect(self._on_open_selected_wall)
+        self.btn_refresh_walls.clicked.connect(self._refresh_order_walls_table)
+        self.tbl_walls.itemSelectionChanged.connect(self._on_walls_selection_changed)
+        self.tbl_walls.itemDoubleClicked.connect(lambda _item: self._on_open_selected_wall())
+
+        self.start_new_order()
+
+    def _build_client_group(self) -> None:
+        layout = self.grp_client.content_layout()
+
+        top = QHBoxLayout()
+        self.cb_client_name = QComboBox(self.grp_client)
+        self.cb_client_name.setEditable(True)
+        self.btn_pick_client = QPushButton("Wybierz z bazy", self.grp_client)
+        self.btn_save_client = QPushButton("Zapisz klienta", self.grp_client)
+        self.btn_open_clients_base = QPushButton("Bazy", self.grp_client)
+        self._make_compact_button(self.btn_pick_client, min_width=120, max_width=150)
+        self._make_compact_button(self.btn_save_client, min_width=120, max_width=150)
+        self._make_compact_button(self.btn_open_clients_base, min_width=70, max_width=90)
+        top.addWidget(self.cb_client_name, 1)
+        top.addWidget(self.btn_pick_client, 0)
+        top.addWidget(self.btn_save_client, 0)
+        top.addWidget(self.btn_open_clients_base, 0)
+        layout.addLayout(top)
+
+        form = QFormLayout()
+        self.ed_client_phone = QLineEdit(self.grp_client)
+        self.ed_client_email = QLineEdit(self.grp_client)
+        self.ed_client_city = QLineEdit(self.grp_client)
+        self.ed_client_notes = QTextEdit(self.grp_client)
+        self.ed_client_notes.setMaximumHeight(90)
+        form.addRow("Telefon", self.ed_client_phone)
+        form.addRow("E-mail", self.ed_client_email)
+        form.addRow("Miasto", self.ed_client_city)
+        form.addRow("Notatki", self.ed_client_notes)
+        layout.addLayout(form)
+
+        note = QLabel(
+            "Mozesz od razu wybrac klienta z bazy albo wpisac nowego i zapisac go tutaj, bez przechodzenia do innej zakladki."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color:#666666;")
+        layout.addWidget(note)
+
+    def _build_order_group(self) -> None:
+        layout = self.grp_order.content_layout()
+
+        top = QHBoxLayout()
+        self.btn_pick_order = QPushButton("Wczytaj z bazy", self.grp_order)
+        self.btn_save_order = QPushButton("Zapisz zamowienie", self.grp_order)
+        self.btn_open_orders_base = QPushButton("Bazy", self.grp_order)
+        self._make_compact_button(self.btn_pick_order, min_width=120, max_width=150)
+        self._make_compact_button(self.btn_save_order, min_width=130, max_width=160)
+        self._make_compact_button(self.btn_open_orders_base, min_width=70, max_width=90)
+        top.addStretch(1)
+        top.addWidget(self.btn_pick_order, 0)
+        top.addWidget(self.btn_save_order, 0)
+        top.addWidget(self.btn_open_orders_base, 0)
+        layout.addLayout(top)
+
+        form = QFormLayout()
+        self.ed_order_code = QLineEdit(self.grp_order)
+        self.cb_order_status = QComboBox(self.grp_order)
+        for item in ORDER_STATUS_ITEMS:
+            self.cb_order_status.addItem(item)
+        self.ed_order_address = QLineEdit(self.grp_order)
+        self.ed_order_notes = QTextEdit(self.grp_order)
+        self.ed_order_notes.setMaximumHeight(110)
+        form.addRow("Kod", self.ed_order_code)
+        form.addRow("Status", self.cb_order_status)
+        form.addRow("Adres realizacji", self.ed_order_address)
+        form.addRow("Notatki", self.ed_order_notes)
+        layout.addLayout(form)
+
+    def _build_worker_group(self) -> None:
+        layout = self.grp_worker.content_layout()
+
+        top = QHBoxLayout()
+        self.cb_worker_name = QComboBox(self.grp_worker)
+        self.cb_worker_name.setEditable(True)
+        self.btn_pick_worker = QPushButton("Wybierz z bazy", self.grp_worker)
+        self.btn_save_worker = QPushButton("Zapisz pracownika", self.grp_worker)
+        self.btn_open_workers_base = QPushButton("Bazy", self.grp_worker)
+        self._make_compact_button(self.btn_pick_worker, min_width=120, max_width=150)
+        self._make_compact_button(self.btn_save_worker, min_width=130, max_width=160)
+        self._make_compact_button(self.btn_open_workers_base, min_width=70, max_width=90)
+        top.addWidget(self.cb_worker_name, 1)
+        top.addWidget(self.btn_pick_worker, 0)
+        top.addWidget(self.btn_save_worker, 0)
+        top.addWidget(self.btn_open_workers_base, 0)
+        layout.addLayout(top)
+
+        form = QFormLayout()
+        self.ed_worker_role = QLineEdit(self.grp_worker)
+        self.ed_worker_phone = QLineEdit(self.grp_worker)
+        self.ed_worker_email = QLineEdit(self.grp_worker)
+        self.ed_worker_notes = QTextEdit(self.grp_worker)
+        self.ed_worker_notes.setMaximumHeight(90)
+        form.addRow("Rola", self.ed_worker_role)
+        form.addRow("Telefon", self.ed_worker_phone)
+        form.addRow("E-mail", self.ed_worker_email)
+        form.addRow("Notatki", self.ed_worker_notes)
+        layout.addLayout(form)
+
+        note = QLabel(
+            "Mozesz wybrac pracownika z bazy albo dopisac go tutaj i od razu zapisac do bazy."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color:#666666;")
+        layout.addWidget(note)
+
+    def _build_actions_group(self) -> None:
+        layout = self.grp_actions.content_layout()
+
+        info = QLabel(
+            "Zapisz nowe tworzy brakujace wpisy w bazach. Nadpisz wszystko aktualizuje klienta, pracownika i zamowienie wedlug biezacej karty."
+        )
+        info.setWordWrap(True)
+        info.setStyleSheet("color:#444444;")
+        layout.addWidget(info)
+
+        btns = QHBoxLayout()
+        self.btn_save_draft = QPushButton("Zapisz roboczo", self.grp_actions)
+        self.btn_save_new = QPushButton("Zapisz nowe", self.grp_actions)
+        self.btn_overwrite_all = QPushButton("Nadpisz wszystko", self.grp_actions)
+        self.btn_clear = QPushButton("Wyczysc karte", self.grp_actions)
+        self.btn_go_to_sciana = QPushButton("Dalej: Sciana", self.grp_actions)
+        for button in (
+            self.btn_save_draft,
+            self.btn_save_new,
+            self.btn_overwrite_all,
+            self.btn_clear,
+            self.btn_go_to_sciana,
+        ):
+            self._make_compact_button(button, min_width=130, max_width=160)
+            btns.addWidget(button, 0)
+        btns.addStretch(1)
+        layout.addLayout(btns)
+
+    def _build_walls_group(self) -> None:
+        layout = self.grp_walls.content_layout()
+
+        note = QLabel(
+            "Jedno zamowienie moze miec wiele scian. Tutaj widzisz wszystkie sciany powiazane z biezacym kodem zamowienia."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color:#555555;")
+        layout.addWidget(note)
+
+        btns = QHBoxLayout()
+        self.btn_new_wall = QPushButton("Dodaj nowa sciane", self.grp_walls)
+        self.btn_open_wall = QPushButton("Otworz zaznaczona", self.grp_walls)
+        self.btn_refresh_walls = QPushButton("Odswiez sciany", self.grp_walls)
+        for button in (self.btn_new_wall, self.btn_open_wall, self.btn_refresh_walls):
+            self._make_compact_button(button, min_width=140, max_width=170)
+            btns.addWidget(button, 0)
+        btns.addStretch(1)
+        layout.addLayout(btns)
+
+        self.tbl_walls = QTableWidget(0, 4, self.grp_walls)
+        self.tbl_walls.setHorizontalHeaderLabels(["Sciana", "Typ", "Przeszkody", "Widok"])
+        self.tbl_walls.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tbl_walls.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.tbl_walls.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl_walls.verticalHeader().setVisible(False)
+        self.tbl_walls.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.tbl_walls)
+
+    def _build_summary_group(self) -> None:
+        layout = self.grp_summary.content_layout()
+
+        note = QLabel(
+            "Tutaj widzisz, co jest juz zapisane w tym zamowieniu: liczbe scian, kompletow, koszty "
+            "kazdego kompletu osobno, laczne podsumowanie oraz liste materialow policzona ze wszystkich zapisanych kompletow."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color:#555555;")
+        layout.addWidget(note)
+
+        self.lab_summary = QLabel("")
+        self.lab_summary.setWordWrap(True)
+        self.lab_summary.setStyleSheet("color:#444444;")
+        layout.addWidget(self.lab_summary)
+
+        self.lab_cost_summary = QLabel("")
+        self.lab_cost_summary.setWordWrap(True)
+        self.lab_cost_summary.setStyleSheet("color:#1f1f1f; font-weight:600;")
+        layout.addWidget(self.lab_cost_summary)
+
+        assemblies_title = QLabel("Komplety w zamowieniu")
+        assemblies_title.setStyleSheet("font-weight:600; color:#333333;")
+        layout.addWidget(assemblies_title)
+
+        self.tbl_order_assemblies = QTableWidget(0, 6, self.grp_summary)
+        self.tbl_order_assemblies.setHorizontalHeaderLabels(
+            ["Komplet", "Sciana", "Moduly", "Materialy", "Okleina", "RAZEM"]
+        )
+        self.tbl_order_assemblies.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tbl_order_assemblies.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.tbl_order_assemblies.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl_order_assemblies.verticalHeader().setVisible(False)
+        self.tbl_order_assemblies.horizontalHeader().setStretchLastSection(True)
+        self.tbl_order_assemblies.setMinimumHeight(150)
+        layout.addWidget(self.tbl_order_assemblies)
+
+        materials_title = QLabel("Materialy w calym zamowieniu")
+        materials_title.setStyleSheet("font-weight:600; color:#333333;")
+        layout.addWidget(materials_title)
+
+        self.tbl_order_materials = QTableWidget(0, 4, self.grp_summary)
+        self.tbl_order_materials.setHorizontalHeaderLabels(["Material", "Szt", "m2", "Koszt"])
+        self.tbl_order_materials.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tbl_order_materials.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.tbl_order_materials.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl_order_materials.verticalHeader().setVisible(False)
+        self.tbl_order_materials.horizontalHeader().setStretchLastSection(True)
+        self.tbl_order_materials.setMinimumHeight(160)
+        layout.addWidget(self.tbl_order_materials)
+
+    def _make_compact_button(self, button: QPushButton, min_width: int = 120, max_width: int = 160) -> None:
+        button.setMinimumWidth(min_width)
+        button.setMaximumWidth(max_width)
+        button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
+    def start_new_order(self, force_blank: bool = False) -> None:
+        if not force_blank and self._load_draft(show_status=False):
+            self.lab_status.clear()
+            self.ed_order_code.setFocus()
+            return
+
+        if force_blank:
+            self._draft_store.clear()
+
+        self._reload_client_choices()
+        self._reload_worker_choices()
+
+        self.cb_client_name.setCurrentText("")
+        self.ed_client_phone.clear()
+        self.ed_client_email.clear()
+        self.ed_client_city.clear()
+        self.ed_client_notes.clear()
+
+        self.ed_order_code.clear()
+        self.cb_order_status.setCurrentIndex(0)
+        self.ed_order_address.clear()
+        self.ed_order_notes.clear()
+
+        self.cb_worker_name.setCurrentText("")
+        self.ed_worker_role.clear()
+        self.ed_worker_phone.clear()
+        self.ed_worker_email.clear()
+        self.ed_worker_notes.clear()
+
+        self.lab_status.clear()
+        self._refresh_summary()
+        self.ed_order_code.setFocus()
+        self._refresh_order_walls_table()
+
+        if force_blank:
+            self._set_status("Wyczyszczono karte i zapis roboczy.", ok=True)
+
+    def start_new_order_from_context(self, context: dict | None = None) -> None:
+        payload = context if isinstance(context, dict) else {}
+
+        client_name = str(payload.get("client_name", "") or "").strip()
+        order_name = str(payload.get("order_name", "") or "").strip()
+        worker_name = str(payload.get("worker_name", "") or "").strip()
+        order_status = str(payload.get("order_status", "") or "").strip()
+        site_address = str(payload.get("site_address", "") or "").strip()
+
+        self._reload_client_choices()
+        self._reload_worker_choices()
+
+        client = self._client_store.get(client_name) if client_name else None
+        worker = self._worker_store.get(worker_name) if worker_name else None
+        order = self._order_store.get(order_name) if order_name else None
+
+        self._is_restoring_draft = True
+        try:
+            self.cb_client_name.setCurrentText(client_name)
+            self.ed_client_phone.setText(str(getattr(client, "phone", "") or ""))
+            self.ed_client_email.setText(str(getattr(client, "email", "") or ""))
+            self.ed_client_city.setText(str(getattr(client, "city", "") or ""))
+            self.ed_client_notes.setPlainText(str(getattr(client, "notes", "") or ""))
+
+            self.ed_order_code.setText(order_name)
+            effective_status = str(getattr(order, "status", "") or order_status or ORDER_STATUS_ITEMS[0])
+            idx = self.cb_order_status.findText(effective_status)
+            self.cb_order_status.setCurrentIndex(idx if idx >= 0 else 0)
+            self.ed_order_address.setText(str(getattr(order, "site_address", "") or site_address))
+            self.ed_order_notes.setPlainText(str(getattr(order, "notes", "") or ""))
+
+            self.cb_worker_name.setCurrentText(worker_name)
+            self.ed_worker_role.setText(str(getattr(worker, "role", "") or ""))
+            self.ed_worker_phone.setText(str(getattr(worker, "phone", "") or ""))
+            self.ed_worker_email.setText(str(getattr(worker, "email", "") or ""))
+            self.ed_worker_notes.setPlainText(str(getattr(worker, "notes", "") or ""))
+        finally:
+            self._is_restoring_draft = False
+
+        self._refresh_summary()
+        self._save_draft(show_status=False)
+        self.ed_order_code.setFocus()
+        self._set_status("Przywrocono dane zamowienia z kompletu.", ok=True)
+
+    def _refresh_summary(self) -> None:
+        client_name = self.cb_client_name.currentText().strip() or "-"
+        order_code = self.ed_order_code.text().strip() or "-"
+        worker_name = self.cb_worker_name.currentText().strip() or "-"
+        status_name = self.cb_order_status.currentText().strip() or "-"
+        wall_count = len(self._current_order_wall_names())
+        assembly_count = len(self._current_order_assemblies())
+        self.lab_summary.setText(
+            f"Klient: {client_name}\n"
+            f"Zamowienie: {order_code}\n"
+            f"Status: {status_name}\n"
+            f"Pracownik: {worker_name}\n"
+            f"Sciany zapisane: {wall_count}\n"
+            f"Komplety zapisane: {assembly_count}"
+        )
+        self._refresh_order_walls_table()
+        self._refresh_order_cost_summary()
+        self._autosave_draft()
+
+    def _current_order_wall_names(self) -> list[str]:
+        order_code = str(self.ed_order_code.text().strip())
+        client_name = str(self.cb_client_name.currentText().strip())
+        if not order_code:
+            return []
+
+        names: list[str] = []
+        for wall in self._wall_store.list_layouts():
+            wall_order = str(getattr(wall, "order_name", "") or "").strip()
+            wall_client = str(getattr(wall, "client_name", "") or "").strip()
+            if wall_order != order_code:
+                continue
+            if client_name and wall_client and wall_client != client_name:
+                continue
+            names.append(str(getattr(wall, "name", "") or "").strip())
+        return names
+
+    def _current_order_assemblies(self):
+        order_code = str(self.ed_order_code.text().strip())
+        client_name = str(self.cb_client_name.currentText().strip())
+        if not order_code:
+            return []
+
+        assemblies = []
+        for assembly in self._assembly_store.list_assemblies():
+            assembly_order = str(getattr(assembly, "order_name", "") or "").strip()
+            assembly_client = str(getattr(assembly, "client_name", "") or "").strip()
+            if assembly_order != order_code:
+                continue
+            if client_name and assembly_client and assembly_client != client_name:
+                continue
+            assemblies.append(assembly)
+        return assemblies
+
+    def _refresh_order_cost_summary(self) -> None:
+        if (
+            not hasattr(self, "lab_cost_summary")
+            or not hasattr(self, "tbl_order_materials")
+            or not hasattr(self, "tbl_order_assemblies")
+        ):
+            return
+
+        assemblies = self._current_order_assemblies()
+        wall_count = len(self._current_order_wall_names())
+        auto_double_width = float(load_drawing_settings().auto_double_front_width_mm or 600.0)
+
+        material_total = 0.0
+        edgeband_total = 0.0
+        hardware_total = 0.0
+        modules_total = 0
+        assembly_rows: list[dict[str, float | int | str]] = []
+        material_acc: dict[str, dict[str, float | str]] = defaultdict(
+            lambda: {"label": "", "count": 0.0, "area": 0.0, "cost": 0.0}
+        )
+
+        for assembly in assemblies:
+            wall_name = str(getattr(assembly, "wall_name", "") or "").strip()
+            linked_wall = self._wall_store.get(wall_name) if wall_name else None
+            resolved_items = resolve_assembly_items(
+                assembly,
+                self._catalog,
+                auto_double_front_width_mm=auto_double_width,
+                linked_wall=linked_wall,
+            )
+            assembly_modules = len(resolved_items)
+            modules_total += assembly_modules
+            assembly_material_total = 0.0
+            assembly_edgeband_total = 0.0
+            assembly_hardware_total = 0.0
+
+            for resolved in resolved_items:
+                breakdown = resolved.cost_breakdown
+                resolved_material_total = float(breakdown.material_total_pln)
+                resolved_edgeband_total = float(breakdown.edgeband_total_pln)
+                resolved_hardware_total = float(breakdown.hardware_total_pln)
+
+                material_total += resolved_material_total
+                edgeband_total += resolved_edgeband_total
+                hardware_total += resolved_hardware_total
+
+                assembly_material_total += resolved_material_total
+                assembly_edgeband_total += resolved_edgeband_total
+                assembly_hardware_total += resolved_hardware_total
+
+                for line in breakdown.material_lines:
+                    entry = material_acc[str(line.key or "-")]
+                    entry["label"] = str(line.label or line.key or "-")
+                    entry["count"] = float(entry["count"]) + float(line.count)
+                    entry["area"] = float(entry["area"]) + float(line.area_m2)
+                    entry["cost"] = float(entry["cost"]) + float(line.cost_pln)
+
+            assembly_rows.append(
+                {
+                    "name": str(getattr(assembly, "name", "") or "-"),
+                    "wall_name": str(getattr(assembly, "wall_name", "") or "-"),
+                    "modules": int(assembly_modules),
+                    "material_total": float(assembly_material_total),
+                    "edgeband_total": float(assembly_edgeband_total),
+                    "hardware_total": float(assembly_hardware_total),
+                    "grand_total": float(
+                        assembly_material_total + assembly_edgeband_total + assembly_hardware_total
+                    ),
+                }
+            )
+
+        grand_total = material_total + edgeband_total + hardware_total
+
+        if assemblies:
+            assembly_names = ", ".join(str(getattr(item, "name", "") or "-") for item in assemblies[:4])
+            if len(assemblies) > 4:
+                assembly_names += ", ..."
+            self.lab_cost_summary.setText(
+                f"Sciany: {wall_count}\n"
+                f"Komplety: {len(assemblies)}\n"
+                f"Moduly w kompletach: {modules_total}\n"
+                f"Materialy: {material_total:.2f} zl\n"
+                f"Okleina: {edgeband_total:.2f} zl\n"
+                f"Okucia: {hardware_total:.2f} zl\n"
+                f"RAZEM: {grand_total:.2f} zl\n"
+                f"Komplety w zamowieniu: {assembly_names}"
+            )
+        else:
+            self.lab_cost_summary.setText(
+                f"Sciany: {wall_count}\n"
+                "Komplety: 0\n"
+                "Materialy: 0.00 zl\n"
+                "Okleina: 0.00 zl\n"
+                "Okucia: 0.00 zl\n"
+                "RAZEM: 0.00 zl\n"
+                "Brak zapisanych kompletow dla tego zamowienia."
+            )
+
+        assembly_rows = sorted(
+            assembly_rows,
+            key=lambda item: (
+                -float(item["grand_total"]),
+                str(item["name"]).lower(),
+            ),
+        )
+        self.tbl_order_assemblies.setRowCount(len(assembly_rows))
+        for row, entry in enumerate(assembly_rows):
+            items = (
+                QTableWidgetItem(str(entry["name"] or "-")),
+                QTableWidgetItem(str(entry["wall_name"] or "-")),
+                QTableWidgetItem(str(int(entry["modules"]))),
+                QTableWidgetItem(f'{float(entry["material_total"]):.2f} zl'),
+                QTableWidgetItem(f'{float(entry["edgeband_total"]):.2f} zl'),
+                QTableWidgetItem(f'{float(entry["grand_total"]):.2f} zl'),
+            )
+            for col, item in enumerate(items):
+                self.tbl_order_assemblies.setItem(row, col, item)
+
+        rows = sorted(
+            material_acc.values(),
+            key=lambda item: (
+                -float(item["cost"]),
+                str(item["label"]).lower(),
+            ),
+        )
+        self.tbl_order_materials.setRowCount(len(rows))
+        for row, entry in enumerate(rows):
+            items = (
+                QTableWidgetItem(str(entry["label"] or "-")),
+                QTableWidgetItem(str(int(round(float(entry["count"]))))),
+                QTableWidgetItem(f'{float(entry["area"]):.3f}'),
+                QTableWidgetItem(f'{float(entry["cost"]):.2f} zl'),
+            )
+            for col, item in enumerate(items):
+                self.tbl_order_materials.setItem(row, col, item)
+
+        self.tbl_order_assemblies.resizeColumnsToContents()
+        self.tbl_order_materials.resizeColumnsToContents()
+
+    def _refresh_order_walls_table(self) -> None:
+        if not hasattr(self, "tbl_walls"):
+            return
+
+        selected_name = self._selected_wall_name()
+        walls = []
+        for wall_name in self._current_order_wall_names():
+            wall = self._wall_store.get(wall_name)
+            if wall is not None:
+                walls.append(wall)
+
+        self.tbl_walls.setRowCount(len(walls))
+        for row, wall in enumerate(walls):
+            obstacle_count = len(getattr(wall, "obstacles", []) or [])
+            layout_label = str(getattr(wall, "layout_type", "line") or "line")
+            if layout_label == "line":
+                layout_label = "Prosta"
+            elif layout_label == "l":
+                layout_label = "L"
+            elif layout_label == "c":
+                layout_label = "C"
+
+            view_side = str(getattr(wall, "front_view_wall_side", "A") or "A").strip() or "A"
+            items = (
+                QTableWidgetItem(str(getattr(wall, "name", "") or "")),
+                QTableWidgetItem(layout_label),
+                QTableWidgetItem(str(obstacle_count)),
+                QTableWidgetItem(f"Sciana {view_side}"),
+            )
+            for col, item in enumerate(items):
+                item.setData(Qt.ItemDataRole.UserRole, str(getattr(wall, "name", "") or ""))
+                self.tbl_walls.setItem(row, col, item)
+
+        if walls:
+            target_name = selected_name if selected_name else str(getattr(walls[0], "name", "") or "")
+            for row in range(self.tbl_walls.rowCount()):
+                row_name = str(self.tbl_walls.item(row, 0).data(Qt.ItemDataRole.UserRole) or "")
+                if row_name == target_name:
+                    self.tbl_walls.selectRow(row)
+                    break
+        self._on_walls_selection_changed()
+
+    def _selected_wall_name(self) -> str:
+        rows = self.tbl_walls.selectionModel().selectedRows() if self.tbl_walls.selectionModel() is not None else []
+        if not rows:
+            return ""
+        item = self.tbl_walls.item(int(rows[0].row()), 0)
+        if item is None:
+            return ""
+        return str(item.data(Qt.ItemDataRole.UserRole) or "").strip()
+
+    def _on_walls_selection_changed(self) -> None:
+        self.btn_open_wall.setEnabled(bool(self._selected_wall_name()))
+
+    def _draft_payload(self) -> dict[str, str]:
+        return {
+            "client_name": str(self.cb_client_name.currentText().strip()),
+            "client_phone": str(self.ed_client_phone.text().strip()),
+            "client_email": str(self.ed_client_email.text().strip()),
+            "client_city": str(self.ed_client_city.text().strip()),
+            "client_notes": str(self.ed_client_notes.toPlainText().strip()),
+            "order_code": str(self.ed_order_code.text().strip()),
+            "order_status": str(self.cb_order_status.currentText().strip()),
+            "order_address": str(self.ed_order_address.text().strip()),
+            "order_notes": str(self.ed_order_notes.toPlainText().strip()),
+            "worker_name": str(self.cb_worker_name.currentText().strip()),
+            "worker_role": str(self.ed_worker_role.text().strip()),
+            "worker_phone": str(self.ed_worker_phone.text().strip()),
+            "worker_email": str(self.ed_worker_email.text().strip()),
+            "worker_notes": str(self.ed_worker_notes.toPlainText().strip()),
+        }
+
+    def _has_meaningful_draft(self, payload: dict[str, str]) -> bool:
+        values = [str(value or "").strip() for value in payload.values()]
+        return any(values)
+
+    def _save_draft(self, show_status: bool) -> bool:
+        if self._is_restoring_draft:
+            return False
+        payload = self._draft_payload()
+        self._draft_store.save(payload)
+        if show_status:
+            self._set_status("Zapisano karte robocza zamowienia.", ok=True)
+        return True
+
+    def _load_draft(self, show_status: bool) -> bool:
+        payload = self._draft_store.load()
+        if not self._has_meaningful_draft(payload):
+            return False
+
+        self._is_restoring_draft = True
+        try:
+            self._reload_client_choices()
+            self._reload_worker_choices()
+            self.cb_client_name.setCurrentText(str(payload.get("client_name", "") or ""))
+            self.ed_client_phone.setText(str(payload.get("client_phone", "") or ""))
+            self.ed_client_email.setText(str(payload.get("client_email", "") or ""))
+            self.ed_client_city.setText(str(payload.get("client_city", "") or ""))
+            self.ed_client_notes.setPlainText(str(payload.get("client_notes", "") or ""))
+
+            self.ed_order_code.setText(str(payload.get("order_code", "") or ""))
+            order_status = str(payload.get("order_status", "") or "")
+            idx = self.cb_order_status.findText(order_status)
+            self.cb_order_status.setCurrentIndex(idx if idx >= 0 else 0)
+            self.ed_order_address.setText(str(payload.get("order_address", "") or ""))
+            self.ed_order_notes.setPlainText(str(payload.get("order_notes", "") or ""))
+
+            self.cb_worker_name.setCurrentText(str(payload.get("worker_name", "") or ""))
+            self.ed_worker_role.setText(str(payload.get("worker_role", "") or ""))
+            self.ed_worker_phone.setText(str(payload.get("worker_phone", "") or ""))
+            self.ed_worker_email.setText(str(payload.get("worker_email", "") or ""))
+            self.ed_worker_notes.setPlainText(str(payload.get("worker_notes", "") or ""))
+        finally:
+            self._is_restoring_draft = False
+
+        self._refresh_summary()
+        if show_status:
+            self._set_status("Przywrocono zapis roboczy zamowienia.", ok=True)
+        return True
+
+    def _autosave_draft(self) -> None:
+        if self._is_restoring_draft:
+            return
+        self._draft_store.save(self._draft_payload())
+
+    def _reload_client_choices(self) -> None:
+        current = self.cb_client_name.currentText().strip()
+        self.cb_client_name.blockSignals(True)
+        try:
+            self.cb_client_name.clear()
+            self.cb_client_name.addItem("")
+            for name in self._client_store.list_names():
+                self.cb_client_name.addItem(name)
+            self.cb_client_name.setCurrentText(current)
+        finally:
+            self.cb_client_name.blockSignals(False)
+
+    def _reload_worker_choices(self) -> None:
+        current = self.cb_worker_name.currentText().strip()
+        self.cb_worker_name.blockSignals(True)
+        try:
+            self.cb_worker_name.clear()
+            self.cb_worker_name.addItem("")
+            for name in self._worker_store.list_names():
+                self.cb_worker_name.addItem(name)
+            self.cb_worker_name.setCurrentText(current)
+        finally:
+            self.cb_worker_name.blockSignals(False)
+
+    def _on_client_name_changed(self, text: str) -> None:
+        client = self._client_store.get(str(text or "").strip())
+        if client is None:
+            self._refresh_summary()
+            return
+        self.ed_client_phone.setText(client.phone)
+        self.ed_client_email.setText(client.email)
+        self.ed_client_city.setText(client.city)
+        self.ed_client_notes.setPlainText(client.notes)
+        self._refresh_summary()
+
+    def _on_worker_name_changed(self, text: str) -> None:
+        worker = self._worker_store.get(str(text or "").strip())
+        if worker is None:
+            self._refresh_summary()
+            return
+        self.ed_worker_role.setText(worker.role)
+        self.ed_worker_phone.setText(worker.phone)
+        self.ed_worker_email.setText(worker.email)
+        self.ed_worker_notes.setPlainText(worker.notes)
+        self._refresh_summary()
+
+    def _client_from_form(self) -> ClientDef:
+        return ClientDef(
+            name=str(self.cb_client_name.currentText().strip()),
+            phone=str(self.ed_client_phone.text().strip()),
+            email=str(self.ed_client_email.text().strip()),
+            city=str(self.ed_client_city.text().strip()),
+            notes=str(self.ed_client_notes.toPlainText().strip()),
+        )
+
+    def _worker_from_form(self) -> WorkerDef:
+        return WorkerDef(
+            name=str(self.cb_worker_name.currentText().strip()),
+            role=str(self.ed_worker_role.text().strip()),
+            phone=str(self.ed_worker_phone.text().strip()),
+            email=str(self.ed_worker_email.text().strip()),
+            notes=str(self.ed_worker_notes.toPlainText().strip()),
+        )
+
+    def _order_from_form(self) -> OrderDef:
+        return OrderDef(
+            code=str(self.ed_order_code.text().strip()),
+            client_name=str(self.cb_client_name.currentText().strip()),
+            worker_name=str(self.cb_worker_name.currentText().strip()),
+            status=str(self.cb_order_status.currentText().strip() or "Nowe"),
+            site_address=str(self.ed_order_address.text().strip()),
+            notes=str(self.ed_order_notes.toPlainText().strip()),
+        )
+
+    def current_order_context(self) -> dict[str, str]:
+        order = self._order_from_form()
+        return {
+            "client_name": str(order.client_name or "").strip(),
+            "order_name": str(order.code or "").strip(),
+            "worker_name": str(order.worker_name or "").strip(),
+            "order_status": str(order.status or "").strip(),
+            "site_address": str(order.site_address or "").strip(),
+        }
+
+    def _set_status(self, message: str, ok: bool) -> None:
+        color = "#2d6a4f" if ok else "#b42318"
+        self.lab_status.setStyleSheet(f"color:{color};")
+        self.lab_status.setText(str(message or ""))
+        self._refresh_summary()
+
+    def _save_client(self, overwrite: bool) -> tuple[bool, str]:
+        client = self._client_from_form()
+        if not client.name:
+            return False, "Podaj nazwe klienta."
+        if overwrite:
+            result = self._client_store.overwrite(client)
+        else:
+            existing = self._client_store.get(client.name)
+            result = self._client_store.overwrite(client) if existing is not None else self._client_store.save_new(client)
+        self._reload_client_choices()
+        self.cb_client_name.setCurrentText(client.name)
+        return result.ok, result.message_pl
+
+    def _save_worker(self, overwrite: bool) -> tuple[bool, str]:
+        worker = self._worker_from_form()
+        if not worker.name:
+            return False, "Podaj nazwe pracownika."
+        if overwrite:
+            result = self._worker_store.overwrite(worker)
+        else:
+            existing = self._worker_store.get(worker.name)
+            result = self._worker_store.overwrite(worker) if existing is not None else self._worker_store.save_new(worker)
+        self._reload_worker_choices()
+        self.cb_worker_name.setCurrentText(worker.name)
+        return result.ok, result.message_pl
+
+    def _save_order(self, overwrite: bool) -> tuple[bool, str]:
+        order = self._order_from_form()
+        if not order.code:
+            return False, "Podaj kod zamowienia."
+        if not order.client_name:
+            return False, "Wybierz klienta albo wpisz nowego klienta."
+        if overwrite:
+            result = self._order_store.overwrite(order)
+        else:
+            existing = self._order_store.get(order.code)
+            result = self._order_store.overwrite(order) if existing is not None else self._order_store.save_new(order)
+        return result.ok, result.message_pl
+
+    def _on_save_client_to_base(self) -> None:
+        ok, message = self._save_client(overwrite=False)
+        self._set_status(message, ok=ok)
+
+    def _on_save_worker_to_base(self) -> None:
+        ok, message = self._save_worker(overwrite=False)
+        self._set_status(message, ok=ok)
+
+    def _on_save_order_to_base(self) -> None:
+        client_ok, client_message = self._save_client(overwrite=False)
+        if not client_ok:
+            self._set_status(client_message, ok=False)
+            return
+        worker_name = self.cb_worker_name.currentText().strip()
+        messages = [client_message]
+        if worker_name:
+            worker_ok, worker_message = self._save_worker(overwrite=False)
+            if not worker_ok:
+                self._set_status(worker_message, ok=False)
+                return
+            messages.append(worker_message)
+        order_ok, order_message = self._save_order(overwrite=False)
+        messages.append(order_message)
+        self._set_status("\n".join(messages), ok=order_ok)
+
+    def _on_pick_client_from_base(self) -> None:
+        names = self._client_store.list_names()
+        if not names:
+            self._set_status("Baza klientow jest pusta.", ok=False)
+            return
+        picked, ok = QInputDialog.getItem(
+            self,
+            "Wybierz klienta",
+            "Klient z bazy:",
+            names,
+            0,
+            False,
+        )
+        if not ok:
+            return
+        self.cb_client_name.setCurrentText(str(picked or ""))
+
+    def _on_pick_worker_from_base(self) -> None:
+        names = self._worker_store.list_names()
+        if not names:
+            self._set_status("Baza pracownikow jest pusta.", ok=False)
+            return
+        picked, ok = QInputDialog.getItem(
+            self,
+            "Wybierz pracownika",
+            "Pracownik z bazy:",
+            names,
+            0,
+            False,
+        )
+        if not ok:
+            return
+        self.cb_worker_name.setCurrentText(str(picked or ""))
+
+    def _on_pick_order_from_base(self) -> None:
+        codes = self._order_store.list_codes()
+        if not codes:
+            self._set_status("Baza zamowien jest pusta.", ok=False)
+            return
+        picked, ok = QInputDialog.getItem(
+            self,
+            "Wczytaj zamowienie",
+            "Kod zamowienia:",
+            codes,
+            0,
+            False,
+        )
+        if not ok:
+            return
+        order = self._order_store.get(str(picked or ""))
+        if order is None:
+            self._set_status("Nie udalo sie wczytac zamowienia.", ok=False)
+            return
+        self.ed_order_code.setText(order.code)
+        self.cb_client_name.setCurrentText(order.client_name)
+        self.cb_worker_name.setCurrentText(order.worker_name)
+        idx = self.cb_order_status.findText(order.status)
+        self.cb_order_status.setCurrentIndex(idx if idx >= 0 else 0)
+        self.ed_order_address.setText(order.site_address)
+        self.ed_order_notes.setPlainText(order.notes)
+        self._set_status(f'Wczytano zamowienie "{order.code}".', ok=True)
+
+    def _ensure_context_saved_for_next_step(self) -> tuple[bool, str]:
+        client_name = self.cb_client_name.currentText().strip()
+        worker_name = self.cb_worker_name.currentText().strip()
+        order_code = self.ed_order_code.text().strip()
+
+        messages: list[str] = []
+
+        if client_name:
+            ok, message = self._save_client(overwrite=False)
+            if not ok:
+                return False, message
+            messages.append(message)
+
+        if worker_name:
+            ok, message = self._save_worker(overwrite=False)
+            if not ok:
+                return False, message
+            messages.append(message)
+
+        if order_code and client_name:
+            ok, message = self._save_order(overwrite=False)
+            if not ok:
+                return False, message
+            messages.append(message)
+
+        return True, "\n".join([msg for msg in messages if msg])
+
+    def _on_go_to_sciana(self) -> None:
+        ok, message = self._ensure_context_saved_for_next_step()
+        if not ok:
+            self._set_status(message, ok=False)
+            return
+        self._save_draft(show_status=False)
+        if message:
+            self._set_status(message, ok=True)
+        self.sig_open_sciana_requested.emit(self.current_order_context())
+
+    def _on_open_selected_wall(self) -> None:
+        wall_name = self._selected_wall_name()
+        if not wall_name:
+            self._set_status("Wybierz sciane z listy tego zamowienia.", ok=False)
+            return
+        self.sig_open_existing_sciana_requested.emit(wall_name)
+
+    def _validate_required(self) -> tuple[bool, str]:
+        order = self._order_from_form()
+        if not order.code:
+            return False, "Podaj kod zamowienia."
+        if not order.client_name:
+            return False, "Wybierz klienta albo wpisz nowego klienta."
+        return True, ""
+
+    def _on_save_new(self) -> None:
+        is_valid, message = self._validate_required()
+        if not is_valid:
+            self._set_status(message, ok=False)
+            return
+
+        client = self._client_from_form()
+        worker = self._worker_from_form()
+        order = self._order_from_form()
+
+        if self._order_store.get(order.code) is not None:
+            self._set_status(f'Zamowienie "{order.code}" juz istnieje. Uzyj "Nadpisz wszystko".', ok=False)
+            return
+
+        messages: list[str] = []
+
+        if client.name:
+            if self._client_store.get(client.name) is None:
+                result = self._client_store.save_new(client)
+                if not result.ok:
+                    self._set_status(result.message_pl, ok=False)
+                    return
+                messages.append(result.message_pl)
+            else:
+                messages.append(f'Klient "{client.name}" zostal powiazany z wpisem z bazy.')
+
+        if worker.name:
+            if self._worker_store.get(worker.name) is None:
+                result = self._worker_store.save_new(worker)
+                if not result.ok:
+                    self._set_status(result.message_pl, ok=False)
+                    return
+                messages.append(result.message_pl)
+            else:
+                messages.append(f'Pracownik "{worker.name}" zostal powiazany z wpisem z bazy.')
+
+        result = self._order_store.save_new(order)
+        if not result.ok:
+            self._set_status(result.message_pl, ok=False)
+            return
+        messages.append(result.message_pl)
+
+        self._reload_client_choices()
+        self._reload_worker_choices()
+        self._save_draft(show_status=False)
+        self._set_status("\n".join(messages), ok=True)
+
+    def _on_overwrite_all(self) -> None:
+        is_valid, message = self._validate_required()
+        if not is_valid:
+            self._set_status(message, ok=False)
+            return
+
+        client = self._client_from_form()
+        worker = self._worker_from_form()
+        order = self._order_from_form()
+
+        messages: list[str] = []
+
+        if client.name:
+            result = self._client_store.overwrite(client)
+            if not result.ok:
+                self._set_status(result.message_pl, ok=False)
+                return
+            messages.append(result.message_pl)
+
+        if worker.name:
+            result = self._worker_store.overwrite(worker)
+            if not result.ok:
+                self._set_status(result.message_pl, ok=False)
+                return
+            messages.append(result.message_pl)
+
+        result = self._order_store.overwrite(order)
+        if not result.ok:
+            self._set_status(result.message_pl, ok=False)
+            return
+        messages.append(result.message_pl)
+
+        self._reload_client_choices()
+        self._reload_worker_choices()
+        self._save_draft(show_status=False)
+        self._set_status("\n".join(messages), ok=True)

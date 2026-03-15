@@ -1,0 +1,233 @@
+PLAN ETAPOW - TECH_modul
+Aktualizacja: 2026-03-15
+
+Legenda:
+- [DONE] zrobione
+- [IN PROGRESS] w toku
+- [TODO] do zrobienia
+
+--------------------------------------------------
+STAN OGOLNY
+--------------------------------------------------
+
+[DONE] Podstawowy przeplyw:
+- Start
+- Nowe zamowienie
+- Sciana
+- Komplet
+- Modul
+- Bazy
+- Ustawienia
+
+[DONE] Bazy:
+- moduly
+- sciany
+- komplety
+- klienci
+- zamowienia
+- pracownicy
+- materialy
+
+[DONE] Zapisywanie i wczytywanie:
+- modul
+- sciana
+- komplet
+- roboczy zapis nowego zamowienia
+
+[DONE] Powiazania danych:
+- klient
+- zamowienie
+- pracownik
+- sciana
+- komplet
+
+[DONE] Materialy / okleina / okucia:
+- grupowe materialy
+- grupowe okleiny
+- material override dla detalu
+- koszt modulu
+- koszt kompletu
+
+[DONE] Podstawy pracy na preview:
+- drag i drop modulu do kompletu
+- przestawianie modulu
+- offset poziomy
+- pozycja pionowa
+- tryb od gory / od dolu
+- fronty widoczne w komplecie
+
+[DONE] Ostatnia poprawka:
+- poprawiona skala glebokosci modulu w "Rzut z gory" w karcie Komplet
+
+
+--------------------------------------------------
+ETAP 1 - UX I CZYTELNOSC EKRANOW ROBOCZYCH
+--------------------------------------------------
+
+Status: [IN PROGRESS]
+
+Cel:
+- poprawic czytelnosc i spokoj pracy w kartach:
+  - Modul
+  - Sciana
+  - Komplet
+  - Nowe zamowienie
+
+Zrobione w Etapie 1:
+[DONE] Modul:
+- poprawki preview
+- widoczne offsety wiencow
+- drag wiencow
+- poprawki czytelnosci etykiet i wymiarow
+
+[DONE] Sciana:
+- osobne widoki przod / gora
+- przeszkody i ich edycja
+- parametry sciany
+- poprawki czytelnosci summary
+- blok "Zapis i przejscie"
+
+[DONE] Komplet:
+- osobne widoki przod / gora
+- aktywny widok
+- poprawki drag modurow
+- poprawki frontow
+- poprawki podgladu sciany
+- poprawki pozycji modulu
+- poprawki skali top view
+- poprawione podstawowe snapy:
+  - doklejanie do boku sasiedniego modulu
+  - wyrownanie lewego boku przy ukladzie modul pod modulem
+- poprawione zachowanie drag:
+  - pozycja modulu zapisuje sie poprawnie po puszczeniu myszy
+  - modul moze snapowac pionowo pod lub nad sasiednim modulem
+- czytelniejszy aktywny modul:
+  - mocniejszy focus na zaznaczonym module
+  - wyrazniejsze wymiary aktywnego modulu
+- uproszczona prawa kolumna:
+  - krotsza lista modulow
+  - blok "Aktywny modul" zamiast czysto technicznej pozycji
+  - prawa kolumna ma przewijanie, wiec dolne bloki sa zawsze dostepne
+- spokojniejszy preview:
+  - lzejsze tlo sciany i stref
+  - spokojniejsze przeszkody
+  - mocniejszy fokus na samych modulach
+- prawdziwa praca w "Rzut z gory":
+  - offset po dlugosci sciany
+  - offset od sciany
+  - drag modulu w dwóch osiach w top view
+
+[DONE] Nowe zamowienie:
+- zwijane sekcje
+- podsumowanie kosztow
+- lista scian zamowienia
+- koszty kompletow osobno
+
+Jeszcze do zrobienia w Etapie 1:
+[TODO] Komplet:
+- dalej delikatnie doszlifowac snapy / magnesy pod odczucie pracy myszka
+- dopracowac "modul pod modulem" i prace modul-do-modulu
+- dopracowac zachowanie nowo dodawanego modulu w top view (startowa pozycja / ewentualny drop z offsetem od sciany)
+
+[TODO] Sciana:
+- dalsze dopracowanie skali i centrowania
+- uproszczenie podpisow i gestosci informacji
+- spokojniejszy wyglad przeszkod
+
+[TODO] Nowe zamowienie:
+- jeszcze lzejszy, bardziej projektowy wyglad
+- czytelniejszy podzial na sciany i komplety
+
+
+--------------------------------------------------
+ETAP 2 - STATUSY I KALENDARZ PRAC
+--------------------------------------------------
+
+Status: [TODO]
+
+Do wdrozenia:
+- statusy zamowienia:
+  - wycena
+  - zaakceptowane
+  - produkcja
+  - rozkroj
+  - oklejanie
+  - lakiernia
+  - montaz
+  - poprawki
+  - zamkniete
+- osobna karta "Kalendarz"
+- przypisanie terminow do:
+  - zamowienia
+  - sciany
+  - kompletu
+  - pracownika
+
+
+--------------------------------------------------
+ETAP 3 - RENTOWNOSC I FINANSE
+--------------------------------------------------
+
+Status: [TODO]
+
+Do wdrozenia:
+- koszt materialow
+- koszt okleiny
+- koszt okuc
+- koszt robocizny
+- koszt lakierni
+- koszt montazu
+- cena sprzedazy
+- rabat
+- marza
+- zysk
+- wynik po komplecie
+- wynik po zamowieniu
+
+
+--------------------------------------------------
+ETAP 4 - OFERTA DLA KLIENTA
+--------------------------------------------------
+
+Status: [TODO]
+
+Do wdrozenia:
+- warianty oferty:
+  - economy
+  - standard
+  - premium
+- oferta PDF
+- archiwum wersji oferty
+- podsumowanie:
+  - scian
+  - kompletow
+  - materialow
+  - ceny koncowej
+
+
+--------------------------------------------------
+ETAP 5 - DASHBOARD FIRMY
+--------------------------------------------------
+
+Status: [TODO]
+
+Do wdrozenia:
+- liczba wycen
+- liczba aktywnych zamowien
+- zlecenia w produkcji
+- zlecenia na montazu
+- wartosc sprzedazy
+- koszt
+- marza
+- wynik firmy
+- obciazenie pracownikow
+
+
+--------------------------------------------------
+NAJBLIZSZY PRAKTYCZNY KROK
+--------------------------------------------------
+
+[IN PROGRESS] Domknac Etap 1, zaczynajac od:
+- dalszego uspokojenia karty Komplet
+- poprawy magnesow / snapow
+- dopracowania pracy modul-do-modulu

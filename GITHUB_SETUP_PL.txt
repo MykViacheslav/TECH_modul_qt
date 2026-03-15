@@ -1,0 +1,84 @@
+GITHUB SETUP - TECH_modul
+Aktualizacja: 2026-03-15
+
+Cel:
+- trzymac kod aplikacji w prywatnym repo GitHub
+- synchronizowac prace miedzy komputerami
+- nie wrzucac lokalnych baz, screenshotow, logow i .venv
+
+Co juz jest przygotowane:
+- .gitignore jest ustawiony pod ten projekt
+- do repo powinny isc glownie:
+  - src/
+  - tests/
+  - tools/ (bez zipow i archiwow)
+  - requirements.txt
+  - pytest.ini
+  - README_PL.md
+  - PLAN_ETAPOW.txt
+  - GITHUB_SETUP_PL.txt
+
+Co NIE powinno isc do GitHub:
+- .venv/
+- archiw/
+- qa_flow_screens*
+- qa_flow_data*
+- pytest_*.txt
+- lokalne pliki danych z data/
+
+KROK 1 - utworz prywatne repo na GitHub
+- zaloguj sie na GitHub
+- kliknij New repository
+- nazwa np. TECH_modul
+- ustaw Private
+- NIE dodawaj README ani .gitignore na GitHub, bo sa juz lokalnie
+
+KROK 2 - zainicjalizuj git lokalnie
+Uruchom PowerShell:
+
+Set-Location "C:\PythonProject\TECH_modul"
+git init
+git branch -M main
+
+KROK 3 - sprawdz co pojdzie do repo
+git status
+
+KROK 4 - pierwszy commit
+git add .
+git commit -m "Initial private backup of TECH_modul"
+
+Jesli git poprosi o imie i e-mail:
+git config --global user.name "Twoje Imie"
+git config --global user.email "twoj@email.pl"
+
+KROK 5 - podepnij GitHub
+Wstaw swoj adres repo:
+
+git remote add origin https://github.com/TWOJ_LOGIN/TECH_modul.git
+git push -u origin main
+
+KROK 6 - drugi komputer
+Na drugim komputerze:
+
+git clone https://github.com/TWOJ_LOGIN/TECH_modul.git
+
+Potem:
+- utworz .venv lokalnie
+- zainstaluj requirements
+- uruchom aplikacje
+
+KROK 7 - codzienna praca
+Po wiekszych zmianach:
+
+git add .
+git commit -m "krotki opis zmian"
+git push
+
+Na drugim komputerze przed praca:
+
+git pull
+
+WAZNE:
+- repo ma byc prywatne
+- nie wrzucaj prawdziwych danych klientow, jesli nie musisz
+- jesli bedziecie chcieli synchronizowac tez dane robocze, zrobimy to osobno i swiadomie

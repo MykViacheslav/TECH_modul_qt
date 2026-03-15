@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Test/cache/tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# IDE
+.idea/
+.vscode/
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+
+# Local temp / scratch
+.qa_tmp_step3/
+tmp/
+temp/
+*.bak
+*.orig
+
+# Runtime app data - local only
+data/
+
+qa_flow_data/
+qa_flow_data_split/
+
+# Screens, archives, snapshots, handoff bundles
+archiw/
+qa_flow_screens/
+qa_flow_screens_live/
+qa_flow_screens_split/
+qa_full_tab_screens/
+tools/handoff_bundle_*/
+tools/*.zip
+
+# Logs and test artifacts
+pytest_*.txt
+pytest_full_output*.txt
+pytest_report*.xml
+
+# OS
+Thumbs.db
+Desktop.ini
