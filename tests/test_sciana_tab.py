@@ -2084,6 +2084,126 @@ def test_sciana_tab_can_apply_bulk_height_and_front_material_to_selected_modules
     assert [dict(item.module.materials or {}).get("front") for item in w._resolved_items] == ["MDF19_LAK", "MDF19_LAK"]
 
 
+def test_sciana_tab_can_ctrl_click_preview_to_multi_select_modules(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    catalog = CatalogStoreJson()
+    store = ModuleStoreJson()
+
+    module_a = ModuleDef(name="CTRL_A", width_mm=600.0, depth_mm=500.0, height_mm=720.0)
+    module_b = ModuleDef(name="CTRL_B", width_mm=800.0, depth_mm=500.0, height_mm=720.0)
+    module_a.parts = build_module_parts(module_a, catalog)
+    module_b.parts = build_module_parts(module_b, catalog)
+    store.save_new(module_a)
+    store.save_new(module_b)
+
+    w = TabSciana(module_store=store)
+    w.show()
+    app.processEvents()
+
+    assert _select_saved_module(w.tree_saved_modules, "CTRL_A")
+    w.btn_add_saved.click()
+    assert _select_saved_module(w.tree_saved_modules, "CTRL_B")
+    w.btn_add_saved.click()
+    app.processEvents()
+
+    first_rect = w.preview.item_scene_rect(0)
+    second_rect = w.preview.item_scene_rect(1)
+    assert first_rect is not None
+    assert second_rect is not None
+
+    first_center = w.preview.mapFromScene(first_rect.center())
+    second_center = w.preview.mapFromScene(second_rect.center())
+
+    QTest.mouseClick(
+        w.preview.viewport(),
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+        first_center,
+    )
+    app.processEvents()
+
+    QTest.mouseClick(
+        w.preview.viewport(),
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.ControlModifier,
+        second_center,
+    )
+    app.processEvents()
+
+    assert w._selected_indexes() == [0, 1]
+    assert "Zaznaczono 2 modulow" in w.lab_active_module_info.text()
+
+
+def test_sciana_tab_can_apply_selected_module_height_from_preview_action(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    catalog = CatalogStoreJson()
+    store = ModuleStoreJson()
+
+    module_a = ModuleDef(
+        name="CTX_A",
+        width_mm=600.0,
+        depth_mm=500.0,
+        height_mm=780.0,
+        materials={"carcass": "PB18", "front": "MDF19_LAK", "back": "HDF2.5"},
+    )
+    module_b = ModuleDef(
+        name="CTX_B",
+        width_mm=800.0,
+        depth_mm=500.0,
+        height_mm=650.0,
+        materials={"carcass": "PB18", "front": "MDF19", "back": "HDF2.5"},
+    )
+    module_a.parts = build_module_parts(module_a, catalog)
+    module_b.parts = build_module_parts(module_b, catalog)
+    store.save_new(module_a)
+    store.save_new(module_b)
+
+    w = TabSciana(module_store=store)
+    w.show()
+    app.processEvents()
+
+    assert _select_saved_module(w.tree_saved_modules, "CTX_A")
+    w.btn_add_saved.click()
+    assert _select_saved_module(w.tree_saved_modules, "CTX_B")
+    w.btn_add_saved.click()
+    app.processEvents()
+
+    selection_model = w.tbl_items.selectionModel()
+    assert selection_model is not None
+    selection_model.clearSelection()
+    flags = QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows
+    selection_model.select(w.tbl_items.model().index(0, 0), flags)
+    selection_model.select(w.tbl_items.model().index(1, 0), flags)
+    app.processEvents()
+
+    w._on_preview_apply_height_to_selected(0)
+    w._on_preview_apply_front_material_to_selected(0)
+    app.processEvents()
+
+    assert [float(item.module.height_mm) for item in w._assembly.items] == [780.0, 780.0]
+    assert [dict(item.module.materials or {}).get("front") for item in w._assembly.items] == ["MDF19_LAK", "MDF19_LAK"]
+
+
 def test_sciana_tab_can_bind_assembly_to_saved_wall_and_metadata(tmp_path, monkeypatch):
     monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TECH_MODUL_TESTING", "1")

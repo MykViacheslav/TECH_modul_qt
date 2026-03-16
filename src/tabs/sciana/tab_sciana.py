@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QPushButton,
     QSplitter,
     QTableWidget,
@@ -369,10 +370,13 @@ class SavedModulesTreeWidget(QTreeWidget):
 class AssemblyPreviewView(QGraphicsView):
     sig_saved_module_dropped = pyqtSignal(str, float)
     sig_module_selected = pyqtSignal(int)
+    sig_module_selection_requested = pyqtSignal(int, bool)
     sig_module_reordered = pyqtSignal(int, int)
     sig_module_offset_changed = pyqtSignal(int, float)
     sig_module_position_changed = pyqtSignal(int, float, float)
     sig_module_top_position_changed = pyqtSignal(int, float, float)
+    sig_apply_module_height_to_selected = pyqtSignal(int)
+    sig_apply_module_front_material_to_selected = pyqtSignal(int)
 
     def __init__(
         self,
@@ -403,6 +407,7 @@ class AssemblyPreviewView(QGraphicsView):
         self._last_assembly: FurnitureAssemblyDef | None = None
         self._last_resolved_items = []
         self._last_selected_index = -1
+        self._last_selected_indexes: list[int] = []
         self._last_wall_width = 100.0
         self._ghost_rect: QRectF | None = None
         self._ghost_label = ""
@@ -1092,6 +1097,7 @@ class AssemblyPreviewView(QGraphicsView):
         linked_wall: WallLayoutDef | None,
         resolved_items,
         selected_index: int,
+        selected_indexes: set[int],
         wall_width: float,
         origin_y: float = 0.0,
         show_label: bool = True,
@@ -1133,7 +1139,7 @@ class AssemblyPreviewView(QGraphicsView):
             rect = QRectF(float(item.x_mm), module_base_y + wall_offset, float(item.width_mm), footprint_h)
             self._top_item_rects.append(QRectF(rect))
 
-            if index == selected_index:
+            if index in selected_indexes:
                 brush = QBrush(QColor("#d9ecff"))
                 pen = QPen(QColor("#1f6ed4"))
             else:
@@ -1618,9 +1624,14 @@ class AssemblyPreviewView(QGraphicsView):
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             scene_pos = self.mapToScene(event.position().toPoint())
+            preserve_selection = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
             if self._view_mode == "top":
                 top_index = self._index_at_scene_pos(scene_pos, self._top_item_rects)
                 if top_index >= 0:
+                    if preserve_selection:
+                        self.sig_module_selection_requested.emit(top_index, True)
+                        event.accept()
+                        return
                     rect = self._top_item_rects[top_index]
                     self._drag_index = top_index
                     self._drag_started = False
@@ -1630,12 +1641,16 @@ class AssemblyPreviewView(QGraphicsView):
                     self._drag_top_offset = float(scene_pos.y() - rect.top())
                     self._front_drag_offset_mm = None
                     self._front_drag_y_mm = None
-                    self.sig_module_selected.emit(top_index)
+                    self.sig_module_selection_requested.emit(top_index, False)
                     event.accept()
                     return
             else:
                 front_index = self._index_at_scene_pos(scene_pos, self._item_rects)
                 if front_index >= 0:
+                    if preserve_selection:
+                        self.sig_module_selection_requested.emit(front_index, True)
+                        event.accept()
+                        return
                     rect = self._item_rects[front_index]
                     self._drag_index = front_index
                     self._drag_started = False
@@ -1645,7 +1660,7 @@ class AssemblyPreviewView(QGraphicsView):
                     self._drag_top_offset = float(scene_pos.y() - rect.top())
                     self._front_drag_offset_mm = None
                     self._front_drag_y_mm = None
-                    self.sig_module_selected.emit(front_index)
+                    self.sig_module_selection_requested.emit(front_index, False)
                     event.accept()
                     return
         super().mousePressEvent(event)
@@ -1784,25 +1799,65 @@ class AssemblyPreviewView(QGraphicsView):
                     self.sig_module_reordered.emit(drag_index, target_index)
                 elif drag_mode == "position_top":
                     self.sig_module_top_position_changed.emit(drag_index, committed_offset_mm, committed_y_mm)
-                    self.sig_module_selected.emit(drag_index)
+                    self.sig_module_selection_requested.emit(drag_index, False)
                 else:
                     self.sig_module_position_changed.emit(drag_index, committed_offset_mm, committed_y_mm)
-                    self.sig_module_selected.emit(drag_index)
+                    self.sig_module_selection_requested.emit(drag_index, False)
             else:
-                self.sig_module_selected.emit(drag_index)
+                self.sig_module_selection_requested.emit(drag_index, False)
             event.accept()
             return
         super().mouseReleaseEvent(event)
+
+    def contextMenuEvent(self, event) -> None:
+        scene_pos = self.mapToScene(event.pos())
+        rects = self._top_item_rects if self._view_mode == "top" else self._item_rects
+        index = self._index_at_scene_pos(scene_pos, rects)
+        if index < 0:
+            super().contextMenuEvent(event)
+            return
+
+        selected_set = set(int(value) for value in self._last_selected_indexes)
+        menu = QMenu(self)
+        act_select_only = menu.addAction("Zaznacz tylko ten modul")
+        if index in selected_set:
+            act_toggle = menu.addAction("Usun ten modul z zaznaczenia")
+        else:
+            act_toggle = menu.addAction("Dodaj ten modul do zaznaczenia (Ctrl)")
+        menu.addSeparator()
+        act_apply_height = menu.addAction("Przepisz wysokosc tego modulu do zaznaczonych")
+        act_apply_front = menu.addAction("Przepisz material frontu do zaznaczonych")
+
+        chosen = menu.exec(self.viewport().mapToGlobal(event.pos()))
+        if chosen == act_select_only:
+            self.sig_module_selection_requested.emit(index, False)
+            event.accept()
+            return
+        if chosen == act_toggle:
+            self.sig_module_selection_requested.emit(index, True)
+            event.accept()
+            return
+        if chosen == act_apply_height:
+            self.sig_apply_module_height_to_selected.emit(index)
+            event.accept()
+            return
+        if chosen == act_apply_front:
+            self.sig_apply_module_front_material_to_selected.emit(index)
+            event.accept()
+            return
+        super().contextMenuEvent(event)
 
     def render_assembly(
         self,
         assembly: FurnitureAssemblyDef,
         resolved_items,
         selected_index: int = -1,
+        selected_indexes: list[int] | None = None,
     ) -> None:
         self._last_assembly = assembly
         self._last_resolved_items = list(resolved_items or [])
         self._last_selected_index = int(selected_index)
+        self._last_selected_indexes = sorted({int(index) for index in (selected_indexes or ([] if selected_index < 0 else [selected_index]))})
 
         self.scene.clear()
         self._item_rects = []
@@ -1818,6 +1873,7 @@ class AssemblyPreviewView(QGraphicsView):
             used_width = max(float(item.x_mm + item.width_mm) for item in resolved_items)
 
         scene_width = max(wall_width, used_width, 100.0)
+        selected_set = set(self._last_selected_indexes)
         if self._view_mode == "top":
             linked_wall = self._linked_wall_for_assembly(assembly)
             _top_origin_y, top_bottom_y = self._draw_top_view_context(
@@ -1825,6 +1881,7 @@ class AssemblyPreviewView(QGraphicsView):
                 linked_wall,
                 resolved_items,
                 selected_index,
+                selected_set,
                 wall_width,
                 origin_y=0.0,
                 show_label=False,
@@ -1884,17 +1941,17 @@ class AssemblyPreviewView(QGraphicsView):
                 elif bool(getattr(item, "has_collision", False)):
                     brush = QBrush(QColor("#ffe6e6"))
                     pen = QPen(QColor("#c62828"))
-                elif index == selected_index:
+                elif index in selected_set:
                     brush = QBrush(QColor("#fff4df"))
                     pen = QPen(QColor("#9a5b17"))
                 else:
                     brush = QBrush(QColor("#fffdf8"))
                     pen = QPen(QColor("#cbbda8"))
 
-                pen.setWidth(4 if index == selected_index else 1)
+                pen.setWidth(4 if index in selected_set else 1)
                 module_item = self.scene.addRect(rect, pen, brush)
                 module_item.setData(0, f"assembly_module__{index}")
-                module_item.setZValue(0.4 if index == selected_index else 0.2)
+                module_item.setZValue(0.4 if index in selected_set else 0.2)
 
                 for shape in self._build_module_front_shapes(item.module, rect):
                     shape_key = str(shape.get("key", "") or "")
@@ -1903,7 +1960,7 @@ class AssemblyPreviewView(QGraphicsView):
                         continue
 
                     shape_pen = QPen(QColor(str(shape.get("pen", "#1f1f1f"))))
-                    shape_pen.setWidth(2 if index == selected_index else 1)
+                    shape_pen.setWidth(2 if index in selected_set else 1)
                     if bool(shape.get("dash", False)):
                         shape_pen.setStyle(Qt.PenStyle.DashLine)
 
@@ -1924,20 +1981,20 @@ class AssemblyPreviewView(QGraphicsView):
                     if shape_key == "back":
                         shape_item.setZValue(0.6)
                     elif shape_key == "front":
-                        shape_item.setZValue(3.8 if index == selected_index else 3.2)
+                        shape_item.setZValue(3.8 if index in selected_set else 3.2)
                     elif shape_key.startswith("shelf_") or shape_key.startswith("divider_"):
-                        shape_item.setZValue(3.4 if index == selected_index else 2.8)
+                        shape_item.setZValue(3.4 if index in selected_set else 2.8)
                     elif shape_key.startswith("front_drawer_split_") or shape_key == "front_split_line" or shape_key.startswith("front_handle_"):
-                        shape_item.setZValue(4.2 if index == selected_index else 3.6)
+                        shape_item.setZValue(4.2 if index in selected_set else 3.6)
                     else:
-                        shape_item.setZValue(2.6 if index == selected_index else 2.2)
+                        shape_item.setZValue(2.6 if index in selected_set else 2.2)
 
-                    if index != selected_index and shape_key != "front":
+                    if index not in selected_set and shape_key != "front":
                         try:
                             shape_item.setOpacity(0.88)
                         except Exception:
                             pass
-                    elif index != selected_index and shape_key == "front":
+                    elif index not in selected_set and shape_key == "front":
                         try:
                             shape_item.setOpacity(0.96)
                         except Exception:
@@ -2054,12 +2111,16 @@ class TabSciana(QWidget):
         self.center_zone = self._build_center_zone()
         self.right_zone = self._build_right_zone()
         self.preview.sig_saved_module_dropped.connect(self._on_saved_module_dropped)
-        self.preview.sig_module_selected.connect(self._on_preview_module_selected)
+        self.preview.sig_module_selection_requested.connect(self._on_preview_module_selection_requested)
+        self.preview.sig_apply_module_height_to_selected.connect(self._on_preview_apply_height_to_selected)
+        self.preview.sig_apply_module_front_material_to_selected.connect(self._on_preview_apply_front_material_to_selected)
         self.preview.sig_module_reordered.connect(self._on_preview_module_reordered)
         self.preview.sig_module_offset_changed.connect(self._on_preview_module_offset_changed)
         self.preview.sig_module_position_changed.connect(self._on_preview_module_position_changed)
         self.preview_top.sig_saved_module_dropped.connect(self._on_saved_module_dropped)
-        self.preview_top.sig_module_selected.connect(self._on_preview_module_selected)
+        self.preview_top.sig_module_selection_requested.connect(self._on_preview_module_selection_requested)
+        self.preview_top.sig_apply_module_height_to_selected.connect(self._on_preview_apply_height_to_selected)
+        self.preview_top.sig_apply_module_front_material_to_selected.connect(self._on_preview_apply_front_material_to_selected)
         self.preview_top.sig_module_top_position_changed.connect(self._on_preview_top_position_changed)
 
         splitter.addWidget(self.left_zone)
@@ -4061,12 +4122,54 @@ class TabSciana(QWidget):
             initial_offset_mm = self._offset_for_drop_position(module, insert_index, drop_x_mm)
         self._add_saved_module_by_name(source_name, insert_index=insert_index, initial_offset_mm=initial_offset_mm)
 
-    def _on_preview_module_selected(self, index: int) -> None:
-        if 0 <= int(index) < self.tbl_items.rowCount():
-            self.tbl_items.clearSelection()
-            self.tbl_items.selectRow(int(index))
-            self._sync_selected_offset_editor()
-            self._refresh_preview_only()
+    def _on_preview_module_selection_requested(self, index: int, preserve_selection: bool) -> None:
+        if not (0 <= int(index) < self.tbl_items.rowCount()):
+            return
+        selection_model = self.tbl_items.selectionModel()
+        if selection_model is None:
+            return
+        row_index = int(index)
+        model_index = self.tbl_items.model().index(row_index, 0)
+        if preserve_selection:
+            selection_model.select(
+                model_index,
+                QItemSelectionModel.SelectionFlag.Toggle | QItemSelectionModel.SelectionFlag.Rows,
+            )
+        else:
+            self.tbl_items.selectRow(row_index)
+        self._refresh_preview_only()
+
+    def _on_preview_apply_height_to_selected(self, source_index: int) -> None:
+        source_index = int(source_index)
+        if source_index < 0 or source_index >= len(self._assembly.items):
+            return
+        targets = [index for index in self._selected_indexes() if 0 <= index < len(self._assembly.items)]
+        if not targets:
+            targets = [source_index]
+        source_height = float(getattr(self._assembly.items[source_index].module, "height_mm", 0.0) or 0.0)
+        for index in targets:
+            self._assembly.items[index].module.height_mm = source_height
+        self._set_store_status(f"Przepisano wysokosc modulu do {len(targets)} zaznaczonych elementow.", ok=True)
+        self._rebuild_assembly(select_indexes=targets)
+
+    def _on_preview_apply_front_material_to_selected(self, source_index: int) -> None:
+        source_index = int(source_index)
+        if source_index < 0 or source_index >= len(self._assembly.items):
+            return
+        targets = [index for index in self._selected_indexes() if 0 <= index < len(self._assembly.items)]
+        if not targets:
+            targets = [source_index]
+        source_materials = dict(getattr(self._assembly.items[source_index].module, "materials", {}) or {})
+        source_front = str(source_materials.get("front", "") or "").strip()
+        if not source_front:
+            self._set_store_status("Wybrany modul nie ma ustawionego materialu frontu.", ok=False)
+            return
+        for index in targets:
+            material_map = dict(getattr(self._assembly.items[index].module, "materials", {}) or {})
+            material_map["front"] = source_front
+            self._assembly.items[index].module.materials = material_map
+        self._set_store_status(f'Przepisano material frontu "{source_front}" do {len(targets)} zaznaczonych elementow.', ok=True)
+        self._rebuild_assembly(select_indexes=targets)
 
     def _on_preview_module_reordered(self, old_index: int, target_index: int) -> None:
         old_index = int(old_index)
@@ -4481,11 +4584,13 @@ class TabSciana(QWidget):
             self._assembly,
             self._resolved_items,
             selected_index=self._selected_index(),
+            selected_indexes=self._selected_indexes(),
         )
         self.preview_top.render_assembly(
             self._assembly,
             self._resolved_items,
             selected_index=self._selected_index(),
+            selected_indexes=self._selected_indexes(),
         )
         self._refresh_preview_info_bar()
         self._update_project_reference_preview()
