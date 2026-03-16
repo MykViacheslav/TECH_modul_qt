@@ -225,23 +225,23 @@ class AssemblyPreviewView(QGraphicsView):
         if "side_left" in visible_parts:
             side_y_mm = 0.0 if joint_type == "type1" else inner_y_mm
             side_h_mm = height_mm if joint_type == "type1" else inner_h_mm
-            shapes.append({"key": "side_left", "rect": mm_rect(0.0, side_y_mm, t_carcass, side_h_mm), "fill": "#dfeaf6", "pen": "#1f1f1f"})
+            shapes.append({"key": "side_left", "rect": mm_rect(0.0, side_y_mm, t_carcass, side_h_mm), "fill": "#ede4d6", "pen": "#4f4439"})
 
         if "side_right" in visible_parts:
             side_y_mm = 0.0 if joint_type == "type1" else inner_y_mm
             side_h_mm = height_mm if joint_type == "type1" else inner_h_mm
-            shapes.append({"key": "side_right", "rect": mm_rect(width_mm - t_carcass, side_y_mm, t_carcass, side_h_mm), "fill": "#dfeaf6", "pen": "#1f1f1f"})
+            shapes.append({"key": "side_right", "rect": mm_rect(width_mm - t_carcass, side_y_mm, t_carcass, side_h_mm), "fill": "#ede4d6", "pen": "#4f4439"})
 
         if "top" in visible_parts:
             top_x_mm = t_carcass if joint_type == "type1" else 0.0
             top_w_mm = max(0.0, width_mm - 2.0 * t_carcass) if joint_type == "type1" else width_mm
-            shapes.append({"key": "top", "rect": mm_rect(top_x_mm, top_offset_mm, top_w_mm, t_carcass), "fill": "#dfeaf6", "pen": "#1f1f1f"})
+            shapes.append({"key": "top", "rect": mm_rect(top_x_mm, top_offset_mm, top_w_mm, t_carcass), "fill": "#ede4d6", "pen": "#4f4439"})
 
         if "bottom" in visible_parts:
             bottom_x_mm = t_carcass if joint_type == "type1" else 0.0
             bottom_w_mm = max(0.0, width_mm - 2.0 * t_carcass) if joint_type == "type1" else width_mm
             bottom_y_mm = max(0.0, height_mm - t_carcass - bottom_offset_mm)
-            shapes.append({"key": "bottom", "rect": mm_rect(bottom_x_mm, bottom_y_mm, bottom_w_mm, t_carcass), "fill": "#dfeaf6", "pen": "#1f1f1f"})
+            shapes.append({"key": "bottom", "rect": mm_rect(bottom_x_mm, bottom_y_mm, bottom_w_mm, t_carcass), "fill": "#ede4d6", "pen": "#4f4439"})
 
         divider_count = int(getattr(module, "divider_count", 0) or 0)
         if "divider" in visible_parts and divider_count > 0:
@@ -249,7 +249,7 @@ class AssemblyPreviewView(QGraphicsView):
             segment_w_mm = clear_w_mm / (divider_count + 1) if (divider_count + 1) > 0 else clear_w_mm
             for idx in range(1, divider_count + 1):
                 x_mm = inner_x_mm + segment_w_mm * idx + t_carcass * (idx - 1)
-                shapes.append({"key": f"divider_{idx}", "rect": mm_rect(x_mm, inner_y_mm, t_carcass, inner_h_mm), "fill": "#eef3f8", "pen": "#2f2f2f"})
+                shapes.append({"key": f"divider_{idx}", "rect": mm_rect(x_mm, inner_y_mm, t_carcass, inner_h_mm), "fill": "#f5efe5", "pen": "#5a4f45"})
 
         shelf_count = int(getattr(module, "shelf_count", 0) or 0)
         if "shelf" in visible_parts and shelf_count > 0:
@@ -260,10 +260,10 @@ class AssemblyPreviewView(QGraphicsView):
             step_h_mm = inner_h_mm / (shelf_count + 1) if (shelf_count + 1) > 0 else inner_h_mm
             for idx in range(1, shelf_count + 1):
                 y_mm = inner_y_mm + step_h_mm * idx - t_carcass / 2.0
-                shapes.append({"key": f"shelf_{idx}", "rect": mm_rect(shelf_x_mm, y_mm, max(0.0, segment_w_mm), t_carcass), "fill": "#f4f8fc", "pen": "#2f2f2f"})
+                shapes.append({"key": f"shelf_{idx}", "rect": mm_rect(shelf_x_mm, y_mm, max(0.0, segment_w_mm), t_carcass), "fill": "#faf6ef", "pen": "#5a4f45"})
 
         if "back" in visible_parts:
-            shapes.append({"key": "back", "rect": mm_rect(max(0.0, width_mm - t_back), inner_y_mm, t_back, inner_h_mm), "fill": "#d5dde8", "pen": "#5d6d7d"})
+            shapes.append({"key": "back", "rect": mm_rect(max(0.0, width_mm - t_back), inner_y_mm, t_back, inner_h_mm), "fill": "#d7cfc2", "pen": "#7c7065"})
 
         if "front" in visible_parts:
             front_layout = str(getattr(module, "front_layout", "overlay") or "overlay").strip().lower()
@@ -281,11 +281,88 @@ class AssemblyPreviewView(QGraphicsView):
                 {
                     "key": "front",
                     "rect": mm_rect(x_mm, y_mm, w_mm, h_mm),
-                    "fill": "#dbeafe",
-                    "fill_alpha": 145,
-                    "pen": "#1f6ed4",
+                    "fill": "#f0dfc8",
+                    "fill_alpha": 72,
+                    "pen": "#8f6a46",
                 }
             )
+
+            facade_mode = str(getattr(module, "facade_mode", "doors") or "doors").strip().lower()
+            drawer_count = max(1, int(getattr(module, "drawer_count", 1) or 1))
+            hinge_side = str(getattr(module, "door_hinge_side", "left") or "left").strip().lower()
+            if hinge_side not in ("left", "right"):
+                hinge_side = "left"
+
+            settings = load_drawing_settings()
+            auto_double_front_width = max(100.0, float(getattr(settings, "auto_double_front_width_mm", 600.0) or 600.0))
+            try:
+                gap_between_vertical = max(0.0, float(getattr(module, "front_gap_between_vertical_mm", 0.0) or 0.0))
+            except Exception:
+                gap_between_vertical = 0.0
+
+            front_left = x_mm
+            front_top = y_mm
+            front_width = max(1.0, w_mm)
+            front_height = max(1.0, h_mm)
+            is_double_door = facade_mode == "doors" and front_width >= auto_double_front_width
+
+            if facade_mode == "drawers" and drawer_count > 1:
+                total_gap = gap_between_vertical * max(0, drawer_count - 1)
+                free_h = max(0.0, front_height - total_gap)
+                seg_h = free_h / drawer_count if drawer_count > 0 else front_height
+                cursor_y = front_top
+
+                for idx in range(1, drawer_count):
+                    cursor_y += seg_h
+                    split_y = cursor_y + gap_between_vertical * 0.5
+                    shapes.append(
+                        {
+                            "key": f"front_drawer_split_{idx}",
+                            "rect": mm_rect(front_left, split_y - 0.75, front_width, 1.5),
+                            "fill": "#8f6a46",
+                            "fill_alpha": 255,
+                            "pen": "#8f6a46",
+                        }
+                    )
+                    cursor_y += gap_between_vertical
+            elif is_double_door:
+                mid_x = front_left + front_width / 2.0
+                shapes.append(
+                    {
+                        "key": "front_split_line",
+                        "rect": mm_rect(mid_x - 0.75, front_top, 1.5, front_height),
+                        "fill": "#8f6a46",
+                        "fill_alpha": 255,
+                        "pen": "#8f6a46",
+                    }
+                )
+                handle_gap = min(40.0, max(18.0, front_width * 0.08))
+                handle_top = front_top + front_height * 0.4
+                handle_h = max(40.0, front_height * 0.2)
+                for side_idx, handle_x in enumerate((mid_x - handle_gap, mid_x + handle_gap), start=1):
+                    shapes.append(
+                        {
+                            "key": f"front_handle_{side_idx}",
+                            "rect": mm_rect(handle_x - 1.0, handle_top, 2.0, handle_h),
+                            "fill": "#6b5d4d",
+                            "fill_alpha": 255,
+                            "pen": "#6b5d4d",
+                        }
+                    )
+            elif facade_mode == "doors":
+                handle_offset = min(40.0, max(18.0, front_width * 0.08))
+                handle_x = front_left + front_width - handle_offset if hinge_side == "left" else front_left + handle_offset
+                handle_top = front_top + front_height * 0.4
+                handle_h = max(40.0, front_height * 0.2)
+                shapes.append(
+                    {
+                        "key": "front_handle_1",
+                        "rect": mm_rect(handle_x - 1.0, handle_top, 2.0, handle_h),
+                        "fill": "#6b5d4d",
+                        "fill_alpha": 255,
+                        "pen": "#6b5d4d",
+                    }
+                )
 
         return shapes
 
@@ -558,7 +635,7 @@ class AssemblyPreviewView(QGraphicsView):
             base_zone_item = self.scene.addRect(
                 QRectF(base_zone_left, base_zone_top, base_zone_width, base_zone_height),
                 QPen(Qt.PenStyle.NoPen),
-                QBrush(QColor(107, 142, 35, 8)),
+                QBrush(QColor(150, 162, 118, 10)),
             )
             base_zone_item.setData(0, "assembly_zone__base")
             base_zone_item.setZValue(-26.0)
@@ -574,7 +651,7 @@ class AssemblyPreviewView(QGraphicsView):
             upper_zone_item = self.scene.addRect(
                 QRectF(upper_zone_left, upper_zone_top, upper_zone_width, upper_zone_height),
                 QPen(Qt.PenStyle.NoPen),
-                QBrush(QColor(64, 114, 179, 8)),
+                QBrush(QColor(164, 177, 193, 10)),
             )
             upper_zone_item.setData(0, "assembly_zone__upper")
             upper_zone_item.setZValue(-25.0)
@@ -590,9 +667,9 @@ class AssemblyPreviewView(QGraphicsView):
         if linked_wall is None:
             return None
 
-        wall_pen = QPen(QColor("#8d98a6"))
+        wall_pen = QPen(QColor("#b8aea2"))
         wall_pen.setWidth(1)
-        wall_brush = QBrush(QColor("#fbfcfd"))
+        wall_brush = QBrush(QColor("#fffdfa"))
         wall_item = self.scene.addRect(QRectF(0.0, 0.0, wall_width, wall_height), wall_pen, wall_brush)
         wall_item.setData(0, "assembly_wall_frame")
         wall_item.setZValue(-30.0)
@@ -620,10 +697,10 @@ class AssemblyPreviewView(QGraphicsView):
             height = min(height_mm, max_height)
             y = max(0.0, wall_height - bottom_mm - height)
 
-            obstacle_pen = QPen(QColor("#b3a89a"))
+            obstacle_pen = QPen(QColor("#c1b5aa"))
             obstacle_pen.setWidth(1)
             obstacle_fill = self._wall_obstacle_fill(str(getattr(obstacle, "kind", "") or ""))
-            obstacle_fill.setAlpha(110)
+            obstacle_fill.setAlpha(82)
             obstacle_item = self.scene.addRect(QRectF(x, y, width, height), obstacle_pen, QBrush(obstacle_fill))
             obstacle_item.setData(0, f"assembly_wall_obstacle__{index}")
             obstacle_item.setZValue(-15.0)
@@ -690,10 +767,13 @@ class AssemblyPreviewView(QGraphicsView):
             depth_overlap = min(current_bottom, other_bottom) - max(current_top, other_top)
             shares_band = depth_overlap > max(20.0, min(current_depth, float(other.depth_mm)) * 0.25)
 
-            candidates.append(other_left - base_x)
             if shares_band:
                 candidates.append(other_right - base_x)
                 candidates.append(other_left - current_width - base_x)
+            else:
+                # For modules placed in different depth bands, allow clean left/right alignment.
+                candidates.append(other_left - base_x)
+                candidates.append(other_right - current_width - base_x)
 
         unique_candidates: list[float] = []
         seen_keys: set[int] = set()
@@ -913,13 +993,14 @@ class AssemblyPreviewView(QGraphicsView):
             vertical_overlap = min(current_bottom, other_bottom) - max(current_top, other_top)
             shares_row = vertical_overlap > max(40.0, min(current_height, float(other.height_mm)) * 0.25)
 
-            # For modules stacked above/below each other, align their left edge.
-            candidates.append(other_left - base_x)
-
             # For modules in the same row, prefer true side attachment with 0 mm gap.
             if shares_row:
                 candidates.append(other_right - base_x)
                 candidates.append(other_left - current_width - base_x)
+            else:
+                # For modules stacked above/below each other, align them by left or right edge.
+                candidates.append(other_left - base_x)
+                candidates.append(other_right - current_width - base_x)
 
         unique_candidates: list[float] = []
         seen_keys: set[int] = set()
@@ -956,12 +1037,9 @@ class AssemblyPreviewView(QGraphicsView):
             if not shares_column:
                 continue
 
-            # Align tops, place current module directly under or over the other module,
-            # and allow aligning bottoms in the same column.
-            candidates.append(other_top)
+            # In one visual column, prefer true stacking instead of overlapping alignments.
             candidates.append(other_bottom)
             candidates.append(other_top - current_height)
-            candidates.append(other_bottom - current_height)
 
         unique_candidates: list[float] = []
         seen_keys: set[int] = set()
@@ -1533,18 +1611,19 @@ class AssemblyPreviewView(QGraphicsView):
                     brush = QBrush(QColor("#ffe6e6"))
                     pen = QPen(QColor("#c62828"))
                 elif index == selected_index:
-                    brush = QBrush(QColor("#dbeafe"))
-                    pen = QPen(QColor("#1557b0"))
+                    brush = QBrush(QColor("#fff4df"))
+                    pen = QPen(QColor("#9a5b17"))
                 else:
-                    brush = QBrush(QColor("#f8fafc"))
-                    pen = QPen(QColor("#b5c3d1"))
+                    brush = QBrush(QColor("#fffdf8"))
+                    pen = QPen(QColor("#cbbda8"))
 
                 pen.setWidth(4 if index == selected_index else 1)
                 module_item = self.scene.addRect(rect, pen, brush)
                 module_item.setData(0, f"assembly_module__{index}")
-                module_item.setZValue(4.0 if index == selected_index else 1.0)
+                module_item.setZValue(0.4 if index == selected_index else 0.2)
 
                 for shape in self._build_module_front_shapes(item.module, rect):
+                    shape_key = str(shape.get("key", "") or "")
                     shape_rect = shape.get("rect")
                     if not isinstance(shape_rect, QRectF):
                         continue
@@ -1567,33 +1646,42 @@ class AssemblyPreviewView(QGraphicsView):
                         shape_brush = QBrush(Qt.BrushStyle.NoBrush)
 
                     shape_item = self.scene.addRect(shape_rect, shape_pen, shape_brush)
-                    shape_item.setData(0, f"assembly_module__{index}__{shape.get('key', 'shape')}")
-                    if index != selected_index and str(shape.get("key", "")) != "front":
-                        try:
-                            shape_item.setOpacity(0.68)
-                        except Exception:
-                            pass
-                    elif index != selected_index and str(shape.get("key", "")) == "front":
+                    shape_item.setData(0, f"assembly_module__{index}__{shape_key or 'shape'}")
+                    if shape_key == "back":
+                        shape_item.setZValue(0.6)
+                    elif shape_key == "front":
+                        shape_item.setZValue(3.8 if index == selected_index else 3.2)
+                    elif shape_key.startswith("shelf_") or shape_key.startswith("divider_"):
+                        shape_item.setZValue(3.4 if index == selected_index else 2.8)
+                    elif shape_key.startswith("front_drawer_split_") or shape_key == "front_split_line" or shape_key.startswith("front_handle_"):
+                        shape_item.setZValue(4.2 if index == selected_index else 3.6)
+                    else:
+                        shape_item.setZValue(2.6 if index == selected_index else 2.2)
+
+                    if index != selected_index and shape_key != "front":
                         try:
                             shape_item.setOpacity(0.88)
                         except Exception:
                             pass
-                    if str(shape.get("key", "")) == "front":
-                        shape_item.setZValue(8.0)
+                    elif index != selected_index and shape_key == "front":
+                        try:
+                            shape_item.setOpacity(0.96)
+                        except Exception:
+                            pass
 
                 show_title = index == selected_index
                 if show_title:
                     title = self.scene.addText(item.display_name)
                     title.setData(0, f"assembly_module_title__{index}")
                     title.setPos(rect.left() + 10.0, rect.top() + 8.0)
-                    self._style_readable_text(title, "#17202a", point_size=13, bold=True, z_value=26.0)
+                    self._style_readable_text(title, "#2f241b", point_size=13, bold=True, z_value=26.0)
 
                     meta = self.scene.addText(
                         f"{item.width_mm:.0f} x {item.height_mm:.0f} x {item.depth_mm:.0f} mm"
                     )
                     meta.setData(0, f"assembly_module_meta__{index}")
                     meta.setPos(rect.left() + 10.0, rect.top() + 30.0)
-                    self._style_readable_text(meta, "#475569", point_size=10, bold=False, z_value=26.0)
+                    self._style_readable_text(meta, "#6b5d4d", point_size=10, bold=False, z_value=26.0)
 
                 if overflow:
                     warn = self.scene.addText("Poza obrysem kompletu")
@@ -2078,11 +2166,11 @@ class TabSciana(QWidget):
             if bool(getattr(item, "has_collision", False)):
                 collision_html = ' <span style="color:#b00020; font-weight:700;">Kolizja</span>'
             self.lab_active_module_info.setText(
-                f'<span style="font-weight:700; color:#111827;">Aktywny modul: {html.escape(item.display_name)}</span> '
-                f'<span style="color:#4b5563;">({html.escape(family_label)})</span><br>'
-                f'<span style="color:#1f2937;">{item.width_mm:.0f} x {item.height_mm:.0f} x {item.depth_mm:.0f} mm</span>'
-                f' <span style="color:#9ca3af;">|</span> '
-                f'<span style="color:#374151;">{position_summary}</span>'
+                f'<span style="font-weight:700; color:#2f241b;">Aktywny modul: {html.escape(item.display_name)}</span> '
+                f'<span style="color:#6b5d4d;">({html.escape(family_label)})</span><br>'
+                f'<span style="color:#3e342b;">{item.width_mm:.0f} x {item.height_mm:.0f} x {item.depth_mm:.0f} mm</span>'
+                f' <span style="color:#b3a89a;">|</span> '
+                f'<span style="color:#5b5148;">{position_summary}</span>'
                 f"{collision_html}"
             )
         elif self._resolved_items:
@@ -2103,8 +2191,8 @@ class TabSciana(QWidget):
         self.preview_info_box = QWidget(panel)
         self.preview_info_box.setStyleSheet(
             "QWidget {"
-            " background: #f7f9fc;"
-            " border: 1px solid #d8dde6;"
+            " background: #fbfaf7;"
+            " border: 1px solid #d9d1c5;"
             " border-radius: 6px;"
             "}"
         )
@@ -2117,7 +2205,7 @@ class TabSciana(QWidget):
         info_top_row.setSpacing(8)
 
         self.lab_preview_context = QLabel("Komplet roboczy | Widok z przodu")
-        self.lab_preview_context.setStyleSheet("font-weight:700; color:#1f2937; border:0;")
+        self.lab_preview_context.setStyleSheet("font-weight:700; color:#2f241b; border:0;")
         info_top_row.addWidget(self.lab_preview_context, 1)
 
         view_switch = QWidget(self.preview_info_box)
@@ -2131,14 +2219,14 @@ class TabSciana(QWidget):
         self.btn_view_front.setStyleSheet(
             "QPushButton {"
             " padding: 4px 10px;"
-            " border: 1px solid #c8d3e0;"
+            " border: 1px solid #d5c8b7;"
             " border-radius: 5px;"
-            " background: #ffffff;"
+            " background: #fffdfa;"
             "}"
             "QPushButton:checked {"
-            " background: #1f6ed4;"
+            " background: #8f6a46;"
             " color: #ffffff;"
-            " border-color: #1f6ed4;"
+            " border-color: #8f6a46;"
             " font-weight: 700;"
             "}"
         )
@@ -2153,7 +2241,7 @@ class TabSciana(QWidget):
 
         self.lab_active_module_info = QLabel("Dodaj zapisany modul, aby zaczac ukladanie kompletu.")
         self.lab_active_module_info.setWordWrap(True)
-        self.lab_active_module_info.setStyleSheet("color:#4b5563; border:0;")
+        self.lab_active_module_info.setStyleSheet("color:#5d5246; border:0;")
         info_layout.addWidget(self.lab_active_module_info)
         layout.addWidget(self.preview_info_box, 0)
 
@@ -2164,7 +2252,7 @@ class TabSciana(QWidget):
 
         self.preview = AssemblyPreviewView(self.front_box, wall_store=self._wall_store, view_mode="front")
         self.preview.setMinimumHeight(420)
-        self.preview.setStyleSheet("QGraphicsView { background: #fcfcfc; border: 1px solid #d8dde6; }")
+        self.preview.setStyleSheet("QGraphicsView { background: #fffefb; border: 1px solid #ddd4c8; }")
         front_layout.addWidget(self.preview, 1)
         self.front_box.setMinimumHeight(380)
 
@@ -2175,7 +2263,7 @@ class TabSciana(QWidget):
 
         self.preview_top = AssemblyPreviewView(self.top_box, wall_store=self._wall_store, view_mode="top")
         self.preview_top.setMinimumHeight(170)
-        self.preview_top.setStyleSheet("QGraphicsView { background: #fcfcfc; border: 1px solid #d8dde6; }")
+        self.preview_top.setStyleSheet("QGraphicsView { background: #fffefb; border: 1px solid #ddd4c8; }")
         top_layout.addWidget(self.preview_top, 1)
         self.top_box.setMinimumHeight(180)
 

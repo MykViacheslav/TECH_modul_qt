@@ -236,6 +236,9 @@ class WallPreviewView(QGraphicsView):
         transform = QTransform()
         transform.scale(target, target)
         self.setTransform(transform)
+        scene_rect = self.scene.sceneRect()
+        if not scene_rect.isNull() and not scene_rect.isEmpty():
+            self.centerOn(scene_rect.center())
 
     def _tight_scene_rect(self, fallback: QRectF, x_margin: float = 24.0, y_margin: float = 24.0) -> QRectF:
         bounds = self.scene.itemsBoundingRect()
@@ -610,7 +613,7 @@ class WallPreviewView(QGraphicsView):
         show_top = self._view_mode in ("both", "top")
 
         if show_front:
-            self._add_text(front_side, QPointF(self._front_view_rect.left(), self._front_view_rect.top() - 48.0))
+            self._add_text(front_side, QPointF(self._front_view_rect.left() + 8.0, self._front_view_rect.top() + 8.0))
             self._add_rect(self._front_view_rect, wall_pen, wall_brush)
             self.scene.addLine(
                 self._front_view_rect.left(),
@@ -625,21 +628,21 @@ class WallPreviewView(QGraphicsView):
         self._top_wall_rects["A"] = rect_a
         if show_top:
             self._add_rect(rect_a, wall_pen, wall_brush)
-            self._add_text("A", QPointF(rect_a.left() + 10.0, rect_a.top() - 30.0))
+            self._add_text("A", QPointF(rect_a.left() + 8.0, rect_a.top() + 2.0))
 
         if layout_type in ("l", "c"):
             rect_b = QRectF(top_origin.x(), top_origin.y(), wall_thickness, wall_b)
             self._top_wall_rects["B"] = rect_b
             if show_top:
                 self._add_rect(rect_b, wall_pen, wall_brush)
-                self._add_text("B", QPointF(rect_b.left() - 26.0, rect_b.top() + 10.0))
+                self._add_text("B", QPointF(rect_b.left() + 2.0, rect_b.top() + 10.0))
 
         if layout_type == "c":
             rect_c = QRectF(top_origin.x() + wall_a - wall_thickness, top_origin.y(), wall_thickness, wall_c)
             self._top_wall_rects["C"] = rect_c
             if show_top:
                 self._add_rect(rect_c, wall_pen, wall_brush)
-                self._add_text("C", QPointF(rect_c.right() + 8.0, rect_c.top() + 10.0))
+                self._add_text("C", QPointF(rect_c.left() + 2.0, rect_c.top() + 10.0))
 
         if show_top and bool(getattr(self._wall, "has_island", False)):
             island_pen = QPen(QColor("#a85f00"))
@@ -663,8 +666,9 @@ class WallPreviewView(QGraphicsView):
             pen = selected_pen if is_selected else QPen(QColor("#6b8cb1"))
             if not is_selected:
                 pen.setWidth(1)
+                pen.setColor(QColor("#9bb2c7"))
             fill = QColor(self._obstacle_fill(getattr(obstacle, "kind", "projection")))
-            fill.setAlpha(170 if is_selected else 120)
+            fill.setAlpha(165 if is_selected else 72)
             brush = QBrush(fill)
             label = _obstacle_preview_label(obstacle)
 
@@ -677,17 +681,20 @@ class WallPreviewView(QGraphicsView):
                 )
                 self._add_rect(front_rect, pen, brush, z=5.0, data_key=self._tag_for_obstacle(index, "front"))
                 kind_key = str(getattr(obstacle, "kind", "projection") or "projection").strip().lower()
-                opening_label = _opening_direction_label(getattr(obstacle, "opening_direction", "fixed"))
                 show_main_label = is_selected or (
                     not _is_technical_obstacle_kind(kind_key)
-                    and (front_rect.width() >= 180.0 or front_rect.height() >= 120.0)
+                    and (front_rect.width() >= 260.0 or front_rect.height() >= 180.0)
+                )
+                show_detail_symbol = is_selected or (
+                    not _is_technical_obstacle_kind(kind_key)
+                    and (front_rect.width() >= 220.0 or front_rect.height() >= 180.0)
                 )
                 if show_main_label:
                     self._add_text(label, QPointF(front_rect.left() + 6.0, front_rect.top() + 6.0), "#385575", scale=1.0)
 
                 if kind_key == "window":
                     pass
-                elif kind_key == "door":
+                elif kind_key == "door" and show_detail_symbol:
                     swing_pen = QPen(QColor("#a85f00"))
                     swing_pen.setWidth(1)
                     if str(getattr(obstacle, "opening_direction", "fixed")).strip().lower() == "left":
@@ -722,7 +729,7 @@ class WallPreviewView(QGraphicsView):
                             front_rect.top() + 10.0,
                             swing_pen,
                         )
-                elif kind_key == "socket":
+                elif kind_key == "socket" and is_selected:
                     symbol_pen = QPen(QColor("#9a6b00"))
                     symbol_pen.setWidth(1)
                     cx = front_rect.center().x()
@@ -730,7 +737,7 @@ class WallPreviewView(QGraphicsView):
                     self.scene.addEllipse(cx - 16.0, cy - 8.0, 10.0, 10.0, symbol_pen, QBrush(QColor("#fffdf4")))
                     self.scene.addEllipse(cx + 6.0, cy - 8.0, 10.0, 10.0, symbol_pen, QBrush(QColor("#fffdf4")))
                     self.scene.addLine(cx - 20.0, cy - 20.0, cx + 20.0, cy - 20.0, symbol_pen)
-                elif kind_key == "plumbing":
+                elif kind_key == "plumbing" and is_selected:
                     pipe_pen = QPen(QColor("#0f766e"))
                     pipe_pen.setWidth(2)
                     cx = front_rect.center().x()
@@ -738,7 +745,7 @@ class WallPreviewView(QGraphicsView):
                     self.scene.addLine(cx + 14.0, front_rect.top() + 18.0, cx + 14.0, front_rect.bottom() - 16.0, pipe_pen)
                     self.scene.addLine(cx - 24.0, front_rect.bottom() - 18.0, cx - 4.0, front_rect.bottom() - 4.0, pipe_pen)
                     self.scene.addLine(cx + 24.0, front_rect.bottom() - 18.0, cx + 4.0, front_rect.bottom() - 4.0, pipe_pen)
-                elif kind_key == "radiator":
+                elif kind_key == "radiator" and show_detail_symbol:
                     rib_pen = QPen(QColor("#c2410c"))
                     rib_pen.setWidth(1)
                     left = front_rect.left() + 14.0
@@ -749,7 +756,7 @@ class WallPreviewView(QGraphicsView):
                     for step in range(4):
                         rib_x = left + step * max(12.0, (right - left) / 3.5)
                         self.scene.addLine(rib_x, top, rib_x, bottom, rib_pen)
-                elif kind_key == "sill":
+                elif kind_key == "sill" and is_selected:
                     sill_pen = QPen(QColor("#475569"))
                     sill_pen.setWidth(2)
                     y_line = front_rect.center().y()
@@ -765,26 +772,29 @@ class WallPreviewView(QGraphicsView):
             top_rect = self._build_top_obstacle_rect(obstacle)
             if show_top and top_rect is not None:
                 self._add_rect(top_rect, pen, brush, z=5.0, data_key=self._tag_for_obstacle(index, "top"))
-                if is_selected or top_rect.width() >= 180.0 or top_rect.height() >= 120.0:
+                if is_selected or (
+                    not _is_technical_obstacle_kind(getattr(obstacle, "kind", ""))
+                    and (top_rect.width() >= 260.0 or top_rect.height() >= 180.0)
+                ):
                     self._add_text(label, QPointF(top_rect.left() + 4.0, top_rect.top() + 4.0), "#385575", scale=0.9)
 
         if self._view_mode == "front":
             scene_bounds = self._tight_scene_rect(
-                self._front_view_rect.adjusted(-80.0, -80.0, 80.0, 80.0),
-                x_margin=26.0,
-                y_margin=26.0,
+                self._front_view_rect.adjusted(-40.0, -30.0, 40.0, 40.0),
+                x_margin=16.0,
+                y_margin=16.0,
             )
         elif self._view_mode == "top":
             scene_bounds = self._tight_scene_rect(
-                self._top_view_bounds.adjusted(-80.0, -80.0, 80.0, 80.0),
-                x_margin=24.0,
-                y_margin=20.0,
+                self._top_view_bounds.adjusted(-40.0, -30.0, 40.0, 30.0),
+                x_margin=14.0,
+                y_margin=14.0,
             )
         else:
             scene_bounds = self._tight_scene_rect(
-                self.scene.itemsBoundingRect().adjusted(-160.0, -120.0, 160.0, 160.0),
-                x_margin=40.0,
-                y_margin=32.0,
+                self.scene.itemsBoundingRect().adjusted(-60.0, -40.0, 60.0, 50.0),
+                x_margin=18.0,
+                y_margin=18.0,
             )
         self.scene.setSceneRect(scene_bounds)
         if fit:

@@ -406,6 +406,51 @@ def test_sciana_layout_tab_preview_uses_simple_obstacle_labels(tmp_path, monkeyp
     assert "Parapet 722" not in texts
 
 
+def test_sciana_layout_tab_preview_hides_non_selected_small_technical_labels(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.tabs.sciana.tab_sciana_layout import TabScianaLayout
+
+    w = TabScianaLayout()
+    w.cb_obstacle_kind.setCurrentIndex(w.cb_obstacle_kind.findData("socket"))
+    w.cb_obstacle_side.setCurrentIndex(w.cb_obstacle_side.findData("A"))
+    w.ed_obstacle_name.setText("Gniazdo AGD")
+    w.sp_obstacle_x.setValue(1200.0)
+    w.sp_obstacle_bottom.setValue(250.0)
+    w.sp_obstacle_w.setValue(80.0)
+    w.sp_obstacle_h.setValue(80.0)
+    w.sp_obstacle_d.setValue(60.0)
+    w.btn_add_obstacle.click()
+
+    w.tbl_obstacles.clearSelection()
+    w._selected_obstacle_index = -1
+    w.preview.set_selected_obstacle_index(-1)
+    w.preview_top.set_selected_obstacle_index(-1)
+    w._render_previews()
+
+    front_texts = []
+    for item in w.preview.scene.items():
+        if hasattr(item, "text"):
+            try:
+                front_texts.append(str(item.text()))
+            except Exception:
+                pass
+
+    top_texts = []
+    for item in w.preview_top.scene.items():
+        if hasattr(item, "text"):
+            try:
+                top_texts.append(str(item.text()))
+            except Exception:
+                pass
+
+    assert "Gniazdko" not in front_texts
+    assert "Gniazdko" not in top_texts
+
+
 def test_sciana_layout_tab_front_dimension_boxes_edit_selected_obstacle(tmp_path, monkeypatch):
     monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TECH_MODUL_TESTING", "1")

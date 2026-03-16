@@ -114,9 +114,71 @@ def test_sciana_tab_preview_draws_module_parts_not_only_outer_block(tmp_path, mo
     assert _scene_has_key(w.preview, "assembly_module__0__shelf_1") is True
     assert _scene_has_key(w.preview, "assembly_module__0__divider_1") is True
     assert _scene_has_key(w.preview, "assembly_module__0__front") is True
+    module_item = _scene_item_by_key(w.preview, "assembly_module__0")
+    shelf_item = _scene_item_by_key(w.preview, "assembly_module__0__shelf_1")
+    divider_item = _scene_item_by_key(w.preview, "assembly_module__0__divider_1")
     front_item = _scene_item_by_key(w.preview, "assembly_module__0__front")
+    assert module_item is not None
+    assert shelf_item is not None
+    assert divider_item is not None
     assert front_item is not None
     assert front_item.brush().style() != Qt.BrushStyle.NoBrush
+    assert float(shelf_item.zValue()) > float(module_item.zValue())
+    assert float(divider_item.zValue()) > float(module_item.zValue())
+
+
+def test_sciana_tab_preview_draws_front_subdivision_for_double_doors_and_drawers(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    store = ModuleStoreJson()
+    catalog = CatalogStoreJson()
+
+    door_module = ModuleDef(
+        name="DOUBLE_DOOR_PREVIEW",
+        width_mm=800.0,
+        depth_mm=500.0,
+        height_mm=720.0,
+        visible_parts=set(["side_left", "side_right", "top", "bottom", "back", "front"]),
+        facade_mode="doors",
+    )
+    door_module.parts = build_module_parts(door_module, catalog)
+    store.save_new(door_module)
+
+    drawer_module = ModuleDef(
+        name="DRAWER_PREVIEW",
+        width_mm=800.0,
+        depth_mm=500.0,
+        height_mm=720.0,
+        visible_parts=set(["side_left", "side_right", "top", "bottom", "back", "front"]),
+        facade_mode="drawers",
+        drawer_count=3,
+    )
+    drawer_module.parts = build_module_parts(drawer_module, catalog)
+    store.save_new(drawer_module)
+
+    w = TabSciana(module_store=store)
+    w.show()
+    app.processEvents()
+
+    assert _select_saved_module(w.tree_saved_modules, "DOUBLE_DOOR_PREVIEW")
+    w.btn_add_saved.click()
+    assert _scene_has_key(w.preview, "assembly_module__0__front_split_line") is True
+    assert _scene_has_key(w.preview, "assembly_module__0__front_handle_1") is True
+    assert _scene_has_key(w.preview, "assembly_module__0__front_handle_2") is True
+
+    assert _select_saved_module(w.tree_saved_modules, "DRAWER_PREVIEW")
+    w.btn_add_saved.click()
+    assert _scene_has_key(w.preview, "assembly_module__1__front_drawer_split_1") is True
+    assert _scene_has_key(w.preview, "assembly_module__1__front_drawer_split_2") is True
 
 
 def test_sciana_tab_front_preview_without_linked_wall_stays_compact_and_shows_only_selected_title(tmp_path, monkeypatch):
@@ -693,6 +755,48 @@ def test_sciana_tab_preview_front_drag_has_stable_snap_targets_for_following_mod
     assert abs(snapped_attach_left - attach_left) < 0.1
 
 
+def test_sciana_tab_same_row_snap_prefers_side_attachment_not_left_edge_alignment(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    catalog = CatalogStoreJson()
+    store = ModuleStoreJson()
+
+    module_a = ModuleDef(name="ROW_ALIGN_A", width_mm=700.0, depth_mm=500.0, height_mm=720.0)
+    module_a.parts = build_module_parts(module_a, catalog)
+    store.save_new(module_a)
+
+    module_b = ModuleDef(name="ROW_ALIGN_B", width_mm=600.0, depth_mm=500.0, height_mm=720.0)
+    module_b.parts = build_module_parts(module_b, catalog)
+    store.save_new(module_b)
+
+    w = TabSciana(module_store=store)
+    assert _select_saved_module(w.tree_saved_modules, "ROW_ALIGN_A")
+    w.btn_add_saved.click()
+    assert _select_saved_module(w.tree_saved_modules, "ROW_ALIGN_B")
+    w.btn_add_saved.click()
+    app.processEvents()
+
+    w._assembly.items[0].offset_mm = 200.0
+    w._rebuild_assembly(select_index=1)
+    app.processEvents()
+
+    candidates = list(w.preview._snap_offset_candidate_values(1))
+    other_left = float(w._resolved_items[0].x_mm)
+    other_right = float(w._resolved_items[0].x_mm + w._resolved_items[0].width_mm)
+
+    assert any(abs(candidate - other_right) < 0.1 for candidate in candidates)
+    assert not any(abs(candidate - other_left) < 0.1 for candidate in candidates)
+
+
 def test_sciana_tab_preview_front_drag_can_snap_module_under_another_module(tmp_path, monkeypatch):
     monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TECH_MODUL_TESTING", "1")
@@ -759,6 +863,69 @@ def test_sciana_tab_preview_front_drag_can_snap_module_under_another_module(tmp_
 
     assert abs(snapped_y - target_top) < 0.1
     assert abs(snapped_top - target_top) < 0.1
+
+
+def test_sciana_tab_stacked_modules_use_vertical_snap_without_overlap_alignment_targets(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    catalog = CatalogStoreJson()
+    store = ModuleStoreJson()
+
+    module_upper = ModuleDef(
+        name="STACK_TARGET_UPPER",
+        width_mm=700.0,
+        depth_mm=320.0,
+        height_mm=720.0,
+        module_type="hanging",
+        cabinet_kind="upper",
+    )
+    module_upper.parts = build_module_parts(module_upper, catalog)
+    store.save_new(module_upper)
+
+    module_lower = ModuleDef(
+        name="STACK_TARGET_LOWER",
+        width_mm=700.0,
+        depth_mm=560.0,
+        height_mm=600.0,
+        module_type="legs_plinth",
+        cabinet_kind="lower",
+    )
+    module_lower.parts = build_module_parts(module_lower, catalog)
+    store.save_new(module_lower)
+
+    w = TabSciana(module_store=store)
+    assert _select_saved_module(w.tree_saved_modules, "STACK_TARGET_UPPER")
+    w.btn_add_saved.click()
+    assert _select_saved_module(w.tree_saved_modules, "STACK_TARGET_LOWER")
+    w.btn_add_saved.click()
+    app.processEvents()
+
+    w._assembly.items[1].offset_mm = float(w._resolved_items[0].x_mm)
+    w._rebuild_assembly(select_index=1)
+    app.processEvents()
+
+    upper = w._resolved_items[0]
+    lower = w._resolved_items[1]
+    candidates = list(w.preview._snap_y_candidate_values(1, current_left_x=float(upper.x_mm)))
+
+    below_target = float(upper.y_mm + upper.height_mm)
+    above_target = float(upper.y_mm - lower.height_mm)
+    overlap_top_target = float(upper.y_mm)
+    overlap_bottom_target = float(upper.y_mm + upper.height_mm - lower.height_mm)
+
+    assert any(abs(candidate - below_target) < 0.1 for candidate in candidates)
+    assert any(abs(candidate - above_target) < 0.1 for candidate in candidates)
+    assert not any(abs(candidate - overlap_top_target) < 0.1 for candidate in candidates)
+    assert not any(abs(candidate - overlap_bottom_target) < 0.1 for candidate in candidates)
 
 
 def test_sciana_tab_material_override_changes_resolved_module_materials(tmp_path, monkeypatch):

@@ -1,5 +1,5 @@
 PLAN ETAPOW - TECH_modul
-Aktualizacja: 2026-03-15
+Aktualizacja: 2026-03-16
 
 Legenda:
 - [DONE] zrobione
@@ -56,8 +56,32 @@ STAN OGOLNY
 - tryb od gory / od dolu
 - fronty widoczne w komplecie
 
-[DONE] Ostatnia poprawka:
+[DONE] Ostatnie techniczne ustalenia:
 - poprawiona skala glebokosci modulu w "Rzut z gory" w karcie Komplet
+- pliki Project3dc XML / .project z 3D Constructor nadaja sie do przyszlego importu
+- pliki IMF / IFD nie sa teraz pierwszym priorytetem
+
+
+--------------------------------------------------
+NOWY KIERUNEK PRODUKTU
+--------------------------------------------------
+
+[DONE] Ustalony kierunek dalszej pracy:
+- nasza aplikacja ma byc przede wszystkim narzedziem do szybkiej wyceny
+- pelny projekt techniczny nie jest wymagany na etapie pierwszej oferty
+- 3D Constructor ma zostac narzedziem do dokladnego projektu po akceptacji klienta
+- GibLab ma zostac narzedziem do rozkroju i CNC
+
+[DONE] Wnioski po analizie zewnetrznych rozwiazan:
+- z AXIC bierzemy logike szybkiej kalkulacji i oferty
+- z Prodboard bierzemy katalog, warianty i logike prezentacji klientowi
+- z Blum bierzemy logike budowy modulu, frontow, szuflad i kolizji
+- z 3D Constructor bierzemy pozniej katalog i dokladne dane techniczne
+
+[DONE] Wniosek po analizie pracy firmy:
+- najwazniejsze jest skrocenie czasu pierwszej wyceny
+- nie kazda wycena przechodzi dalej do produkcji
+- dlatego szybki handlowy konfigurator jest wazniejszy niz natychmiastowy import techniczny
 
 
 --------------------------------------------------
@@ -86,11 +110,19 @@ Zrobione w Etapie 1:
 - parametry sciany
 - poprawki czytelnosci summary
 - blok "Zapis i przejscie"
+- spokojniejsze kadrowanie widokow:
+  - mniej pustego miejsca nad sciana
+  - etykiety scian sa wrysowane w obszar roboczy, a nie wypychaja scene
+  - front i gora sa centrowane po wspolnym skalowaniu
+- spokojniejsze przeszkody:
+  - nieaktywne przeszkody sa lzejsze wizualnie
+  - male techniczne elementy bez zaznaczenia nie zasypuja preview podpisami
+  - dodatkowe symbole techniczne sa pokazywane glownie dla wybranej przeszkody
 
 [DONE] Komplet:
 - osobne widoki przod / gora
 - aktywny widok
-- poprawki drag modurow
+- poprawki drag modulu
 - poprawki frontow
 - poprawki podgladu sciany
 - poprawki pozycji modulu
@@ -101,6 +133,10 @@ Zrobione w Etapie 1:
 - poprawione zachowanie drag:
   - pozycja modulu zapisuje sie poprawnie po puszczeniu myszy
   - modul moze snapowac pionowo pod lub nad sasiednim modulem
+- uproszczone i bardziej przewidywalne snapy:
+  - w jednym rzedzie modul preferuje doklejanie bok-do-boku
+  - przy ukladzie modul pod modulem preferowane jest wyrownanie krawedzi
+  - pionowe snapy nie proponuja juz nachodzacych na siebie wyrownan
 - czytelniejszy aktywny modul:
   - mocniejszy focus na zaznaczonym module
   - wyrazniejsze wymiary aktywnego modulu
@@ -112,22 +148,35 @@ Zrobione w Etapie 1:
   - lzejsze tlo sciany i stref
   - spokojniejsze przeszkody
   - mocniejszy fokus na samych modulach
+- bardziej meblowy wyglad preview:
+  - cieplejsza paleta modulow i frontow
+  - spokojniejszy obrys sciany
+  - mniej zimnego, technicznego charakteru sceny
 - prawdziwa praca w "Rzut z gory":
   - offset po dlugosci sciany
   - offset od sciany
-  - drag modulu w dwóch osiach w top view
+  - drag modulu w dwoch osiach w top view
 
 [DONE] Nowe zamowienie:
 - zwijane sekcje
 - podsumowanie kosztow
 - lista scian zamowienia
 - koszty kompletow osobno
+- lzejszy i bardziej projektowy summary:
+  - szybkie karty z liczba scian, kompletow i suma
+  - spokojniejsze, krotsze opisy blokow
+  - czytelniejsze tabele scian, kompletow i materialow
+
+[DONE] Dodatkowy efekt Etapu 1:
+- lepiej widac, ktore obszary trzeba dalej upraszczac pod szybka wycene
+- mamy juz dobry fundament pod biblioteke gotowych modulow
+- mamy juz fundament pod osobne koszty kompletow i zamowienia
 
 Jeszcze do zrobienia w Etapie 1:
 [TODO] Komplet:
 - dalej delikatnie doszlifowac snapy / magnesy pod odczucie pracy myszka
 - dopracowac "modul pod modulem" i prace modul-do-modulu
-- dopracowac zachowanie nowo dodawanego modulu w top view (startowa pozycja / ewentualny drop z offsetem od sciany)
+- dopracowac zachowanie nowo dodawanego modulu w top view
 
 [TODO] Sciana:
 - dalsze dopracowanie skali i centrowania
@@ -140,7 +189,80 @@ Jeszcze do zrobienia w Etapie 1:
 
 
 --------------------------------------------------
-ETAP 2 - STATUSY I KALENDARZ PRAC
+ETAP 1A - SZYBKA WYCENA HANDLOWA
+--------------------------------------------------
+
+Status: [IN PROGRESS]
+
+Cel:
+- skrocic czas przygotowania pierwszej wyceny
+- nie wymagac pelnego projektu technicznego na starcie
+- pozwolic ulozyc kuchnie / szafe / garderobe z gotowych modulow
+- pokazac klientowi szybka cene, wariant i prosty uklad
+
+Zalozenia:
+- wycena ma byc mozliwa bez wchodzenia do 3D Constructor
+- 3D Constructor ma wejsc dopiero po akceptacji klienta
+- import z 3D Constructor ma sluzyc doprecyzowaniu projektu, a nie tworzeniu pierwszej wyceny
+
+Do wdrozenia:
+[TODO] Biblioteka gotowych modulow do szybkiej wyceny:
+- dolne
+- gorne
+- slupki
+- szafy
+- narozne
+- szuflady / fronty / warianty standardowe
+
+[TODO] Bardzo szybki Komplet / Sciana:
+- skladanie ukladu z biblioteki modulow
+- szybki widok przod / gora
+- prosty i przewidywalny drag
+- szybka zmiana szerokosci / wysokosci / glebokosci tylko tam, gdzie to potrzebne
+
+[TODO] Szybkie zmiany handlowe:
+- korpus
+- front
+- kolor / dekor
+- okucia
+- wariant economy / standard / premium
+
+[TODO] Szybka kalkulacja:
+- materialy
+- okleina
+- okucia
+- orientacyjna robocizna
+- cena po komplecie
+- cena po zamowieniu
+
+[TODO] Szybka oferta:
+- prosty widok dla klienta
+- cena orientacyjna
+- opis wariantu
+- przygotowanie pod PDF oferty
+
+
+--------------------------------------------------
+ETAP 2 - IMPORT Z 3D CONSTRUCTOR
+--------------------------------------------------
+
+Status: [TODO]
+
+Do wdrozenia:
+- import katalogu materialow
+- import oklein
+- import okuc
+- import BOM / listy detali
+- mapowanie Project3dc XML / .project
+- powiazanie importu z:
+  - zamowieniem
+  - kompletem
+  - kosztami
+- wykorzystanie importu po akceptacji klienta i wykonaniu dokladnego projektu
+
+
+--------------------------------------------------
+ETAP 3 - STATUSY I KALENDARZ PRAC
 --------------------------------------------------
 
 Status: [TODO]
@@ -165,7 +287,7 @@ Do wdrozenia:
 
 
 --------------------------------------------------
-ETAP 3 - RENTOWNOSC I FINANSE
+ETAP 4 - RENTOWNOSC I FINANSE
 --------------------------------------------------
 
 Status: [TODO]
@@ -186,7 +308,7 @@ Do wdrozenia:
 
 
 --------------------------------------------------
-ETAP 4 - OFERTA DLA KLIENTA
+ETAP 5 - OFERTA DLA KLIENTA
 --------------------------------------------------
 
 Status: [TODO]
@@ -206,7 +328,7 @@ Do wdrozenia:
 
 
 --------------------------------------------------
-ETAP 5 - DASHBOARD FIRMY
+ETAP 6 - DASHBOARD FIRMY
 --------------------------------------------------
 
 Status: [TODO]
@@ -227,7 +349,11 @@ Do wdrozenia:
 NAJBLIZSZY PRAKTYCZNY KROK
 --------------------------------------------------
 
-[IN PROGRESS] Domknac Etap 1, zaczynajac od:
-- dalszego uspokojenia karty Komplet
-- poprawy magnesow / snapow
-- dopracowania pracy modul-do-modulu
+[IN PROGRESS] Domknac Etap 1 i przejsc plynnie do Etapu 1A:
+- dalej upraszczac Komplet i Sciana pod szybsza prace
+- przygotowac biblioteke gotowych modulow do szybkiej wyceny
+- dopracowac szybka zmiane materialow / frontow / kolorow
+- utrzymywac w tym pliku aktualny stan:
+  - co zrobione
+  - co jest w toku
+  - co zostaje do pracy

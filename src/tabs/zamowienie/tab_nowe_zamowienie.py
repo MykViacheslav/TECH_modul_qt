@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QFrame,
     QFormLayout,
+    QHeaderView,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -84,8 +85,7 @@ class TabNoweZamowienie(QWidget):
         root.addWidget(title, 0, Qt.AlignmentFlag.AlignLeft)
 
         subtitle = QLabel(
-            "To jest osobna karta robocza. Tutaj wpisujesz dane klienta, zamowienia i pracownika, "
-            "a program zapisuje je bezposrednio do odpowiednich baz."
+            "Karta robocza dla calego projektu: klient, zamowienie, pracownik, sciany i koszty kompletow w jednym miejscu."
         )
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet("color:#555555;")
@@ -214,7 +214,7 @@ class TabNoweZamowienie(QWidget):
         layout.addLayout(form)
 
         note = QLabel(
-            "Mozesz od razu wybrac klienta z bazy albo wpisac nowego i zapisac go tutaj, bez przechodzenia do innej zakladki."
+            "Wybierz klienta z bazy albo wpisz nowego i zapisz go od razu tutaj."
         )
         note.setWordWrap(True)
         note.setStyleSheet("color:#666666;")
@@ -281,7 +281,7 @@ class TabNoweZamowienie(QWidget):
         layout.addLayout(form)
 
         note = QLabel(
-            "Mozesz wybrac pracownika z bazy albo dopisac go tutaj i od razu zapisac do bazy."
+            "Wybierz pracownika z bazy albo dopisz go tutaj i zapisz od razu."
         )
         note.setWordWrap(True)
         note.setStyleSheet("color:#666666;")
@@ -291,7 +291,7 @@ class TabNoweZamowienie(QWidget):
         layout = self.grp_actions.content_layout()
 
         info = QLabel(
-            "Zapisz nowe tworzy brakujace wpisy w bazach. Nadpisz wszystko aktualizuje klienta, pracownika i zamowienie wedlug biezacej karty."
+            "Zapisz nowe tworzy brakujace wpisy. Nadpisz wszystko aktualizuje dane wedlug biezacej karty."
         )
         info.setWordWrap(True)
         info.setStyleSheet("color:#444444;")
@@ -319,7 +319,7 @@ class TabNoweZamowienie(QWidget):
         layout = self.grp_walls.content_layout()
 
         note = QLabel(
-            "Jedno zamowienie moze miec wiele scian. Tutaj widzisz wszystkie sciany powiazane z biezacym kodem zamowienia."
+            "Jedno zamowienie moze miec wiele scian. Tutaj widzisz wszystkie sciany powiazane z biezacym kodem."
         )
         note.setWordWrap(True)
         note.setStyleSheet("color:#555555;")
@@ -342,27 +342,41 @@ class TabNoweZamowienie(QWidget):
         self.tbl_walls.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tbl_walls.verticalHeader().setVisible(False)
         self.tbl_walls.horizontalHeader().setStretchLastSection(True)
+        self.tbl_walls.setAlternatingRowColors(True)
+        self.tbl_walls.setMinimumHeight(170)
+        self.tbl_walls.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_walls.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_walls.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         layout.addWidget(self.tbl_walls)
 
     def _build_summary_group(self) -> None:
         layout = self.grp_summary.content_layout()
 
         note = QLabel(
-            "Tutaj widzisz, co jest juz zapisane w tym zamowieniu: liczbe scian, kompletow, koszty "
-            "kazdego kompletu osobno, laczne podsumowanie oraz liste materialow policzona ze wszystkich zapisanych kompletow."
+            "Szybki podglad calego zamowienia: sciany, komplety, koszt laczny i materialy."
         )
         note.setWordWrap(True)
         note.setStyleSheet("color:#555555;")
         layout.addWidget(note)
 
+        metrics_row = QHBoxLayout()
+        metrics_row.setSpacing(10)
+        self.card_walls, self.lab_metric_walls = self._build_metric_card("Sciany")
+        self.card_assemblies, self.lab_metric_assemblies = self._build_metric_card("Komplety")
+        self.card_total, self.lab_metric_total = self._build_metric_card("Razem")
+        metrics_row.addWidget(self.card_walls, 1)
+        metrics_row.addWidget(self.card_assemblies, 1)
+        metrics_row.addWidget(self.card_total, 1)
+        layout.addLayout(metrics_row)
+
         self.lab_summary = QLabel("")
         self.lab_summary.setWordWrap(True)
-        self.lab_summary.setStyleSheet("color:#444444;")
+        self.lab_summary.setStyleSheet("color:#444444; background:#fafafa; border:1px solid #e9e9e9; border-radius:6px; padding:8px;")
         layout.addWidget(self.lab_summary)
 
         self.lab_cost_summary = QLabel("")
         self.lab_cost_summary.setWordWrap(True)
-        self.lab_cost_summary.setStyleSheet("color:#1f1f1f; font-weight:600;")
+        self.lab_cost_summary.setStyleSheet("color:#1f1f1f; font-weight:600; background:#f7fbff; border:1px solid #dbeafe; border-radius:6px; padding:8px;")
         layout.addWidget(self.lab_cost_summary)
 
         assemblies_title = QLabel("Komplety w zamowieniu")
@@ -378,7 +392,11 @@ class TabNoweZamowienie(QWidget):
         self.tbl_order_assemblies.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tbl_order_assemblies.verticalHeader().setVisible(False)
         self.tbl_order_assemblies.horizontalHeader().setStretchLastSection(True)
+        self.tbl_order_assemblies.setAlternatingRowColors(True)
         self.tbl_order_assemblies.setMinimumHeight(150)
+        self.tbl_order_assemblies.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_order_assemblies.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_order_assemblies.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         layout.addWidget(self.tbl_order_assemblies)
 
         materials_title = QLabel("Materialy w calym zamowieniu")
@@ -392,8 +410,35 @@ class TabNoweZamowienie(QWidget):
         self.tbl_order_materials.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tbl_order_materials.verticalHeader().setVisible(False)
         self.tbl_order_materials.horizontalHeader().setStretchLastSection(True)
+        self.tbl_order_materials.setAlternatingRowColors(True)
         self.tbl_order_materials.setMinimumHeight(160)
+        self.tbl_order_materials.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_order_materials.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_order_materials.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         layout.addWidget(self.tbl_order_materials)
+
+    def _build_metric_card(self, title: str) -> tuple[QFrame, QLabel]:
+        card = QFrame(self.grp_summary)
+        card.setFrameShape(QFrame.Shape.StyledPanel)
+        card.setStyleSheet(
+            "QFrame {"
+            " background:#f8fafc;"
+            " border:1px solid #e2e8f0;"
+            " border-radius:8px;"
+            "}"
+        )
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(2)
+
+        title_label = QLabel(title, card)
+        title_label.setStyleSheet("color:#64748b; font-size:11px; font-weight:600;")
+        value_label = QLabel("-", card)
+        value_label.setStyleSheet("color:#0f172a; font-size:18px; font-weight:800;")
+
+        layout.addWidget(title_label)
+        layout.addWidget(value_label)
+        return card, value_label
 
     def _make_compact_button(self, button: QPushButton, min_width: int = 120, max_width: int = 160) -> None:
         button.setMinimumWidth(min_width)
@@ -488,13 +533,15 @@ class TabNoweZamowienie(QWidget):
         status_name = self.cb_order_status.currentText().strip() or "-"
         wall_count = len(self._current_order_wall_names())
         assembly_count = len(self._current_order_assemblies())
+        if hasattr(self, "lab_metric_walls"):
+            self.lab_metric_walls.setText(str(wall_count))
+        if hasattr(self, "lab_metric_assemblies"):
+            self.lab_metric_assemblies.setText(str(assembly_count))
         self.lab_summary.setText(
             f"Klient: {client_name}\n"
             f"Zamowienie: {order_code}\n"
             f"Status: {status_name}\n"
-            f"Pracownik: {worker_name}\n"
-            f"Sciany zapisane: {wall_count}\n"
-            f"Komplety zapisane: {assembly_count}"
+            f"Pracownik: {worker_name}"
         )
         self._refresh_order_walls_table()
         self._refresh_order_cost_summary()
@@ -606,6 +653,8 @@ class TabNoweZamowienie(QWidget):
             )
 
         grand_total = material_total + edgeband_total + hardware_total
+        if hasattr(self, "lab_metric_total"):
+            self.lab_metric_total.setText(f"{grand_total:.2f} zl")
 
         if assemblies:
             assembly_names = ", ".join(str(getattr(item, "name", "") or "-") for item in assemblies[:4])
