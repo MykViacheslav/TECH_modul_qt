@@ -150,6 +150,19 @@ def resolve_assembly_module_item(
             module.drawer_vendor = drawer_vendor
         module.material_profile_key = profile.key
 
+    hardware_vendor_overrides = {
+        str(key or "").strip().lower(): str(value or "").strip().lower()
+        for key, value in dict(getattr(assembly, "hardware_vendor_overrides", {}) or {}).items()
+        if str(value or "").strip()
+    }
+    if hardware_vendor_overrides:
+        hinge_vendor = str(hardware_vendor_overrides.get("hinge", "") or "").strip()
+        drawer_vendor = str(hardware_vendor_overrides.get("drawer_system", "") or "").strip()
+        if hinge_vendor:
+            module.hinge_vendor = hinge_vendor
+        if drawer_vendor:
+            module.drawer_vendor = drawer_vendor
+
     assembly_material_overrides = {
         str(key or "").strip().lower(): str(value or "").strip()
         for key, value in dict(getattr(assembly, "material_overrides", {}) or {}).items()

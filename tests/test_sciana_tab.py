@@ -1742,6 +1742,53 @@ def test_sciana_tab_quick_material_preset_applies_profile_and_overrides(tmp_path
     }
 
 
+def test_sciana_tab_hardware_vendor_preset_overrides_resolved_module_hardware(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    catalog = CatalogStoreJson()
+    store = ModuleStoreJson()
+
+    module = ModuleDef(
+        name="HW_PRESET_A",
+        width_mm=600.0,
+        depth_mm=560.0,
+        height_mm=720.0,
+        visible_parts={"side_left", "side_right", "top", "bottom", "front"},
+        materials={"carcass": "PB18", "front": "MDF19", "back": "HDF2.5"},
+        hinge_vendor="generic",
+        drawer_vendor="generic",
+    )
+    module.parts = build_module_parts(module, catalog)
+    store.save_new(module)
+
+    w = TabSciana(module_store=store)
+    vendor_idx = w.cb_hardware_vendor_preset.findData("hettich")
+    assert vendor_idx >= 0
+    w.cb_hardware_vendor_preset.setCurrentIndex(vendor_idx)
+    app.processEvents()
+
+    assert _select_saved_module(w.tree_saved_modules, "HW_PRESET_A")
+    w.btn_add_saved.click()
+    app.processEvents()
+
+    assert dict(w._assembly.hardware_vendor_overrides or {}) == {
+        "hinge": "hettich",
+        "drawer_system": "hettich",
+    }
+    resolved = w._resolved_items[0].module
+    assert resolved.hinge_vendor == "hettich"
+    assert resolved.drawer_vendor == "hettich"
+
+
 def test_sciana_tab_can_bind_assembly_to_saved_wall_and_metadata(tmp_path, monkeypatch):
     monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TECH_MODUL_TESTING", "1")

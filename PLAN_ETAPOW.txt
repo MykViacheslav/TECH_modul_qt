@@ -265,6 +265,12 @@ Do wdrozenia:
   - front
   - plecy
 - mozna tez szybko wyczyscic nadpisania materialowe i wracac do profilu bazowego
+- blok ma tez teraz szybki "Wariant okuc":
+  - z profilu
+  - ogolne
+  - Blum
+  - Hettich
+- wybor wariantu okuc nadpisuje zawiasy i systemy szuflad dla calego kompletu
 
 [DONE] Materialy od architekta w zamowieniu:
 - blok "Zalaczniki od architekta" w karcie Nowe zamowienie
@@ -324,7 +330,6 @@ Do wdrozenia:
 
 [TODO] Rozszerzone szybkie zmiany handlowe:
 - kolor / dekor po calym komplecie
-- gotowe warianty okuć
 - szybsze przelaczanie materialow pod konkretne kolekcje firmowe
 
 [TODO] Glosowe uzupelnianie prostych pol:

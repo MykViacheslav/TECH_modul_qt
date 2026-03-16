@@ -101,6 +101,13 @@ PRESET_VARIANT_LABELS = {
     "custom": "Niestandardowe",
 }
 
+HARDWARE_VENDOR_LABELS = {
+    "": "[z profilu]",
+    "generic": "Ogolne",
+    "blum": "Blum",
+    "hettich": "Hettich",
+}
+
 _IMAGE_ATTACHMENT_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
 
 
@@ -1968,6 +1975,7 @@ class TabSciana(QWidget):
         self._reload_profiles()
         self._reload_quick_material_presets()
         self._reload_material_choices()
+        self._reload_hardware_vendor_presets()
         self._reload_worker_choices()
         self._reload_saved_walls()
         self._reload_saved_modules()
@@ -1982,6 +1990,7 @@ class TabSciana(QWidget):
         self._reload_profiles()
         self._reload_quick_material_presets()
         self._reload_material_choices()
+        self._reload_hardware_vendor_presets()
         self._reload_worker_choices(current_worker=str(getattr(self._assembly, "worker_name", "") or ""))
         self._reload_saved_walls()
         self._push_assembly_to_ui()
@@ -2039,6 +2048,7 @@ class TabSciana(QWidget):
         self.cb_quick_material_preset.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContentsOnFirstShow)
         self.btn_apply_material_preset = QPushButton("Zastosuj")
         self.btn_clear_material_overrides = QPushButton("Wyczysc nadpisania")
+        self.cb_hardware_vendor_preset = QComboBox()
         self.lab_material_preset_hint = QLabel("")
         self.lab_material_preset_hint.setWordWrap(True)
         self.lab_material_preset_hint.setStyleSheet("color:#666666;")
@@ -2108,6 +2118,7 @@ class TabSciana(QWidget):
         materials_form.addRow("Korpus", self.cb_material_carcass)
         materials_form.addRow("Front", self.cb_material_front)
         materials_form.addRow("Plecy", self.cb_material_back)
+        materials_form.addRow("Wariant okuc", self.cb_hardware_vendor_preset)
         materials_form.addRow("", self.btn_clear_material_overrides)
         materials_form.addRow("", self.lab_material_preset_hint)
 
@@ -2208,6 +2219,7 @@ class TabSciana(QWidget):
         self.cb_material_carcass.currentIndexChanged.connect(self._on_assembly_changed)
         self.cb_material_front.currentIndexChanged.connect(self._on_assembly_changed)
         self.cb_material_back.currentIndexChanged.connect(self._on_assembly_changed)
+        self.cb_hardware_vendor_preset.currentIndexChanged.connect(self._on_assembly_changed)
         self.btn_refresh_saved.clicked.connect(self._reload_saved_modules)
         self.cb_saved_quick_group.currentIndexChanged.connect(self._reload_saved_modules)
         self.cb_saved_front_variant.currentIndexChanged.connect(self._reload_saved_modules)
@@ -2715,6 +2727,35 @@ class TabSciana(QWidget):
         self.cb_quick_material_preset.setCurrentIndex(idx)
         self.cb_quick_material_preset.blockSignals(False)
         self._refresh_quick_material_preset_hint()
+
+    def _reload_hardware_vendor_presets(self) -> None:
+        current_vendor = str(self.cb_hardware_vendor_preset.currentData() or "").strip().lower()
+        assembly_vendor = str(
+            dict(getattr(self._assembly, "hardware_vendor_overrides", {}) or {}).get("hinge", "") or ""
+        ).strip().lower()
+        vendor_names = sorted(
+            {
+                str(vendor or "").strip().lower()
+                for vendor in (
+                    self._catalog.list_hardware_manufacturers("hinge")
+                    + self._catalog.list_hardware_manufacturers("drawer_system")
+                )
+                if str(vendor or "").strip()
+            }
+        )
+
+        self.cb_hardware_vendor_preset.blockSignals(True)
+        self.cb_hardware_vendor_preset.clear()
+        for vendor in [""] + vendor_names:
+            label = HARDWARE_VENDOR_LABELS.get(vendor, str(vendor).title())
+            self.cb_hardware_vendor_preset.addItem(label, vendor)
+        idx = self.cb_hardware_vendor_preset.findData(current_vendor)
+        if idx < 0:
+            idx = self.cb_hardware_vendor_preset.findData(assembly_vendor)
+        if idx < 0:
+            idx = 0
+        self.cb_hardware_vendor_preset.setCurrentIndex(idx)
+        self.cb_hardware_vendor_preset.blockSignals(False)
 
     def _material_label(self, material) -> str:
         label = f"{material.key} ({material.thickness_mm:g} mm) - {material.name_pl}"
@@ -3228,6 +3269,10 @@ class TabSciana(QWidget):
                 self.cb_profile.setCurrentIndex(idx)
             quick_idx = self.cb_quick_material_preset.findData(profile_key)
             self.cb_quick_material_preset.setCurrentIndex(quick_idx if quick_idx >= 0 else 0)
+            hardware_overrides = dict(getattr(self._assembly, "hardware_vendor_overrides", {}) or {})
+            hardware_vendor = str(hardware_overrides.get("hinge", "") or "").strip().lower()
+            hardware_idx = self.cb_hardware_vendor_preset.findData(hardware_vendor)
+            self.cb_hardware_vendor_preset.setCurrentIndex(hardware_idx if hardware_idx >= 0 else 0)
 
             material_overrides = dict(getattr(self._assembly, "material_overrides", {}) or {})
 
@@ -3265,6 +3310,13 @@ class TabSciana(QWidget):
             )
             if material_key
         }
+        selected_hardware_vendor = str(self.cb_hardware_vendor_preset.currentData() or "").strip().lower()
+        self._assembly.hardware_vendor_overrides = {}
+        if selected_hardware_vendor:
+            self._assembly.hardware_vendor_overrides = {
+                "hinge": selected_hardware_vendor,
+                "drawer_system": selected_hardware_vendor,
+            }
 
     def _on_assembly_changed(self) -> None:
         if self._is_pushing_ui:
@@ -3868,6 +3920,11 @@ class TabSciana(QWidget):
                 override_chunks.append(f"{label}: {selected}")
         if override_chunks:
             lines.append(f"Materialy zestawu: {', '.join(override_chunks)}")
+
+        hardware_overrides = dict(getattr(self._assembly, "hardware_vendor_overrides", {}) or {})
+        hardware_vendor = str(hardware_overrides.get("hinge", "") or "").strip()
+        if hardware_vendor:
+            lines.append(f"Wariant okuc: {HARDWARE_VENDOR_LABELS.get(hardware_vendor, hardware_vendor.title())}")
 
         if free_width >= 0.0:
             lines.append(f"Wolne miejsce: {free_width:.0f} mm")

@@ -75,6 +75,7 @@ class FurnitureAssemblyDef:
     material_profile_key: str = "STD_WHITE"
     force_hardware_from_profile: bool = True
     material_overrides: Dict[str, str] = field(default_factory=dict)
+    hardware_vendor_overrides: Dict[str, str] = field(default_factory=dict)
     items: List[AssemblyModuleItemDef] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -93,6 +94,11 @@ class FurnitureAssemblyDef:
             "material_overrides": {
                 str(key): str(value)
                 for key, value in dict(self.material_overrides or {}).items()
+                if str(value or "").strip()
+            },
+            "hardware_vendor_overrides": {
+                str(key): str(value)
+                for key, value in dict(self.hardware_vendor_overrides or {}).items()
                 if str(value or "").strip()
             },
             "items": [item.to_dict() for item in (self.items or [])],
@@ -125,6 +131,11 @@ class FurnitureAssemblyDef:
             material_overrides={
                 str(key): str(value)
                 for key, value in dict(data.get("material_overrides") or {}).items()
+                if str(value or "").strip()
+            },
+            hardware_vendor_overrides={
+                str(key): str(value)
+                for key, value in dict(data.get("hardware_vendor_overrides") or {}).items()
                 if str(value or "").strip()
             },
             items=items,
