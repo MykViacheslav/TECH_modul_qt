@@ -126,6 +126,37 @@ DECOR_PRESET_VALUES = {
     "black": {"carcass": "Czarny", "front": "Czarny"},
 }
 
+COMPANY_COLLECTION_LABELS = {
+    "": "[bez kolekcji firmowej]",
+    "basic_white": "Basic bialy",
+    "premium_cashmere": "Premium cashmere",
+    "wardrobe_graphite": "Szafa grafit",
+    "display_black": "Witryna czarna",
+}
+
+COMPANY_COLLECTION_VALUES = {
+    "basic_white": {
+        "material_preset": "STD_WHITE",
+        "hardware_vendor": "generic",
+        "decor_preset": "white",
+    },
+    "premium_cashmere": {
+        "material_preset": "OAK_PREMIUM",
+        "hardware_vendor": "blum",
+        "decor_preset": "cashmere",
+    },
+    "wardrobe_graphite": {
+        "material_preset": "WARDROBE_GRAPHITE",
+        "hardware_vendor": "hettich",
+        "decor_preset": "graphite",
+    },
+    "display_black": {
+        "material_preset": "DISPLAY_GLASS",
+        "hardware_vendor": "blum",
+        "decor_preset": "black",
+    },
+}
+
 _IMAGE_ATTACHMENT_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
 
 
@@ -1995,6 +2026,7 @@ class TabSciana(QWidget):
         self._reload_material_choices()
         self._reload_hardware_vendor_presets()
         self._reload_decor_presets()
+        self._reload_company_collections()
         self._reload_worker_choices()
         self._reload_saved_walls()
         self._reload_saved_modules()
@@ -2011,6 +2043,7 @@ class TabSciana(QWidget):
         self._reload_material_choices()
         self._reload_hardware_vendor_presets()
         self._reload_decor_presets()
+        self._reload_company_collections()
         self._reload_worker_choices(current_worker=str(getattr(self._assembly, "worker_name", "") or ""))
         self._reload_saved_walls()
         self._push_assembly_to_ui()
@@ -2063,9 +2096,13 @@ class TabSciana(QWidget):
         self.cb_material_carcass = QComboBox()
         self.cb_material_front = QComboBox()
         self.cb_material_back = QComboBox()
+        self.cb_company_collection = QComboBox()
+        self.cb_company_collection.setMinimumContentsLength(18)
+        self.cb_company_collection.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContentsOnFirstShow)
         self.cb_quick_material_preset = QComboBox()
         self.cb_quick_material_preset.setMinimumContentsLength(18)
         self.cb_quick_material_preset.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContentsOnFirstShow)
+        self.btn_apply_company_collection = QPushButton("Zastosuj")
         self.btn_apply_material_preset = QPushButton("Zastosuj")
         self.btn_clear_material_overrides = QPushButton("Wyczysc nadpisania")
         self.cb_hardware_vendor_preset = QComboBox()
@@ -2132,12 +2169,19 @@ class TabSciana(QWidget):
 
         self.box_materials = QGroupBox("", panel)
         materials_form = QFormLayout(self.box_materials)
+        company_row = QWidget(self.box_materials)
+        company_row_layout = QHBoxLayout(company_row)
+        company_row_layout.setContentsMargins(0, 0, 0, 0)
+        company_row_layout.setSpacing(6)
+        company_row_layout.addWidget(self.cb_company_collection, 1)
+        company_row_layout.addWidget(self.btn_apply_company_collection, 0)
         preset_row = QWidget(self.box_materials)
         preset_row_layout = QHBoxLayout(preset_row)
         preset_row_layout.setContentsMargins(0, 0, 0, 0)
         preset_row_layout.setSpacing(6)
         preset_row_layout.addWidget(self.cb_quick_material_preset, 1)
         preset_row_layout.addWidget(self.btn_apply_material_preset, 0)
+        materials_form.addRow("Kolekcja firmowa", company_row)
         materials_form.addRow("Szybki preset", preset_row)
         materials_form.addRow("Korpus", self.cb_material_carcass)
         materials_form.addRow("Front", self.cb_material_front)
@@ -2241,6 +2285,7 @@ class TabSciana(QWidget):
         self.sp_gap.valueChanged.connect(self._on_assembly_changed)
         self.cb_profile.currentIndexChanged.connect(self._on_assembly_changed)
         self.chk_force_hardware.toggled.connect(self._on_assembly_changed)
+        self.btn_apply_company_collection.clicked.connect(self._apply_selected_company_collection)
         self.cb_quick_material_preset.currentIndexChanged.connect(self._refresh_quick_material_preset_hint)
         self.btn_apply_material_preset.clicked.connect(self._apply_selected_quick_material_preset)
         self.btn_clear_material_overrides.clicked.connect(self._clear_material_overrides)
@@ -2789,6 +2834,62 @@ class TabSciana(QWidget):
         self.cb_hardware_vendor_preset.setCurrentIndex(idx)
         self.cb_hardware_vendor_preset.blockSignals(False)
 
+    def _company_collection_matches(
+        self,
+        collection_key: str,
+        profile_key: str,
+        hardware_vendor: str,
+        decor_key: str,
+    ) -> bool:
+        values = dict(COMPANY_COLLECTION_VALUES.get(collection_key, {}))
+        if not values:
+            return False
+        return (
+            str(values.get("material_preset", "") or "").strip() == str(profile_key or "").strip()
+            and str(values.get("hardware_vendor", "") or "").strip().lower() == str(hardware_vendor or "").strip().lower()
+            and str(values.get("decor_preset", "") or "").strip() == str(decor_key or "").strip()
+        )
+
+    def _matching_company_collection_key(self, profile_key: str, hardware_vendor: str, decor_key: str) -> str:
+        normalized_profile = str(profile_key or "").strip()
+        normalized_vendor = str(hardware_vendor or "").strip().lower()
+        normalized_decor = str(decor_key or "").strip()
+        if not normalized_profile and not normalized_vendor and not normalized_decor:
+            return ""
+        for collection_key in COMPANY_COLLECTION_VALUES:
+            if self._company_collection_matches(collection_key, normalized_profile, normalized_vendor, normalized_decor):
+                return collection_key
+        return ""
+
+    def _reload_company_collections(self) -> None:
+        current_key = str(self.cb_company_collection.currentData() or "").strip()
+        assembly_key = str(getattr(self._assembly, "company_collection_key", "") or "").strip()
+        hardware_vendor = str(
+            dict(getattr(self._assembly, "hardware_vendor_overrides", {}) or {}).get("hinge", "") or ""
+        ).strip().lower()
+        decor_key = str(getattr(self._assembly, "decor_preset_key", "") or "").strip()
+        if not decor_key:
+            decor_key = self._matching_decor_preset_key(dict(getattr(self._assembly, "decor_labels", {}) or {}))
+        matched_key = self._matching_company_collection_key(
+            str(getattr(self._assembly, "material_profile_key", "STD_WHITE") or "STD_WHITE"),
+            hardware_vendor,
+            decor_key,
+        )
+
+        self.cb_company_collection.blockSignals(True)
+        self.cb_company_collection.clear()
+        for key, label in COMPANY_COLLECTION_LABELS.items():
+            self.cb_company_collection.addItem(label, key)
+        idx = self.cb_company_collection.findData(current_key)
+        if idx < 0:
+            idx = self.cb_company_collection.findData(assembly_key)
+        if idx < 0:
+            idx = self.cb_company_collection.findData(matched_key)
+        if idx < 0:
+            idx = 0
+        self.cb_company_collection.setCurrentIndex(idx)
+        self.cb_company_collection.blockSignals(False)
+
     def _matching_decor_preset_key(self, decor_labels: dict[str, str] | None) -> str:
         labels = {
             "carcass": str((decor_labels or {}).get("carcass", "") or "").strip(),
@@ -2839,6 +2940,31 @@ class TabSciana(QWidget):
 
         self._pull_ui_to_assembly()
         self._refresh_summary()
+
+    def _apply_selected_company_collection(self) -> None:
+        collection_key = str(self.cb_company_collection.currentData() or "").strip()
+        if not collection_key:
+            return
+
+        values = dict(COMPANY_COLLECTION_VALUES.get(collection_key, {}))
+        self._is_pushing_ui = True
+        try:
+            material_idx = self.cb_quick_material_preset.findData(str(values.get("material_preset", "") or "").strip())
+            if material_idx >= 0:
+                self.cb_quick_material_preset.setCurrentIndex(material_idx)
+            hardware_idx = self.cb_hardware_vendor_preset.findData(str(values.get("hardware_vendor", "") or "").strip().lower())
+            if hardware_idx >= 0:
+                self.cb_hardware_vendor_preset.setCurrentIndex(hardware_idx)
+            decor_idx = self.cb_quick_decor_preset.findData(str(values.get("decor_preset", "") or "").strip())
+            if decor_idx >= 0:
+                self.cb_quick_decor_preset.setCurrentIndex(decor_idx)
+        finally:
+            self._is_pushing_ui = False
+
+        self._apply_selected_quick_material_preset()
+        self._apply_selected_decor_preset()
+        self._pull_ui_to_assembly()
+        self._rebuild_assembly()
 
     def _clear_decor_labels(self) -> None:
         self._is_pushing_ui = True
@@ -3375,6 +3501,11 @@ class TabSciana(QWidget):
                 decor_key = self._matching_decor_preset_key(decor_labels)
             decor_idx = self.cb_quick_decor_preset.findData(decor_key)
             self.cb_quick_decor_preset.setCurrentIndex(decor_idx if decor_idx >= 0 else 0)
+            company_key = str(getattr(self._assembly, "company_collection_key", "") or "").strip()
+            if not company_key:
+                company_key = self._matching_company_collection_key(profile_key, hardware_vendor, decor_key)
+            company_idx = self.cb_company_collection.findData(company_key)
+            self.cb_company_collection.setCurrentIndex(company_idx if company_idx >= 0 else 0)
 
             material_overrides = dict(getattr(self._assembly, "material_overrides", {}) or {})
 
@@ -3428,6 +3559,19 @@ class TabSciana(QWidget):
         if not selected_decor_preset or selected_decor_preset == "custom":
             selected_decor_preset = self._matching_decor_preset_key(self._assembly.decor_labels)
         self._assembly.decor_preset_key = selected_decor_preset
+        selected_collection = str(self.cb_company_collection.currentData() or "").strip()
+        if not selected_collection or not self._company_collection_matches(
+            selected_collection,
+            self._assembly.material_profile_key,
+            selected_hardware_vendor,
+            self._assembly.decor_preset_key,
+        ):
+            selected_collection = self._matching_company_collection_key(
+                self._assembly.material_profile_key,
+                selected_hardware_vendor,
+                self._assembly.decor_preset_key,
+            )
+        self._assembly.company_collection_key = selected_collection
 
     def _on_assembly_changed(self) -> None:
         if self._is_pushing_ui:
@@ -4036,6 +4180,10 @@ class TabSciana(QWidget):
         hardware_vendor = str(hardware_overrides.get("hinge", "") or "").strip()
         if hardware_vendor:
             lines.append(f"Wariant okuc: {HARDWARE_VENDOR_LABELS.get(hardware_vendor, hardware_vendor.title())}")
+
+        company_collection_key = str(getattr(self._assembly, "company_collection_key", "") or "").strip()
+        if company_collection_key:
+            lines.append(f"Kolekcja firmowa: {COMPANY_COLLECTION_LABELS.get(company_collection_key, company_collection_key)}")
 
         decor_labels = dict(getattr(self._assembly, "decor_labels", {}) or {})
         decor_chunks = []

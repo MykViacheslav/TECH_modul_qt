@@ -278,6 +278,16 @@ Do wdrozenia:
   - Grafit
   - Czarny
   - Indywidualny
+- blok ma tez szybka "Kolekcje firmowa":
+  - Basic bialy
+  - Premium cashmere
+  - Szafa grafit
+  - Witryna czarna
+- kolekcja firmowa jednym ruchem ustawia:
+  - preset materialowy
+  - wariant okuc
+  - dekor kompletu
+- kolekcja zapisuje sie w komplecie i wraca po wczytaniu
 - dekor zapisuje handlowe oznaczenie dla:
   - korpusu
   - frontu
@@ -330,7 +340,6 @@ Do wdrozenia:
 
 [TODO] Rozszerzenie biblioteki gotowych modulow:
 - dopiac jeszcze mocniejsze gotowe warianty handlowe:
-  - warianty standardowe pod konkretne kolekcje firmy
   - gotowe zestawy nazwane po waszemu
 
 [TODO] Bardzo szybki Komplet / Sciana:
@@ -340,7 +349,6 @@ Do wdrozenia:
 - szybka zmiana szerokosci / wysokosci / glebokosci tylko tam, gdzie to potrzebne
 
 [TODO] Rozszerzone szybkie zmiany handlowe:
-- szybsze przelaczanie materialow pod konkretne kolekcje firmowe
 - podpiecie dekorow pod realne warianty katalogu materialow, gdy baza bedzie bogatsza
 
 [TODO] Glosowe uzupelnianie prostych pol:

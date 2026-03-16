@@ -1814,6 +1814,36 @@ def test_sciana_tab_quick_decor_preset_sets_commercial_decor_labels(tmp_path, mo
     assert "Dekor zestawu: Korpus: Cashmere, Front: Cashmere" in w.lab_summary.text()
 
 
+def test_sciana_tab_company_collection_applies_material_hardware_and_decor(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    w = TabSciana()
+    collection_idx = w.cb_company_collection.findData("premium_cashmere")
+    assert collection_idx >= 0
+
+    w.cb_company_collection.setCurrentIndex(collection_idx)
+    w.btn_apply_company_collection.click()
+    app.processEvents()
+
+    assert str(w.cb_profile.currentData() or "") == "OAK_PREMIUM"
+    assert str(w.cb_quick_material_preset.currentData() or "") == "OAK_PREMIUM"
+    assert str(w.cb_hardware_vendor_preset.currentData() or "") == "blum"
+    assert str(w.cb_quick_decor_preset.currentData() or "") == "cashmere"
+    assert w.ed_decor_carcass.text() == "Cashmere"
+    assert w.ed_decor_front.text() == "Cashmere"
+    assert str(w._assembly.company_collection_key or "") == "premium_cashmere"
+    assert dict(w._assembly.hardware_vendor_overrides or {}) == {
+        "hinge": "blum",
+        "drawer_system": "blum",
+    }
+    assert "Kolekcja firmowa: Premium cashmere" in w.lab_summary.text()
+
+
 def test_sciana_tab_can_bind_assembly_to_saved_wall_and_metadata(tmp_path, monkeypatch):
     monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TECH_MODUL_TESTING", "1")

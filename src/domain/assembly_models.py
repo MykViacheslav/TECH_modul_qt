@@ -76,6 +76,7 @@ class FurnitureAssemblyDef:
     force_hardware_from_profile: bool = True
     material_overrides: Dict[str, str] = field(default_factory=dict)
     hardware_vendor_overrides: Dict[str, str] = field(default_factory=dict)
+    company_collection_key: str = ""
     decor_preset_key: str = ""
     decor_labels: Dict[str, str] = field(default_factory=dict)
     items: List[AssemblyModuleItemDef] = field(default_factory=list)
@@ -103,6 +104,7 @@ class FurnitureAssemblyDef:
                 for key, value in dict(self.hardware_vendor_overrides or {}).items()
                 if str(value or "").strip()
             },
+            "company_collection_key": str(self.company_collection_key or "").strip(),
             "decor_preset_key": str(self.decor_preset_key or "").strip(),
             "decor_labels": {
                 str(key): str(value)
@@ -146,6 +148,7 @@ class FurnitureAssemblyDef:
                 for key, value in dict(data.get("hardware_vendor_overrides") or {}).items()
                 if str(value or "").strip()
             },
+            company_collection_key=str(data.get("company_collection_key", "") or ""),
             decor_preset_key=str(data.get("decor_preset_key", "") or ""),
             decor_labels={
                 str(key): str(value)
