@@ -344,7 +344,10 @@ Status: [TODO]
 Do wdrozenia:
 - statusy zamowienia:
   - wycena
+  - wycena w toku
+  - wycena gotowa
   - zaakceptowane
+  - zakup materialow
   - produkcja
   - rozkroj
   - oklejanie
@@ -358,10 +361,45 @@ Do wdrozenia:
   - sciany
   - kompletu
   - pracownika
+- ogolny widok obciazenia firmy:
+  - jakie projekty sa w wycenie
+  - jakie projekty sa w produkcji
+  - jakie projekty sa w montazu
+  - jaki procent zaawansowania ma projekt lub etap
+- historia zmian statusu:
+  - kto zmienil
+  - kiedy zmienil
+  - z jakiego statusu na jaki
 
 
 --------------------------------------------------
-ETAP 4 - RENTOWNOSC I FINANSE
+ETAP 4 - ZAKUPY I MAGAZYN
+--------------------------------------------------
+
+Status: [TODO]
+
+Do wdrozenia:
+- lista zakupow z projektow i kompletow
+- mozliwosc wygenerowania "listy na zakupy" z zamowienia
+- widok stanu magazynowego:
+  - co jest na stanie
+  - czego brakuje
+  - ile trzeba dokupic
+- zapis partii i referencji materialow:
+  - z jakiej hurtowni
+  - jaka faktura / dokument
+  - jaki dekor / kolor / kod
+  - do jakiego zamowienia to poszlo
+- porownanie dostawcow:
+  - ostatnia cena
+  - przykladowe faktury historyczne
+  - gdzie oplaca sie kupic taniej
+  - gdzie material jest dostepny szybciej
+- powiazanie zakupow z probkami i finalnymi wyborami materialow
+
+
+--------------------------------------------------
+ETAP 5 - RENTOWNOSC I FINANSE
 --------------------------------------------------
 
 Status: [TODO]
@@ -382,7 +420,7 @@ Do wdrozenia:
 
 
 --------------------------------------------------
-ETAP 5 - OFERTA DLA KLIENTA
+ETAP 6 - OFERTA DLA KLIENTA
 --------------------------------------------------
 
 Status: [TODO]
@@ -402,7 +440,7 @@ Do wdrozenia:
 
 
 --------------------------------------------------
-ETAP 6 - DASHBOARD FIRMY
+ETAP 7 - DASHBOARD FIRMY
 --------------------------------------------------
 
 Status: [TODO]
@@ -412,6 +450,7 @@ Do wdrozenia:
 - liczba aktywnych zamowien
 - zlecenia w produkcji
 - zlecenia na montazu
+- zlecenia czekajace na zakup materialow
 - wartosc sprzedazy
 - koszt
 - marza
