@@ -48,6 +48,16 @@ ORDER_STATUS_ITEMS: tuple[str, ...] = (
     "Zakonczone",
 )
 
+QUOTE_ITEM_TYPES: tuple[str, ...] = (
+    "Kuchnia",
+    "Szafa",
+    "RTV",
+    "Lazienka",
+    "Garderoba",
+    "Biuro",
+    "Inne",
+)
+
 
 class TabNoweZamowienie(QWidget):
     sig_open_clients_base_requested = pyqtSignal()
@@ -115,6 +125,7 @@ class TabNoweZamowienie(QWidget):
         self.grp_worker = CollapsibleBlock("Pracownik", self)
         self.grp_actions = CollapsibleBlock("Akcje", self)
         self.grp_architect = CollapsibleBlock("Zalaczniki od architekta", self)
+        self.grp_quote_items = CollapsibleBlock("Pozycje do wyceny", self)
         self.grp_walls = CollapsibleBlock("Sciany zamowienia", self)
         self.grp_summary = CollapsibleBlock("Podsumowanie zamowienia", self)
 
@@ -123,6 +134,7 @@ class TabNoweZamowienie(QWidget):
         body.addWidget(self.grp_worker)
         body.addWidget(self.grp_actions)
         body.addWidget(self.grp_architect)
+        body.addWidget(self.grp_quote_items)
         body.addWidget(self.grp_walls)
         body.addWidget(self.grp_summary)
         body.addStretch(1)
@@ -133,6 +145,7 @@ class TabNoweZamowienie(QWidget):
             self.grp_worker,
             self.grp_actions,
             self.grp_architect,
+            self.grp_quote_items,
             self.grp_walls,
             self.grp_summary,
         ):
@@ -143,6 +156,7 @@ class TabNoweZamowienie(QWidget):
         self._build_worker_group()
         self._build_actions_group()
         self._build_architect_group()
+        self._build_quote_items_group()
         self._build_walls_group()
         self._build_summary_group()
 
@@ -187,6 +201,9 @@ class TabNoweZamowienie(QWidget):
         self.tbl_architect_attachments.itemSelectionChanged.connect(
             self._on_architect_attachment_selection_changed
         )
+        self.btn_add_quote_item.clicked.connect(self._on_add_quote_item)
+        self.btn_remove_quote_item.clicked.connect(self._on_remove_quote_item)
+        self.tbl_quote_items.itemSelectionChanged.connect(self._on_quote_item_selection_changed)
         self.btn_new_wall.clicked.connect(self._on_go_to_sciana)
         self.btn_open_wall.clicked.connect(self._on_open_selected_wall)
         self.btn_refresh_walls.clicked.connect(self._refresh_order_walls_table)
@@ -414,6 +431,56 @@ class TabNoweZamowienie(QWidget):
         layout.addWidget(self.tbl_architect_attachments)
         self._set_architect_attachments([])
 
+    def _build_quote_items_group(self) -> None:
+        layout = self.grp_quote_items.content_layout()
+
+        note = QLabel(
+            "Tutaj rozbijasz zamowienie na szybkie pozycje handlowe, np. kuchnia, szafa, RTV albo lazienka."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color:#555555;")
+        layout.addWidget(note)
+
+        row = QHBoxLayout()
+        self.ed_quote_item_name = QLineEdit(self.grp_quote_items)
+        self.ed_quote_item_name.setPlaceholderText("Nazwa pozycji, np. Kuchnia salon")
+        self.cb_quote_item_kind = QComboBox(self.grp_quote_items)
+        self.cb_quote_item_kind.addItems(list(QUOTE_ITEM_TYPES))
+        self.cb_quote_item_kind.setMaximumWidth(150)
+        row.addWidget(self.ed_quote_item_name, 1)
+        row.addWidget(self.cb_quote_item_kind, 0)
+        layout.addLayout(row)
+
+        self.ed_quote_item_description = QLineEdit(self.grp_quote_items)
+        self.ed_quote_item_description.setPlaceholderText(
+            "Krotki opis, np. zabudowa wyspy + slupki albo szafa wnekowa przy wejsciu"
+        )
+        layout.addWidget(self.ed_quote_item_description)
+
+        btns = QHBoxLayout()
+        self.btn_add_quote_item = QPushButton("Dodaj pozycje", self.grp_quote_items)
+        self.btn_remove_quote_item = QPushButton("Usun zaznaczona", self.grp_quote_items)
+        self._make_compact_button(self.btn_add_quote_item, min_width=130, max_width=160)
+        self._make_compact_button(self.btn_remove_quote_item, min_width=130, max_width=160)
+        btns.addWidget(self.btn_add_quote_item, 0)
+        btns.addWidget(self.btn_remove_quote_item, 0)
+        btns.addStretch(1)
+        layout.addLayout(btns)
+
+        self.tbl_quote_items = QTableWidget(0, 3, self.grp_quote_items)
+        self.tbl_quote_items.setHorizontalHeaderLabels(["Pozycja", "Typ", "Opis"])
+        self.tbl_quote_items.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tbl_quote_items.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.tbl_quote_items.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl_quote_items.verticalHeader().setVisible(False)
+        self.tbl_quote_items.horizontalHeader().setStretchLastSection(True)
+        self.tbl_quote_items.setAlternatingRowColors(True)
+        self.tbl_quote_items.setMinimumHeight(160)
+        self.tbl_quote_items.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_quote_items.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        layout.addWidget(self.tbl_quote_items)
+        self._set_quote_items([])
+
     def _normalize_attachment(self, item: dict | None) -> dict[str, str] | None:
         if not isinstance(item, dict):
             return None
@@ -514,6 +581,87 @@ class TabNoweZamowienie(QWidget):
         self._refresh_architect_attachments_table()
         self._refresh_summary()
         self._set_status("Usunieto zalacznik od architekta.", ok=True)
+
+    def _normalize_quote_item(self, item: dict | None) -> dict[str, str] | None:
+        if not isinstance(item, dict):
+            return None
+        name = str(item.get("name", "") or "").strip()
+        kind = str(item.get("kind", "") or "").strip() or "Inne"
+        description = str(item.get("description", "") or "").strip()
+        if not name:
+            return None
+        return {
+            "name": name,
+            "kind": kind,
+            "description": description,
+        }
+
+    def _set_quote_items(self, items: list[dict] | None) -> None:
+        normalized: list[dict[str, str]] = []
+        for item in items or []:
+            entry = self._normalize_quote_item(item)
+            if entry is not None:
+                normalized.append(entry)
+        self._quote_items = normalized
+        self._refresh_quote_items_table()
+
+    def _refresh_quote_items_table(self) -> None:
+        if not hasattr(self, "tbl_quote_items"):
+            return
+        self.tbl_quote_items.setRowCount(len(self._quote_items))
+        for row, quote_item in enumerate(self._quote_items):
+            items = (
+                QTableWidgetItem(str(quote_item.get("name", "") or "")),
+                QTableWidgetItem(str(quote_item.get("kind", "") or "Inne")),
+                QTableWidgetItem(str(quote_item.get("description", "") or "")),
+            )
+            for col, item in enumerate(items):
+                item.setData(Qt.ItemDataRole.UserRole, str(quote_item.get("name", "") or ""))
+                self.tbl_quote_items.setItem(row, col, item)
+        self.tbl_quote_items.resizeColumnsToContents()
+        self._on_quote_item_selection_changed()
+
+    def _selected_quote_item_index(self) -> int:
+        selection = (
+            self.tbl_quote_items.selectionModel().selectedRows()
+            if self.tbl_quote_items.selectionModel() is not None
+            else []
+        )
+        if not selection:
+            return -1
+        return int(selection[0].row())
+
+    def _on_quote_item_selection_changed(self) -> None:
+        if hasattr(self, "btn_remove_quote_item"):
+            self.btn_remove_quote_item.setEnabled(self._selected_quote_item_index() >= 0)
+
+    def _on_add_quote_item(self) -> None:
+        entry = self._normalize_quote_item(
+            {
+                "name": self.ed_quote_item_name.text().strip(),
+                "kind": self.cb_quote_item_kind.currentText().strip() or "Inne",
+                "description": self.ed_quote_item_description.text().strip(),
+            }
+        )
+        if entry is None:
+            self._set_status("Podaj nazwe pozycji do wyceny.", ok=False)
+            return
+        self._quote_items.append(entry)
+        self.ed_quote_item_name.clear()
+        self.ed_quote_item_description.clear()
+        self._refresh_quote_items_table()
+        self._refresh_summary()
+        self._set_status("Dodano pozycje do wyceny.", ok=True)
+
+    def _on_remove_quote_item(self) -> None:
+        index = self._selected_quote_item_index()
+        if index < 0 or index >= len(self._quote_items):
+            self._set_status("Wybierz pozycje do usuniecia.", ok=False)
+            return
+        self._quote_items.pop(index)
+        self._refresh_quote_items_table()
+        self._refresh_summary()
+        self._set_status("Usunieto pozycje do wyceny.", ok=True)
 
     def _build_summary_group(self) -> None:
         layout = self.grp_summary.content_layout()
@@ -644,6 +792,10 @@ class TabNoweZamowienie(QWidget):
         self.cb_architect_kind.setCurrentIndex(0)
         self.ed_architect_description.clear()
         self._set_architect_attachments([])
+        self.ed_quote_item_name.clear()
+        self.cb_quote_item_kind.setCurrentIndex(0)
+        self.ed_quote_item_description.clear()
+        self._set_quote_items([])
 
         self.lab_status.clear()
         self._refresh_summary()
@@ -690,6 +842,7 @@ class TabNoweZamowienie(QWidget):
             self.ed_worker_email.setText(str(getattr(worker, "email", "") or ""))
             self.ed_worker_notes.setPlainText(str(getattr(worker, "notes", "") or ""))
             self._set_architect_attachments(list(getattr(order, "attachments", []) or []))
+            self._set_quote_items(list(getattr(order, "quote_items", []) or []))
         finally:
             self._is_restoring_draft = False
 
@@ -706,6 +859,7 @@ class TabNoweZamowienie(QWidget):
         wall_count = len(self._current_order_wall_names())
         assembly_count = len(self._current_order_assemblies())
         attachment_count = len(self._architect_attachments)
+        quote_item_count = len(self._quote_items)
         if hasattr(self, "lab_metric_walls"):
             self.lab_metric_walls.setText(str(wall_count))
         if hasattr(self, "lab_metric_assemblies"):
@@ -715,7 +869,8 @@ class TabNoweZamowienie(QWidget):
             f"Zamowienie: {order_code}\n"
             f"Status: {status_name}\n"
             f"Pracownik: {worker_name}\n"
-            f"Zalaczniki od architekta: {attachment_count}"
+            f"Zalaczniki od architekta: {attachment_count}\n"
+            f"Pozycje do wyceny: {quote_item_count}"
         )
         self._refresh_order_walls_table()
         self._refresh_order_cost_summary()
@@ -967,6 +1122,7 @@ class TabNoweZamowienie(QWidget):
             "worker_email": str(self.ed_worker_email.text().strip()),
             "worker_notes": str(self.ed_worker_notes.toPlainText().strip()),
             "architect_attachments": [dict(item) for item in self._architect_attachments],
+            "quote_items": [dict(item) for item in self._quote_items],
         }
 
     def _has_meaningful_draft(self, payload: dict[str, object]) -> bool:
@@ -1014,6 +1170,7 @@ class TabNoweZamowienie(QWidget):
             self.ed_worker_email.setText(str(payload.get("worker_email", "") or ""))
             self.ed_worker_notes.setPlainText(str(payload.get("worker_notes", "") or ""))
             self._set_architect_attachments(list(payload.get("architect_attachments", []) or []))
+            self._set_quote_items(list(payload.get("quote_items", []) or []))
         finally:
             self._is_restoring_draft = False
 
@@ -1100,6 +1257,7 @@ class TabNoweZamowienie(QWidget):
             site_address=str(self.ed_order_address.text().strip()),
             notes=str(self.ed_order_notes.toPlainText().strip()),
             attachments=[dict(item) for item in self._architect_attachments],
+            quote_items=[dict(item) for item in self._quote_items],
         )
 
     def current_order_context(self) -> dict[str, str]:
@@ -1243,6 +1401,7 @@ class TabNoweZamowienie(QWidget):
         self.ed_order_address.setText(order.site_address)
         self.ed_order_notes.setPlainText(order.notes)
         self._set_architect_attachments(list(getattr(order, "attachments", []) or []))
+        self._set_quote_items(list(getattr(order, "quote_items", []) or []))
         self._set_status(f'Wczytano zamowienie "{order.code}".', ok=True)
 
     def _ensure_context_saved_for_next_step(self) -> tuple[bool, str]:

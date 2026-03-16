@@ -227,6 +227,18 @@ Do wdrozenia:
 - zapis roboczy draftu obejmuje tez zalaczniki
 - summary pokazuje liczbe zalacznikow od architekta
 
+[DONE] Pozycje do szybkiej wyceny w zamowieniu:
+- blok "Pozycje do wyceny" w karcie Nowe zamowienie
+- szybkie pozycje typu:
+  - kuchnia
+  - szafa
+  - RTV
+  - lazienka
+  - garderoba
+- zapis i odczyt pozycji w zamowieniu
+- zapis roboczy draftu obejmuje tez pozycje do wyceny
+- summary pokazuje liczbe pozycji do wyceny
+
 [TODO] Rozszerzenie biblioteki gotowych modulow:
 - dolne
 - gorne
@@ -261,6 +273,11 @@ Do wdrozenia:
 - cena orientacyjna
 - opis wariantu
 - przygotowanie pod PDF oferty
+
+[TODO] Powiazanie pozycji do wyceny z dalsza praca:
+- otwieranie pozycji do wyceny jako Sciana
+- otwieranie pozycji do wyceny jako Komplet
+- powiazanie pozycji z zalacznikami od architekta
 
 [TODO] Praca z PDF od architekta:
 - podglad miniatur stron
