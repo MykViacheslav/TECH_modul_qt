@@ -87,6 +87,7 @@ MATERIAL_CHOICE_STATUS_ITEMS: tuple[str, ...] = (
 
 ATTACHMENT_TARGET_ITEMS: tuple[str, ...] = (
     "Zamowienie",
+    "Pozycja do wyceny",
     "Sciana",
     "Komplet",
     "Oferta",
@@ -245,6 +246,8 @@ class TabNoweZamowienie(QWidget):
         self._architect_preview_header = ""
         self._offer_reference_items: list[dict[str, str]] = []
         self._offer_reference_pixmap = QPixmap()
+        self._quote_reference_items: list[dict[str, str]] = []
+        self._quote_reference_pixmap = QPixmap()
 
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 18, 18, 18)
@@ -371,6 +374,7 @@ class TabNoweZamowienie(QWidget):
         self.btn_remove_quote_item.clicked.connect(self._on_remove_quote_item)
         self.btn_quote_to_sciana.clicked.connect(self._on_open_quote_item_as_sciana)
         self.btn_quote_to_komplet.clicked.connect(self._on_open_quote_item_as_komplet)
+        self.btn_quote_set_fragment_target.clicked.connect(self._on_use_quote_item_as_fragment_target)
         self.tbl_quote_items.itemSelectionChanged.connect(self._on_quote_item_selection_changed)
         self.btn_add_material_choice.clicked.connect(self._on_add_material_choice)
         self.btn_remove_material_choice.clicked.connect(self._on_remove_material_choice)
@@ -706,14 +710,17 @@ class TabNoweZamowienie(QWidget):
         self.btn_remove_quote_item = QPushButton("Usun zaznaczona", self.grp_quote_items)
         self.btn_quote_to_sciana = QPushButton("Otworz jako Sciana", self.grp_quote_items)
         self.btn_quote_to_komplet = QPushButton("Otworz jako Komplet", self.grp_quote_items)
+        self.btn_quote_set_fragment_target = QPushButton("Ustaw jako cel fragmentu", self.grp_quote_items)
         self._make_compact_button(self.btn_add_quote_item, min_width=130, max_width=160)
         self._make_compact_button(self.btn_remove_quote_item, min_width=130, max_width=160)
         self._make_compact_button(self.btn_quote_to_sciana, min_width=150, max_width=180)
         self._make_compact_button(self.btn_quote_to_komplet, min_width=150, max_width=180)
+        self._make_compact_button(self.btn_quote_set_fragment_target, min_width=180, max_width=220)
         btns.addWidget(self.btn_add_quote_item, 0)
         btns.addWidget(self.btn_remove_quote_item, 0)
         btns.addWidget(self.btn_quote_to_sciana, 0)
         btns.addWidget(self.btn_quote_to_komplet, 0)
+        btns.addWidget(self.btn_quote_set_fragment_target, 0)
         btns.addStretch(1)
         layout.addLayout(btns)
 
@@ -729,6 +736,41 @@ class TabNoweZamowienie(QWidget):
         self.tbl_quote_items.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.tbl_quote_items.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         layout.addWidget(self.tbl_quote_items)
+
+        refs_note = QLabel(
+            "Do wybranej pozycji mozesz przypinac fragmenty z PDF albo obrazy referencyjne i od razu je tutaj widziec."
+        )
+        refs_note.setWordWrap(True)
+        refs_note.setStyleSheet("color:#555555;")
+        layout.addWidget(refs_note)
+
+        self.tbl_quote_item_refs = QTableWidget(0, 3, self.grp_quote_items)
+        self.tbl_quote_item_refs.setHorizontalHeaderLabels(["Plik", "Cel", "Opis"])
+        self.tbl_quote_item_refs.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tbl_quote_item_refs.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.tbl_quote_item_refs.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl_quote_item_refs.verticalHeader().setVisible(False)
+        self.tbl_quote_item_refs.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_quote_item_refs.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_quote_item_refs.horizontalHeader().setStretchLastSection(True)
+        self.tbl_quote_item_refs.setAlternatingRowColors(True)
+        self.tbl_quote_item_refs.setMinimumHeight(120)
+        layout.addWidget(self.tbl_quote_item_refs)
+
+        self.lab_quote_ref_info = QLabel("Brak referencji dla wybranej pozycji.")
+        self.lab_quote_ref_info.setWordWrap(True)
+        self.lab_quote_ref_info.setStyleSheet("color:#4b5563;")
+        layout.addWidget(self.lab_quote_ref_info)
+
+        self.lab_quote_ref_preview = QLabel("Brak podgladu referencji pozycji.")
+        self.lab_quote_ref_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lab_quote_ref_preview.setMinimumHeight(170)
+        self.lab_quote_ref_preview.setStyleSheet(
+            "border:1px solid #e5dccd; background:#fcfaf6; color:#6b7280; padding:6px;"
+        )
+        layout.addWidget(self.lab_quote_ref_preview)
+
+        self.tbl_quote_item_refs.itemSelectionChanged.connect(self._on_quote_reference_selection_changed)
         self._set_quote_items([])
 
     def _build_material_choices_group(self) -> None:
@@ -1190,6 +1232,9 @@ class TabNoweZamowienie(QWidget):
             self.btn_quote_to_sciana.setEnabled(has_selection)
         if hasattr(self, "btn_quote_to_komplet"):
             self.btn_quote_to_komplet.setEnabled(has_selection)
+        if hasattr(self, "btn_quote_set_fragment_target"):
+            self.btn_quote_set_fragment_target.setEnabled(has_selection)
+        self._refresh_quote_item_references()
 
     def _on_add_quote_item(self) -> None:
         entry = self._normalize_quote_item(
@@ -1265,6 +1310,152 @@ class TabNoweZamowienie(QWidget):
 
     def _on_open_quote_item_as_komplet(self) -> None:
         self._open_selected_quote_item("komplet")
+
+    def _on_use_quote_item_as_fragment_target(self) -> None:
+        quote_item = self._selected_quote_item()
+        if quote_item is None:
+            self._set_status("Wybierz pozycje do wyceny.", ok=False)
+            return
+        self.cb_architect_fragment_target_kind.setCurrentText("Pozycja do wyceny")
+        self.ed_architect_fragment_target_name.setText(str(quote_item.get("name", "") or "").strip())
+        if not self.ed_architect_fragment_description.text().strip():
+            kind = str(quote_item.get("kind", "") or "Pozycja").strip()
+            self.ed_architect_fragment_description.setText(f"Referencja dla pozycji: {kind}")
+        self.grp_architect.set_expanded(True)
+        self.ed_architect_fragment_description.setFocus()
+        self._set_status(
+            f'Ustawiono pozycje "{str(quote_item.get("name", "") or "").strip()}" jako cel fragmentu.',
+            ok=True,
+        )
+
+    def _collect_quote_item_reference_attachments(self, quote_item_name: str) -> list[dict[str, str]]:
+        normalized_name = str(quote_item_name or "").strip()
+        if not normalized_name:
+            return []
+        results: list[dict[str, str]] = []
+        seen_paths: set[str] = set()
+        for attachment in list(self._architect_attachments):
+            path = str(attachment.get("path", "") or "").strip()
+            if not path or path in seen_paths:
+                continue
+            kind = str(attachment.get("kind", "") or "").strip().lower()
+            suffix = Path(path).suffix.lower()
+            if kind not in {"obraz", "referencja"} and suffix not in {".png", ".jpg", ".jpeg", ".bmp", ".webp"}:
+                continue
+            target_kind = str(attachment.get("target_kind", "") or "").strip().lower()
+            target_name = str(attachment.get("target_name", "") or "").strip()
+            if target_kind != "pozycja do wyceny" or target_name != normalized_name:
+                continue
+            seen_paths.add(path)
+            results.append(
+                {
+                    "path": path,
+                    "target": target_name,
+                    "description": str(attachment.get("description", "") or "").strip(),
+                }
+            )
+        return results
+
+    def _selected_quote_reference_path(self) -> str:
+        selection = (
+            self.tbl_quote_item_refs.selectionModel().selectedRows()
+            if hasattr(self, "tbl_quote_item_refs") and self.tbl_quote_item_refs.selectionModel() is not None
+            else []
+        )
+        if not selection:
+            return ""
+        item = self.tbl_quote_item_refs.item(int(selection[0].row()), 0)
+        if item is None:
+            return ""
+        return str(item.data(Qt.ItemDataRole.UserRole) or "").strip()
+
+    def _refresh_quote_item_references(self) -> None:
+        if not hasattr(self, "tbl_quote_item_refs"):
+            return
+        quote_item = self._selected_quote_item()
+        selected_path = self._selected_quote_reference_path()
+        quote_name = str(quote_item.get("name", "") or "").strip() if quote_item else ""
+        self._quote_reference_items = self._collect_quote_item_reference_attachments(quote_name)
+        self.tbl_quote_item_refs.setRowCount(len(self._quote_reference_items))
+        for row, entry in enumerate(self._quote_reference_items):
+            path_item = QTableWidgetItem(Path(str(entry.get("path", "") or "")).name)
+            path_item.setData(Qt.ItemDataRole.UserRole, str(entry.get("path", "") or ""))
+            target_item = QTableWidgetItem(str(entry.get("target", "") or quote_name or "-"))
+            description_item = QTableWidgetItem(str(entry.get("description", "") or "-"))
+            self.tbl_quote_item_refs.setItem(row, 0, path_item)
+            self.tbl_quote_item_refs.setItem(row, 1, target_item)
+            self.tbl_quote_item_refs.setItem(row, 2, description_item)
+        self.tbl_quote_item_refs.resizeColumnsToContents()
+
+        if self._quote_reference_items:
+            target_row = 0
+            if selected_path:
+                for row in range(self.tbl_quote_item_refs.rowCount()):
+                    item = self.tbl_quote_item_refs.item(row, 0)
+                    if item is not None and str(item.data(Qt.ItemDataRole.UserRole) or "") == selected_path:
+                        target_row = row
+                        break
+            self.tbl_quote_item_refs.selectRow(target_row)
+            return
+
+        self.tbl_quote_item_refs.clearSelection()
+        self._quote_reference_pixmap = QPixmap()
+        if quote_name:
+            self.lab_quote_ref_info.setText(f'Brak referencji dla pozycji "{quote_name}".')
+        else:
+            self.lab_quote_ref_info.setText("Brak referencji dla wybranej pozycji.")
+        self.lab_quote_ref_preview.setPixmap(QPixmap())
+        self.lab_quote_ref_preview.setText("Brak podgladu referencji pozycji.")
+
+    def _update_quote_reference_preview(self) -> None:
+        if self._quote_reference_pixmap.isNull():
+            self.lab_quote_ref_preview.setPixmap(QPixmap())
+            return
+        target_size = self.lab_quote_ref_preview.size()
+        scaled = self._quote_reference_pixmap.scaled(
+            max(40, target_size.width() - 12),
+            max(40, target_size.height() - 12),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.lab_quote_ref_preview.setPixmap(scaled)
+
+    def _on_quote_reference_selection_changed(self) -> None:
+        selection = (
+            self.tbl_quote_item_refs.selectionModel().selectedRows()
+            if hasattr(self, "tbl_quote_item_refs") and self.tbl_quote_item_refs.selectionModel() is not None
+            else []
+        )
+        if not selection:
+            quote_item = self._selected_quote_item()
+            quote_name = str(quote_item.get("name", "") or "").strip() if quote_item else ""
+            self._quote_reference_pixmap = QPixmap()
+            self.lab_quote_ref_info.setText(
+                f'Brak referencji dla pozycji "{quote_name}".' if quote_name else "Brak referencji dla wybranej pozycji."
+            )
+            self.lab_quote_ref_preview.setPixmap(QPixmap())
+            self.lab_quote_ref_preview.setText("Brak podgladu referencji pozycji.")
+            return
+        row = int(selection[0].row())
+        if row < 0 or row >= len(self._quote_reference_items):
+            return
+        entry = self._quote_reference_items[row]
+        path = str(entry.get("path", "") or "").strip()
+        info_parts = [
+            Path(path).name,
+            str(entry.get("target", "") or "").strip(),
+            str(entry.get("description", "") or "").strip(),
+        ]
+        self.lab_quote_ref_info.setText(" | ".join(part for part in info_parts if part))
+        pixmap = QPixmap(path)
+        if pixmap.isNull():
+            self._quote_reference_pixmap = QPixmap()
+            self.lab_quote_ref_preview.setPixmap(QPixmap())
+            self.lab_quote_ref_preview.setText("Nie udalo sie odczytac obrazu pozycji.")
+            return
+        self._quote_reference_pixmap = pixmap
+        self.lab_quote_ref_preview.setText("")
+        self._update_quote_reference_preview()
 
     def _normalize_material_choice(self, item: dict | None) -> dict[str, str] | None:
         if not isinstance(item, dict):
@@ -1654,6 +1845,7 @@ class TabNoweZamowienie(QWidget):
         self._refresh_order_walls_table()
         self._refresh_order_cost_summary()
         self._refresh_offer_references()
+        self._refresh_quote_item_references()
         self._autosave_draft()
 
     def _collect_offer_reference_attachments(self) -> list[dict[str, str]]:

@@ -661,6 +661,75 @@ def test_nowe_zamowienie_tab_can_open_quote_item_as_komplet_with_context(tmp_pat
     assert emitted[0]["quote_item_description"] == "Wnekowa z lustrem"
 
 
+def test_nowe_zamowienie_tab_can_use_quote_item_as_fragment_target(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.tabs.zamowienie.tab_nowe_zamowienie import TabNoweZamowienie
+
+    w = TabNoweZamowienie()
+    w.ed_quote_item_name.setText("Kuchnia salon")
+    w.cb_quote_item_kind.setCurrentText("Kuchnia")
+    w.ed_quote_item_description.setText("Wyspa + slupki")
+    QTest.mouseClick(w.btn_add_quote_item, Qt.MouseButton.LeftButton)
+    w.tbl_quote_items.selectRow(0)
+    app.processEvents()
+
+    QTest.mouseClick(w.btn_quote_set_fragment_target, Qt.MouseButton.LeftButton)
+
+    assert w.cb_architect_fragment_target_kind.currentText() == "Pozycja do wyceny"
+    assert w.ed_architect_fragment_target_name.text() == "Kuchnia salon"
+    assert "Ustawiono pozycje" in w.lab_status.text()
+
+
+def test_nowe_zamowienie_tab_shows_quote_item_reference_preview(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.tabs.zamowienie.tab_nowe_zamowienie import TabNoweZamowienie
+
+    image_path = tmp_path / "quote_ref.png"
+    image = QImage(220, 140, QImage.Format.Format_RGB32)
+    image.fill(QColor("#eadcc6"))
+    assert image.save(str(image_path))
+
+    w = TabNoweZamowienie()
+    w._set_quote_items(
+        [
+            {
+                "name": "Szafa wejscie",
+                "kind": "Szafa",
+                "description": "Wnekowa z lustrem",
+            }
+        ]
+    )
+    w._set_architect_attachments(
+        [
+            {
+                "path": str(image_path),
+                "kind": "Obraz",
+                "description": "Wizualizacja szafy",
+                "target_kind": "Pozycja do wyceny",
+                "target_name": "Szafa wejscie",
+            }
+        ]
+    )
+    w.tbl_quote_items.selectRow(0)
+    app.processEvents()
+
+    assert w.tbl_quote_item_refs.rowCount() == 1
+    assert w.tbl_quote_item_refs.item(0, 0).text() == "quote_ref.png"
+    assert w.tbl_quote_item_refs.item(0, 1).text() == "Szafa wejscie"
+    assert "Wizualizacja szafy" in w.tbl_quote_item_refs.item(0, 2).text()
+    assert w.lab_quote_ref_preview.pixmap() is not None
+    assert not w.lab_quote_ref_preview.pixmap().isNull()
+    assert "Szafa wejscie" in w.lab_quote_ref_info.text()
+
+
 def test_nowe_zamowienie_tab_uses_collapsible_blocks(tmp_path, monkeypatch):
     monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TECH_MODUL_TESTING", "1")

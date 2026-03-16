@@ -342,6 +342,14 @@ Do wdrozenia:
   - Sciana
   - Komplet
 
+[DONE] Lepsze powiazanie zalacznikow z pozycjami do wyceny:
+- nowy cel fragmentu: "Pozycja do wyceny"
+- zaznaczona pozycja moze byc jednym kliknieciem ustawiona jako cel dla wycinanego fragmentu
+- kazda pozycja do wyceny ma wlasny podglad przypietych referencji:
+  - lista obrazow
+  - opis
+  - podglad wybranego obrazu
+
 [DONE] Podstawowy podglad oferty klienta:
 - blok "Oferta klienta" w karcie Nowe zamowienie
 - pokazuje:
@@ -368,7 +376,7 @@ Do wdrozenia:
 - gotowy pierwszy dokument dla klienta bez wychodzenia z aplikacji
 
 [TODO] Dalsza praca z PDF od architekta:
-- lepsze powiazanie zalacznikow z pozycjami do wyceny
+- lepsze wykorzystanie referencji pozycji w eksporcie oferty
 
 
 --------------------------------------------------
