@@ -58,6 +58,24 @@ QUOTE_ITEM_TYPES: tuple[str, ...] = (
     "Inne",
 )
 
+MATERIAL_SCOPE_ITEMS: tuple[str, ...] = (
+    "Korpus",
+    "Front",
+    "Blat",
+    "Okleina",
+    "Farba",
+    "Uchwyt",
+    "Szklo",
+    "Inne",
+)
+
+MATERIAL_CHOICE_STATUS_ITEMS: tuple[str, ...] = (
+    "Probka pokazana",
+    "Wariant",
+    "Wybrane finalnie",
+    "Odrzucone",
+)
+
 
 class TabNoweZamowienie(QWidget):
     sig_open_clients_base_requested = pyqtSignal()
@@ -127,6 +145,7 @@ class TabNoweZamowienie(QWidget):
         self.grp_actions = CollapsibleBlock("Akcje", self)
         self.grp_architect = CollapsibleBlock("Zalaczniki od architekta", self)
         self.grp_quote_items = CollapsibleBlock("Pozycje do wyceny", self)
+        self.grp_material_choices = CollapsibleBlock("Probki i finalne materialy", self)
         self.grp_walls = CollapsibleBlock("Sciany zamowienia", self)
         self.grp_summary = CollapsibleBlock("Podsumowanie zamowienia", self)
 
@@ -136,6 +155,7 @@ class TabNoweZamowienie(QWidget):
         body.addWidget(self.grp_actions)
         body.addWidget(self.grp_architect)
         body.addWidget(self.grp_quote_items)
+        body.addWidget(self.grp_material_choices)
         body.addWidget(self.grp_walls)
         body.addWidget(self.grp_summary)
         body.addStretch(1)
@@ -147,6 +167,7 @@ class TabNoweZamowienie(QWidget):
             self.grp_actions,
             self.grp_architect,
             self.grp_quote_items,
+            self.grp_material_choices,
             self.grp_walls,
             self.grp_summary,
         ):
@@ -158,6 +179,7 @@ class TabNoweZamowienie(QWidget):
         self._build_actions_group()
         self._build_architect_group()
         self._build_quote_items_group()
+        self._build_material_choices_group()
         self._build_walls_group()
         self._build_summary_group()
 
@@ -207,6 +229,9 @@ class TabNoweZamowienie(QWidget):
         self.btn_quote_to_sciana.clicked.connect(self._on_open_quote_item_as_sciana)
         self.btn_quote_to_komplet.clicked.connect(self._on_open_quote_item_as_komplet)
         self.tbl_quote_items.itemSelectionChanged.connect(self._on_quote_item_selection_changed)
+        self.btn_add_material_choice.clicked.connect(self._on_add_material_choice)
+        self.btn_remove_material_choice.clicked.connect(self._on_remove_material_choice)
+        self.tbl_material_choices.itemSelectionChanged.connect(self._on_material_choice_selection_changed)
         self.btn_new_wall.clicked.connect(self._on_go_to_sciana)
         self.btn_open_wall.clicked.connect(self._on_open_selected_wall)
         self.btn_refresh_walls.clicked.connect(self._refresh_order_walls_table)
@@ -490,6 +515,73 @@ class TabNoweZamowienie(QWidget):
         layout.addWidget(self.tbl_quote_items)
         self._set_quote_items([])
 
+    def _build_material_choices_group(self) -> None:
+        layout = self.grp_material_choices.content_layout()
+
+        note = QLabel(
+            "Tutaj zapisujesz pokazane probki i finalne wybory klienta: korpus, front, blat, farba, uchwyt albo inny material z kolorem i kodem."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color:#555555;")
+        layout.addWidget(note)
+
+        row_meta = QHBoxLayout()
+        self.cb_material_scope = QComboBox(self.grp_material_choices)
+        self.cb_material_scope.addItems(list(MATERIAL_SCOPE_ITEMS))
+        self.cb_material_scope.setMaximumWidth(170)
+        self.cb_material_choice_status = QComboBox(self.grp_material_choices)
+        self.cb_material_choice_status.addItems(list(MATERIAL_CHOICE_STATUS_ITEMS))
+        self.cb_material_choice_status.setMaximumWidth(180)
+        row_meta.addWidget(self.cb_material_scope, 0)
+        row_meta.addWidget(self.cb_material_choice_status, 0)
+        row_meta.addStretch(1)
+        layout.addLayout(row_meta)
+
+        row_material = QHBoxLayout()
+        self.ed_material_choice_material = QLineEdit(self.grp_material_choices)
+        self.ed_material_choice_material.setPlaceholderText("Material / producent, np. Egger U702 albo lakier poliuretan")
+        self.ed_material_choice_color = QLineEdit(self.grp_material_choices)
+        self.ed_material_choice_color.setPlaceholderText("Kolor / dekor, np. Cashmere, dab naturalny")
+        row_material.addWidget(self.ed_material_choice_material, 1)
+        row_material.addWidget(self.ed_material_choice_color, 1)
+        layout.addLayout(row_material)
+
+        row_code = QHBoxLayout()
+        self.ed_material_choice_code = QLineEdit(self.grp_material_choices)
+        self.ed_material_choice_code.setPlaceholderText("Kod, np. U702 ST9 / RAL 9016")
+        self.ed_material_choice_notes = QLineEdit(self.grp_material_choices)
+        self.ed_material_choice_notes.setPlaceholderText("Uwagi, np. klient wybral probke nr 2")
+        row_code.addWidget(self.ed_material_choice_code, 1)
+        row_code.addWidget(self.ed_material_choice_notes, 1)
+        layout.addLayout(row_code)
+
+        btns = QHBoxLayout()
+        self.btn_add_material_choice = QPushButton("Dodaj wpis", self.grp_material_choices)
+        self.btn_remove_material_choice = QPushButton("Usun zaznaczony", self.grp_material_choices)
+        self._make_compact_button(self.btn_add_material_choice, min_width=120, max_width=150)
+        self._make_compact_button(self.btn_remove_material_choice, min_width=140, max_width=170)
+        btns.addWidget(self.btn_add_material_choice, 0)
+        btns.addWidget(self.btn_remove_material_choice, 0)
+        btns.addStretch(1)
+        layout.addLayout(btns)
+
+        self.tbl_material_choices = QTableWidget(0, 6, self.grp_material_choices)
+        self.tbl_material_choices.setHorizontalHeaderLabels(["Zakres", "Material", "Kolor", "Kod", "Status", "Uwagi"])
+        self.tbl_material_choices.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tbl_material_choices.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.tbl_material_choices.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl_material_choices.verticalHeader().setVisible(False)
+        self.tbl_material_choices.horizontalHeader().setStretchLastSection(True)
+        self.tbl_material_choices.setAlternatingRowColors(True)
+        self.tbl_material_choices.setMinimumHeight(170)
+        self.tbl_material_choices.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_material_choices.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_material_choices.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_material_choices.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_material_choices.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        layout.addWidget(self.tbl_material_choices)
+        self._set_material_choices([])
+
     def _normalize_attachment(self, item: dict | None) -> dict[str, str] | None:
         if not isinstance(item, dict):
             return None
@@ -724,6 +816,101 @@ class TabNoweZamowienie(QWidget):
     def _on_open_quote_item_as_komplet(self) -> None:
         self._open_selected_quote_item("komplet")
 
+    def _normalize_material_choice(self, item: dict | None) -> dict[str, str] | None:
+        if not isinstance(item, dict):
+            return None
+        scope = str(item.get("scope", "") or "").strip() or "Inne"
+        material = str(item.get("material", "") or "").strip()
+        color = str(item.get("color", "") or "").strip()
+        code = str(item.get("code", "") or "").strip()
+        status = str(item.get("status", "") or "").strip() or "Probka pokazana"
+        notes = str(item.get("notes", "") or "").strip()
+        if not any((scope, material, color, code, status, notes)):
+            return None
+        return {
+            "scope": scope,
+            "material": material,
+            "color": color,
+            "code": code,
+            "status": status,
+            "notes": notes,
+        }
+
+    def _set_material_choices(self, items: list[dict] | None) -> None:
+        normalized: list[dict[str, str]] = []
+        for item in items or []:
+            entry = self._normalize_material_choice(item)
+            if entry is not None:
+                normalized.append(entry)
+        self._material_choices = normalized
+        self._refresh_material_choices_table()
+
+    def _refresh_material_choices_table(self) -> None:
+        if not hasattr(self, "tbl_material_choices"):
+            return
+        self.tbl_material_choices.setRowCount(len(self._material_choices))
+        for row, entry in enumerate(self._material_choices):
+            items = (
+                QTableWidgetItem(str(entry.get("scope", "") or "Inne")),
+                QTableWidgetItem(str(entry.get("material", "") or "")),
+                QTableWidgetItem(str(entry.get("color", "") or "")),
+                QTableWidgetItem(str(entry.get("code", "") or "")),
+                QTableWidgetItem(str(entry.get("status", "") or "Probka pokazana")),
+                QTableWidgetItem(str(entry.get("notes", "") or "")),
+            )
+            for col, item in enumerate(items):
+                item.setData(Qt.ItemDataRole.UserRole, f"{entry.get('scope','')}|{entry.get('material','')}")
+                self.tbl_material_choices.setItem(row, col, item)
+        self.tbl_material_choices.resizeColumnsToContents()
+        self._on_material_choice_selection_changed()
+
+    def _selected_material_choice_index(self) -> int:
+        selection = (
+            self.tbl_material_choices.selectionModel().selectedRows()
+            if self.tbl_material_choices.selectionModel() is not None
+            else []
+        )
+        if not selection:
+            return -1
+        return int(selection[0].row())
+
+    def _on_material_choice_selection_changed(self) -> None:
+        if hasattr(self, "btn_remove_material_choice"):
+            self.btn_remove_material_choice.setEnabled(self._selected_material_choice_index() >= 0)
+
+    def _on_add_material_choice(self) -> None:
+        entry = self._normalize_material_choice(
+            {
+                "scope": self.cb_material_scope.currentText().strip() or "Inne",
+                "material": self.ed_material_choice_material.text().strip(),
+                "color": self.ed_material_choice_color.text().strip(),
+                "code": self.ed_material_choice_code.text().strip(),
+                "status": self.cb_material_choice_status.currentText().strip() or "Probka pokazana",
+                "notes": self.ed_material_choice_notes.text().strip(),
+            }
+        )
+        if entry is None:
+            self._set_status("Podaj dane probki albo finalnego materialu.", ok=False)
+            return
+        self._material_choices.append(entry)
+        self.ed_material_choice_material.clear()
+        self.ed_material_choice_color.clear()
+        self.ed_material_choice_code.clear()
+        self.ed_material_choice_notes.clear()
+        self._refresh_material_choices_table()
+        self._refresh_summary()
+        self._set_status("Dodano wpis probki / materialu.", ok=True)
+
+    def _on_remove_material_choice(self) -> None:
+        index = self._selected_material_choice_index()
+        if index < 0 or index >= len(self._material_choices):
+            self._set_status("Wybierz wpis probki / materialu do usuniecia.", ok=False)
+            return
+        self._material_choices.pop(index)
+        self._refresh_material_choices_table()
+        self._refresh_summary()
+        self._set_status("Usunieto wpis probki / materialu.", ok=True)
+
     def _build_summary_group(self) -> None:
         layout = self.grp_summary.content_layout()
 
@@ -857,6 +1044,13 @@ class TabNoweZamowienie(QWidget):
         self.cb_quote_item_kind.setCurrentIndex(0)
         self.ed_quote_item_description.clear()
         self._set_quote_items([])
+        self.cb_material_scope.setCurrentIndex(0)
+        self.cb_material_choice_status.setCurrentIndex(0)
+        self.ed_material_choice_material.clear()
+        self.ed_material_choice_color.clear()
+        self.ed_material_choice_code.clear()
+        self.ed_material_choice_notes.clear()
+        self._set_material_choices([])
 
         self.lab_status.clear()
         self._refresh_summary()
@@ -904,6 +1098,7 @@ class TabNoweZamowienie(QWidget):
             self.ed_worker_notes.setPlainText(str(getattr(worker, "notes", "") or ""))
             self._set_architect_attachments(list(getattr(order, "attachments", []) or []))
             self._set_quote_items(list(getattr(order, "quote_items", []) or []))
+            self._set_material_choices(list(getattr(order, "material_choices", []) or []))
         finally:
             self._is_restoring_draft = False
 
@@ -921,6 +1116,20 @@ class TabNoweZamowienie(QWidget):
         assembly_count = len(self._current_order_assemblies())
         attachment_count = len(self._architect_attachments)
         quote_item_count = len(self._quote_items)
+        material_choice_count = len(self._material_choices)
+        final_material_choices = [
+            entry
+            for entry in self._material_choices
+            if str(entry.get("status", "") or "").strip().lower() == "wybrane finalnie"
+        ]
+        final_material_parts = []
+        for entry in final_material_choices[:4]:
+            scope = str(entry.get("scope", "") or "Inne").strip()
+            material = str(entry.get("material", "") or "-").strip() or "-"
+            color = str(entry.get("color", "") or "").strip()
+            code = str(entry.get("code", "") or "").strip()
+            details = " / ".join(part for part in (material, color, code) if part)
+            final_material_parts.append(f"{scope}: {details}")
         if hasattr(self, "lab_metric_walls"):
             self.lab_metric_walls.setText(str(wall_count))
         if hasattr(self, "lab_metric_assemblies"):
@@ -931,8 +1140,12 @@ class TabNoweZamowienie(QWidget):
             f"Status: {status_name}\n"
             f"Pracownik: {worker_name}\n"
             f"Zalaczniki od architekta: {attachment_count}\n"
-            f"Pozycje do wyceny: {quote_item_count}"
+            f"Pozycje do wyceny: {quote_item_count}\n"
+            f"Probki / materialy: {material_choice_count}\n"
+            f"Finalne wybory: {len(final_material_choices)}"
         )
+        if final_material_parts:
+            self.lab_summary.setText(self.lab_summary.text() + "\nWybrane: " + "; ".join(final_material_parts))
         self._refresh_order_walls_table()
         self._refresh_order_cost_summary()
         self._autosave_draft()
@@ -1184,6 +1397,7 @@ class TabNoweZamowienie(QWidget):
             "worker_notes": str(self.ed_worker_notes.toPlainText().strip()),
             "architect_attachments": [dict(item) for item in self._architect_attachments],
             "quote_items": [dict(item) for item in self._quote_items],
+            "material_choices": [dict(item) for item in self._material_choices],
         }
 
     def _has_meaningful_draft(self, payload: dict[str, object]) -> bool:
@@ -1232,6 +1446,7 @@ class TabNoweZamowienie(QWidget):
             self.ed_worker_notes.setPlainText(str(payload.get("worker_notes", "") or ""))
             self._set_architect_attachments(list(payload.get("architect_attachments", []) or []))
             self._set_quote_items(list(payload.get("quote_items", []) or []))
+            self._set_material_choices(list(payload.get("material_choices", []) or []))
         finally:
             self._is_restoring_draft = False
 
@@ -1319,6 +1534,7 @@ class TabNoweZamowienie(QWidget):
             notes=str(self.ed_order_notes.toPlainText().strip()),
             attachments=[dict(item) for item in self._architect_attachments],
             quote_items=[dict(item) for item in self._quote_items],
+            material_choices=[dict(item) for item in self._material_choices],
         )
 
     def current_order_context(self) -> dict[str, str]:
@@ -1463,6 +1679,7 @@ class TabNoweZamowienie(QWidget):
         self.ed_order_notes.setPlainText(order.notes)
         self._set_architect_attachments(list(getattr(order, "attachments", []) or []))
         self._set_quote_items(list(getattr(order, "quote_items", []) or []))
+        self._set_material_choices(list(getattr(order, "material_choices", []) or []))
         self._set_status(f'Wczytano zamowienie "{order.code}".', ok=True)
 
     def _ensure_context_saved_for_next_step(self) -> tuple[bool, str]:

@@ -227,6 +227,20 @@ Do wdrozenia:
 - zapis roboczy draftu obejmuje tez zalaczniki
 - summary pokazuje liczbe zalacznikow od architekta
 
+[DONE] Probki i finalne materialy w zamowieniu:
+- blok "Probki i finalne materialy" w karcie Nowe zamowienie
+- mozliwosc zapisania:
+  - zakresu (korpus / front / blat / okleina / farba / uchwyt / szklo / inne)
+  - materialu
+  - koloru / dekoru
+  - kodu / oznaczenia
+  - statusu probki lub wyboru finalnego
+  - uwag
+- zapis i odczyt tych informacji w zamowieniu
+- zapis roboczy draftu obejmuje tez probki i finalne wybory
+- summary pokazuje liczbe probek oraz liczbe finalnych wyborow
+- summary pokazuje skrot finalnie wybranych materialow
+
 [DONE] Pozycje do szybkiej wyceny w zamowieniu:
 - blok "Pozycje do wyceny" w karcie Nowe zamowienie
 - szybkie pozycje typu:

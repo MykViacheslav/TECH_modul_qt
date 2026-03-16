@@ -36,6 +36,13 @@ def test_nowe_zamowienie_tab_saves_client_worker_and_order(tmp_path, monkeypatch
     w.cb_worker_name.setCurrentText("Jan Pomiar")
     w.ed_worker_role.setText("Pomiar")
     w.ed_worker_phone.setText("600-200-300")
+    w.cb_material_scope.setCurrentText("Front")
+    w.cb_material_choice_status.setCurrentText("Wybrane finalnie")
+    w.ed_material_choice_material.setText("MDF lakier")
+    w.ed_material_choice_color.setText("Cashmere")
+    w.ed_material_choice_code.setText("RAL 7044")
+    w.ed_material_choice_notes.setText("Probka nr 2")
+    QTest.mouseClick(w.btn_add_material_choice, Qt.MouseButton.LeftButton)
 
     QTest.mouseClick(w.btn_save_new, Qt.MouseButton.LeftButton)
 
@@ -50,6 +57,9 @@ def test_nowe_zamowienie_tab_saves_client_worker_and_order(tmp_path, monkeypatch
     assert saved_order is not None
     assert saved_order.client_name == "Klient Test"
     assert saved_order.worker_name == "Jan Pomiar"
+    assert len(saved_order.material_choices) == 1
+    assert saved_order.material_choices[0]["scope"] == "Front"
+    assert saved_order.material_choices[0]["status"] == "Wybrane finalnie"
     assert "Zapisano zamowienie" in w.lab_status.text()
 
 
@@ -160,6 +170,13 @@ def test_nowe_zamowienie_tab_restores_saved_draft_on_next_open(tmp_path, monkeyp
     w1.cb_quote_item_kind.setCurrentText("Kuchnia")
     w1.ed_quote_item_description.setText("Wyspa + slupki")
     QTest.mouseClick(w1.btn_add_quote_item, Qt.MouseButton.LeftButton)
+    w1.cb_material_scope.setCurrentText("Korpus")
+    w1.cb_material_choice_status.setCurrentText("Probka pokazana")
+    w1.ed_material_choice_material.setText("Egger U702")
+    w1.ed_material_choice_color.setText("Cashmere")
+    w1.ed_material_choice_code.setText("U702 ST9")
+    w1.ed_material_choice_notes.setText("Probka pokazana klientowi")
+    QTest.mouseClick(w1.btn_add_material_choice, Qt.MouseButton.LeftButton)
 
     w2 = TabNoweZamowienie(draft_store=draft_store)
 
@@ -173,6 +190,9 @@ def test_nowe_zamowienie_tab_restores_saved_draft_on_next_open(tmp_path, monkeyp
     assert w2.tbl_architect_attachments.item(0, 0).text() == "architekt.pdf"
     assert w2.tbl_quote_items.rowCount() == 1
     assert w2.tbl_quote_items.item(0, 0).text() == "Kuchnia salon"
+    assert w2.tbl_material_choices.rowCount() == 1
+    assert w2.tbl_material_choices.item(0, 0).text() == "Korpus"
+    assert w2.tbl_material_choices.item(0, 2).text() == "Cashmere"
 
 
 def test_nowe_zamowienie_tab_clear_removes_saved_draft(tmp_path, monkeypatch):
@@ -330,6 +350,7 @@ def test_nowe_zamowienie_tab_uses_collapsible_blocks(tmp_path, monkeypatch):
     assert isinstance(w.grp_actions, CollapsibleBlock)
     assert isinstance(w.grp_architect, CollapsibleBlock)
     assert isinstance(w.grp_quote_items, CollapsibleBlock)
+    assert isinstance(w.grp_material_choices, CollapsibleBlock)
     assert isinstance(w.grp_walls, CollapsibleBlock)
     assert isinstance(w.grp_summary, CollapsibleBlock)
     assert not w.grp_worker.is_expanded()
@@ -359,6 +380,7 @@ def test_nowe_zamowienie_tab_places_order_and_actions_in_left_column(tmp_path, m
         w.grp_actions,
         w.grp_architect,
         w.grp_quote_items,
+        w.grp_material_choices,
         w.grp_walls,
         w.grp_summary,
     ]

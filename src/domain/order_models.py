@@ -46,6 +46,33 @@ def _normalize_quote_items(raw: Any) -> List[Dict[str, str]]:
     return result
 
 
+def _normalize_material_choices(raw: Any) -> List[Dict[str, str]]:
+    items = raw if isinstance(raw, list) else []
+    result: List[Dict[str, str]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        scope = str(item.get("scope", "") or "").strip()
+        material = str(item.get("material", "") or "").strip()
+        color = str(item.get("color", "") or "").strip()
+        code = str(item.get("code", "") or "").strip()
+        status = str(item.get("status", "") or "").strip()
+        notes = str(item.get("notes", "") or "").strip()
+        if not any((scope, material, color, code, status, notes)):
+            continue
+        result.append(
+            {
+                "scope": scope or "Inne",
+                "material": material,
+                "color": color,
+                "code": code,
+                "status": status or "Probka pokazana",
+                "notes": notes,
+            }
+        )
+    return result
+
+
 @dataclass
 class OrderDef:
     code: str = ""
@@ -56,6 +83,7 @@ class OrderDef:
     notes: str = ""
     attachments: List[Dict[str, str]] = field(default_factory=list)
     quote_items: List[Dict[str, str]] = field(default_factory=list)
+    material_choices: List[Dict[str, str]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -67,6 +95,7 @@ class OrderDef:
             "notes": self.notes,
             "attachments": _normalize_attachments(self.attachments),
             "quote_items": _normalize_quote_items(self.quote_items),
+            "material_choices": _normalize_material_choices(self.material_choices),
         }
 
     @classmethod
@@ -81,4 +110,5 @@ class OrderDef:
             notes=str(data.get("notes", "") or ""),
             attachments=_normalize_attachments(data.get("attachments", [])),
             quote_items=_normalize_quote_items(data.get("quote_items", [])),
+            material_choices=_normalize_material_choices(data.get("material_choices", [])),
         )
