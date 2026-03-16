@@ -2144,6 +2144,69 @@ def test_sciana_tab_can_ctrl_click_preview_to_multi_select_modules(tmp_path, mon
     assert "Zaznaczono 2 modulow" in w.lab_active_module_info.text()
 
 
+def test_sciana_tab_can_box_select_multiple_modules_on_preview(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    catalog = CatalogStoreJson()
+    store = ModuleStoreJson()
+
+    module_a = ModuleDef(name="BOX_A", width_mm=600.0, depth_mm=500.0, height_mm=720.0)
+    module_b = ModuleDef(name="BOX_B", width_mm=800.0, depth_mm=500.0, height_mm=720.0)
+    module_a.parts = build_module_parts(module_a, catalog)
+    module_b.parts = build_module_parts(module_b, catalog)
+    store.save_new(module_a)
+    store.save_new(module_b)
+
+    w = TabSciana(module_store=store)
+    w.show()
+    app.processEvents()
+
+    assert _select_saved_module(w.tree_saved_modules, "BOX_A")
+    w.btn_add_saved.click()
+    assert _select_saved_module(w.tree_saved_modules, "BOX_B")
+    w.btn_add_saved.click()
+    app.processEvents()
+
+    first_rect = w.preview.item_scene_rect(0)
+    second_rect = w.preview.item_scene_rect(1)
+    assert first_rect is not None
+    assert second_rect is not None
+
+    selection_rect = first_rect.united(second_rect).adjusted(-12.0, -12.0, 12.0, 12.0)
+    press_point = w.preview.mapFromScene(selection_rect.topLeft())
+    move_point = w.preview.mapFromScene(selection_rect.bottomRight())
+
+    QTest.mousePress(
+        w.preview.viewport(),
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+        press_point,
+    )
+    app.processEvents()
+    QTest.mouseMove(w.preview.viewport(), move_point)
+    app.processEvents()
+    assert _scene_has_key(w.preview, "assembly_selection_box") is True
+    QTest.mouseRelease(
+        w.preview.viewport(),
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+        move_point,
+    )
+    app.processEvents()
+
+    assert w._selected_indexes() == [0, 1]
+    assert _scene_has_key(w.preview, "assembly_selection_box") is False
+
+
 def test_sciana_tab_can_apply_selected_module_height_from_preview_action(tmp_path, monkeypatch):
     monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TECH_MODUL_TESTING", "1")

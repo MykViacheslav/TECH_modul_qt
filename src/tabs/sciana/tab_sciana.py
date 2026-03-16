@@ -371,6 +371,7 @@ class AssemblyPreviewView(QGraphicsView):
     sig_saved_module_dropped = pyqtSignal(str, float)
     sig_module_selected = pyqtSignal(int)
     sig_module_selection_requested = pyqtSignal(int, bool)
+    sig_module_selection_group_requested = pyqtSignal(object, bool)
     sig_module_reordered = pyqtSignal(int, int)
     sig_module_offset_changed = pyqtSignal(int, float)
     sig_module_position_changed = pyqtSignal(int, float, float)
@@ -411,6 +412,8 @@ class AssemblyPreviewView(QGraphicsView):
         self._last_wall_width = 100.0
         self._ghost_rect: QRectF | None = None
         self._ghost_label = ""
+        self._selection_box_rect: QRectF | None = None
+        self._selection_preserve = False
         self._front_drag_offset_mm: float | None = None
         self._front_drag_y_mm: float | None = None
         self._vertical_reference_mode = "top"
@@ -678,12 +681,25 @@ class AssemblyPreviewView(QGraphicsView):
             self._last_assembly,
             self._last_resolved_items,
             selected_index=self._last_selected_index,
+            selected_indexes=self._last_selected_indexes,
         )
 
     def clear_hover_preview(self) -> None:
         self._drop_indicator_x = None
         self._ghost_rect = None
         self._ghost_label = ""
+
+    def _update_selection_box_preview(self, rect: QRectF | None, preserve_selection: bool = False) -> None:
+        normalized_rect = QRectF(rect).normalized() if rect is not None else None
+        same_rect = (
+            (self._selection_box_rect is None and normalized_rect is None)
+            or (self._selection_box_rect is not None and normalized_rect is not None and self._selection_box_rect == normalized_rect)
+        )
+        if same_rect and self._selection_preserve == bool(preserve_selection):
+            return
+        self._selection_box_rect = normalized_rect
+        self._selection_preserve = bool(preserve_selection)
+        self._rerender_cached_scene()
 
     def _fit_scene_to_view(self) -> None:
         scene_rect = self.scene.sceneRect()
@@ -784,6 +800,15 @@ class AssemblyPreviewView(QGraphicsView):
         if 0 <= int(index) < len(self._top_item_rects):
             return QRectF(self._top_item_rects[int(index)])
         return None
+
+    def _indexes_in_scene_rect(self, selection_rect: QRectF) -> list[int]:
+        rects = self._top_item_rects if self._view_mode == "top" else self._item_rects
+        normalized = QRectF(selection_rect).normalized()
+        indexes: list[int] = []
+        for index, rect in enumerate(rects):
+            if normalized.intersects(rect) or normalized.contains(rect.center()):
+                indexes.append(index)
+        return indexes
 
     @staticmethod
     def _wall_width_for_front_side(wall: WallLayoutDef) -> float:
@@ -1663,6 +1688,14 @@ class AssemblyPreviewView(QGraphicsView):
                     self.sig_module_selection_requested.emit(front_index, False)
                     event.accept()
                     return
+            self._drag_index = -1
+            self._drag_started = False
+            self._drag_mode = "select_box"
+            self._drag_start_scene = QPointF(scene_pos)
+            self._selection_preserve = preserve_selection
+            self._update_selection_box_preview(QRectF(scene_pos, scene_pos), preserve_selection=preserve_selection)
+            event.accept()
+            return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
@@ -1722,6 +1755,15 @@ class AssemblyPreviewView(QGraphicsView):
                         source_rect = self._item_rects[self._drag_index]
                         ghost_rect = QRectF(float(left_x), float(top_y), float(source_rect.width()), float(source_rect.height()))
                         self._update_drag_preview(left_x, ghost_rect=ghost_rect, ghost_label="")
+            event.accept()
+            return
+        if self._drag_mode == "select_box" and bool(event.buttons() & Qt.MouseButton.LeftButton):
+            scene_pos = self.mapToScene(event.position().toPoint())
+            delta = scene_pos - self._drag_start_scene
+            if abs(delta.x()) >= 5.0 or abs(delta.y()) >= 5.0:
+                self._drag_started = True
+            selection_rect = QRectF(self._drag_start_scene, scene_pos).normalized()
+            self._update_selection_box_preview(selection_rect, preserve_selection=self._selection_preserve)
             event.accept()
             return
         super().mouseMoveEvent(event)
@@ -1805,6 +1847,23 @@ class AssemblyPreviewView(QGraphicsView):
                     self.sig_module_selection_requested.emit(drag_index, False)
             else:
                 self.sig_module_selection_requested.emit(drag_index, False)
+            event.accept()
+            return
+        if self._drag_mode == "select_box" and event.button() == Qt.MouseButton.LeftButton:
+            scene_pos = self.mapToScene(event.position().toPoint())
+            selection_rect = QRectF(self._drag_start_scene, scene_pos).normalized()
+            started = bool(self._drag_started or selection_rect.width() >= 5.0 or selection_rect.height() >= 5.0)
+            preserve_selection = bool(self._selection_preserve)
+            self._drag_started = False
+            self._drag_mode = ""
+            self._drag_start_scene = QPointF()
+            self._selection_preserve = False
+            self._update_selection_box_preview(None)
+
+            if started:
+                self.sig_module_selection_group_requested.emit(self._indexes_in_scene_rect(selection_rect), preserve_selection)
+            elif not preserve_selection:
+                self.sig_module_selection_group_requested.emit([], False)
             event.accept()
             return
         super().mouseReleaseEvent(event)
@@ -1904,6 +1963,15 @@ class AssemblyPreviewView(QGraphicsView):
                     ghost_text = self.scene.addText(self._ghost_label)
                     ghost_text.setDefaultTextColor(QColor("#1f6ed4"))
                     ghost_text.setPos(self._ghost_rect.left() + 8.0, self._ghost_rect.top() + 8.0)
+
+            if self._selection_box_rect is not None:
+                selection_pen = QPen(QColor("#1f6ed4"))
+                selection_pen.setWidth(2)
+                selection_pen.setStyle(Qt.PenStyle.DashLine)
+                selection_brush = QBrush(QColor(31, 110, 212, 30))
+                selection_item = self.scene.addRect(QRectF(self._selection_box_rect), selection_pen, selection_brush)
+                selection_item.setData(0, "assembly_selection_box")
+                selection_item.setZValue(60.0)
 
             fallback_rect = QRectF(-20.0, -10.0, scene_width + 40.0, max(top_bottom_y + 36.0, 120.0))
             self.scene.setSceneRect(self._tight_scene_rect(fallback_rect, x_margin=24.0, y_margin=20.0))
@@ -2054,6 +2122,15 @@ class AssemblyPreviewView(QGraphicsView):
                 ghost_text.setPos(self._ghost_rect.left() + 8.0, self._ghost_rect.top() + 8.0)
                 self._style_readable_text(ghost_text, "#1f6ed4", point_size=10, bold=True, z_value=28.0)
 
+        if self._selection_box_rect is not None:
+            selection_pen = QPen(QColor("#1f6ed4"))
+            selection_pen.setWidth(2)
+            selection_pen.setStyle(Qt.PenStyle.DashLine)
+            selection_brush = QBrush(QColor(31, 110, 212, 30))
+            selection_item = self.scene.addRect(QRectF(self._selection_box_rect), selection_pen, selection_brush)
+            selection_item.setData(0, "assembly_selection_box")
+            selection_item.setZValue(60.0)
+
         if linked_wall is not None:
             max_right = max(
                 wall_width + 30.0,
@@ -2112,6 +2189,7 @@ class TabSciana(QWidget):
         self.right_zone = self._build_right_zone()
         self.preview.sig_saved_module_dropped.connect(self._on_saved_module_dropped)
         self.preview.sig_module_selection_requested.connect(self._on_preview_module_selection_requested)
+        self.preview.sig_module_selection_group_requested.connect(self._on_preview_module_selection_group_requested)
         self.preview.sig_apply_module_height_to_selected.connect(self._on_preview_apply_height_to_selected)
         self.preview.sig_apply_module_front_material_to_selected.connect(self._on_preview_apply_front_material_to_selected)
         self.preview.sig_module_reordered.connect(self._on_preview_module_reordered)
@@ -2119,6 +2197,7 @@ class TabSciana(QWidget):
         self.preview.sig_module_position_changed.connect(self._on_preview_module_position_changed)
         self.preview_top.sig_saved_module_dropped.connect(self._on_saved_module_dropped)
         self.preview_top.sig_module_selection_requested.connect(self._on_preview_module_selection_requested)
+        self.preview_top.sig_module_selection_group_requested.connect(self._on_preview_module_selection_group_requested)
         self.preview_top.sig_apply_module_height_to_selected.connect(self._on_preview_apply_height_to_selected)
         self.preview_top.sig_apply_module_front_material_to_selected.connect(self._on_preview_apply_front_material_to_selected)
         self.preview_top.sig_module_top_position_changed.connect(self._on_preview_top_position_changed)
@@ -4137,6 +4216,39 @@ class TabSciana(QWidget):
             )
         else:
             self.tbl_items.selectRow(row_index)
+        self._refresh_preview_only()
+
+    def _on_preview_module_selection_group_requested(self, indexes, preserve_selection: bool) -> None:
+        selection_model = self.tbl_items.selectionModel()
+        if selection_model is None:
+            return
+
+        valid_indexes = sorted(
+            {
+                int(index)
+                for index in (indexes or [])
+                if 0 <= int(index) < self.tbl_items.rowCount()
+            }
+        )
+        current_indexes = set(self._selected_indexes())
+
+        if preserve_selection:
+            target_indexes = set(current_indexes)
+            for index in valid_indexes:
+                if index in target_indexes:
+                    target_indexes.remove(index)
+                else:
+                    target_indexes.add(index)
+        else:
+            target_indexes = set(valid_indexes)
+
+        selection_model.clearSelection()
+        for row_index in sorted(target_indexes):
+            model_index = self.tbl_items.model().index(int(row_index), 0)
+            selection_model.select(
+                model_index,
+                QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows,
+            )
         self._refresh_preview_only()
 
     def _on_preview_apply_height_to_selected(self, source_index: int) -> None:

@@ -359,6 +359,7 @@ Do wdrozenia:
 - [DONE] szybka zmiana materialow konkretnego modulu juz w komplecie
 - [DONE] grupowa zmiana wysokosci i materialow zaznaczonych modulow w komplecie
 - [DONE] ctrl+klik i szybkie akcje grupowe z preview w komplecie
+- [DONE] prostokatne zaznaczanie wielu modulow bezposrednio na preview
 
 [TODO] Rozszerzone szybkie zmiany handlowe:
 - podpiecie dekorow pod realne warianty katalogu materialow, gdy baza bedzie bogatsza
