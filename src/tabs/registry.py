@@ -11,6 +11,7 @@ from src.tabs.rysunek.tab_rysunek import TabRysunek
 from src.tabs.sciana.tab_sciana import TabSciana
 from src.tabs.sciana.tab_sciana_layout import TabScianaLayout
 from src.tabs.start.tab_start import TabStart
+from src.tabs.wycena.tab_wycena import TabWycena
 from src.tabs.zamowienie.tab_nowe_zamowienie import TabNoweZamowienie
 
 
@@ -18,6 +19,7 @@ def build_tabs() -> List[Tuple[str, QWidget]]:
     return [
         ("Start", TabStart()),
         ("Nowe zamowienie", TabNoweZamowienie()),
+        ("Wycena", TabWycena()),
         ("Kalendarz", TabKalendarz()),
         ("Modul", TabModul()),
         ("Komplet", TabSciana()),

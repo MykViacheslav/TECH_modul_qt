@@ -176,6 +176,9 @@ Zrobione w Etapie 1:
   - offset po dlugosci sciany
   - offset od sciany
   - drag modulu w dwoch osiach w top view
+- odciazenie karty Komplet:
+  - kalkulacja handlowa przeniesiona do osobnej karty "Wycena"
+  - Komplet zostaje karta techniczno-materialowa
 
 [DONE] Nowe zamowienie:
 - zwijane sekcje
@@ -414,6 +417,9 @@ Do wdrozenia:
   - montaz
   - marza
   - cena handlowa
+- [DONE] kalkulacja handlowa przeniesiona do osobnej karty:
+  - Wycena
+  - Komplet zostaje lzejszy i bardziej techniczny
 - [DONE] rozbicie kosztu zamowienia:
   - koszt techniczny
   - cena handlowa
@@ -628,6 +634,11 @@ Do wdrozenia:
   - gdzie oplaca sie kupic taniej
   - gdzie material jest dostepny szybciej
 - powiazanie zakupow z probkami i finalnymi wyborami materialow
+- przykladowe dokumenty do przyszlego importu:
+  - Adler - dokument dostawy / farby
+  - Pakdrew - WZ / okucia
+  - Schachermayer - faktura VAT / dokument WZ
+  - Wurth - faktura VAT
 
 
 --------------------------------------------------
