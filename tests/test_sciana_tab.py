@@ -16,6 +16,16 @@ def _select_saved_module(tree, name: str) -> bool:
     return False
 
 
+def _visible_saved_module_names(tree) -> list[str]:
+    names: list[str] = []
+    for top_index in range(tree.topLevelItemCount()):
+        group_item = tree.topLevelItem(top_index)
+        for child_index in range(group_item.childCount()):
+            child = group_item.child(child_index)
+            names.append(str(child.data(0, Qt.ItemDataRole.UserRole) or ""))
+    return names
+
+
 def _scene_has_key(view, key: str) -> bool:
     for item in view.scene.items():
         try:
@@ -73,6 +83,65 @@ def test_sciana_tab_adds_saved_modules_and_aggregates_costs(tmp_path, monkeypatc
     assert w.tbl_items.rowCount() == 1
     assert "Liczba modulow: 1" in w.lab_summary.text()
     assert "RAZEM:" in w.lab_summary.text()
+
+
+def test_sciana_tab_saved_module_library_supports_quick_filters_and_search(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    catalog = CatalogStoreJson()
+    store = ModuleStoreJson()
+
+    lower = ModuleDef(name="LOWER_FAST", width_mm=600.0, depth_mm=510.0, height_mm=720.0, cabinet_kind="lower", module_type="legs")
+    lower.parts = build_module_parts(lower, catalog)
+    store.save_new(lower)
+
+    upper = ModuleDef(name="UPPER_FAST", width_mm=600.0, depth_mm=320.0, height_mm=720.0, cabinet_kind="upper", module_type="hanging")
+    upper.parts = build_module_parts(upper, catalog)
+    store.save_new(upper)
+
+    tall = ModuleDef(name="SLUPEK_FAST", width_mm=600.0, depth_mm=560.0, height_mm=2200.0, cabinet_kind="lower", module_type="legs_plinth")
+    tall.parts = build_module_parts(tall, catalog)
+    store.save_new(tall)
+
+    corner = ModuleDef(name="NAROZNA_FAST", width_mm=900.0, depth_mm=900.0, height_mm=720.0, cabinet_kind="lower", module_type="corner")
+    corner.parts = build_module_parts(corner, catalog)
+    store.save_new(corner)
+
+    w = TabSciana(module_store=store)
+    w.show()
+    app.processEvents()
+
+    assert hasattr(w, "cb_saved_quick_group")
+    assert hasattr(w, "ed_saved_search")
+
+    idx_upper = w.cb_saved_quick_group.findData("upper")
+    assert idx_upper >= 0
+    w.cb_saved_quick_group.setCurrentIndex(idx_upper)
+    app.processEvents()
+    assert _visible_saved_module_names(w.tree_saved_modules) == ["UPPER_FAST"]
+
+    idx_all = w.cb_saved_quick_group.findData("all")
+    assert idx_all >= 0
+    w.cb_saved_quick_group.setCurrentIndex(idx_all)
+    w.ed_saved_search.setText("naroz")
+    app.processEvents()
+    assert _visible_saved_module_names(w.tree_saved_modules) == ["NAROZNA_FAST"]
+
+    w.ed_saved_search.clear()
+    idx_tall = w.cb_saved_quick_group.findData("tall")
+    assert idx_tall >= 0
+    w.cb_saved_quick_group.setCurrentIndex(idx_tall)
+    app.processEvents()
+    assert _visible_saved_module_names(w.tree_saved_modules) == ["SLUPEK_FAST"]
 
 
 def test_sciana_tab_preview_draws_module_parts_not_only_outer_block(tmp_path, monkeypatch):

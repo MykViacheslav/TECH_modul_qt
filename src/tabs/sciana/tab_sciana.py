@@ -41,7 +41,7 @@ from src.domain.assembly_models import (
 )
 from src.domain.assembly_resolution_service import resolve_assembly_items
 from src.domain.module_base_group import module_base_group_label_pl
-from src.domain.module_models import ModuleDef
+from src.domain.module_models import ModuleDef, normalize_module_type
 from src.domain.wall_models import WallLayoutDef
 from src.storage.assembly_store_json import AssemblyStoreJson
 from src.storage.catalog_store_json import CatalogStoreJson
@@ -58,6 +58,45 @@ SAVED_MODULE_NAME_ROLE = int(Qt.ItemDataRole.UserRole)
 SAVED_MODULE_WIDTH_ROLE = SAVED_MODULE_NAME_ROLE + 1
 SAVED_MODULE_HEIGHT_ROLE = SAVED_MODULE_NAME_ROLE + 2
 SAVED_MODULE_KIND_ROLE = SAVED_MODULE_NAME_ROLE + 3
+
+QUICK_LIBRARY_LABELS = {
+    "all": "Wszystkie",
+    "lower": "Dolne",
+    "upper": "Gorne",
+    "tall": "Slupki / wysokie",
+    "corner": "Narozne",
+    "other": "Inne",
+}
+
+
+def _saved_module_quick_group_key(module: ModuleDef | None) -> str:
+    if module is None:
+        return "other"
+
+    module_type = normalize_module_type(str(getattr(module, "module_type", "legacy") or "legacy"))
+    cabinet_kind = str(getattr(module, "cabinet_kind", "lower") or "lower").strip().lower()
+    height_mm = float(getattr(module, "height_mm", 0.0) or 0.0)
+    name_blob = " ".join(
+        [
+            str(getattr(module, "name", "") or ""),
+            str(getattr(module, "module_family", "") or ""),
+            str(getattr(module, "base_group", "") or ""),
+        ]
+    ).strip().lower()
+
+    if module_type == "corner" or "naroz" in name_blob:
+        return "corner"
+    if cabinet_kind == "upper" or module_type == "hanging" or any(token in name_blob for token in ("upper", "wisz", "gorn")):
+        return "upper"
+    if height_mm >= 1800.0 or any(token in name_blob for token in ("slupek", "slupek", "slup", "garder", "wardrobe", "tall")):
+        return "tall"
+    if cabinet_kind == "lower" or module_type in ("legacy", "legs", "legs_plinth"):
+        return "lower"
+    return "other"
+
+
+def _saved_module_quick_group_label(key: str) -> str:
+    return QUICK_LIBRARY_LABELS.get(str(key or "").strip().lower(), QUICK_LIBRARY_LABELS["other"])
 
 
 class SavedModulesTreeWidget(QTreeWidget):
@@ -1931,6 +1970,18 @@ class TabSciana(QWidget):
         store_row.addWidget(self.btn_refresh_saved, 0)
         store_layout.addLayout(store_row)
 
+        filter_row = QHBoxLayout()
+        self.cb_saved_quick_group = QComboBox(box_store)
+        for key, label in QUICK_LIBRARY_LABELS.items():
+            self.cb_saved_quick_group.addItem(label, key)
+        filter_row.addWidget(QLabel("Typ:", box_store), 0)
+        filter_row.addWidget(self.cb_saved_quick_group, 1)
+        store_layout.addLayout(filter_row)
+
+        self.ed_saved_search = QLineEdit(box_store)
+        self.ed_saved_search.setPlaceholderText("Szukaj modulu...")
+        store_layout.addWidget(self.ed_saved_search)
+
         self.cb_active_view = QComboBox(box_store)
         self.cb_active_view.addItem("Widok z przodu", "front")
         self.cb_active_view.addItem("Rzut z gory", "top")
@@ -1973,6 +2024,8 @@ class TabSciana(QWidget):
         self.cb_material_front.currentIndexChanged.connect(self._on_assembly_changed)
         self.cb_material_back.currentIndexChanged.connect(self._on_assembly_changed)
         self.btn_refresh_saved.clicked.connect(self._reload_saved_modules)
+        self.cb_saved_quick_group.currentIndexChanged.connect(self._reload_saved_modules)
+        self.ed_saved_search.textChanged.connect(self._reload_saved_modules)
         self.btn_add_saved.clicked.connect(self._on_add_saved_module)
         self.tree_saved_modules.currentItemChanged.connect(self._on_saved_module_selection_changed)
         self.cb_active_view.currentIndexChanged.connect(self._on_active_view_changed)
@@ -2544,6 +2597,8 @@ class TabSciana(QWidget):
     def _reload_saved_modules(self) -> None:
         current_name = self._selected_saved_module_name()
         grouped = self._store.list_grouped_names() if hasattr(self._store, "list_grouped_names") else {}
+        selected_quick_group = str(self.cb_saved_quick_group.currentData() or "all").strip().lower() if hasattr(self, "cb_saved_quick_group") else "all"
+        search_text = str(self.ed_saved_search.text() or "").strip().lower() if hasattr(self, "ed_saved_search") else ""
 
         self.tree_saved_modules.blockSignals(True)
         self.tree_saved_modules.clear()
@@ -2552,23 +2607,36 @@ class TabSciana(QWidget):
         selected_child: QTreeWidgetItem | None = None
 
         for base_group, names in grouped.items():
+            visible_children: list[QTreeWidgetItem] = []
             group_item = QTreeWidgetItem([module_base_group_label_pl(base_group)])
             group_item.setFlags(group_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
-            self.tree_saved_modules.addTopLevelItem(group_item)
 
             for name in names:
                 module = self._store.get(name)
+                if not self._saved_module_matches_library_filter(module, name, selected_quick_group, search_text):
+                    continue
                 child = QTreeWidgetItem([name])
                 child.setData(0, Qt.ItemDataRole.UserRole, name)
                 child.setData(0, SAVED_MODULE_NAME_ROLE, name)
                 child.setData(0, SAVED_MODULE_WIDTH_ROLE, float(getattr(module, "width_mm", 0.0) or 0.0))
                 child.setData(0, SAVED_MODULE_HEIGHT_ROLE, float(getattr(module, "height_mm", 0.0) or 0.0))
                 child.setData(0, SAVED_MODULE_KIND_ROLE, str(getattr(module, "cabinet_kind", "lower") or "lower"))
+                quick_label = _saved_module_quick_group_label(_saved_module_quick_group_key(module))
+                child.setToolTip(
+                    0,
+                    f"{quick_label} | {float(getattr(module, 'width_mm', 0.0) or 0.0):.0f} x "
+                    f"{float(getattr(module, 'height_mm', 0.0) or 0.0):.0f} x "
+                    f"{float(getattr(module, 'depth_mm', 0.0) or 0.0):.0f} mm",
+                )
                 group_item.addChild(child)
+                visible_children.append(child)
                 if first_child is None:
                     first_child = child
                 if name == current_name:
                     selected_child = child
+
+            if visible_children:
+                self.tree_saved_modules.addTopLevelItem(group_item)
 
         self.tree_saved_modules.expandAll()
         if selected_child is not None:
@@ -2578,6 +2646,34 @@ class TabSciana(QWidget):
 
         self.tree_saved_modules.blockSignals(False)
         self._on_saved_module_selection_changed(self.tree_saved_modules.currentItem(), None)
+
+    def _saved_module_matches_library_filter(
+        self,
+        module: ModuleDef | None,
+        module_name: str,
+        quick_group: str,
+        search_text: str,
+    ) -> bool:
+        quick_group = str(quick_group or "all").strip().lower() or "all"
+        search_text = str(search_text or "").strip().lower()
+
+        module_quick_group = _saved_module_quick_group_key(module)
+        if quick_group != "all" and module_quick_group != quick_group:
+            return False
+
+        if not search_text:
+            return True
+
+        haystack = " ".join(
+            [
+                str(module_name or ""),
+                str(getattr(module, "module_family", "") or ""),
+                str(getattr(module, "base_group", "") or ""),
+                str(getattr(module, "cabinet_kind", "") or ""),
+                _saved_module_quick_group_label(module_quick_group),
+            ]
+        ).lower()
+        return search_text in haystack
 
     def _selected_saved_module_name(self) -> str:
         item = self.tree_saved_modules.currentItem()

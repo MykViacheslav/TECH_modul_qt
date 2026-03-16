@@ -206,7 +206,17 @@ Zalozenia:
 - import z 3D Constructor ma sluzyc doprecyzowaniu projektu, a nie tworzeniu pierwszej wyceny
 
 Do wdrozenia:
-[TODO] Biblioteka gotowych modulow do szybkiej wyceny:
+[DONE] Biblioteka gotowych modulow do szybkiej wyceny:
+- szybki filtr po typach:
+  - wszystkie
+  - dolne
+  - gorne
+  - slupki / wysokie
+  - narozne
+- wyszukiwarka po nazwie modulu
+- lepsze odnajdywanie gotowych modulow w karcie Komplet
+
+[TODO] Rozszerzenie biblioteki gotowych modulow:
 - dolne
 - gorne
 - slupki
