@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -35,6 +36,19 @@ CALENDAR_STAGE_ITEMS: tuple[str, ...] = (
     "Montaz",
     "Poprawki",
     "Inne",
+)
+
+CALENDAR_STATUS_ITEMS: tuple[str, ...] = (
+    "Nowe",
+    "Wycena",
+    "Wycena gotowa",
+    "Zaakceptowane",
+    "Zakup materialow",
+    "Produkcja",
+    "Lakiernia",
+    "Montaz",
+    "Poprawki",
+    "Zakonczone",
 )
 
 
@@ -148,10 +162,15 @@ class TabKalendarz(QWidget):
         editor_layout.addWidget(self.lab_selected)
 
         form = QFormLayout()
+        self.cb_calendar_status = QComboBox(editor)
         self.cb_calendar_stage = QComboBox(editor)
+        self.cb_calendar_status.addItem("")
         self.cb_calendar_stage.addItem("")
         for stage in CALENDAR_STAGE_ITEMS:
             self.cb_calendar_stage.addItem(stage)
+        self.sp_calendar_progress = QSpinBox(editor)
+        self.sp_calendar_progress.setRange(0, 100)
+        self.sp_calendar_progress.setSuffix(" %")
 
         self.chk_no_date = QCheckBox("Bez terminu", editor)
         self.de_calendar_date = QDateEdit(editor)
@@ -163,6 +182,8 @@ class TabKalendarz(QWidget):
         self.ed_calendar_note = QLineEdit(editor)
         self.ed_calendar_note.setPlaceholderText("Krotka notatka do etapu...")
 
+        form.addRow("Status", self.cb_calendar_status)
+        form.addRow("Postep", self.sp_calendar_progress)
         form.addRow("Etap", self.cb_calendar_stage)
         form.addRow("Termin", self.de_calendar_date)
         form.addRow("", self.chk_no_date)
@@ -182,6 +203,61 @@ class TabKalendarz(QWidget):
         self.lab_status.setWordWrap(True)
         editor_layout.addWidget(self.lab_status)
         root.addWidget(editor, 0)
+
+        lower_panels = QHBoxLayout()
+        lower_panels.setSpacing(12)
+
+        workload_box = QFrame(self)
+        workload_box.setFrameShape(QFrame.Shape.StyledPanel)
+        workload_box.setStyleSheet("QFrame { border: 1px solid #d9e0ea; border-radius: 8px; background: #ffffff; }")
+        workload_layout = QVBoxLayout(workload_box)
+        workload_layout.setContentsMargins(12, 12, 12, 12)
+        workload_layout.setSpacing(8)
+        workload_title = QLabel("Obciazenie pracownikow", workload_box)
+        workload_title.setStyleSheet("font-weight: 700;")
+        workload_layout.addWidget(workload_title)
+        self.tbl_workload = QTableWidget(0, 4, workload_box)
+        self.tbl_workload.setHorizontalHeaderLabels(["Pracownik", "Projekty", "Montaz", "Po terminie"])
+        self.tbl_workload.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.tbl_workload.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        self.tbl_workload.setAlternatingRowColors(True)
+        self.tbl_workload.verticalHeader().setVisible(False)
+        workload_header = self.tbl_workload.horizontalHeader()
+        workload_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        workload_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        workload_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        workload_header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        workload_layout.addWidget(self.tbl_workload, 1)
+        lower_panels.addWidget(workload_box, 1)
+
+        history_box = QFrame(self)
+        history_box.setFrameShape(QFrame.Shape.StyledPanel)
+        history_box.setStyleSheet("QFrame { border: 1px solid #d9e0ea; border-radius: 8px; background: #ffffff; }")
+        history_layout = QVBoxLayout(history_box)
+        history_layout.setContentsMargins(12, 12, 12, 12)
+        history_layout.setSpacing(8)
+        history_title = QLabel("Historia statusu", history_box)
+        history_title.setStyleSheet("font-weight: 700;")
+        history_layout.addWidget(history_title)
+        self.tbl_status_history = QTableWidget(0, 4, history_box)
+        self.tbl_status_history.setHorizontalHeaderLabels(["Data", "Z", "Na", "Kto"])
+        self.tbl_status_history.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.tbl_status_history.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        self.tbl_status_history.setAlternatingRowColors(True)
+        self.tbl_status_history.verticalHeader().setVisible(False)
+        history_header = self.tbl_status_history.horizontalHeader()
+        history_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        history_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        history_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        history_header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        history_layout.addWidget(self.tbl_status_history, 1)
+        self.lab_history_note = QLabel("Wybierz zamowienie z listy.", history_box)
+        self.lab_history_note.setWordWrap(True)
+        self.lab_history_note.setStyleSheet("color:#4b5563;")
+        history_layout.addWidget(self.lab_history_note)
+        lower_panels.addWidget(history_box, 1)
+
+        root.addLayout(lower_panels, 0)
 
         self.ed_search.textChanged.connect(self._refresh_table)
         self.cb_status_filter.currentTextChanged.connect(self._refresh_table)
@@ -226,7 +302,12 @@ class TabKalendarz(QWidget):
 
     def refresh_data(self) -> None:
         orders = self._order_store.list_orders()
-        statuses = sorted({str(order.status or "").strip() for order in orders if str(order.status or "").strip()})
+        statuses = sorted(
+            {
+                *CALENDAR_STATUS_ITEMS,
+                *(str(order.status or "").strip() for order in orders if str(order.status or "").strip()),
+            }
+        )
         current_status = self.cb_status_filter.currentText()
         self.cb_status_filter.blockSignals(True)
         try:
@@ -237,6 +318,17 @@ class TabKalendarz(QWidget):
             self.cb_status_filter.setCurrentText(current_status if current_status else "Wszystkie statusy")
         finally:
             self.cb_status_filter.blockSignals(False)
+        current_editor_status = self.cb_calendar_status.currentText()
+        self.cb_calendar_status.blockSignals(True)
+        try:
+            self.cb_calendar_status.clear()
+            self.cb_calendar_status.addItem("")
+            for status in statuses:
+                self.cb_calendar_status.addItem(status)
+            if current_editor_status:
+                self.cb_calendar_status.setCurrentText(current_editor_status)
+        finally:
+            self.cb_calendar_status.blockSignals(False)
         self._refresh_table()
 
     def _filtered_orders(self) -> list[dict[str, object]]:
@@ -301,9 +393,37 @@ class TabKalendarz(QWidget):
         self._set_metric(self.lab_metric_overdue, overdue)
         self._set_metric(self.lab_metric_montage, montage)
 
+    def _refresh_workload(self, rows: list[dict[str, object]]) -> None:
+        today = date.today()
+        worker_rows: dict[str, dict[str, int]] = {}
+        for row in rows:
+            order = row["order"]
+            worker_name = str(getattr(order, "worker_name", "") or "").strip() or "[brak]"
+            metrics = worker_rows.setdefault(worker_name, {"projects": 0, "montage": 0, "overdue": 0})
+            metrics["projects"] += 1
+            if "montaz" in str(getattr(order, "status", "") or "").lower() or str(row["calendar_stage"] or "") == "Montaz":
+                metrics["montage"] += 1
+            parsed_date = row["parsed_date"]
+            if parsed_date is not None and parsed_date < today and str(getattr(order, "status", "") or "").strip().lower() != "zakonczone":
+                metrics["overdue"] += 1
+
+        ordered_workers = sorted(worker_rows.items(), key=lambda item: (item[0] == "[brak]", item[0].lower()))
+        self.tbl_workload.setRowCount(0)
+        for row_idx, (worker_name, metrics) in enumerate(ordered_workers):
+            self.tbl_workload.insertRow(row_idx)
+            values = [
+                worker_name,
+                str(metrics["projects"]),
+                str(metrics["montage"]),
+                str(metrics["overdue"]),
+            ]
+            for col, value in enumerate(values):
+                self.tbl_workload.setItem(row_idx, col, QTableWidgetItem(value))
+
     def _refresh_table(self) -> None:
         self._rows = self._filtered_orders()
         self._refresh_metrics(self._rows)
+        self._refresh_workload(self._rows)
         current_code = self._selected_order_code()
         self.tbl_orders.setRowCount(0)
         for row_idx, row in enumerate(self._rows):
@@ -351,14 +471,22 @@ class TabKalendarz(QWidget):
         try:
             if order is None:
                 self.lab_selected.setText("Wybierz zamowienie z listy.")
+                self.cb_calendar_status.setCurrentIndex(0)
+                self.sp_calendar_progress.setValue(0)
                 self.cb_calendar_stage.setCurrentIndex(0)
                 self.chk_no_date.setChecked(True)
                 self.cb_calendar_worker.setCurrentText("")
                 self.ed_calendar_note.clear()
+                self.tbl_status_history.setRowCount(0)
+                self.lab_history_note.setText("Wybierz zamowienie z listy.")
                 return
             self.lab_selected.setText(
                 f'Zamowienie: {order.code} | Klient: {order.client_name or "-"} | Status: {order.status or "-"} | {int(round(float(getattr(order, "progress_percent", 0.0) or 0.0)))}%'
             )
+            status = str(getattr(order, "status", "") or "")
+            idx_status = self.cb_calendar_status.findText(status)
+            self.cb_calendar_status.setCurrentIndex(idx_status if idx_status >= 0 else 0)
+            self.sp_calendar_progress.setValue(int(round(float(getattr(order, "progress_percent", 0.0) or 0.0))))
             stage = str(getattr(order, "calendar_stage", "") or "")
             idx = self.cb_calendar_stage.findText(stage)
             self.cb_calendar_stage.setCurrentIndex(idx if idx >= 0 else 0)
@@ -369,8 +497,29 @@ class TabKalendarz(QWidget):
                 self.de_calendar_date.setDate(QDate(parsed.year, parsed.month, parsed.day))
             self.cb_calendar_worker.setCurrentText(str(order.worker_name or ""))
             self.ed_calendar_note.setText(str(getattr(order, "calendar_note", "") or ""))
+            self._refresh_status_history(order)
         finally:
             self._is_loading = False
+
+    def _refresh_status_history(self, order) -> None:
+        history = list(getattr(order, "status_history", []) or [])
+        self.tbl_status_history.setRowCount(0)
+        if not history:
+            self.lab_history_note.setText("Brak zapisanej historii zmian statusu.")
+            return
+        for row_idx, entry in enumerate(reversed(history)):
+            self.tbl_status_history.insertRow(row_idx)
+            values = [
+                str(entry.get("changed_at", "") or "-"),
+                str(entry.get("from_status", "") or "-"),
+                str(entry.get("to_status", "") or "-"),
+                str(entry.get("changed_by", "") or "-"),
+            ]
+            for col, value in enumerate(values):
+                self.tbl_status_history.setItem(row_idx, col, QTableWidgetItem(value))
+        latest = history[-1]
+        note = str(latest.get("note", "") or "").strip()
+        self.lab_history_note.setText(note if note else "Ostatnia zmiana bez dodatkowej notatki.")
 
     def _on_save(self) -> None:
         if self._is_loading:
@@ -379,15 +528,33 @@ class TabKalendarz(QWidget):
         if order is None:
             self._set_status("Wybierz zamowienie z listy.", ok=False)
             return
+        new_status = str(self.cb_calendar_status.currentText().strip())
+        new_progress = float(self.sp_calendar_progress.value())
         calendar_date = ""
         if not self.chk_no_date.isChecked():
             calendar_date = self.de_calendar_date.date().toString("yyyy-MM-dd")
+        history = list(getattr(order, "status_history", []) or [])
+        old_status = str(getattr(order, "status", "") or "").strip()
+        if new_status and new_status != old_status:
+            changed_by = str(self.cb_calendar_worker.currentText().strip() or getattr(order, "worker_name", "") or "Kalendarz")
+            history.append(
+                {
+                    "changed_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "from_status": old_status,
+                    "to_status": new_status,
+                    "changed_by": changed_by,
+                    "note": str(self.ed_calendar_note.text().strip()),
+                }
+            )
         updated = replace(
             order,
+            status=new_status or old_status,
+            progress_percent=new_progress,
             worker_name=str(self.cb_calendar_worker.currentText().strip()),
             calendar_stage=str(self.cb_calendar_stage.currentText().strip()),
             calendar_date=calendar_date,
             calendar_note=str(self.ed_calendar_note.text().strip()),
+            status_history=history,
         )
         result = self._order_store.overwrite(updated)
         self._refresh_table()

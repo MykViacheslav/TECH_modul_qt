@@ -81,6 +81,31 @@ def _normalize_material_choices(raw: Any) -> List[Dict[str, str]]:
     return result
 
 
+def _normalize_status_history(raw: Any) -> List[Dict[str, str]]:
+    items = raw if isinstance(raw, list) else []
+    result: List[Dict[str, str]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        changed_at = str(item.get("changed_at", "") or "").strip()
+        from_status = str(item.get("from_status", "") or "").strip()
+        to_status = str(item.get("to_status", "") or "").strip()
+        changed_by = str(item.get("changed_by", "") or "").strip()
+        note = str(item.get("note", "") or "").strip()
+        if not to_status and not changed_at:
+            continue
+        result.append(
+            {
+                "changed_at": changed_at,
+                "from_status": from_status,
+                "to_status": to_status,
+                "changed_by": changed_by,
+                "note": note,
+            }
+        )
+    return result
+
+
 @dataclass
 class OrderDef:
     code: str = ""
@@ -96,6 +121,7 @@ class OrderDef:
     attachments: List[Dict[str, str]] = field(default_factory=list)
     quote_items: List[Dict[str, str]] = field(default_factory=list)
     material_choices: List[Dict[str, str]] = field(default_factory=list)
+    status_history: List[Dict[str, str]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -112,6 +138,7 @@ class OrderDef:
             "attachments": _normalize_attachments(self.attachments),
             "quote_items": _normalize_quote_items(self.quote_items),
             "material_choices": _normalize_material_choices(self.material_choices),
+            "status_history": _normalize_status_history(self.status_history),
         }
 
     @classmethod
@@ -131,4 +158,5 @@ class OrderDef:
             attachments=_normalize_attachments(data.get("attachments", [])),
             quote_items=_normalize_quote_items(data.get("quote_items", [])),
             material_choices=_normalize_material_choices(data.get("material_choices", [])),
+            status_history=_normalize_status_history(data.get("status_history", [])),
         )

@@ -551,6 +551,17 @@ Do wdrozenia:
     - notatki
   - zapis planu etapu bezposrednio do zamowienia
 
+[DONE] rozwiniety Kalendarz prac:
+  - edycja statusu i procentu zaawansowania bezposrednio z karty Kalendarz
+  - historia zmian statusu:
+    - kto zmienil
+    - kiedy zmienil
+    - z jakiego statusu na jaki
+  - prosty widok obciazenia pracownikow:
+    - liczba projektow
+    - liczba montazy
+    - liczba pozycji po terminie
+
 [TODO] dalsze statusy zamowienia:
   - wycena w toku
   - wycena gotowa
@@ -574,10 +585,9 @@ Do wdrozenia:
   - jakie projekty sa w produkcji
   - jakie projekty sa w montazu
   - jaki procent zaawansowania ma projekt lub etap
-- historia zmian statusu:
-  - kto zmienil
-  - kiedy zmienil
-  - z jakiego statusu na jaki
+- dalsze dopracowanie historii zmian statusu:
+  - dodatkowe notatki i filtrowanie
+  - powiazanie z konkretnym etapem
 
 
 --------------------------------------------------
