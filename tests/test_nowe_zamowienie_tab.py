@@ -1,6 +1,7 @@
 from PyQt6.QtCore import Qt
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication
+from PyQt6.QtGui import QColor, QImage, QPixmap
 
 
 def test_nowe_zamowienie_tab_saves_client_worker_and_order(tmp_path, monkeypatch):
@@ -193,6 +194,87 @@ def test_nowe_zamowienie_tab_restores_saved_draft_on_next_open(tmp_path, monkeyp
     assert w2.tbl_material_choices.rowCount() == 1
     assert w2.tbl_material_choices.item(0, 0).text() == "Korpus"
     assert w2.tbl_material_choices.item(0, 2).text() == "Cashmere"
+
+
+def test_nowe_zamowienie_tab_shows_image_preview_for_selected_architect_attachment(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.tabs.zamowienie.tab_nowe_zamowienie import TabNoweZamowienie
+
+    image_path = tmp_path / "wizualizacja.png"
+    image = QImage(240, 180, QImage.Format.Format_RGB32)
+    image.fill(QColor("#d8c8b2"))
+    assert image.save(str(image_path))
+
+    w = TabNoweZamowienie()
+    w.ed_architect_file.setText(str(image_path))
+    w.cb_architect_kind.setCurrentText("Obraz")
+    w.ed_architect_description.setText("Wizualizacja lazienki")
+    QTest.mouseClick(w.btn_add_architect_attachment, Qt.MouseButton.LeftButton)
+
+    w.tbl_architect_attachments.selectRow(0)
+    app.processEvents()
+
+    assert w.lst_architect_pages.count() == 1
+    assert "wizualizacja.png | Obraz" in w.lab_architect_preview_info.text()
+    assert w.lab_architect_page_preview.pixmap() is not None
+    assert not w.lab_architect_page_preview.pixmap().isNull()
+
+
+def test_nowe_zamowienie_tab_builds_pdf_page_previews_for_selected_attachment(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.tabs.zamowienie.tab_nowe_zamowienie import TabNoweZamowienie
+
+    pdf_path = tmp_path / "architekt.pdf"
+    pdf_path.write_text("pdf", encoding="utf-8")
+
+    def _fake_pdf_pages(self, path):
+        img1 = QImage(100, 140, QImage.Format.Format_RGB32)
+        img1.fill(QColor("#f5f1e8"))
+        img2 = QImage(100, 140, QImage.Format.Format_RGB32)
+        img2.fill(QColor("#d8e4ef"))
+        return [
+            {
+                "index": 0,
+                "label": "Strona 1",
+                "thumb": QPixmap.fromImage(img1),
+                "full": QPixmap.fromImage(img1),
+            },
+            {
+                "index": 1,
+                "label": "Strona 2",
+                "thumb": QPixmap.fromImage(img2),
+                "full": QPixmap.fromImage(img2),
+            },
+        ]
+
+    monkeypatch.setattr(TabNoweZamowienie, "_build_pdf_page_previews", _fake_pdf_pages)
+
+    w = TabNoweZamowienie()
+    w.ed_architect_file.setText(str(pdf_path))
+    w.cb_architect_kind.setCurrentText("PDF")
+    w.ed_architect_description.setText("Rzuty od architekta")
+    QTest.mouseClick(w.btn_add_architect_attachment, Qt.MouseButton.LeftButton)
+
+    w.tbl_architect_attachments.selectRow(0)
+    app.processEvents()
+
+    assert w.lst_architect_pages.count() == 2
+    assert "architekt.pdf | PDF | 2 stron" in w.lab_architect_preview_info.text()
+
+    w.lst_architect_pages.setCurrentRow(1)
+    app.processEvents()
+
+    assert "Strona 2" in w.lab_architect_preview_info.text()
+    assert w.lab_architect_page_preview.pixmap() is not None
+    assert not w.lab_architect_page_preview.pixmap().isNull()
 
 
 def test_nowe_zamowienie_tab_clear_removes_saved_draft(tmp_path, monkeypatch):

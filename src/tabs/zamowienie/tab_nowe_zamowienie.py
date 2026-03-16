@@ -3,7 +3,9 @@ from __future__ import annotations
 from collections import defaultdict
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import QSize, Qt, pyqtSignal
+from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtPdf import QPdfDocument
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -15,6 +17,8 @@ from PyQt6.QtWidgets import (
     QInputDialog,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -106,6 +110,8 @@ class TabNoweZamowienie(QWidget):
         self._catalog = catalog if catalog is not None else CatalogStoreJson()
         self._draft_store = draft_store if draft_store is not None else OrderDraftStoreJson()
         self._is_restoring_draft = False
+        self._architect_preview_pages: list[dict[str, object]] = []
+        self._architect_preview_header = ""
 
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 18, 18, 18)
@@ -457,6 +463,43 @@ class TabNoweZamowienie(QWidget):
         self.tbl_architect_attachments.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.tbl_architect_attachments.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         layout.addWidget(self.tbl_architect_attachments)
+
+        preview_note = QLabel(
+            "Po zaznaczeniu zalacznika PDF zobaczysz miniatury stron. To bedzie baza pod pozniejsze wycinanie fragmentow do Sciana, Komplet i oferty."
+        )
+        preview_note.setWordWrap(True)
+        preview_note.setStyleSheet("color:#555555;")
+        layout.addWidget(preview_note)
+
+        self.lab_architect_preview_info = QLabel("Wybierz zalacznik, aby zobaczyc podglad.")
+        self.lab_architect_preview_info.setWordWrap(True)
+        self.lab_architect_preview_info.setStyleSheet("color:#444444; font-weight:600;")
+        layout.addWidget(self.lab_architect_preview_info)
+
+        preview_row = QHBoxLayout()
+
+        self.lst_architect_pages = QListWidget(self.grp_architect)
+        self.lst_architect_pages.setViewMode(QListWidget.ViewMode.IconMode)
+        self.lst_architect_pages.setMovement(QListWidget.Movement.Static)
+        self.lst_architect_pages.setResizeMode(QListWidget.ResizeMode.Adjust)
+        self.lst_architect_pages.setWrapping(True)
+        self.lst_architect_pages.setIconSize(QSize(110, 150))
+        self.lst_architect_pages.setGridSize(QSize(140, 190))
+        self.lst_architect_pages.setMinimumHeight(210)
+        self.lst_architect_pages.setMaximumHeight(230)
+        self.lst_architect_pages.setUniformItemSizes(True)
+        preview_row.addWidget(self.lst_architect_pages, 1)
+
+        self.lab_architect_page_preview = QLabel("Brak podgladu strony.")
+        self.lab_architect_page_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lab_architect_page_preview.setMinimumSize(420, 280)
+        self.lab_architect_page_preview.setStyleSheet(
+            "border:1px solid #d7dbe2; background:#fafbfc; color:#666666; padding:8px;"
+        )
+        preview_row.addWidget(self.lab_architect_page_preview, 2)
+
+        layout.addLayout(preview_row)
+        self.lst_architect_pages.currentRowChanged.connect(self._on_architect_preview_page_changed)
         self._set_architect_attachments([])
 
     def _build_quote_items_group(self) -> None:
@@ -634,8 +677,10 @@ class TabNoweZamowienie(QWidget):
         return int(selection[0].row())
 
     def _on_architect_attachment_selection_changed(self) -> None:
+        selected_index = self._selected_architect_attachment_index()
         if hasattr(self, "btn_remove_architect_attachment"):
-            self.btn_remove_architect_attachment.setEnabled(self._selected_architect_attachment_index() >= 0)
+            self.btn_remove_architect_attachment.setEnabled(selected_index >= 0)
+        self._load_selected_architect_preview()
 
     def _on_pick_architect_file(self) -> None:
         file_path, _ = QFileDialog.getOpenFileName(
@@ -682,6 +727,130 @@ class TabNoweZamowienie(QWidget):
         self._refresh_architect_attachments_table()
         self._refresh_summary()
         self._set_status("Usunieto zalacznik od architekta.", ok=True)
+
+    def _clear_architect_preview(self, message: str = "Wybierz zalacznik, aby zobaczyc podglad.") -> None:
+        self._architect_preview_pages = []
+        self._architect_preview_header = ""
+        if hasattr(self, "lst_architect_pages"):
+            self.lst_architect_pages.clear()
+        if hasattr(self, "lab_architect_preview_info"):
+            self.lab_architect_preview_info.setText(message)
+        if hasattr(self, "lab_architect_page_preview"):
+            self.lab_architect_page_preview.clear()
+            self.lab_architect_page_preview.setText(message)
+
+    def _selected_architect_attachment(self) -> dict[str, str] | None:
+        index = self._selected_architect_attachment_index()
+        if index < 0 or index >= len(self._architect_attachments):
+            return None
+        return dict(self._architect_attachments[index])
+
+    def _load_selected_architect_preview(self) -> None:
+        attachment = self._selected_architect_attachment()
+        if attachment is None:
+            self._clear_architect_preview()
+            return
+
+        path = Path(str(attachment.get("path", "") or "").strip())
+        if not path.exists():
+            self._clear_architect_preview("Nie znaleziono pliku zalacznika.")
+            return
+
+        kind = str(attachment.get("kind", "") or "").strip() or "PDF"
+        suffix = path.suffix.lower()
+
+        if kind == "PDF" or suffix == ".pdf":
+            self._load_architect_pdf_preview(path)
+            return
+        if kind == "Obraz" or suffix in {".png", ".jpg", ".jpeg", ".bmp"}:
+            self._load_architect_image_preview(path)
+            return
+
+        self._clear_architect_preview("Referencja nie ma jeszcze podgladu wizualnego.")
+
+    def _load_architect_pdf_preview(self, path: Path) -> None:
+        pages = self._build_pdf_page_previews(path)
+        if not pages:
+            self._clear_architect_preview("Nie udalo sie odczytac stron PDF.")
+            return
+
+        self._architect_preview_pages = pages
+        self._architect_preview_header = f"{path.name} | PDF | {len(pages)} stron"
+        self.lst_architect_pages.clear()
+        for page in pages:
+            item = QListWidgetItem(str(page.get("label", "") or "Strona"))
+            thumb = page.get("thumb")
+            if isinstance(thumb, QPixmap) and not thumb.isNull():
+                item.setIcon(QIcon(thumb))
+            item.setData(Qt.ItemDataRole.UserRole, int(page.get("index", 0) or 0))
+            self.lst_architect_pages.addItem(item)
+        self.lab_architect_preview_info.setText(self._architect_preview_header)
+        self.lst_architect_pages.setCurrentRow(0)
+
+    def _load_architect_image_preview(self, path: Path) -> None:
+        pixmap = QPixmap(str(path))
+        if pixmap.isNull():
+            self._clear_architect_preview("Nie udalo sie odczytac obrazu.")
+            return
+        thumb = pixmap.scaled(110, 150, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        full = pixmap.scaled(640, 420, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        self._architect_preview_pages = [
+            {
+                "index": 0,
+                "label": "Obraz",
+                "thumb": thumb,
+                "full": full,
+            }
+        ]
+        self._architect_preview_header = f"{path.name} | Obraz"
+        self.lst_architect_pages.clear()
+        item = QListWidgetItem("Obraz")
+        item.setIcon(QIcon(thumb))
+        item.setData(Qt.ItemDataRole.UserRole, 0)
+        self.lst_architect_pages.addItem(item)
+        self.lab_architect_preview_info.setText(self._architect_preview_header)
+        self.lst_architect_pages.setCurrentRow(0)
+
+    def _build_pdf_page_previews(self, path: Path) -> list[dict[str, object]]:
+        document = QPdfDocument(self)
+        error = document.load(str(path))
+        if error != QPdfDocument.Error.None_:
+            return []
+
+        pages: list[dict[str, object]] = []
+        for page_index in range(document.pageCount()):
+            thumb_image = document.render(page_index, QSize(110, 150))
+            full_image = document.render(page_index, QSize(640, 420))
+            thumb = QPixmap.fromImage(thumb_image)
+            full = QPixmap.fromImage(full_image)
+            label = str(document.pageLabel(page_index) or f"Strona {page_index + 1}")
+            pages.append(
+                {
+                    "index": page_index,
+                    "label": label,
+                    "thumb": thumb,
+                    "full": full,
+                }
+            )
+        return pages
+
+    def _on_architect_preview_page_changed(self, current_row: int) -> None:
+        if current_row < 0 or current_row >= len(self._architect_preview_pages):
+            if hasattr(self, "lab_architect_page_preview") and not self._architect_preview_pages:
+                self.lab_architect_page_preview.setText("Brak podgladu strony.")
+            return
+
+        page = self._architect_preview_pages[current_row]
+        pixmap = page.get("full")
+        label = str(page.get("label", "") or "")
+        if isinstance(pixmap, QPixmap) and not pixmap.isNull():
+            self.lab_architect_page_preview.setPixmap(pixmap)
+            self.lab_architect_page_preview.setText("")
+        else:
+            self.lab_architect_page_preview.clear()
+            self.lab_architect_page_preview.setText("Brak podgladu strony.")
+        if self._architect_preview_header:
+            self.lab_architect_preview_info.setText(f"{self._architect_preview_header} | {label}")
 
     def _normalize_quote_item(self, item: dict | None) -> dict[str, str] | None:
         if not isinstance(item, dict):

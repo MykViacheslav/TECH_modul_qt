@@ -305,15 +305,15 @@ Do wdrozenia:
 - opis wariantu
 - przygotowanie pod PDF oferty
 
-[TODO] Powiazanie pozycji do wyceny z dalsza praca:
-- otwieranie pozycji do wyceny jako Sciana
-- otwieranie pozycji do wyceny jako Komplet
-- powiazanie pozycji z zalacznikami od architekta
+[DONE] Pierwszy krok pracy z PDF od architekta:
+- po zaznaczeniu PDF w zalacznikach widac miniatury stron
+- mozna wybrac strone i zobaczyc wiekszy podglad
+- obrazy od architekta tez maja podglad w tym samym bloku
 
-[TODO] Praca z PDF od architekta:
-- podglad miniatur stron
+[TODO] Dalsza praca z PDF od architekta:
 - reczne wycinanie fragmentu z PDF
 - przypiecie fragmentu do Sciana / Komplet / oferty
+- lepsze powiazanie zalacznikow z pozycjami do wyceny
 
 
 --------------------------------------------------
