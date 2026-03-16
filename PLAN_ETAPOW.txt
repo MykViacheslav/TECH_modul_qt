@@ -578,11 +578,25 @@ Do wdrozenia:
 [DONE] pierwsza karta Czas pracy:
   - osobna zakladka dla pracownikow
   - stawka godzinowa pracownika
+  - tryb rozliczania:
+    - godzinowa
+    - dniowka
+  - dniowka pracownika
   - miesieczna tabela godzin pracy
+  - rodzaj pracy w danym dniu:
+    - projekt / wycena
+    - produkcja
+    - montaz
+    - praca na miejscu
+    - lakiernia
+    - delegacja / wyjazd
+    - zakup materialow
   - zapis godzin po dniach
+  - nadgodziny i dodatki
   - podsumowanie:
     - dni pracy
     - godziny
+    - nadgodziny
     - koszt miesiaca
 
 [TODO] dalsze statusy zamowienia:
@@ -615,6 +629,11 @@ Do wdrozenia:
   - koszt godzin do projektu
   - koszt godzin do pracownika
   - porownanie planowane vs realne godziny
+- dopracowac rozliczanie czasu pracy:
+  - osobne zasady dla delegacji i wyjazdow montazowych
+  - osobne zasady dla lakierni
+  - pracownik projektowy rozliczany za dzien
+  - dodatkowe oplaty i premie
 
 
 --------------------------------------------------

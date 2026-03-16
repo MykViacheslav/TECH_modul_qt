@@ -42,6 +42,19 @@ MONTH_ITEMS: tuple[tuple[int, str], ...] = (
     (12, "Grudzien"),
 )
 
+PAY_MODE_ITEMS: tuple[str, ...] = ("Godzinowa", "Dniowka")
+
+WORK_TYPE_ITEMS: tuple[str, ...] = (
+    "Projekt / wycena",
+    "Produkcja",
+    "Montaz",
+    "Praca na miejscu",
+    "Lakiernia",
+    "Delegacja / wyjazd",
+    "Zakup materialow",
+    "Inne",
+)
+
 
 def _parse_clock_value(value: str) -> tuple[int, int] | None:
     text = str(value or "").strip()
@@ -103,7 +116,7 @@ class TabCzasPracy(QWidget):
         root.addWidget(title)
 
         subtitle = QLabel(
-            "Osobna karta do prowadzenia czasu pracy pracownikow, stawki godzinowej i miesiecznej tabeli godzin."
+            "Osobna karta do prowadzenia czasu pracy pracownikow, roznych trybow rozliczania i miesiecznej tabeli godzin."
         )
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet("color:#555555;")
@@ -127,15 +140,25 @@ class TabCzasPracy(QWidget):
         self.sp_year = QSpinBox(self)
         self.sp_year.setRange(2020, 2100)
         self.sp_year.setValue(date.today().year)
+        self.cb_pay_mode = QComboBox(self)
+        for item in PAY_MODE_ITEMS:
+            self.cb_pay_mode.addItem(item)
         self.sp_hourly_rate = QDoubleSpinBox(self)
         self.sp_hourly_rate.setRange(0.0, 1000.0)
         self.sp_hourly_rate.setDecimals(2)
         self.sp_hourly_rate.setSingleStep(1.0)
         self.sp_hourly_rate.setSuffix(" PLN/h")
+        self.sp_daily_rate = QDoubleSpinBox(self)
+        self.sp_daily_rate.setRange(0.0, 5000.0)
+        self.sp_daily_rate.setDecimals(2)
+        self.sp_daily_rate.setSingleStep(10.0)
+        self.sp_daily_rate.setSuffix(" PLN/dzien")
         form.addRow("Pracownik", self.cb_worker)
         form.addRow("Miesiac", self.cb_month)
         form.addRow("Rok", self.sp_year)
+        form.addRow("Tryb rozlicz.", self.cb_pay_mode)
         form.addRow("Stawka godz.", self.sp_hourly_rate)
+        form.addRow("Dniowka", self.sp_daily_rate)
         controls_layout.addLayout(form)
 
         buttons = QHBoxLayout()
@@ -161,17 +184,19 @@ class TabCzasPracy(QWidget):
         summary_layout.setSpacing(10)
         self.lab_days = self._make_metric_card("Dni pracy", "0")
         self.lab_hours = self._make_metric_card("Godziny", "0.0")
+        self.lab_overtime = self._make_metric_card("Nadgodziny", "0.0")
         self.lab_cost = self._make_metric_card("Koszt miesiaca", "0.00 PLN")
         summary_layout.addWidget(self.lab_days, 0, 0)
         summary_layout.addWidget(self.lab_hours, 0, 1)
-        summary_layout.addWidget(self.lab_cost, 1, 0, 1, 2)
+        summary_layout.addWidget(self.lab_overtime, 1, 0)
+        summary_layout.addWidget(self.lab_cost, 1, 1)
         top_row.addWidget(summary, 1)
 
         root.addLayout(top_row)
 
-        self.tbl_hours = QTableWidget(0, 7, self)
+        self.tbl_hours = QTableWidget(0, 10, self)
         self.tbl_hours.setHorizontalHeaderLabels(
-            ["Dzien", "Data", "Od", "Do", "Godz.", "Projekt", "Notatka"]
+            ["Dzien", "Data", "Rodzaj", "Od", "Do", "Godz.", "Nadg.", "Dodatek", "Projekt", "Notatka"]
         )
         self.tbl_hours.setAlternatingRowColors(True)
         self.tbl_hours.verticalHeader().setVisible(False)
@@ -182,7 +207,10 @@ class TabCzasPracy(QWidget):
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(9, QHeaderView.ResizeMode.Stretch)
         root.addWidget(self.tbl_hours, 1)
 
         self.cb_worker.currentTextChanged.connect(self._load_selected_month)
@@ -191,6 +219,9 @@ class TabCzasPracy(QWidget):
         self.btn_refresh.clicked.connect(self._load_selected_month)
         self.btn_save_rate.clicked.connect(self._save_hourly_rate)
         self.btn_save_sheet.clicked.connect(self._save_sheet)
+        self.cb_pay_mode.currentTextChanged.connect(lambda _text: self._refresh_summary())
+        self.sp_hourly_rate.valueChanged.connect(lambda _value: self._refresh_summary())
+        self.sp_daily_rate.valueChanged.connect(lambda _value: self._refresh_summary())
 
         self._reload_workers()
         month_index = max(date.today().month - 1, 0)
@@ -243,7 +274,9 @@ class TabCzasPracy(QWidget):
             month = self._selected_month()
             year = self._selected_year()
             worker = self._worker_store.get(worker_name) if worker_name else None
+            self.cb_pay_mode.setCurrentText(str(getattr(worker, "pay_mode", "Godzinowa") or "Godzinowa"))
             self.sp_hourly_rate.setValue(float(getattr(worker, "hourly_rate", 0.0) or 0.0))
+            self.sp_daily_rate.setValue(float(getattr(worker, "daily_rate", 0.0) or 0.0))
             self._fill_table(worker_name, year, month)
         finally:
             self._is_loading = False
@@ -262,11 +295,18 @@ class TabCzasPracy(QWidget):
                 item = QTableWidgetItem(value)
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.tbl_hours.setItem(day - 1, col, item)
-            self.tbl_hours.setItem(day - 1, 2, QTableWidgetItem(entry.start_time))
-            self.tbl_hours.setItem(day - 1, 3, QTableWidgetItem(entry.end_time))
-            self.tbl_hours.setItem(day - 1, 4, QTableWidgetItem(f"{float(entry.hours or 0.0):.2f}" if float(entry.hours or 0.0) else ""))
-            self.tbl_hours.setItem(day - 1, 5, QTableWidgetItem(entry.project_code))
-            self.tbl_hours.setItem(day - 1, 6, QTableWidgetItem(entry.note))
+            self.tbl_hours.setItem(day - 1, 2, QTableWidgetItem(entry.work_type))
+            self.tbl_hours.setItem(day - 1, 3, QTableWidgetItem(entry.start_time))
+            self.tbl_hours.setItem(day - 1, 4, QTableWidgetItem(entry.end_time))
+            self.tbl_hours.setItem(day - 1, 5, QTableWidgetItem(f"{float(entry.hours or 0.0):.2f}" if float(entry.hours or 0.0) else ""))
+            self.tbl_hours.setItem(day - 1, 6, QTableWidgetItem(f"{float(entry.overtime_hours or 0.0):.2f}" if float(entry.overtime_hours or 0.0) else ""))
+            self.tbl_hours.setItem(day - 1, 7, QTableWidgetItem(f"{float(entry.extra_pay or 0.0):.2f}" if float(entry.extra_pay or 0.0) else ""))
+            self.tbl_hours.setItem(day - 1, 8, QTableWidgetItem(entry.project_code))
+            self.tbl_hours.setItem(day - 1, 9, QTableWidgetItem(entry.note))
+            if not entry.work_type:
+                item_type = self.tbl_hours.item(day - 1, 2)
+                if item_type is not None:
+                    item_type.setToolTip("Przyklady: " + ", ".join(WORK_TYPE_ITEMS))
         self._refresh_summary()
 
     def _row_text(self, row: int, column: int) -> str:
@@ -276,21 +316,35 @@ class TabCzasPracy(QWidget):
     def _collect_entries(self) -> list[WorkTimeEntryDef]:
         entries: list[WorkTimeEntryDef] = []
         for row in range(self.tbl_hours.rowCount()):
-            start_time = self._row_text(row, 2)
-            end_time = self._row_text(row, 3)
-            hours_text = self._row_text(row, 4)
-            project_code = self._row_text(row, 5)
-            note = self._row_text(row, 6)
-            if not any([start_time, end_time, hours_text, project_code, note]):
+            work_type = self._row_text(row, 2)
+            start_time = self._row_text(row, 3)
+            end_time = self._row_text(row, 4)
+            hours_text = self._row_text(row, 5)
+            overtime_text = self._row_text(row, 6).replace(",", ".")
+            extra_pay_text = self._row_text(row, 7).replace(",", ".")
+            project_code = self._row_text(row, 8)
+            note = self._row_text(row, 9)
+            if not any([work_type, start_time, end_time, hours_text, overtime_text, extra_pay_text, project_code, note]):
                 continue
             hours_value = _compute_hours(start_time, end_time, hours_text)
+            try:
+                overtime_value = max(float(overtime_text), 0.0) if overtime_text else 0.0
+            except ValueError:
+                overtime_value = 0.0
+            try:
+                extra_pay_value = float(extra_pay_text) if extra_pay_text else 0.0
+            except ValueError:
+                extra_pay_value = 0.0
             entries.append(
                 WorkTimeEntryDef(
                     day=row + 1,
                     date_iso=self._row_text(row, 1),
+                    work_type=work_type,
                     start_time=start_time,
                     end_time=end_time,
                     hours=hours_value,
+                    overtime_hours=overtime_value,
+                    extra_pay=extra_pay_value,
                     project_code=project_code,
                     note=note,
                 )
@@ -300,10 +354,19 @@ class TabCzasPracy(QWidget):
     def _refresh_summary(self) -> None:
         entries = self._collect_entries()
         total_hours = round(sum(float(entry.hours or 0.0) for entry in entries), 2)
+        total_overtime = round(sum(float(entry.overtime_hours or 0.0) for entry in entries), 2)
+        total_extra = round(sum(float(entry.extra_pay or 0.0) for entry in entries), 2)
         days_worked = len([entry for entry in entries if float(entry.hours or 0.0) > 0.0 or entry.start_time or entry.end_time])
-        total_cost = round(total_hours * float(self.sp_hourly_rate.value()), 2)
+        pay_mode = self.cb_pay_mode.currentText().strip() or "Godzinowa"
+        if pay_mode == "Dniowka":
+            base_cost = round(days_worked * float(self.sp_daily_rate.value()), 2)
+        else:
+            base_cost = round(total_hours * float(self.sp_hourly_rate.value()), 2)
+        overtime_cost = round(total_overtime * float(self.sp_hourly_rate.value()), 2)
+        total_cost = round(base_cost + overtime_cost + total_extra, 2)
         self._set_metric(self.lab_days, str(days_worked))
         self._set_metric(self.lab_hours, f"{total_hours:.2f}")
+        self._set_metric(self.lab_overtime, f"{total_overtime:.2f}")
         self._set_metric(self.lab_cost, f"{total_cost:.2f} PLN")
 
     def _save_hourly_rate(self) -> None:
@@ -315,7 +378,12 @@ class TabCzasPracy(QWidget):
         if worker is None:
             self._set_status("Nie znaleziono pracownika w bazie.", ok=False)
             return
-        updated = replace(worker, hourly_rate=float(self.sp_hourly_rate.value()))
+        updated = replace(
+            worker,
+            pay_mode=self.cb_pay_mode.currentText().strip() or "Godzinowa",
+            hourly_rate=float(self.sp_hourly_rate.value()),
+            daily_rate=float(self.sp_daily_rate.value()),
+        )
         result = self._worker_store.overwrite(updated)
         self._refresh_summary()
         self._set_status(result.message_pl, ok=result.ok)

@@ -8,9 +8,12 @@ from typing import Any, Dict, List
 class WorkTimeEntryDef:
     day: int = 1
     date_iso: str = ""
+    work_type: str = ""
     start_time: str = ""
     end_time: str = ""
     hours: float = 0.0
+    overtime_hours: float = 0.0
+    extra_pay: float = 0.0
     project_code: str = ""
     note: str = ""
 
@@ -18,9 +21,12 @@ class WorkTimeEntryDef:
         return {
             "day": int(self.day or 1),
             "date_iso": self.date_iso,
+            "work_type": self.work_type,
             "start_time": self.start_time,
             "end_time": self.end_time,
             "hours": float(self.hours or 0.0),
+            "overtime_hours": float(self.overtime_hours or 0.0),
+            "extra_pay": float(self.extra_pay or 0.0),
             "project_code": self.project_code,
             "note": self.note,
         }
@@ -31,9 +37,12 @@ class WorkTimeEntryDef:
         return cls(
             day=int(data.get("day", 1) or 1),
             date_iso=str(data.get("date_iso", "") or ""),
+            work_type=str(data.get("work_type", "") or ""),
             start_time=str(data.get("start_time", "") or ""),
             end_time=str(data.get("end_time", "") or ""),
             hours=float(data.get("hours", 0.0) or 0.0),
+            overtime_hours=float(data.get("overtime_hours", 0.0) or 0.0),
+            extra_pay=float(data.get("extra_pay", 0.0) or 0.0),
             project_code=str(data.get("project_code", "") or ""),
             note=str(data.get("note", "") or ""),
         )
