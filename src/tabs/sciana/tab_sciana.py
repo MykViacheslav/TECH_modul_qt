@@ -108,6 +108,24 @@ HARDWARE_VENDOR_LABELS = {
     "hettich": "Hettich",
 }
 
+DECOR_PRESET_LABELS = {
+    "": "[bez dekoru handlowego]",
+    "white": "Bialy",
+    "cashmere": "Cashmere",
+    "oak": "Dab naturalny",
+    "graphite": "Grafit",
+    "black": "Czarny",
+    "custom": "Indywidualny",
+}
+
+DECOR_PRESET_VALUES = {
+    "white": {"carcass": "Bialy", "front": "Bialy"},
+    "cashmere": {"carcass": "Cashmere", "front": "Cashmere"},
+    "oak": {"carcass": "Dab naturalny", "front": "Dab naturalny"},
+    "graphite": {"carcass": "Grafit", "front": "Grafit"},
+    "black": {"carcass": "Czarny", "front": "Czarny"},
+}
+
 _IMAGE_ATTACHMENT_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
 
 
@@ -1976,6 +1994,7 @@ class TabSciana(QWidget):
         self._reload_quick_material_presets()
         self._reload_material_choices()
         self._reload_hardware_vendor_presets()
+        self._reload_decor_presets()
         self._reload_worker_choices()
         self._reload_saved_walls()
         self._reload_saved_modules()
@@ -1991,6 +2010,7 @@ class TabSciana(QWidget):
         self._reload_quick_material_presets()
         self._reload_material_choices()
         self._reload_hardware_vendor_presets()
+        self._reload_decor_presets()
         self._reload_worker_choices(current_worker=str(getattr(self._assembly, "worker_name", "") or ""))
         self._reload_saved_walls()
         self._push_assembly_to_ui()
@@ -2049,6 +2069,10 @@ class TabSciana(QWidget):
         self.btn_apply_material_preset = QPushButton("Zastosuj")
         self.btn_clear_material_overrides = QPushButton("Wyczysc nadpisania")
         self.cb_hardware_vendor_preset = QComboBox()
+        self.cb_quick_decor_preset = QComboBox()
+        self.ed_decor_carcass = QLineEdit()
+        self.ed_decor_front = QLineEdit()
+        self.btn_clear_decor_labels = QPushButton("Wyczysc dekor")
         self.lab_material_preset_hint = QLabel("")
         self.lab_material_preset_hint.setWordWrap(True)
         self.lab_material_preset_hint.setStyleSheet("color:#666666;")
@@ -2119,6 +2143,10 @@ class TabSciana(QWidget):
         materials_form.addRow("Front", self.cb_material_front)
         materials_form.addRow("Plecy", self.cb_material_back)
         materials_form.addRow("Wariant okuc", self.cb_hardware_vendor_preset)
+        materials_form.addRow("Dekor kompletu", self.cb_quick_decor_preset)
+        materials_form.addRow("Dekor korpusu", self.ed_decor_carcass)
+        materials_form.addRow("Dekor frontu", self.ed_decor_front)
+        materials_form.addRow("", self.btn_clear_decor_labels)
         materials_form.addRow("", self.btn_clear_material_overrides)
         materials_form.addRow("", self.lab_material_preset_hint)
 
@@ -2220,6 +2248,10 @@ class TabSciana(QWidget):
         self.cb_material_front.currentIndexChanged.connect(self._on_assembly_changed)
         self.cb_material_back.currentIndexChanged.connect(self._on_assembly_changed)
         self.cb_hardware_vendor_preset.currentIndexChanged.connect(self._on_assembly_changed)
+        self.cb_quick_decor_preset.currentIndexChanged.connect(self._apply_selected_decor_preset)
+        self.ed_decor_carcass.textChanged.connect(self._on_assembly_changed)
+        self.ed_decor_front.textChanged.connect(self._on_assembly_changed)
+        self.btn_clear_decor_labels.clicked.connect(self._clear_decor_labels)
         self.btn_refresh_saved.clicked.connect(self._reload_saved_modules)
         self.cb_saved_quick_group.currentIndexChanged.connect(self._reload_saved_modules)
         self.cb_saved_front_variant.currentIndexChanged.connect(self._reload_saved_modules)
@@ -2757,6 +2789,68 @@ class TabSciana(QWidget):
         self.cb_hardware_vendor_preset.setCurrentIndex(idx)
         self.cb_hardware_vendor_preset.blockSignals(False)
 
+    def _matching_decor_preset_key(self, decor_labels: dict[str, str] | None) -> str:
+        labels = {
+            "carcass": str((decor_labels or {}).get("carcass", "") or "").strip(),
+            "front": str((decor_labels or {}).get("front", "") or "").strip(),
+        }
+        if not labels["carcass"] and not labels["front"]:
+            return ""
+        for preset_key, values in DECOR_PRESET_VALUES.items():
+            if (
+                str(values.get("carcass", "") or "").strip() == labels["carcass"]
+                and str(values.get("front", "") or "").strip() == labels["front"]
+            ):
+                return preset_key
+        return "custom"
+
+    def _reload_decor_presets(self) -> None:
+        decor_labels = dict(getattr(self._assembly, "decor_labels", {}) or {})
+        current_key = str(self.cb_quick_decor_preset.currentData() or "").strip()
+        assembly_key = str(getattr(self._assembly, "decor_preset_key", "") or "").strip()
+        matched_key = self._matching_decor_preset_key(decor_labels)
+
+        self.cb_quick_decor_preset.blockSignals(True)
+        self.cb_quick_decor_preset.clear()
+        for key, label in DECOR_PRESET_LABELS.items():
+            self.cb_quick_decor_preset.addItem(label, key)
+        idx = self.cb_quick_decor_preset.findData(current_key)
+        if idx < 0:
+            idx = self.cb_quick_decor_preset.findData(assembly_key)
+        if idx < 0:
+            idx = self.cb_quick_decor_preset.findData(matched_key)
+        if idx < 0:
+            idx = 0
+        self.cb_quick_decor_preset.setCurrentIndex(idx)
+        self.cb_quick_decor_preset.blockSignals(False)
+
+    def _apply_selected_decor_preset(self) -> None:
+        preset_key = str(self.cb_quick_decor_preset.currentData() or "").strip()
+        if preset_key == "custom":
+            return
+
+        values = dict(DECOR_PRESET_VALUES.get(preset_key, {}))
+        self._is_pushing_ui = True
+        try:
+            self.ed_decor_carcass.setText(str(values.get("carcass", "") or ""))
+            self.ed_decor_front.setText(str(values.get("front", "") or ""))
+        finally:
+            self._is_pushing_ui = False
+
+        self._pull_ui_to_assembly()
+        self._refresh_summary()
+
+    def _clear_decor_labels(self) -> None:
+        self._is_pushing_ui = True
+        try:
+            self.ed_decor_carcass.clear()
+            self.ed_decor_front.clear()
+            self.cb_quick_decor_preset.setCurrentIndex(0)
+        finally:
+            self._is_pushing_ui = False
+        self._pull_ui_to_assembly()
+        self._refresh_summary()
+
     def _material_label(self, material) -> str:
         label = f"{material.key} ({material.thickness_mm:g} mm) - {material.name_pl}"
         extras: list[str] = []
@@ -2799,7 +2893,7 @@ class TabSciana(QWidget):
         preset_key = str(self.cb_quick_material_preset.currentData() or "").strip()
         if not preset_key:
             self.lab_material_preset_hint.setText(
-                "Jeden klik ustawia typowy wariant handlowy dla korpusu, frontu i plecow."
+                "Jeden klik ustawia typowy wariant handlowy dla korpusu, frontu i plecow. Dekor kompletu zapisuje kolor/dekor handlowy do wyceny."
             )
             return
 
@@ -3273,6 +3367,14 @@ class TabSciana(QWidget):
             hardware_vendor = str(hardware_overrides.get("hinge", "") or "").strip().lower()
             hardware_idx = self.cb_hardware_vendor_preset.findData(hardware_vendor)
             self.cb_hardware_vendor_preset.setCurrentIndex(hardware_idx if hardware_idx >= 0 else 0)
+            decor_labels = dict(getattr(self._assembly, "decor_labels", {}) or {})
+            self.ed_decor_carcass.setText(str(decor_labels.get("carcass", "") or ""))
+            self.ed_decor_front.setText(str(decor_labels.get("front", "") or ""))
+            decor_key = str(getattr(self._assembly, "decor_preset_key", "") or "").strip()
+            if not decor_key:
+                decor_key = self._matching_decor_preset_key(decor_labels)
+            decor_idx = self.cb_quick_decor_preset.findData(decor_key)
+            self.cb_quick_decor_preset.setCurrentIndex(decor_idx if decor_idx >= 0 else 0)
 
             material_overrides = dict(getattr(self._assembly, "material_overrides", {}) or {})
 
@@ -3317,6 +3419,15 @@ class TabSciana(QWidget):
                 "hinge": selected_hardware_vendor,
                 "drawer_system": selected_hardware_vendor,
             }
+        decor_labels = {
+            "carcass": str(self.ed_decor_carcass.text().strip()),
+            "front": str(self.ed_decor_front.text().strip()),
+        }
+        self._assembly.decor_labels = {key: value for key, value in decor_labels.items() if value}
+        selected_decor_preset = str(self.cb_quick_decor_preset.currentData() or "").strip()
+        if not selected_decor_preset or selected_decor_preset == "custom":
+            selected_decor_preset = self._matching_decor_preset_key(self._assembly.decor_labels)
+        self._assembly.decor_preset_key = selected_decor_preset
 
     def _on_assembly_changed(self) -> None:
         if self._is_pushing_ui:
@@ -3925,6 +4036,15 @@ class TabSciana(QWidget):
         hardware_vendor = str(hardware_overrides.get("hinge", "") or "").strip()
         if hardware_vendor:
             lines.append(f"Wariant okuc: {HARDWARE_VENDOR_LABELS.get(hardware_vendor, hardware_vendor.title())}")
+
+        decor_labels = dict(getattr(self._assembly, "decor_labels", {}) or {})
+        decor_chunks = []
+        for group_key, label in (("carcass", "Korpus"), ("front", "Front")):
+            selected = str(decor_labels.get(group_key, "") or "").strip()
+            if selected:
+                decor_chunks.append(f"{label}: {selected}")
+        if decor_chunks:
+            lines.append(f"Dekor zestawu: {', '.join(decor_chunks)}")
 
         if free_width >= 0.0:
             lines.append(f"Wolne miejsce: {free_width:.0f} mm")

@@ -1789,6 +1789,31 @@ def test_sciana_tab_hardware_vendor_preset_overrides_resolved_module_hardware(tm
     assert resolved.drawer_vendor == "hettich"
 
 
+def test_sciana_tab_quick_decor_preset_sets_commercial_decor_labels(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    w = TabSciana()
+    preset_idx = w.cb_quick_decor_preset.findData("cashmere")
+    assert preset_idx >= 0
+
+    w.cb_quick_decor_preset.setCurrentIndex(preset_idx)
+    app.processEvents()
+
+    assert w.ed_decor_carcass.text() == "Cashmere"
+    assert w.ed_decor_front.text() == "Cashmere"
+    assert str(w._assembly.decor_preset_key or "") == "cashmere"
+    assert dict(w._assembly.decor_labels or {}) == {
+        "carcass": "Cashmere",
+        "front": "Cashmere",
+    }
+    assert "Dekor zestawu: Korpus: Cashmere, Front: Cashmere" in w.lab_summary.text()
+
+
 def test_sciana_tab_can_bind_assembly_to_saved_wall_and_metadata(tmp_path, monkeypatch):
     monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TECH_MODUL_TESTING", "1")

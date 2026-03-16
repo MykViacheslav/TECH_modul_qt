@@ -271,6 +271,17 @@ Do wdrozenia:
   - Blum
   - Hettich
 - wybor wariantu okuc nadpisuje zawiasy i systemy szuflad dla calego kompletu
+- blok ma tez teraz szybki "Dekor kompletu":
+  - Bialy
+  - Cashmere
+  - Dab naturalny
+  - Grafit
+  - Czarny
+  - Indywidualny
+- dekor zapisuje handlowe oznaczenie dla:
+  - korpusu
+  - frontu
+- dekor wraca po zapisaniu kompletu i jest widoczny w podsumowaniu
 
 [DONE] Materialy od architekta w zamowieniu:
 - blok "Zalaczniki od architekta" w karcie Nowe zamowienie
@@ -329,8 +340,8 @@ Do wdrozenia:
 - szybka zmiana szerokosci / wysokosci / glebokosci tylko tam, gdzie to potrzebne
 
 [TODO] Rozszerzone szybkie zmiany handlowe:
-- kolor / dekor po calym komplecie
 - szybsze przelaczanie materialow pod konkretne kolekcje firmowe
+- podpiecie dekorow pod realne warianty katalogu materialow, gdy baza bedzie bogatsza
 
 [TODO] Glosowe uzupelnianie prostych pol:
 - klient
