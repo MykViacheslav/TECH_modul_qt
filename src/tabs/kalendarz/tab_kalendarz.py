@@ -51,6 +51,14 @@ CALENDAR_STATUS_ITEMS: tuple[str, ...] = (
     "Zakonczone",
 )
 
+CALENDAR_STAGE_SUMMARY_ITEMS: tuple[str, ...] = (
+    "Wycena",
+    "Zakup materialow",
+    "Produkcja",
+    "Montaz",
+    "Poprawki",
+)
+
 
 def _parse_iso_date(value: str) -> date | None:
     text = str(value or "").strip()
@@ -60,6 +68,15 @@ def _parse_iso_date(value: str) -> date | None:
         return datetime.strptime(text, "%Y-%m-%d").date()
     except ValueError:
         return None
+
+
+def _matches_stage_bucket(order, calendar_stage: str, bucket: str) -> bool:
+    stage = str(calendar_stage or "").strip().lower()
+    status = str(getattr(order, "status", "") or "").strip().lower()
+    bucket_norm = bucket.strip().lower()
+    if bucket_norm == "wycena":
+        return stage == "wycena" or status.startswith("wycena")
+    return stage == bucket_norm or status == bucket_norm
 
 
 class TabKalendarz(QWidget):
@@ -105,6 +122,16 @@ class TabKalendarz(QWidget):
             stats_row.addWidget(widget)
         stats_row.addStretch(1)
         root.addLayout(stats_row)
+
+        stage_stats_row = QHBoxLayout()
+        stage_stats_row.setSpacing(12)
+        self.stage_metric_cards: dict[str, QFrame] = {}
+        for stage_name in CALENDAR_STAGE_SUMMARY_ITEMS:
+            frame = self._make_metric_card(stage_name, "0")
+            self.stage_metric_cards[stage_name] = frame
+            stage_stats_row.addWidget(frame)
+        stage_stats_row.addStretch(1)
+        root.addLayout(stage_stats_row)
 
         filters = QHBoxLayout()
         filters.setSpacing(10)
@@ -378,6 +405,7 @@ class TabKalendarz(QWidget):
         scheduled = 0
         overdue = 0
         montage = 0
+        stage_counts = {stage_name: 0 for stage_name in CALENDAR_STAGE_SUMMARY_ITEMS}
         for row in rows:
             order = row["order"]
             parsed_date = row["parsed_date"]
@@ -388,10 +416,15 @@ class TabKalendarz(QWidget):
                 overdue += 1
             if "montaz" in str(getattr(order, "status", "") or "").lower() or calendar_stage == "Montaz":
                 montage += 1
+            for stage_name in CALENDAR_STAGE_SUMMARY_ITEMS:
+                if _matches_stage_bucket(order, calendar_stage, stage_name):
+                    stage_counts[stage_name] += 1
         self._set_metric(self.lab_metric_total, len(rows))
         self._set_metric(self.lab_metric_scheduled, scheduled)
         self._set_metric(self.lab_metric_overdue, overdue)
         self._set_metric(self.lab_metric_montage, montage)
+        for stage_name, count in stage_counts.items():
+            self._set_metric(self.stage_metric_cards[stage_name], count)
 
     def _refresh_workload(self, rows: list[dict[str, object]]) -> None:
         today = date.today()

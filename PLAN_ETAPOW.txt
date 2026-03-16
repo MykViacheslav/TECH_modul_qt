@@ -561,6 +561,12 @@ Do wdrozenia:
     - liczba projektow
     - liczba montazy
     - liczba pozycji po terminie
+  - gorne liczniki etapow z tabeli:
+    - Wycena
+    - Zakup materialow
+    - Produkcja
+    - Montaz
+    - Poprawki
 
 [TODO] dalsze statusy zamowienia:
   - wycena w toku

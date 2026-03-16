@@ -98,6 +98,9 @@ def test_kalendarz_tab_metrics_include_scheduled_and_overdue(tmp_path, monkeypat
     assert w.lab_metric_scheduled.metric_value.text() == "2"  # type: ignore[attr-defined]
     assert w.lab_metric_overdue.metric_value.text() == "1"  # type: ignore[attr-defined]
     assert w.lab_metric_montage.metric_value.text() == "1"  # type: ignore[attr-defined]
+    assert w.stage_metric_cards["Wycena"].metric_value.text() == "1"  # type: ignore[attr-defined]
+    assert w.stage_metric_cards["Montaz"].metric_value.text() == "1"  # type: ignore[attr-defined]
+    assert w.stage_metric_cards["Zakup materialow"].metric_value.text() == "0"  # type: ignore[attr-defined]
     assert w.tbl_workload.rowCount() == 1
     assert w.tbl_workload.item(0, 0).text() == "[brak]"
     assert w.tbl_workload.item(0, 1).text() == "2"
