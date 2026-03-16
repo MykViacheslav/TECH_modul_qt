@@ -358,8 +358,16 @@ Do wdrozenia:
 - koszty kompletow i suma orientacyjna
 - referencje wizualne przypiete do celu "Oferta"
 
+[DONE] PDF / wydruk oferty:
+- eksport PDF z karty Nowe zamowienie
+- ten sam zakres danych co w HTML:
+  - pozycje do oferty
+  - finalne materialy
+  - koszty kompletow
+  - referencje wizualne
+- gotowy pierwszy dokument dla klienta bez wychodzenia z aplikacji
+
 [TODO] Dalsza praca z PDF od architekta:
-- PDF / wydruk oferty z tymi referencjami
 - lepsze powiazanie zalacznikow z pozycjami do wyceny
 
 

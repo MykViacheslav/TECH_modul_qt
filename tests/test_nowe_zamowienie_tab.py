@@ -454,6 +454,75 @@ def test_nowe_zamowienie_tab_exports_offer_html(tmp_path, monkeypatch):
     assert "Wyeksportowano oferte" in w.lab_status.text()
 
 
+def test_nowe_zamowienie_tab_exports_offer_pdf(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    import src.tabs.zamowienie.tab_nowe_zamowienie as order_tab_module
+    from src.tabs.zamowienie.tab_nowe_zamowienie import TabNoweZamowienie
+
+    image_path = tmp_path / "offer_pdf.png"
+    image = QImage(220, 120, QImage.Format.Format_RGB32)
+    image.fill(QColor("#e8dccb"))
+    assert image.save(str(image_path))
+
+    export_path = tmp_path / "oferta_test.pdf"
+    monkeypatch.setattr(
+        order_tab_module.QFileDialog,
+        "getSaveFileName",
+        staticmethod(lambda *args, **kwargs: (str(export_path), "Pliki PDF (*.pdf)")),
+    )
+
+    w = TabNoweZamowienie()
+    w.cb_client_name.setCurrentText("Klient PDF")
+    w.ed_order_code.setText("ORDER-PDF-EXPORT")
+    w.cb_order_status.setCurrentText("Wycena")
+    w.ed_order_address.setText("Gdansk, Prosta 8")
+    w._set_quote_items(
+        [
+            {
+                "name": "Szafa master",
+                "kind": "Szafa",
+                "description": "Wnekowa z lustrem",
+            }
+        ]
+    )
+    w._set_material_choices(
+        [
+            {
+                "scope": "Korpus",
+                "material": "PB 18",
+                "color": "Dab artisan",
+                "code": "KAINDL-18",
+                "status": "Wybrane finalnie",
+                "notes": "Wersja finalna",
+            }
+        ]
+    )
+    w._set_architect_attachments(
+        [
+            {
+                "path": str(image_path),
+                "kind": "Obraz",
+                "description": "Wizualizacja szafy",
+                "target_kind": "Oferta",
+                "target_name": "Oferta klienta",
+            }
+        ]
+    )
+    w._refresh_summary()
+
+    QTest.mouseClick(w.btn_export_offer_pdf, Qt.MouseButton.LeftButton)
+
+    assert export_path.exists()
+    content = export_path.read_bytes()
+    assert content.startswith(b"%PDF")
+    assert len(content) > 1000
+    assert "Wyeksportowano PDF oferty" in w.lab_status.text()
+
+
 def test_nowe_zamowienie_tab_clear_removes_saved_draft(tmp_path, monkeypatch):
     monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TECH_MODUL_TESTING", "1")

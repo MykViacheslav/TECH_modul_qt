@@ -8,8 +8,9 @@ from html import escape
 from pathlib import Path
 
 from PyQt6.QtCore import QPoint, QRect, QSize, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
+from PyQt6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap, QTextDocument
 from PyQt6.QtPdf import QPdfDocument
+from PyQt6.QtPrintSupport import QPrinter
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -353,6 +354,7 @@ class TabNoweZamowienie(QWidget):
         self.btn_open_workers_base.clicked.connect(self.sig_open_workers_base_requested.emit)
         self.btn_go_to_sciana.clicked.connect(self._on_go_to_sciana)
         self.btn_export_offer.clicked.connect(self._on_export_offer)
+        self.btn_export_offer_pdf.clicked.connect(self._on_export_offer_pdf)
         self.btn_save_new.clicked.connect(self._on_save_new)
         self.btn_overwrite_all.clicked.connect(self._on_overwrite_all)
         self.btn_save_draft.clicked.connect(lambda: self._save_draft(show_status=True))
@@ -502,6 +504,7 @@ class TabNoweZamowienie(QWidget):
         self.btn_clear = QPushButton("Wyczysc karte", self.grp_actions)
         self.btn_go_to_sciana = QPushButton("Dalej: Sciana", self.grp_actions)
         self.btn_export_offer = QPushButton("Eksport oferte", self.grp_actions)
+        self.btn_export_offer_pdf = QPushButton("Eksport PDF", self.grp_actions)
         for button in (
             self.btn_save_draft,
             self.btn_save_new,
@@ -516,7 +519,9 @@ class TabNoweZamowienie(QWidget):
 
         export_row = QHBoxLayout()
         self._make_compact_button(self.btn_export_offer, min_width=140, max_width=170)
+        self._make_compact_button(self.btn_export_offer_pdf, min_width=130, max_width=160)
         export_row.addWidget(self.btn_export_offer, 0)
+        export_row.addWidget(self.btn_export_offer_pdf, 0)
         export_row.addStretch(1)
         layout.addLayout(export_row)
 
@@ -2040,6 +2045,12 @@ class TabNoweZamowienie(QWidget):
 </html>
 """
 
+    def _build_offer_document(self) -> QTextDocument:
+        document = QTextDocument(self)
+        document.setDocumentMargin(22.0)
+        document.setHtml(self._build_offer_html())
+        return document
+
     def _on_export_offer(self) -> None:
         order_code = str(self.ed_order_code.text().strip() or "oferta")
         safe_code = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in order_code) or "oferta"
@@ -2056,6 +2067,29 @@ class TabNoweZamowienie(QWidget):
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(self._build_offer_html(), encoding="utf-8")
         self._set_status(f'Wyeksportowano oferte do "{output_path.name}".', ok=True)
+
+    def _on_export_offer_pdf(self) -> None:
+        order_code = str(self.ed_order_code.text().strip() or "oferta")
+        safe_code = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in order_code) or "oferta"
+        default_path = self._offer_output_dir() / f"{safe_code}_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Eksport PDF oferty klienta",
+            str(default_path),
+            "Pliki PDF (*.pdf);;Wszystkie pliki (*.*)",
+        )
+        if not file_path:
+            return
+        output_path = Path(file_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
+        printer.setOutputFileName(str(output_path))
+
+        document = self._build_offer_document()
+        document.print(printer)
+        self._set_status(f'Wyeksportowano PDF oferty do "{output_path.name}".', ok=True)
 
     def _refresh_order_cost_summary(self) -> None:
         if (
