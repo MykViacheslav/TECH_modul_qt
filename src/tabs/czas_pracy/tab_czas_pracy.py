@@ -22,7 +22,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from src.domain.work_time_costing import compute_work_time_cost
 from src.domain.work_time_models import WorkTimeEntryDef, WorkerMonthSheetDef
+from src.domain.worker_models import WorkerDef
 from src.storage.work_time_store_json import WorkTimeStoreJson
 from src.storage.worker_store_json import WorkerStoreJson
 
@@ -153,12 +155,42 @@ class TabCzasPracy(QWidget):
         self.sp_daily_rate.setDecimals(2)
         self.sp_daily_rate.setSingleStep(10.0)
         self.sp_daily_rate.setSuffix(" PLN/dzien")
+        self.sp_overtime_multiplier = QDoubleSpinBox(self)
+        self.sp_overtime_multiplier.setRange(0.0, 5.0)
+        self.sp_overtime_multiplier.setDecimals(2)
+        self.sp_overtime_multiplier.setSingleStep(0.1)
+        self.sp_overtime_multiplier.setValue(1.0)
+        self.sp_delegation_day_addon = QDoubleSpinBox(self)
+        self.sp_delegation_day_addon.setRange(0.0, 5000.0)
+        self.sp_delegation_day_addon.setDecimals(2)
+        self.sp_delegation_day_addon.setSingleStep(10.0)
+        self.sp_delegation_day_addon.setSuffix(" PLN/dzien")
+        self.sp_montage_hour_addon = QDoubleSpinBox(self)
+        self.sp_montage_hour_addon.setRange(0.0, 1000.0)
+        self.sp_montage_hour_addon.setDecimals(2)
+        self.sp_montage_hour_addon.setSingleStep(1.0)
+        self.sp_montage_hour_addon.setSuffix(" PLN/h")
+        self.sp_onsite_hour_addon = QDoubleSpinBox(self)
+        self.sp_onsite_hour_addon.setRange(0.0, 1000.0)
+        self.sp_onsite_hour_addon.setDecimals(2)
+        self.sp_onsite_hour_addon.setSingleStep(1.0)
+        self.sp_onsite_hour_addon.setSuffix(" PLN/h")
+        self.sp_lacquer_hour_addon = QDoubleSpinBox(self)
+        self.sp_lacquer_hour_addon.setRange(0.0, 1000.0)
+        self.sp_lacquer_hour_addon.setDecimals(2)
+        self.sp_lacquer_hour_addon.setSingleStep(1.0)
+        self.sp_lacquer_hour_addon.setSuffix(" PLN/h")
         form.addRow("Pracownik", self.cb_worker)
         form.addRow("Miesiac", self.cb_month)
         form.addRow("Rok", self.sp_year)
         form.addRow("Tryb rozlicz.", self.cb_pay_mode)
         form.addRow("Stawka godz.", self.sp_hourly_rate)
         form.addRow("Dniowka", self.sp_daily_rate)
+        form.addRow("Nadgodz. x", self.sp_overtime_multiplier)
+        form.addRow("Delegacja / dzien", self.sp_delegation_day_addon)
+        form.addRow("Montaz / godz.", self.sp_montage_hour_addon)
+        form.addRow("Na miejscu / godz.", self.sp_onsite_hour_addon)
+        form.addRow("Lakiernia / godz.", self.sp_lacquer_hour_addon)
         controls_layout.addLayout(form)
 
         buttons = QHBoxLayout()
@@ -190,6 +222,10 @@ class TabCzasPracy(QWidget):
         summary_layout.addWidget(self.lab_hours, 0, 1)
         summary_layout.addWidget(self.lab_overtime, 1, 0)
         summary_layout.addWidget(self.lab_cost, 1, 1)
+        self.lab_breakdown = QLabel("", self)
+        self.lab_breakdown.setWordWrap(True)
+        self.lab_breakdown.setStyleSheet("color:#475569;")
+        summary_layout.addWidget(self.lab_breakdown, 2, 0, 1, 2)
         top_row.addWidget(summary, 1)
 
         root.addLayout(top_row)
@@ -222,6 +258,11 @@ class TabCzasPracy(QWidget):
         self.cb_pay_mode.currentTextChanged.connect(lambda _text: self._refresh_summary())
         self.sp_hourly_rate.valueChanged.connect(lambda _value: self._refresh_summary())
         self.sp_daily_rate.valueChanged.connect(lambda _value: self._refresh_summary())
+        self.sp_overtime_multiplier.valueChanged.connect(lambda _value: self._refresh_summary())
+        self.sp_delegation_day_addon.valueChanged.connect(lambda _value: self._refresh_summary())
+        self.sp_montage_hour_addon.valueChanged.connect(lambda _value: self._refresh_summary())
+        self.sp_onsite_hour_addon.valueChanged.connect(lambda _value: self._refresh_summary())
+        self.sp_lacquer_hour_addon.valueChanged.connect(lambda _value: self._refresh_summary())
 
         self._reload_workers()
         month_index = max(date.today().month - 1, 0)
@@ -277,6 +318,11 @@ class TabCzasPracy(QWidget):
             self.cb_pay_mode.setCurrentText(str(getattr(worker, "pay_mode", "Godzinowa") or "Godzinowa"))
             self.sp_hourly_rate.setValue(float(getattr(worker, "hourly_rate", 0.0) or 0.0))
             self.sp_daily_rate.setValue(float(getattr(worker, "daily_rate", 0.0) or 0.0))
+            self.sp_overtime_multiplier.setValue(float(getattr(worker, "overtime_multiplier", 1.0) or 1.0))
+            self.sp_delegation_day_addon.setValue(float(getattr(worker, "delegation_day_addon_pln", 0.0) or 0.0))
+            self.sp_montage_hour_addon.setValue(float(getattr(worker, "montage_hour_addon_pln", 0.0) or 0.0))
+            self.sp_onsite_hour_addon.setValue(float(getattr(worker, "onsite_hour_addon_pln", 0.0) or 0.0))
+            self.sp_lacquer_hour_addon.setValue(float(getattr(worker, "lacquer_hour_addon_pln", 0.0) or 0.0))
             self._fill_table(worker_name, year, month)
         finally:
             self._is_loading = False
@@ -353,21 +399,34 @@ class TabCzasPracy(QWidget):
 
     def _refresh_summary(self) -> None:
         entries = self._collect_entries()
-        total_hours = round(sum(float(entry.hours or 0.0) for entry in entries), 2)
-        total_overtime = round(sum(float(entry.overtime_hours or 0.0) for entry in entries), 2)
-        total_extra = round(sum(float(entry.extra_pay or 0.0) for entry in entries), 2)
-        days_worked = len([entry for entry in entries if float(entry.hours or 0.0) > 0.0 or entry.start_time or entry.end_time])
-        pay_mode = self.cb_pay_mode.currentText().strip() or "Godzinowa"
-        if pay_mode == "Dniowka":
-            base_cost = round(days_worked * float(self.sp_daily_rate.value()), 2)
-        else:
-            base_cost = round(total_hours * float(self.sp_hourly_rate.value()), 2)
-        overtime_cost = round(total_overtime * float(self.sp_hourly_rate.value()), 2)
-        total_cost = round(base_cost + overtime_cost + total_extra, 2)
-        self._set_metric(self.lab_days, str(days_worked))
-        self._set_metric(self.lab_hours, f"{total_hours:.2f}")
-        self._set_metric(self.lab_overtime, f"{total_overtime:.2f}")
-        self._set_metric(self.lab_cost, f"{total_cost:.2f} PLN")
+        sheet = WorkerMonthSheetDef(
+            worker_name=self.cb_worker.currentText().strip(),
+            year=self._selected_year(),
+            month=self._selected_month(),
+            entries=entries,
+        )
+        worker_name = self.cb_worker.currentText().strip()
+        worker = WorkerDef(
+            name=worker_name,
+            pay_mode=self.cb_pay_mode.currentText().strip() or "Godzinowa",
+            hourly_rate=float(self.sp_hourly_rate.value()),
+            daily_rate=float(self.sp_daily_rate.value()),
+            overtime_multiplier=float(self.sp_overtime_multiplier.value()),
+            delegation_day_addon_pln=float(self.sp_delegation_day_addon.value()),
+            montage_hour_addon_pln=float(self.sp_montage_hour_addon.value()),
+            onsite_hour_addon_pln=float(self.sp_onsite_hour_addon.value()),
+            lacquer_hour_addon_pln=float(self.sp_lacquer_hour_addon.value()),
+        )
+        breakdown = compute_work_time_cost([sheet], {worker_name: worker})
+        self._set_metric(self.lab_days, str(breakdown.tracked_days))
+        self._set_metric(self.lab_hours, f"{breakdown.total_hours:.2f}")
+        self._set_metric(self.lab_overtime, f"{breakdown.overtime_hours:.2f}")
+        self._set_metric(self.lab_cost, f"{breakdown.total_cost:.2f} PLN")
+        self.lab_breakdown.setText(
+            "Baza: "
+            f"{breakdown.base_total:.2f} PLN | Nadgodziny: {breakdown.overtime_total:.2f} PLN | "
+            f"Dodatki etapow: {breakdown.stage_extra_total:.2f} PLN | Dodatki reczne: {breakdown.manual_extra_total:.2f} PLN"
+        )
 
     def _save_hourly_rate(self) -> None:
         worker_name = self.cb_worker.currentText().strip()
@@ -383,6 +442,11 @@ class TabCzasPracy(QWidget):
             pay_mode=self.cb_pay_mode.currentText().strip() or "Godzinowa",
             hourly_rate=float(self.sp_hourly_rate.value()),
             daily_rate=float(self.sp_daily_rate.value()),
+            overtime_multiplier=float(self.sp_overtime_multiplier.value()),
+            delegation_day_addon_pln=float(self.sp_delegation_day_addon.value()),
+            montage_hour_addon_pln=float(self.sp_montage_hour_addon.value()),
+            onsite_hour_addon_pln=float(self.sp_onsite_hour_addon.value()),
+            lacquer_hour_addon_pln=float(self.sp_lacquer_hour_addon.value()),
         )
         result = self._worker_store.overwrite(updated)
         self._refresh_summary()

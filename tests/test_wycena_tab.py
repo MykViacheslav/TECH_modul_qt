@@ -146,3 +146,92 @@ def test_wycena_tab_can_load_labor_from_work_time(tmp_path, monkeypatch):
 
     assert float(w.sp_labor.value()) == 730.0
     assert "Czas pracy" in w.lab_status.text()
+
+
+def test_wycena_tab_applies_stage_cost_modifiers_from_work_time(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.domain.assembly_models import FurnitureAssemblyDef
+    from src.domain.work_time_models import WorkTimeEntryDef, WorkerMonthSheetDef
+    from src.domain.worker_models import WorkerDef
+    from src.storage.assembly_store_json import AssemblyStoreJson
+    from src.storage.work_time_store_json import WorkTimeStoreJson
+    from src.storage.worker_store_json import WorkerStoreJson
+    from src.tabs.wycena.tab_wycena import TabWycena
+
+    assembly_store = AssemblyStoreJson(path=tmp_path / "assemblies.json")
+    worker_store = WorkerStoreJson(path=tmp_path / "workers.json")
+    work_time_store = WorkTimeStoreJson(path=tmp_path / "work_time.json")
+
+    assembly_store.save_new(
+        FurnitureAssemblyDef(
+            name="KOMPLET-WYCENA-03",
+            order_name="ORDER-WYCENA-03",
+            client_name="Klient Etapy",
+        )
+    )
+    worker_store.save_new(
+        WorkerDef(
+            name="Wolodymyr",
+            role="Montaz",
+            pay_mode="Godzinowa",
+            hourly_rate=50.0,
+            overtime_multiplier=1.5,
+            delegation_day_addon_pln=120.0,
+            montage_hour_addon_pln=10.0,
+            lacquer_hour_addon_pln=3.0,
+        )
+    )
+    work_time_store.save_sheet(
+        WorkerMonthSheetDef(
+            worker_name="Wolodymyr",
+            year=2026,
+            month=3,
+            entries=[
+                WorkTimeEntryDef(
+                    day=1,
+                    date_iso="2026-03-01",
+                    work_type="Montaz",
+                    hours=8.0,
+                    overtime_hours=2.0,
+                    project_code="ORDER-WYCENA-03",
+                ),
+                WorkTimeEntryDef(
+                    day=2,
+                    date_iso="2026-03-02",
+                    work_type="Delegacja / wyjazd",
+                    hours=8.0,
+                    project_code="KOMPLET-WYCENA-03",
+                ),
+                WorkTimeEntryDef(
+                    day=3,
+                    date_iso="2026-03-03",
+                    work_type="Lakiernia",
+                    hours=4.0,
+                    extra_pay=20.0,
+                    project_code="ORDER-WYCENA-03",
+                ),
+            ],
+        )
+    )
+
+    w = TabWycena(
+        assembly_store=assembly_store,
+        worker_store=worker_store,
+        work_time_store=work_time_store,
+    )
+    w.tbl_assemblies.selectRow(0)
+
+    assert w.lab_time_days.text() == "3"
+    assert w.lab_time_hours.text() == "20.00 h"
+    assert w.lab_time_overtime.text() == "150.00 zl"
+    assert w.lab_time_stage_extra.text() == "212.00 zl"
+    assert w.lab_time_extra.text() == "20.00 zl"
+    assert w.lab_time_cost.text() == "1382.00 zl"
+
+    QTest.mouseClick(w.btn_load_labor_from_time, Qt.MouseButton.LeftButton)
+
+    assert float(w.sp_labor.value()) == 1382.0

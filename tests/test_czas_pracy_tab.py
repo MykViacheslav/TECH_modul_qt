@@ -92,3 +92,54 @@ def test_czas_pracy_tab_supports_daily_mode_with_overtime_and_extra(tmp_path, mo
     assert w.lab_hours.metric_value.text() == "17.00"  # type: ignore[attr-defined]
     assert w.lab_overtime.metric_value.text() == "2.00"  # type: ignore[attr-defined]
     assert w.lab_cost.metric_value.text() == "970.00 PLN"  # type: ignore[attr-defined]
+
+
+def test_czas_pracy_tab_supports_stage_cost_modifiers(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.domain.worker_models import WorkerDef
+    from src.storage.worker_store_json import WorkerStoreJson
+    from src.tabs.czas_pracy.tab_czas_pracy import TabCzasPracy
+
+    worker_store = WorkerStoreJson(path=tmp_path / "workers.json")
+    worker_store.save_new(
+        WorkerDef(
+            name="Artem",
+            role="Montaz",
+            pay_mode="Godzinowa",
+            hourly_rate=50.0,
+            overtime_multiplier=1.5,
+            delegation_day_addon_pln=120.0,
+            montage_hour_addon_pln=10.0,
+            onsite_hour_addon_pln=5.0,
+            lacquer_hour_addon_pln=3.0,
+        )
+    )
+
+    w = TabCzasPracy(worker_store=worker_store)
+    w.cb_worker.setCurrentText("Artem")
+    w.cb_month.setCurrentIndex(2)
+    w.sp_year.setValue(2026)
+
+    w.tbl_hours.setItem(0, 2, QTableWidgetItem("Montaz"))
+    w.tbl_hours.setItem(0, 3, QTableWidgetItem("8"))
+    w.tbl_hours.setItem(0, 4, QTableWidgetItem("16"))
+    w.tbl_hours.setItem(0, 6, QTableWidgetItem("2"))
+    w.tbl_hours.setItem(1, 2, QTableWidgetItem("Delegacja / wyjazd"))
+    w.tbl_hours.setItem(1, 3, QTableWidgetItem("8"))
+    w.tbl_hours.setItem(1, 4, QTableWidgetItem("16"))
+    w.tbl_hours.setItem(2, 2, QTableWidgetItem("Lakiernia"))
+    w.tbl_hours.setItem(2, 3, QTableWidgetItem("8"))
+    w.tbl_hours.setItem(2, 4, QTableWidgetItem("12"))
+    w.tbl_hours.setItem(2, 7, QTableWidgetItem("20"))
+
+    w._refresh_summary()
+
+    assert w.lab_days.metric_value.text() == "3"  # type: ignore[attr-defined]
+    assert w.lab_hours.metric_value.text() == "20.00"  # type: ignore[attr-defined]
+    assert w.lab_overtime.metric_value.text() == "2.00"  # type: ignore[attr-defined]
+    assert w.lab_cost.metric_value.text() == "1382.00 PLN"  # type: ignore[attr-defined]
+    assert "Dodatki etapow: 212.00 PLN" in w.lab_breakdown.text()

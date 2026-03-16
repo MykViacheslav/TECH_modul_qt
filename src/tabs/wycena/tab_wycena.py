@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
 
 from src.app.app_settings import load_drawing_settings
 from src.domain.assembly_resolution_service import resolve_assembly_items
+from src.domain.work_time_costing import WorkTimeCostBreakdown, compute_work_time_cost
 from src.storage.assembly_store_json import AssemblyStoreJson
 from src.storage.catalog_store_json import CatalogStoreJson
 from src.storage.order_store_json import OrderStoreJson
@@ -188,12 +189,16 @@ class TabWycena(QWidget):
         work_time_layout.setContentsMargins(12, 12, 12, 12)
         self.lab_time_days = QLabel("0", work_time_box)
         self.lab_time_hours = QLabel("0.00 h", work_time_box)
+        self.lab_time_overtime = QLabel("0.00 zl", work_time_box)
+        self.lab_time_stage_extra = QLabel("0.00 zl", work_time_box)
         self.lab_time_extra = QLabel("0.00 zl", work_time_box)
         self.lab_time_cost = QLabel("0.00 zl", work_time_box)
         self.btn_load_labor_from_time = QPushButton("Pobierz do robocizny", work_time_box)
         work_time_layout.addRow("Dni z czasu pracy", self.lab_time_days)
         work_time_layout.addRow("Godziny z czasu pracy", self.lab_time_hours)
-        work_time_layout.addRow("Dodatki", self.lab_time_extra)
+        work_time_layout.addRow("Nadgodziny", self.lab_time_overtime)
+        work_time_layout.addRow("Dodatki etapow", self.lab_time_stage_extra)
+        work_time_layout.addRow("Dodatki reczne", self.lab_time_extra)
         work_time_layout.addRow("Koszt robocizny", self.lab_time_cost)
         work_time_layout.addRow("", self.btn_load_labor_from_time)
         right_layout.addWidget(work_time_box, 0)
@@ -276,44 +281,20 @@ class TabWycena(QWidget):
         profit_total = sale_total - base_total
         return technical_total, base_total, sale_total, profit_total
 
-    def _compute_work_time_cost(self, assembly) -> tuple[int, float, float, float]:
+    def _compute_work_time_cost(self, assembly) -> WorkTimeCostBreakdown:
         project_codes = {
             str(getattr(assembly, "order_name", "") or "").strip(),
             str(getattr(assembly, "name", "") or "").strip(),
         }
         project_codes = {code for code in project_codes if code}
         if not project_codes:
-            return 0, 0.0, 0.0, 0.0
-
-        matched_days: set[tuple[str, str]] = set()
-        daily_costs: dict[tuple[str, str], float] = {}
-        hourly_cost = 0.0
-        overtime_cost = 0.0
-        extra_total = 0.0
-        total_hours = 0.0
-
-        for sheet in self._work_time_store.list_sheets():
-            worker = self._worker_store.get(str(sheet.worker_name or "").strip())
-            pay_mode = str(getattr(worker, "pay_mode", "Godzinowa") or "Godzinowa").strip() or "Godzinowa"
-            hourly_rate = float(getattr(worker, "hourly_rate", 0.0) or 0.0)
-            daily_rate = float(getattr(worker, "daily_rate", 0.0) or 0.0)
-            for entry in sheet.entries:
-                project_code = str(getattr(entry, "project_code", "") or "").strip()
-                if project_code not in project_codes:
-                    continue
-                date_iso = str(getattr(entry, "date_iso", "") or "").strip()
-                day_key = (str(sheet.worker_name or "").strip(), date_iso)
-                matched_days.add(day_key)
-                total_hours += float(getattr(entry, "hours", 0.0) or 0.0)
-                extra_total += float(getattr(entry, "extra_pay", 0.0) or 0.0)
-                overtime_cost += float(getattr(entry, "overtime_hours", 0.0) or 0.0) * hourly_rate
-                if pay_mode == "Dniowka":
-                    daily_costs[day_key] = daily_rate
-                else:
-                    hourly_cost += float(getattr(entry, "hours", 0.0) or 0.0) * hourly_rate
-
-        total_cost = round(hourly_cost + sum(daily_costs.values()) + overtime_cost + extra_total, 2)
-        return len(matched_days), round(total_hours, 2), round(extra_total, 2), total_cost
+            return WorkTimeCostBreakdown()
+        workers_by_name = {
+            str(worker.name or "").strip(): worker
+            for worker in self._worker_store.list_workers()
+            if str(worker.name or "").strip()
+        }
+        return compute_work_time_cost(self._work_time_store.list_sheets(), workers_by_name, project_codes)
 
     def refresh_data(self) -> None:
         assemblies = self._assembly_store.list_assemblies()
@@ -425,6 +406,8 @@ class TabWycena(QWidget):
                 self.lab_profit_total.setText("0.00 zl")
                 self.lab_time_days.setText("0")
                 self.lab_time_hours.setText("0.00 h")
+                self.lab_time_overtime.setText("0.00 zl")
+                self.lab_time_stage_extra.setText("0.00 zl")
                 self.lab_time_extra.setText("0.00 zl")
                 self.lab_time_cost.setText("0.00 zl")
                 self.btn_load_labor_from_time.setEnabled(False)
@@ -436,12 +419,14 @@ class TabWycena(QWidget):
             self.sp_transport.setValue(float(getattr(assembly, "transport_cost_pln", 0.0) or 0.0))
             self.sp_montage.setValue(float(getattr(assembly, "montage_cost_pln", 0.0) or 0.0))
             self.sp_margin.setValue(float(getattr(assembly, "margin_percent", 0.0) or 0.0))
-            tracked_days, tracked_hours, tracked_extra, tracked_cost = self._compute_work_time_cost(assembly)
-            self.lab_time_days.setText(str(tracked_days))
-            self.lab_time_hours.setText(f"{tracked_hours:.2f} h")
-            self.lab_time_extra.setText(f"{tracked_extra:.2f} zl")
-            self.lab_time_cost.setText(f"{tracked_cost:.2f} zl")
-            self.btn_load_labor_from_time.setEnabled(tracked_cost > 0.0)
+            breakdown = self._compute_work_time_cost(assembly)
+            self.lab_time_days.setText(str(breakdown.tracked_days))
+            self.lab_time_hours.setText(f"{breakdown.total_hours:.2f} h")
+            self.lab_time_overtime.setText(f"{breakdown.overtime_total:.2f} zl")
+            self.lab_time_stage_extra.setText(f"{breakdown.stage_extra_total:.2f} zl")
+            self.lab_time_extra.setText(f"{breakdown.manual_extra_total:.2f} zl")
+            self.lab_time_cost.setText(f"{breakdown.total_cost:.2f} zl")
+            self.btn_load_labor_from_time.setEnabled(breakdown.total_cost > 0.0)
             self._refresh_editor_totals()
         finally:
             self._is_loading = False
@@ -494,8 +479,8 @@ class TabWycena(QWidget):
         if assembly is None:
             self._set_status("Wybierz komplet z listy.", ok=False)
             return
-        _days, _hours, _extra, tracked_cost = self._compute_work_time_cost(assembly)
-        self.sp_labor.setValue(float(tracked_cost))
+        breakdown = self._compute_work_time_cost(assembly)
+        self.sp_labor.setValue(float(breakdown.total_cost))
         self._set_status("Przepisano robocizne z Czas pracy.", ok=True)
 
     def _set_status(self, message: str, ok: bool) -> None:

@@ -630,11 +630,16 @@ Do wdrozenia:
     - odczyt robocizny po kodzie projektu / zamowienia
     - pokazanie kosztu godzin w karcie Wycena
     - przepisanie do pola Robocizna jednym kliknieciem
+  - [DONE] pierwsze reguly kosztowe czasu pracy:
+    - osobny mnoznik nadgodzin
+    - dodatek delegacyjny za dzien
+    - osobny dodatek montazowy za godzine
+    - osobny dodatek za prace na miejscu
+    - osobny dodatek lakierniczy za godzine
+    - pokazanie rozbicia kosztu w Czas pracy i Wycena
   - koszt godzin do pracownika
   - porownanie planowane vs realne godziny
 - dopracowac rozliczanie czasu pracy:
-  - osobne zasady dla delegacji i wyjazdow montazowych
-  - osobne zasady dla lakierni
   - pracownik projektowy rozliczany za dzien
   - dodatkowe oplaty i premie
 

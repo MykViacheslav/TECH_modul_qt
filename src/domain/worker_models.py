@@ -14,6 +14,11 @@ class WorkerDef:
     pay_mode: str = "Godzinowa"
     hourly_rate: float = 0.0
     daily_rate: float = 0.0
+    overtime_multiplier: float = 1.0
+    delegation_day_addon_pln: float = 0.0
+    montage_hour_addon_pln: float = 0.0
+    onsite_hour_addon_pln: float = 0.0
+    lacquer_hour_addon_pln: float = 0.0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -25,6 +30,11 @@ class WorkerDef:
             "pay_mode": self.pay_mode,
             "hourly_rate": float(self.hourly_rate or 0.0),
             "daily_rate": float(self.daily_rate or 0.0),
+            "overtime_multiplier": float(self.overtime_multiplier or 1.0),
+            "delegation_day_addon_pln": float(self.delegation_day_addon_pln or 0.0),
+            "montage_hour_addon_pln": float(self.montage_hour_addon_pln or 0.0),
+            "onsite_hour_addon_pln": float(self.onsite_hour_addon_pln or 0.0),
+            "lacquer_hour_addon_pln": float(self.lacquer_hour_addon_pln or 0.0),
         }
 
     @classmethod
@@ -39,4 +49,9 @@ class WorkerDef:
             pay_mode=str(data.get("pay_mode", "Godzinowa") or "Godzinowa"),
             hourly_rate=float(data.get("hourly_rate", 0.0) or 0.0),
             daily_rate=float(data.get("daily_rate", 0.0) or 0.0),
+            overtime_multiplier=float(data.get("overtime_multiplier", 1.0) or 1.0),
+            delegation_day_addon_pln=float(data.get("delegation_day_addon_pln", 0.0) or 0.0),
+            montage_hour_addon_pln=float(data.get("montage_hour_addon_pln", 0.0) or 0.0),
+            onsite_hour_addon_pln=float(data.get("onsite_hour_addon_pln", 0.0) or 0.0),
+            lacquer_hour_addon_pln=float(data.get("lacquer_hour_addon_pln", 0.0) or 0.0),
         )
