@@ -249,6 +249,70 @@ def test_nowe_zamowienie_tab_can_open_selected_wall_from_order_list(tmp_path, mo
     assert emitted == ["SCIANA_OTWORZ"]
 
 
+def test_nowe_zamowienie_tab_can_open_quote_item_as_sciana_with_context(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.tabs.zamowienie.tab_nowe_zamowienie import TabNoweZamowienie
+
+    w = TabNoweZamowienie()
+    w.cb_client_name.setCurrentText("Klient Quote")
+    w.ed_order_code.setText("ORDER-QUOTE-1")
+    w.cb_worker_name.setCurrentText("Jan Quote")
+    w.ed_quote_item_name.setText("Kuchnia salon")
+    w.cb_quote_item_kind.setCurrentText("Kuchnia")
+    w.ed_quote_item_description.setText("Wyspa + slupki")
+    QTest.mouseClick(w.btn_add_quote_item, Qt.MouseButton.LeftButton)
+    w.tbl_quote_items.selectRow(0)
+
+    emitted: list[dict] = []
+    w.sig_open_sciana_requested.connect(emitted.append)
+
+    QTest.mouseClick(w.btn_quote_to_sciana, Qt.MouseButton.LeftButton)
+
+    assert len(emitted) == 1
+    assert emitted[0]["client_name"] == "Klient Quote"
+    assert emitted[0]["order_name"] == "ORDER-QUOTE-1"
+    assert emitted[0]["worker_name"] == "Jan Quote"
+    assert emitted[0]["quote_item_name"] == "Kuchnia salon"
+    assert emitted[0]["quote_item_kind"] == "Kuchnia"
+    assert emitted[0]["quote_item_description"] == "Wyspa + slupki"
+
+
+def test_nowe_zamowienie_tab_can_open_quote_item_as_komplet_with_context(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.tabs.zamowienie.tab_nowe_zamowienie import TabNoweZamowienie
+
+    w = TabNoweZamowienie()
+    w.cb_client_name.setCurrentText("Klient Quote")
+    w.ed_order_code.setText("ORDER-QUOTE-2")
+    w.cb_worker_name.setCurrentText("Anna Quote")
+    w.ed_quote_item_name.setText("Szafa wejsciowa")
+    w.cb_quote_item_kind.setCurrentText("Szafa")
+    w.ed_quote_item_description.setText("Wnekowa z lustrem")
+    QTest.mouseClick(w.btn_add_quote_item, Qt.MouseButton.LeftButton)
+    w.tbl_quote_items.selectRow(0)
+
+    emitted: list[dict] = []
+    w.sig_open_komplet_requested.connect(emitted.append)
+
+    QTest.mouseClick(w.btn_quote_to_komplet, Qt.MouseButton.LeftButton)
+
+    assert len(emitted) == 1
+    assert emitted[0]["client_name"] == "Klient Quote"
+    assert emitted[0]["order_name"] == "ORDER-QUOTE-2"
+    assert emitted[0]["worker_name"] == "Anna Quote"
+    assert emitted[0]["quote_item_name"] == "Szafa wejsciowa"
+    assert emitted[0]["quote_item_kind"] == "Szafa"
+    assert emitted[0]["quote_item_description"] == "Wnekowa z lustrem"
+
+
 def test_nowe_zamowienie_tab_uses_collapsible_blocks(tmp_path, monkeypatch):
     monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TECH_MODUL_TESTING", "1")

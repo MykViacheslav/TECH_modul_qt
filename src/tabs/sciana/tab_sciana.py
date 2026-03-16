@@ -2886,8 +2886,11 @@ class TabSciana(QWidget):
     def start_new_assembly_from_wall_context(self, context: dict | None = None) -> None:
         payload = context if isinstance(context, dict) else {}
         order_name = str(payload.get("order_name", "") or "").strip()
+        quote_item_name = str(payload.get("quote_item_name", "") or "").strip()
+        quote_item_kind = str(payload.get("quote_item_kind", "") or "").strip()
         order_def = self._order_store.get(order_name) if order_name else None
         self._assembly = FurnitureAssemblyDef(
+            name=quote_item_name or "Komplet 1",
             wall_name=str(payload.get("wall_name", "") or "").strip(),
             client_name=str(payload.get("client_name", "") or "").strip(),
             order_name=order_name,
@@ -2921,7 +2924,10 @@ class TabSciana(QWidget):
         self._pull_ui_to_assembly()
         self._rebuild_assembly()
 
-        if self._assembly.wall_name:
+        if quote_item_name:
+            kind_suffix = f" ({quote_item_kind})" if quote_item_kind else ""
+            self._set_store_status(f'Gotowy nowy komplet dla pozycji "{quote_item_name}"{kind_suffix}.', ok=True)
+        elif self._assembly.wall_name:
             self._set_store_status(f'Gotowy nowy komplet dla sciany "{self._assembly.wall_name}".', ok=True)
         elif self._assembly.client_name or self._assembly.order_name or self._assembly.worker_name:
             self._set_store_status("Gotowy nowy komplet z danymi sciany.", ok=True)

@@ -139,6 +139,62 @@ def test_main_window_passes_new_order_context_into_sciana(tmp_path, monkeypatch)
     assert "Pracownik: Jan Kontekst" in tab_sciana.lab_summary.text()
 
 
+def test_main_window_can_open_quote_item_from_order_as_sciana(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    w = MainWindow()
+    tab_order = w._tabs_by_title["Nowe zamowienie"]
+    tab_sciana = w._tabs_by_title["Sciana"]
+
+    tab_order.cb_client_name.setCurrentText("Klient Oferta")
+    tab_order.cb_worker_name.setCurrentText("Jan Oferta")
+    tab_order.ed_order_code.setText("ORDER-OFERTA-1")
+    tab_order.ed_quote_item_name.setText("RTV salon")
+    tab_order.cb_quote_item_kind.setCurrentText("RTV")
+    tab_order.ed_quote_item_description.setText("Niska zabudowa + panel")
+    QTest.mouseClick(tab_order.btn_add_quote_item, Qt.MouseButton.LeftButton)
+    tab_order.tbl_quote_items.selectRow(0)
+
+    QTest.mouseClick(tab_order.btn_quote_to_sciana, Qt.MouseButton.LeftButton)
+
+    assert w.tabs.currentWidget() is tab_sciana
+    assert tab_sciana.ed_name.text() == "RTV salon"
+    assert tab_sciana.cb_client.currentData() == "Klient Oferta"
+    assert tab_sciana.cb_order.currentData() == "ORDER-OFERTA-1"
+    assert tab_sciana.cb_worker.currentData() == "Jan Oferta"
+
+
+def test_main_window_can_open_quote_item_from_order_as_komplet(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    w = MainWindow()
+    tab_order = w._tabs_by_title["Nowe zamowienie"]
+    tab_komplet = w._tabs_by_title["Komplet"]
+
+    tab_order.cb_client_name.setCurrentText("Klient Oferta")
+    tab_order.cb_worker_name.setCurrentText("Anna Oferta")
+    tab_order.ed_order_code.setText("ORDER-OFERTA-2")
+    tab_order.ed_quote_item_name.setText("Szafa wejscie")
+    tab_order.cb_quote_item_kind.setCurrentText("Szafa")
+    tab_order.ed_quote_item_description.setText("Szafa wnekowa pod sufit")
+    QTest.mouseClick(tab_order.btn_add_quote_item, Qt.MouseButton.LeftButton)
+    tab_order.tbl_quote_items.selectRow(0)
+
+    QTest.mouseClick(tab_order.btn_quote_to_komplet, Qt.MouseButton.LeftButton)
+
+    assert w.tabs.currentWidget() is tab_komplet
+    assert tab_komplet.ed_name.text() == "Szafa wejscie"
+    assert tab_komplet.ed_client.text() == "Klient Oferta"
+    assert tab_komplet.ed_order.text() == "ORDER-OFERTA-2"
+    assert tab_komplet.cb_worker.currentData() == "Anna Oferta"
+
+
 def test_main_window_passes_sciana_context_into_komplet(tmp_path, monkeypatch):
     monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TECH_MODUL_TESTING", "1")

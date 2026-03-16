@@ -203,6 +203,8 @@ class MainWindow(QMainWindow):
                 tab_nowe_zamowienie.sig_open_workers_base_requested.connect(self._open_workers_in_bazy)
             if hasattr(tab_nowe_zamowienie, "sig_open_sciana_requested"):
                 tab_nowe_zamowienie.sig_open_sciana_requested.connect(self._open_new_wall)
+            if hasattr(tab_nowe_zamowienie, "sig_open_komplet_requested"):
+                tab_nowe_zamowienie.sig_open_komplet_requested.connect(self._open_new_assembly)
             if hasattr(tab_nowe_zamowienie, "sig_open_existing_sciana_requested"):
                 tab_nowe_zamowienie.sig_open_existing_sciana_requested.connect(self._open_wall_in_sciana)
 

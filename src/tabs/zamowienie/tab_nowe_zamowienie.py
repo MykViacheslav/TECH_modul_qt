@@ -64,6 +64,7 @@ class TabNoweZamowienie(QWidget):
     sig_open_orders_base_requested = pyqtSignal()
     sig_open_workers_base_requested = pyqtSignal()
     sig_open_sciana_requested = pyqtSignal(dict)
+    sig_open_komplet_requested = pyqtSignal(dict)
     sig_open_existing_sciana_requested = pyqtSignal(str)
 
     def __init__(
@@ -203,6 +204,8 @@ class TabNoweZamowienie(QWidget):
         )
         self.btn_add_quote_item.clicked.connect(self._on_add_quote_item)
         self.btn_remove_quote_item.clicked.connect(self._on_remove_quote_item)
+        self.btn_quote_to_sciana.clicked.connect(self._on_open_quote_item_as_sciana)
+        self.btn_quote_to_komplet.clicked.connect(self._on_open_quote_item_as_komplet)
         self.tbl_quote_items.itemSelectionChanged.connect(self._on_quote_item_selection_changed)
         self.btn_new_wall.clicked.connect(self._on_go_to_sciana)
         self.btn_open_wall.clicked.connect(self._on_open_selected_wall)
@@ -460,10 +463,16 @@ class TabNoweZamowienie(QWidget):
         btns = QHBoxLayout()
         self.btn_add_quote_item = QPushButton("Dodaj pozycje", self.grp_quote_items)
         self.btn_remove_quote_item = QPushButton("Usun zaznaczona", self.grp_quote_items)
+        self.btn_quote_to_sciana = QPushButton("Otworz jako Sciana", self.grp_quote_items)
+        self.btn_quote_to_komplet = QPushButton("Otworz jako Komplet", self.grp_quote_items)
         self._make_compact_button(self.btn_add_quote_item, min_width=130, max_width=160)
         self._make_compact_button(self.btn_remove_quote_item, min_width=130, max_width=160)
+        self._make_compact_button(self.btn_quote_to_sciana, min_width=150, max_width=180)
+        self._make_compact_button(self.btn_quote_to_komplet, min_width=150, max_width=180)
         btns.addWidget(self.btn_add_quote_item, 0)
         btns.addWidget(self.btn_remove_quote_item, 0)
+        btns.addWidget(self.btn_quote_to_sciana, 0)
+        btns.addWidget(self.btn_quote_to_komplet, 0)
         btns.addStretch(1)
         layout.addLayout(btns)
 
@@ -632,8 +641,13 @@ class TabNoweZamowienie(QWidget):
         return int(selection[0].row())
 
     def _on_quote_item_selection_changed(self) -> None:
+        has_selection = self._selected_quote_item_index() >= 0
         if hasattr(self, "btn_remove_quote_item"):
-            self.btn_remove_quote_item.setEnabled(self._selected_quote_item_index() >= 0)
+            self.btn_remove_quote_item.setEnabled(has_selection)
+        if hasattr(self, "btn_quote_to_sciana"):
+            self.btn_quote_to_sciana.setEnabled(has_selection)
+        if hasattr(self, "btn_quote_to_komplet"):
+            self.btn_quote_to_komplet.setEnabled(has_selection)
 
     def _on_add_quote_item(self) -> None:
         entry = self._normalize_quote_item(
@@ -662,6 +676,53 @@ class TabNoweZamowienie(QWidget):
         self._refresh_quote_items_table()
         self._refresh_summary()
         self._set_status("Usunieto pozycje do wyceny.", ok=True)
+
+    def _selected_quote_item(self) -> dict[str, str] | None:
+        index = self._selected_quote_item_index()
+        if index < 0 or index >= len(self._quote_items):
+            return None
+        return dict(self._quote_items[index])
+
+    def _quote_item_context(self) -> dict[str, str] | None:
+        quote_item = self._selected_quote_item()
+        if quote_item is None:
+            return None
+        payload = dict(self.current_order_context())
+        payload["quote_item_name"] = str(quote_item.get("name", "") or "").strip()
+        payload["quote_item_kind"] = str(quote_item.get("kind", "") or "Inne").strip() or "Inne"
+        payload["quote_item_description"] = str(quote_item.get("description", "") or "").strip()
+        return payload
+
+    def _open_selected_quote_item(self, target: str) -> None:
+        payload = self._quote_item_context()
+        if payload is None:
+            self._set_status("Wybierz pozycje do wyceny.", ok=False)
+            return
+
+        ok, message = self._ensure_context_saved_for_next_step()
+        if not ok:
+            self._set_status(message, ok=False)
+            return
+
+        self._save_draft(show_status=False)
+        quote_name = str(payload.get("quote_item_name", "") or "").strip() or "pozycje"
+        if target == "komplet":
+            if message:
+                self._set_status(message, ok=True)
+            self.sig_open_komplet_requested.emit(payload)
+            self._set_status(f'Otwieram pozycje "{quote_name}" jako komplet.', ok=True)
+            return
+
+        if message:
+            self._set_status(message, ok=True)
+        self.sig_open_sciana_requested.emit(payload)
+        self._set_status(f'Otwieram pozycje "{quote_name}" jako sciane.', ok=True)
+
+    def _on_open_quote_item_as_sciana(self) -> None:
+        self._open_selected_quote_item("sciana")
+
+    def _on_open_quote_item_as_komplet(self) -> None:
+        self._open_selected_quote_item("komplet")
 
     def _build_summary_group(self) -> None:
         layout = self.grp_summary.content_layout()

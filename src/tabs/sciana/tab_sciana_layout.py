@@ -2156,17 +2156,25 @@ class TabScianaLayout(QWidget):
 
     def start_new_wall_from_order_context(self, context: dict | None = None) -> None:
         payload = context if isinstance(context, dict) else {}
+        quote_item_name = str(payload.get("quote_item_name", "") or "").strip()
+        quote_item_description = str(payload.get("quote_item_description", "") or "").strip()
+        quote_item_kind = str(payload.get("quote_item_kind", "") or "").strip()
         self._wall = WallLayoutDef(
+            name=quote_item_name or "Sciana 1",
             client_name=str(payload.get("client_name", "") or "").strip(),
             order_name=str(payload.get("order_name", "") or "").strip(),
             worker_name=str(payload.get("worker_name", "") or "").strip(),
+            notes=quote_item_description,
         )
         self._selected_obstacle_index = -1
         self._set_selected_obstacle_index_on_previews(-1)
         self._loaded_wall_name = ""
         self._push_wall_to_ui()
         self._refresh_all()
-        if self._wall.client_name or self._wall.order_name or self._wall.worker_name:
+        if quote_item_name:
+            kind_suffix = f" ({quote_item_kind})" if quote_item_kind else ""
+            self._set_store_status(f'Gotowa nowa sciana dla pozycji "{quote_item_name}"{kind_suffix}.', ok=True)
+        elif self._wall.client_name or self._wall.order_name or self._wall.worker_name:
             self._set_store_status("Gotowa nowa sciana z danymi zamowienia.", ok=True)
         else:
             self._set_store_status("Gotowa nowa sciana.", ok=True)

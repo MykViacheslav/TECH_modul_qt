@@ -239,6 +239,18 @@ Do wdrozenia:
 - zapis roboczy draftu obejmuje tez pozycje do wyceny
 - summary pokazuje liczbe pozycji do wyceny
 
+[DONE] Powiazanie pozycji do wyceny z dalsza praca:
+- zaznaczona pozycja moze byc od razu otwarta jako "Sciana"
+- zaznaczona pozycja moze byc od razu otwarta jako "Komplet"
+- do kolejnego kroku przechodza razem:
+  - klient
+  - zamowienie
+  - pracownik
+  - nazwa pozycji
+  - typ pozycji
+  - opis pozycji
+- nowa Sciana i nowy Komplet startuja od razu z nazwa wybranej pozycji handlowej
+
 [TODO] Rozszerzenie biblioteki gotowych modulow:
 - dolne
 - gorne
@@ -258,6 +270,11 @@ Do wdrozenia:
 - front
 - kolor / dekor
 - okucia
+
+[TODO] Praca z PDF od architekta:
+- miniatury stron PDF w zamowieniu
+- reczne wycinanie fragmentu
+- przypiecie wycietego fragmentu do Sciana / Komplet / oferty
 - wariant economy / standard / premium
 
 [TODO] Szybka kalkulacja:
