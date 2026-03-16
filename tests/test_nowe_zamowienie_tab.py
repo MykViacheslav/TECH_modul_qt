@@ -379,6 +379,81 @@ def test_nowe_zamowienie_tab_shows_offer_reference_preview_and_final_materials(t
     assert not w.lab_offer_ref_preview.pixmap().isNull()
 
 
+def test_nowe_zamowienie_tab_exports_offer_html(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    import src.tabs.zamowienie.tab_nowe_zamowienie as order_tab_module
+    from src.tabs.zamowienie.tab_nowe_zamowienie import TabNoweZamowienie
+
+    image_path = tmp_path / "offer_export.png"
+    image = QImage(240, 160, QImage.Format.Format_RGB32)
+    image.fill(QColor("#efe4d3"))
+    assert image.save(str(image_path))
+
+    export_path = tmp_path / "oferta_test.html"
+    monkeypatch.setattr(
+        order_tab_module.QFileDialog,
+        "getSaveFileName",
+        staticmethod(lambda *args, **kwargs: (str(export_path), "Pliki HTML (*.html)")),
+    )
+
+    w = TabNoweZamowienie()
+    w.cb_client_name.setCurrentText("Klient Export")
+    w.ed_order_code.setText("ORDER-EXPORT-1")
+    w.cb_order_status.setCurrentText("Wycena")
+    w.ed_order_address.setText("Warszawa, Testowa 5")
+    w.cb_worker_name.setCurrentText("Jan Handlowiec")
+    w._set_quote_items(
+        [
+            {
+                "name": "RTV salon",
+                "kind": "RTV",
+                "description": "Zabudowa z lamelami",
+            }
+        ]
+    )
+    w._set_material_choices(
+        [
+            {
+                "scope": "Front",
+                "material": "MDF lakier",
+                "color": "Cashmere",
+                "code": "RAL 7044",
+                "status": "Wybrane finalnie",
+                "notes": "Wariant klienta A",
+            }
+        ]
+    )
+    w._set_architect_attachments(
+        [
+            {
+                "path": str(image_path),
+                "kind": "Obraz",
+                "description": "Wizualizacja RTV",
+                "target_kind": "Oferta",
+                "target_name": "Oferta klienta",
+            }
+        ]
+    )
+    w._refresh_summary()
+
+    QTest.mouseClick(w.btn_export_offer, Qt.MouseButton.LeftButton)
+
+    assert export_path.exists()
+    html = export_path.read_text(encoding="utf-8")
+    assert "Oferta klienta" in html
+    assert "Klient Export" in html
+    assert "ORDER-EXPORT-1" in html
+    assert "RTV salon" in html
+    assert "RAL 7044" in html
+    assert "RAZEM orientacyjnie" in html
+    assert "data:image/png;base64," in html
+    assert "Wyeksportowano oferte" in w.lab_status.text()
+
+
 def test_nowe_zamowienie_tab_clear_removes_saved_draft(tmp_path, monkeypatch):
     monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TECH_MODUL_TESTING", "1")

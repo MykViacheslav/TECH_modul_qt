@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import base64
 import os
 from collections import defaultdict
 from datetime import datetime
+from html import escape
 from pathlib import Path
 
 from PyQt6.QtCore import QPoint, QRect, QSize, Qt, pyqtSignal
@@ -350,6 +352,7 @@ class TabNoweZamowienie(QWidget):
         self.btn_open_orders_base.clicked.connect(self.sig_open_orders_base_requested.emit)
         self.btn_open_workers_base.clicked.connect(self.sig_open_workers_base_requested.emit)
         self.btn_go_to_sciana.clicked.connect(self._on_go_to_sciana)
+        self.btn_export_offer.clicked.connect(self._on_export_offer)
         self.btn_save_new.clicked.connect(self._on_save_new)
         self.btn_overwrite_all.clicked.connect(self._on_overwrite_all)
         self.btn_save_draft.clicked.connect(lambda: self._save_draft(show_status=True))
@@ -498,6 +501,7 @@ class TabNoweZamowienie(QWidget):
         self.btn_overwrite_all = QPushButton("Nadpisz wszystko", self.grp_actions)
         self.btn_clear = QPushButton("Wyczysc karte", self.grp_actions)
         self.btn_go_to_sciana = QPushButton("Dalej: Sciana", self.grp_actions)
+        self.btn_export_offer = QPushButton("Eksport oferte", self.grp_actions)
         for button in (
             self.btn_save_draft,
             self.btn_save_new,
@@ -509,6 +513,12 @@ class TabNoweZamowienie(QWidget):
             btns.addWidget(button, 0)
         btns.addStretch(1)
         layout.addLayout(btns)
+
+        export_row = QHBoxLayout()
+        self._make_compact_button(self.btn_export_offer, min_width=140, max_width=170)
+        export_row.addWidget(self.btn_export_offer, 0)
+        export_row.addStretch(1)
+        layout.addLayout(export_row)
 
     def _build_walls_group(self) -> None:
         layout = self.grp_walls.content_layout()
@@ -1034,6 +1044,30 @@ class TabNoweZamowienie(QWidget):
         output = root / "architect_fragments"
         output.mkdir(parents=True, exist_ok=True)
         return output
+
+    def _offer_output_dir(self) -> Path:
+        env = os.environ.get("TECH_MODUL_DATA_DIR", "").strip()
+        root = Path(env) if env else Path(__file__).resolve().parents[3] / "data"
+        output = root / "offers"
+        output.mkdir(parents=True, exist_ok=True)
+        return output
+
+    def _image_file_to_data_uri(self, path_str: str) -> str:
+        path = Path(str(path_str or "").strip())
+        if not path.exists() or not path.is_file():
+            return ""
+        mime_map = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".bmp": "image/bmp",
+            ".webp": "image/webp",
+        }
+        mime = mime_map.get(path.suffix.lower())
+        if not mime:
+            return ""
+        data = base64.b64encode(path.read_bytes()).decode("ascii")
+        return f"data:{mime};base64,{data}"
 
     def _append_architect_attachment(self, entry: dict[str, str]) -> None:
         normalized = self._normalize_attachment(entry)
@@ -1765,6 +1799,263 @@ class TabNoweZamowienie(QWidget):
                 continue
             assemblies.append(assembly)
         return assemblies
+
+    def _collect_offer_export_data(self) -> dict[str, object]:
+        assemblies = self._current_order_assemblies()
+        wall_count = len(self._current_order_wall_names())
+        auto_double_width = float(load_drawing_settings().auto_double_front_width_mm or 600.0)
+
+        material_total = 0.0
+        edgeband_total = 0.0
+        hardware_total = 0.0
+        modules_total = 0
+        assembly_rows: list[dict[str, float | int | str]] = []
+        material_acc: dict[str, dict[str, float | str]] = defaultdict(
+            lambda: {"label": "", "count": 0.0, "area": 0.0, "cost": 0.0}
+        )
+
+        for assembly in assemblies:
+            wall_name = str(getattr(assembly, "wall_name", "") or "").strip()
+            linked_wall = self._wall_store.get(wall_name) if wall_name else None
+            resolved_items = resolve_assembly_items(
+                assembly,
+                self._catalog,
+                auto_double_front_width_mm=auto_double_width,
+                linked_wall=linked_wall,
+            )
+            assembly_modules = len(resolved_items)
+            modules_total += assembly_modules
+            assembly_material_total = 0.0
+            assembly_edgeband_total = 0.0
+            assembly_hardware_total = 0.0
+
+            for resolved in resolved_items:
+                breakdown = resolved.cost_breakdown
+                resolved_material_total = float(breakdown.material_total_pln)
+                resolved_edgeband_total = float(breakdown.edgeband_total_pln)
+                resolved_hardware_total = float(breakdown.hardware_total_pln)
+
+                material_total += resolved_material_total
+                edgeband_total += resolved_edgeband_total
+                hardware_total += resolved_hardware_total
+
+                assembly_material_total += resolved_material_total
+                assembly_edgeband_total += resolved_edgeband_total
+                assembly_hardware_total += resolved_hardware_total
+
+                for line in breakdown.material_lines:
+                    entry = material_acc[str(line.key or "-")]
+                    entry["label"] = str(line.label or line.key or "-")
+                    entry["count"] = float(entry["count"]) + float(line.count)
+                    entry["area"] = float(entry["area"]) + float(line.area_m2)
+                    entry["cost"] = float(entry["cost"]) + float(line.cost_pln)
+
+            assembly_rows.append(
+                {
+                    "name": str(getattr(assembly, "name", "") or "-"),
+                    "wall_name": str(getattr(assembly, "wall_name", "") or "-"),
+                    "modules": int(assembly_modules),
+                    "material_total": float(assembly_material_total),
+                    "edgeband_total": float(assembly_edgeband_total),
+                    "hardware_total": float(assembly_hardware_total),
+                    "grand_total": float(
+                        assembly_material_total + assembly_edgeband_total + assembly_hardware_total
+                    ),
+                }
+            )
+
+        return {
+            "wall_count": wall_count,
+            "assemblies": sorted(
+                assembly_rows,
+                key=lambda item: (-float(item["grand_total"]), str(item["name"]).lower()),
+            ),
+            "materials": sorted(
+                material_acc.values(),
+                key=lambda item: (-float(item["cost"]), str(item["label"]).lower()),
+            ),
+            "modules_total": modules_total,
+            "material_total": material_total,
+            "edgeband_total": edgeband_total,
+            "hardware_total": hardware_total,
+            "grand_total": material_total + edgeband_total + hardware_total,
+        }
+
+    def _build_offer_html(self) -> str:
+        order_code = str(self.ed_order_code.text().strip() or "-")
+        client_name = str(self.cb_client_name.currentText().strip() or "-")
+        worker_name = str(self.cb_worker_name.currentText().strip() or "-")
+        status_name = str(self.cb_order_status.currentText().strip() or "-")
+        site_address = str(self.ed_order_address.text().strip() or "-")
+        order_notes = str(self.ed_order_notes.toPlainText().strip())
+        quote_items = [dict(item) for item in self._quote_items]
+        final_material_choices = [
+            dict(item)
+            for item in self._material_choices
+            if str(item.get("status", "") or "").strip().lower() == "wybrane finalnie"
+        ]
+        offer_refs = self._collect_offer_reference_attachments()
+        export_data = self._collect_offer_export_data()
+
+        def _row(cells: list[str]) -> str:
+            return "<tr>" + "".join(f"<td>{cell}</td>" for cell in cells) + "</tr>"
+
+        quote_rows = "".join(
+            _row(
+                [
+                    escape(str(entry.get("name", "") or "-")),
+                    escape(str(entry.get("kind", "") or "-")),
+                    escape(str(entry.get("description", "") or "-")),
+                ]
+            )
+            for entry in quote_items
+        ) or '<tr><td colspan="3">Brak pozycji do oferty.</td></tr>'
+
+        material_rows = "".join(
+            _row(
+                [
+                    escape(str(entry.get("scope", "") or "-")),
+                    escape(str(entry.get("material", "") or "-")),
+                    escape(str(entry.get("color", "") or "-")),
+                    escape(str(entry.get("code", "") or "-")),
+                    escape(str(entry.get("notes", "") or "-")),
+                ]
+            )
+            for entry in final_material_choices
+        ) or '<tr><td colspan="5">Brak finalnych wyborow materialowych.</td></tr>'
+
+        assembly_rows = "".join(
+            _row(
+                [
+                    escape(str(entry["name"] or "-")),
+                    escape(str(entry["wall_name"] or "-")),
+                    str(int(entry["modules"])),
+                    f'{float(entry["material_total"]):.2f} zl',
+                    f'{float(entry["edgeband_total"]):.2f} zl',
+                    f'{float(entry["hardware_total"]):.2f} zl',
+                    f'{float(entry["grand_total"]):.2f} zl',
+                ]
+            )
+            for entry in list(export_data["assemblies"])
+        ) or '<tr><td colspan="7">Brak zapisanych kompletow dla tego zamowienia.</td></tr>'
+
+        aggregate_material_rows = "".join(
+            _row(
+                [
+                    escape(str(entry["label"] or "-")),
+                    str(int(round(float(entry["count"])))),
+                    f'{float(entry["area"]):.3f}',
+                    f'{float(entry["cost"]):.2f} zl',
+                ]
+            )
+            for entry in list(export_data["materials"])
+        ) or '<tr><td colspan="4">Brak materialow w zapisanych kompletach.</td></tr>'
+
+        ref_cards: list[str] = []
+        for entry in offer_refs:
+            data_uri = self._image_file_to_data_uri(str(entry.get("path", "") or ""))
+            title = escape(str(entry.get("target", "") or "Oferta"))
+            description = escape(str(entry.get("description", "") or "") or "Referencja wizualna")
+            image_html = (
+                f'<img src="{data_uri}" alt="{description}" />'
+                if data_uri
+                else '<div class="image-missing">Brak podgladu obrazu</div>'
+            )
+            ref_cards.append(
+                "<div class=\"ref-card\">"
+                f"{image_html}"
+                f"<div class=\"ref-meta\"><strong>{title}</strong><br>{description}</div>"
+                "</div>"
+            )
+        refs_html = "".join(ref_cards) or "<p>Brak obrazow przypietych do oferty.</p>"
+
+        notes_html = f"<p><strong>Notatki:</strong> {escape(order_notes)}</p>" if order_notes else ""
+
+        return f"""<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>Oferta {escape(order_code)}</title>
+  <style>
+    body {{ font-family: Segoe UI, Arial, sans-serif; margin: 24px; color: #1f2937; }}
+    h1, h2 {{ margin-bottom: 8px; }}
+    h1 {{ font-size: 26px; }}
+    h2 {{ margin-top: 26px; font-size: 18px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; }}
+    .meta {{ display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 8px 20px; margin-bottom: 16px; }}
+    .summary {{ background: #f8fafc; border: 1px solid #dbeafe; border-radius: 8px; padding: 12px 14px; margin: 12px 0 20px; }}
+    table {{ width: 100%; border-collapse: collapse; margin-top: 8px; }}
+    th, td {{ border: 1px solid #e5e7eb; padding: 8px 10px; text-align: left; vertical-align: top; }}
+    th {{ background: #f8fafc; }}
+    .refs {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 12px; }}
+    .ref-card {{ border: 1px solid #e5dccd; border-radius: 8px; padding: 10px; background: #fcfaf6; }}
+    .ref-card img {{ width: 100%; max-height: 260px; object-fit: contain; display: block; background: white; border: 1px solid #e5e7eb; }}
+    .ref-meta {{ margin-top: 8px; color: #475569; }}
+    .image-missing {{ min-height: 140px; display:flex; align-items:center; justify-content:center; color:#6b7280; border:1px dashed #cbd5e1; background:white; }}
+  </style>
+</head>
+<body>
+  <h1>Oferta klienta</h1>
+  <div class="meta">
+    <div><strong>Klient:</strong> {escape(client_name)}</div>
+    <div><strong>Zamowienie:</strong> {escape(order_code)}</div>
+    <div><strong>Pracownik:</strong> {escape(worker_name)}</div>
+    <div><strong>Status:</strong> {escape(status_name)}</div>
+    <div><strong>Adres realizacji:</strong> {escape(site_address)}</div>
+    <div><strong>Data eksportu:</strong> {escape(datetime.now().strftime("%Y-%m-%d %H:%M"))}</div>
+  </div>
+  <div class="summary">
+    <strong>Podsumowanie orientacyjne</strong><br>
+    Sciany: {int(export_data["wall_count"])}<br>
+    Komplety: {len(list(export_data["assemblies"]))}<br>
+    Moduly: {int(export_data["modules_total"])}<br>
+    Materialy: {float(export_data["material_total"]):.2f} zl<br>
+    Okleina: {float(export_data["edgeband_total"]):.2f} zl<br>
+    Okucia: {float(export_data["hardware_total"]):.2f} zl<br>
+    <strong>RAZEM orientacyjnie: {float(export_data["grand_total"]):.2f} zl</strong>
+  </div>
+  {notes_html}
+  <h2>Pozycje do oferty</h2>
+  <table>
+    <thead><tr><th>Pozycja</th><th>Typ</th><th>Opis</th></tr></thead>
+    <tbody>{quote_rows}</tbody>
+  </table>
+  <h2>Finalne materialy</h2>
+  <table>
+    <thead><tr><th>Zakres</th><th>Material</th><th>Kolor / dekor</th><th>Kod</th><th>Uwagi</th></tr></thead>
+    <tbody>{material_rows}</tbody>
+  </table>
+  <h2>Komplety i koszt orientacyjny</h2>
+  <table>
+    <thead><tr><th>Komplet</th><th>Sciana</th><th>Moduly</th><th>Materialy</th><th>Okleina</th><th>Okucia</th><th>Razem</th></tr></thead>
+    <tbody>{assembly_rows}</tbody>
+  </table>
+  <h2>Materialy w zamowieniu</h2>
+  <table>
+    <thead><tr><th>Material</th><th>Szt</th><th>m2</th><th>Koszt</th></tr></thead>
+    <tbody>{aggregate_material_rows}</tbody>
+  </table>
+  <h2>Referencje wizualne</h2>
+  <div class="refs">{refs_html}</div>
+</body>
+</html>
+"""
+
+    def _on_export_offer(self) -> None:
+        order_code = str(self.ed_order_code.text().strip() or "oferta")
+        safe_code = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in order_code) or "oferta"
+        default_path = self._offer_output_dir() / f"{safe_code}_{datetime.now().strftime('%Y%m%d_%H%M')}.html"
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Eksport oferty klienta",
+            str(default_path),
+            "Pliki HTML (*.html);;Wszystkie pliki (*.*)",
+        )
+        if not file_path:
+            return
+        output_path = Path(file_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(self._build_offer_html(), encoding="utf-8")
+        self._set_status(f'Wyeksportowano oferte do "{output_path.name}".', ok=True)
 
     def _refresh_order_cost_summary(self) -> None:
         if (

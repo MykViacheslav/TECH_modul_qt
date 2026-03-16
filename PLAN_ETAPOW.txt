@@ -350,8 +350,16 @@ Do wdrozenia:
   - obrazowe referencje przypiete do celu "Oferta"
 - wybrana referencja oferty ma podglad obrazu na miejscu
 
+[DONE] Pierwszy eksport oferty klienta:
+- eksport do HTML z karty Nowe zamowienie
+- klient, zamowienie, status i adres realizacji
+- pozycje do oferty
+- finalne materialy
+- koszty kompletow i suma orientacyjna
+- referencje wizualne przypiete do celu "Oferta"
+
 [TODO] Dalsza praca z PDF od architekta:
-- eksport / wydruk oferty z tymi referencjami
+- PDF / wydruk oferty z tymi referencjami
 - lepsze powiazanie zalacznikow z pozycjami do wyceny
 
 
