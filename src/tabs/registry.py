@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import QWidget
 
 from src.tabs.bazy.tab_bazy import TabBazy
 from src.tabs.kalendarz.tab_kalendarz import TabKalendarz
+from src.tabs.czas_pracy.tab_czas_pracy import TabCzasPracy
 from src.tabs.modul.tab_modul import TabModul
 from src.tabs.rysunek.tab_rysunek import TabRysunek
 from src.tabs.sciana.tab_sciana import TabSciana
@@ -21,6 +22,7 @@ def build_tabs() -> List[Tuple[str, QWidget]]:
         ("Nowe zamowienie", TabNoweZamowienie()),
         ("Wycena", TabWycena()),
         ("Kalendarz", TabKalendarz()),
+        ("Czas pracy", TabCzasPracy()),
         ("Modul", TabModul()),
         ("Komplet", TabSciana()),
         ("Sciana", TabScianaLayout()),

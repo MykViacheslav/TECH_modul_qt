@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import QApplication, QTabWidget
 from src.app.main_window import MainWindow
 
 
-def test_main_window_has_start_order_quote_calendar_modul_komplet_sciana_bazy_and_ustawienia_tabs(tmp_path, monkeypatch):
+def test_main_window_has_start_order_quote_calendar_worktime_modul_komplet_sciana_bazy_and_ustawienia_tabs(tmp_path, monkeypatch):
     monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TECH_MODUL_TESTING", "1")
 
@@ -18,7 +18,7 @@ def test_main_window_has_start_order_quote_calendar_modul_komplet_sciana_bazy_an
 
     titles = [tabs.tabText(i) for i in range(tabs.count())]
 
-    assert titles == ["Start", "Nowe zamowienie", "Wycena", "Kalendarz", "Modul", "Komplet", "Sciana", "Bazy", "Ustawienia"]
+    assert titles == ["Start", "Nowe zamowienie", "Wycena", "Kalendarz", "Czas pracy", "Modul", "Komplet", "Sciana", "Bazy", "Ustawienia"]
     assert tabs.currentWidget() is w._tabs_by_title["Start"]
     assert w.btn_nav_back.isEnabled() is False
     assert w.btn_nav_forward.isEnabled() is False

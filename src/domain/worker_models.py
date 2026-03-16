@@ -11,6 +11,7 @@ class WorkerDef:
     phone: str = ""
     email: str = ""
     notes: str = ""
+    hourly_rate: float = 0.0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -19,6 +20,7 @@ class WorkerDef:
             "phone": self.phone,
             "email": self.email,
             "notes": self.notes,
+            "hourly_rate": float(self.hourly_rate or 0.0),
         }
 
     @classmethod
@@ -30,4 +32,5 @@ class WorkerDef:
             phone=str(data.get("phone", "") or ""),
             email=str(data.get("email", "") or ""),
             notes=str(data.get("notes", "") or ""),
+            hourly_rate=float(data.get("hourly_rate", 0.0) or 0.0),
         )

@@ -575,6 +575,16 @@ Do wdrozenia:
     - Montaz
     - Poprawki
 
+[DONE] pierwsza karta Czas pracy:
+  - osobna zakladka dla pracownikow
+  - stawka godzinowa pracownika
+  - miesieczna tabela godzin pracy
+  - zapis godzin po dniach
+  - podsumowanie:
+    - dni pracy
+    - godziny
+    - koszt miesiaca
+
 [TODO] dalsze statusy zamowienia:
   - wycena w toku
   - wycena gotowa
@@ -601,6 +611,10 @@ Do wdrozenia:
 - dalsze dopracowanie historii zmian statusu:
   - dodatkowe notatki i filtrowanie
   - powiazanie z konkretnym etapem
+- dopiac czas pracy do wyceny i kosztu robocizny:
+  - koszt godzin do projektu
+  - koszt godzin do pracownika
+  - porownanie planowane vs realne godziny
 
 
 --------------------------------------------------
