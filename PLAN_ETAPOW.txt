@@ -414,6 +414,10 @@ Do wdrozenia:
   - montaz
   - marza
   - cena handlowa
+- [DONE] rozbicie kosztu zamowienia:
+  - koszt techniczny
+  - cena handlowa
+  - marza kwotowo
 
 [TODO] Szybka oferta:
 - prosty widok dla klienta

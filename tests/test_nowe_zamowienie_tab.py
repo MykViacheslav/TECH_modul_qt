@@ -461,8 +461,9 @@ def test_nowe_zamowienie_tab_exports_offer_html(tmp_path, monkeypatch):
     assert "ORDER-EXPORT-1" in html
     assert "RTV salon" in html
     assert "RAL 7044" in html
-    assert "RAZEM orientacyjnie" in html
+    assert "Koszt techniczny orientacyjnie" in html
     assert "Cena handlowa orientacyjna" in html
+    assert "Marza kwotowo" in html
     assert "data:image/png;base64," in html
     assert "Referencje pozycji do wyceny" in html
     assert "Fronty ryflowane" in html
@@ -864,7 +865,8 @@ def test_nowe_zamowienie_tab_shows_order_costs_and_materials_from_assemblies(tmp
     w.ed_order_code.setText("ORDER-KOSZT")
 
     assert "Komplety: 1" in w.lab_cost_summary.text()
-    assert "RAZEM:" in w.lab_cost_summary.text()
+    assert "Koszt techniczny:" in w.lab_cost_summary.text()
+    assert "Marza kwotowo:" in w.lab_cost_summary.text()
     assert "Cena handlowa:" in w.lab_cost_summary.text()
     assert w.tbl_order_assemblies.rowCount() == 1
     assert w.tbl_order_assemblies.item(0, 0).text() == "KOMPLET_KOSZT"
@@ -949,6 +951,8 @@ def test_nowe_zamowienie_tab_shows_each_assembly_cost_separately(tmp_path, monke
     w.ed_order_code.setText("ORDER-ROZBICIE")
 
     assert "Komplety: 2" in w.lab_cost_summary.text()
+    assert "Koszt techniczny:" in w.lab_cost_summary.text()
+    assert "Cena handlowa:" in w.lab_cost_summary.text()
     assert w.tbl_order_assemblies.rowCount() == 2
 
     names = {
