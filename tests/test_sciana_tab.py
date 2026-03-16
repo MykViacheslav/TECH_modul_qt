@@ -88,6 +88,14 @@ def test_sciana_tab_adds_saved_modules_and_aggregates_costs(tmp_path, monkeypatc
     assert w.lab_summary_edgeband_total.text().endswith("zl")
     assert w.lab_summary_hardware_total.text().endswith("zl")
     assert w.lab_summary_grand_total.text().endswith("zl")
+    w.sp_quote_labor.setValue(100.0)
+    w.sp_quote_transport.setValue(50.0)
+    w.sp_quote_montage.setValue(150.0)
+    w.sp_quote_margin.setValue(10.0)
+    app.processEvents()
+    assert "Cena handlowa:" in w.lab_summary.text()
+    assert w.lab_quote_sale_total.text().endswith("zl")
+    assert float(w._assembly.labor_cost_pln) == 100.0
 
 
 def test_sciana_tab_saved_module_library_supports_quick_filters_and_search(tmp_path, monkeypatch):

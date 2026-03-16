@@ -3026,6 +3026,42 @@ class TabSciana(QWidget):
         self.block_project_refs.set_expanded(True)
         scroll_layout.addWidget(self.block_project_refs, 0)
 
+        box_quote = QGroupBox("", scroll_content)
+        quote_form = QFormLayout(box_quote)
+        self.sp_quote_labor = QDoubleSpinBox(box_quote)
+        self.sp_quote_labor.setRange(0.0, 1000000.0)
+        self.sp_quote_labor.setDecimals(2)
+        self.sp_quote_labor.setSuffix(" zl")
+        self.sp_quote_transport = QDoubleSpinBox(box_quote)
+        self.sp_quote_transport.setRange(0.0, 1000000.0)
+        self.sp_quote_transport.setDecimals(2)
+        self.sp_quote_transport.setSuffix(" zl")
+        self.sp_quote_montage = QDoubleSpinBox(box_quote)
+        self.sp_quote_montage.setRange(0.0, 1000000.0)
+        self.sp_quote_montage.setDecimals(2)
+        self.sp_quote_montage.setSuffix(" zl")
+        self.sp_quote_margin = QDoubleSpinBox(box_quote)
+        self.sp_quote_margin.setRange(0.0, 500.0)
+        self.sp_quote_margin.setDecimals(1)
+        self.sp_quote_margin.setSuffix(" %")
+        self.lab_quote_base_total = QLabel("0.00 zl", box_quote)
+        self.lab_quote_base_total.setStyleSheet("font-weight:600; color:#374151;")
+        self.lab_quote_sale_total = QLabel("0.00 zl", box_quote)
+        self.lab_quote_sale_total.setStyleSheet("font-weight:700; color:#2f241b;")
+        self.lab_quote_profit_total = QLabel("0.00 zl", box_quote)
+        self.lab_quote_profit_total.setStyleSheet("font-weight:600; color:#6b5d4d;")
+        quote_form.addRow("Robocizna", self.sp_quote_labor)
+        quote_form.addRow("Transport", self.sp_quote_transport)
+        quote_form.addRow("Montaz", self.sp_quote_montage)
+        quote_form.addRow("Marza", self.sp_quote_margin)
+        quote_form.addRow("Koszt bazowy", self.lab_quote_base_total)
+        quote_form.addRow("Cena handlowa", self.lab_quote_sale_total)
+        quote_form.addRow("Narost", self.lab_quote_profit_total)
+        self.block_quote = CollapsibleBlock("Kalkulacja handlowa", scroll_content)
+        self.block_quote.content_layout().addWidget(box_quote)
+        self.block_quote.set_expanded(True)
+        scroll_layout.addWidget(self.block_quote, 0)
+
         self.lab_layout_alert = QLabel("", scroll_content)
         self.lab_layout_alert.setWordWrap(True)
         self.lab_layout_alert.hide()
@@ -3097,6 +3133,10 @@ class TabSciana(QWidget):
         self.cb_selected_material_back.currentIndexChanged.connect(self._on_selected_module_materials_changed)
         self.btn_apply_bulk_modules.clicked.connect(self._apply_bulk_changes_to_selected)
         self.tbl_project_refs.itemSelectionChanged.connect(self._on_project_reference_selection_changed)
+        self.sp_quote_labor.valueChanged.connect(self._on_quote_pricing_changed)
+        self.sp_quote_transport.valueChanged.connect(self._on_quote_pricing_changed)
+        self.sp_quote_montage.valueChanged.connect(self._on_quote_pricing_changed)
+        self.sp_quote_margin.valueChanged.connect(self._on_quote_pricing_changed)
 
         return panel
 
@@ -3933,6 +3973,10 @@ class TabSciana(QWidget):
             set_material_combo(self.cb_material_carcass, "carcass")
             set_material_combo(self.cb_material_front, "front")
             set_material_combo(self.cb_material_back, "back")
+            self.sp_quote_labor.setValue(float(getattr(self._assembly, "labor_cost_pln", 0.0) or 0.0))
+            self.sp_quote_transport.setValue(float(getattr(self._assembly, "transport_cost_pln", 0.0) or 0.0))
+            self.sp_quote_montage.setValue(float(getattr(self._assembly, "montage_cost_pln", 0.0) or 0.0))
+            self.sp_quote_margin.setValue(float(getattr(self._assembly, "margin_percent", 0.0) or 0.0))
             self._refresh_quick_material_preset_hint()
         finally:
             self._is_pushing_ui = False
@@ -3988,6 +4032,10 @@ class TabSciana(QWidget):
                 self._assembly.decor_preset_key,
             )
         self._assembly.company_collection_key = selected_collection
+        self._assembly.labor_cost_pln = float(self.sp_quote_labor.value())
+        self._assembly.transport_cost_pln = float(self.sp_quote_transport.value())
+        self._assembly.montage_cost_pln = float(self.sp_quote_montage.value())
+        self._assembly.margin_percent = float(self.sp_quote_margin.value())
 
     def _on_assembly_changed(self) -> None:
         if self._is_pushing_ui:
@@ -4005,6 +4053,12 @@ class TabSciana(QWidget):
             self._is_pushing_ui = False
         self._pull_ui_to_assembly()
         self._rebuild_assembly()
+
+    def _on_quote_pricing_changed(self) -> None:
+        if self._is_pushing_ui:
+            return
+        self._pull_ui_to_assembly()
+        self._refresh_summary()
 
     def _on_refresh_walls_clicked(self) -> None:
         current_name = self._selected_wall_name()
@@ -4868,11 +4922,17 @@ class TabSciana(QWidget):
         hardware_total = sum(item.cost_breakdown.hardware_total_pln for item in self._resolved_items)
         grand_total = sum(item.cost_breakdown.grand_total_pln for item in self._resolved_items)
         collision_count = sum(1 for item in self._resolved_items if bool(getattr(item, "has_collision", False)))
+        commercial_base_total = self._assembly.commercial_base_total(grand_total)
+        commercial_sale_total = self._assembly.commercial_sale_total(grand_total)
+        commercial_profit_total = commercial_sale_total - commercial_base_total
 
         self.lab_summary_material_total.setText(f"{material_total:.2f} zl")
         self.lab_summary_edgeband_total.setText(f"{edgeband_total:.2f} zl")
         self.lab_summary_hardware_total.setText(f"{hardware_total:.2f} zl")
         self.lab_summary_grand_total.setText(f"{grand_total:.2f} zl")
+        self.lab_quote_base_total.setText(f"{commercial_base_total:.2f} zl")
+        self.lab_quote_sale_total.setText(f"{commercial_sale_total:.2f} zl")
+        self.lab_quote_profit_total.setText(f"{commercial_profit_total:.2f} zl")
 
         profile_key = str(getattr(self._assembly, "material_profile_key", "STD_WHITE") or "STD_WHITE")
         force_hw_txt = "tak" if bool(getattr(self._assembly, "force_hardware_from_profile", True)) else "nie"
@@ -4936,6 +4996,13 @@ class TabSciana(QWidget):
                 f"Okleina: {edgeband_total:.2f} zl",
                 f"Okucia: {hardware_total:.2f} zl",
                 f"RAZEM: {grand_total:.2f} zl",
+                "",
+                "Kalkulacja handlowa:",
+                f"Robocizna: {float(getattr(self._assembly, 'labor_cost_pln', 0.0) or 0.0):.2f} zl",
+                f"Transport: {float(getattr(self._assembly, 'transport_cost_pln', 0.0) or 0.0):.2f} zl",
+                f"Montaz: {float(getattr(self._assembly, 'montage_cost_pln', 0.0) or 0.0):.2f} zl",
+                f"Marza: {float(getattr(self._assembly, 'margin_percent', 0.0) or 0.0):.1f} %",
+                f"Cena handlowa: {commercial_sale_total:.2f} zl",
             ]
         )
 

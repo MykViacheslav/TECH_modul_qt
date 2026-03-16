@@ -2005,6 +2005,7 @@ class TabNoweZamowienie(QWidget):
         material_total = 0.0
         edgeband_total = 0.0
         hardware_total = 0.0
+        commercial_total = 0.0
         modules_total = 0
         assembly_rows: list[dict[str, float | int | str]] = []
         material_acc: dict[str, dict[str, float | str]] = defaultdict(
@@ -2058,7 +2059,17 @@ class TabNoweZamowienie(QWidget):
                     "grand_total": float(
                         assembly_material_total + assembly_edgeband_total + assembly_hardware_total
                     ),
+                    "commercial_total": float(
+                        assembly.commercial_sale_total(
+                            assembly_material_total + assembly_edgeband_total + assembly_hardware_total
+                        )
+                    ),
                 }
+            )
+            commercial_total += float(
+                assembly.commercial_sale_total(
+                    assembly_material_total + assembly_edgeband_total + assembly_hardware_total
+                )
             )
 
         return {
@@ -2076,6 +2087,7 @@ class TabNoweZamowienie(QWidget):
             "edgeband_total": edgeband_total,
             "hardware_total": hardware_total,
             "grand_total": material_total + edgeband_total + hardware_total,
+            "commercial_total": commercial_total,
         }
 
     def _build_offer_html(self) -> str:
@@ -2245,7 +2257,8 @@ class TabNoweZamowienie(QWidget):
     Materialy: {float(export_data["material_total"]):.2f} zl<br>
     Okleina: {float(export_data["edgeband_total"]):.2f} zl<br>
     Okucia: {float(export_data["hardware_total"]):.2f} zl<br>
-    <strong>RAZEM orientacyjnie: {float(export_data["grand_total"]):.2f} zl</strong>
+    <strong>RAZEM orientacyjnie: {float(export_data["grand_total"]):.2f} zl</strong><br>
+    <strong>Cena handlowa orientacyjna: {float(export_data["commercial_total"]):.2f} zl</strong>
   </div>
   {notes_html}
   <h2>Pozycje do oferty</h2>
@@ -2337,6 +2350,7 @@ class TabNoweZamowienie(QWidget):
         material_total = 0.0
         edgeband_total = 0.0
         hardware_total = 0.0
+        commercial_total = 0.0
         modules_total = 0
         assembly_rows: list[dict[str, float | int | str]] = []
         material_acc: dict[str, dict[str, float | str]] = defaultdict(
@@ -2390,7 +2404,17 @@ class TabNoweZamowienie(QWidget):
                     "grand_total": float(
                         assembly_material_total + assembly_edgeband_total + assembly_hardware_total
                     ),
+                    "commercial_total": float(
+                        assembly.commercial_sale_total(
+                            assembly_material_total + assembly_edgeband_total + assembly_hardware_total
+                        )
+                    ),
                 }
+            )
+            commercial_total += float(
+                assembly.commercial_sale_total(
+                    assembly_material_total + assembly_edgeband_total + assembly_hardware_total
+                )
             )
 
         grand_total = material_total + edgeband_total + hardware_total
@@ -2409,6 +2433,7 @@ class TabNoweZamowienie(QWidget):
                 f"Okleina: {edgeband_total:.2f} zl\n"
                 f"Okucia: {hardware_total:.2f} zl\n"
                 f"RAZEM: {grand_total:.2f} zl\n"
+                f"Cena handlowa: {commercial_total:.2f} zl\n"
                 f"Komplety w zamowieniu: {assembly_names}"
             )
         else:
@@ -2419,6 +2444,7 @@ class TabNoweZamowienie(QWidget):
                 "Okleina: 0.00 zl\n"
                 "Okucia: 0.00 zl\n"
                 "RAZEM: 0.00 zl\n"
+                "Cena handlowa: 0.00 zl\n"
                 "Brak zapisanych kompletow dla tego zamowienia."
             )
 

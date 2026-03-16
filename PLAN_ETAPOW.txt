@@ -408,6 +408,12 @@ Do wdrozenia:
   - Okleina
   - Okucia
   - Razem
+- [DONE] kalkulacja handlowa kompletu:
+  - robocizna
+  - transport
+  - montaz
+  - marza
+  - cena handlowa
 
 [TODO] Szybka oferta:
 - prosty widok dla klienta

@@ -462,6 +462,7 @@ def test_nowe_zamowienie_tab_exports_offer_html(tmp_path, monkeypatch):
     assert "RTV salon" in html
     assert "RAL 7044" in html
     assert "RAZEM orientacyjnie" in html
+    assert "Cena handlowa orientacyjna" in html
     assert "data:image/png;base64," in html
     assert "Referencje pozycji do wyceny" in html
     assert "Fronty ryflowane" in html
@@ -841,6 +842,10 @@ def test_nowe_zamowienie_tab_shows_order_costs_and_materials_from_assemblies(tmp
             name="KOMPLET_KOSZT",
             client_name="Klient Koszt",
             order_name="ORDER-KOSZT",
+            labor_cost_pln=120.0,
+            transport_cost_pln=80.0,
+            montage_cost_pln=200.0,
+            margin_percent=15.0,
             items=[
                 AssemblyModuleItemDef(
                     source_name="MOD_KOSZT",
@@ -860,6 +865,7 @@ def test_nowe_zamowienie_tab_shows_order_costs_and_materials_from_assemblies(tmp
 
     assert "Komplety: 1" in w.lab_cost_summary.text()
     assert "RAZEM:" in w.lab_cost_summary.text()
+    assert "Cena handlowa:" in w.lab_cost_summary.text()
     assert w.tbl_order_assemblies.rowCount() == 1
     assert w.tbl_order_assemblies.item(0, 0).text() == "KOMPLET_KOSZT"
     assert w.tbl_order_materials.rowCount() >= 1

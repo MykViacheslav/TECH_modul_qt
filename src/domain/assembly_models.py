@@ -79,7 +79,22 @@ class FurnitureAssemblyDef:
     company_collection_key: str = ""
     decor_preset_key: str = ""
     decor_labels: Dict[str, str] = field(default_factory=dict)
+    labor_cost_pln: float = 0.0
+    transport_cost_pln: float = 0.0
+    montage_cost_pln: float = 0.0
+    margin_percent: float = 0.0
     items: List[AssemblyModuleItemDef] = field(default_factory=list)
+
+    def commercial_extras_total(self) -> float:
+        return float(self.labor_cost_pln) + float(self.transport_cost_pln) + float(self.montage_cost_pln)
+
+    def commercial_base_total(self, production_total_pln: float) -> float:
+        return float(production_total_pln) + self.commercial_extras_total()
+
+    def commercial_sale_total(self, production_total_pln: float) -> float:
+        base_total = self.commercial_base_total(production_total_pln)
+        margin_multiplier = 1.0 + (float(self.margin_percent) / 100.0)
+        return base_total * margin_multiplier
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -111,6 +126,10 @@ class FurnitureAssemblyDef:
                 for key, value in dict(self.decor_labels or {}).items()
                 if str(value or "").strip()
             },
+            "labor_cost_pln": float(self.labor_cost_pln),
+            "transport_cost_pln": float(self.transport_cost_pln),
+            "montage_cost_pln": float(self.montage_cost_pln),
+            "margin_percent": float(self.margin_percent),
             "items": [item.to_dict() for item in (self.items or [])],
         }
 
@@ -155,5 +174,9 @@ class FurnitureAssemblyDef:
                 for key, value in dict(data.get("decor_labels") or {}).items()
                 if str(value or "").strip()
             },
+            labor_cost_pln=float(data.get("labor_cost_pln", 0.0) or 0.0),
+            transport_cost_pln=float(data.get("transport_cost_pln", 0.0) or 0.0),
+            montage_cost_pln=float(data.get("montage_cost_pln", 0.0) or 0.0),
+            margin_percent=float(data.get("margin_percent", 0.0) or 0.0),
             items=items,
         )
