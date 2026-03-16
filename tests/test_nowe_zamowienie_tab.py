@@ -321,6 +321,64 @@ def test_nowe_zamowienie_tab_can_save_selected_architect_fragment(tmp_path, monk
     assert "Komplet / Kuchnia salon" in w.tbl_architect_attachments.item(1, 2).text()
 
 
+def test_nowe_zamowienie_tab_shows_offer_reference_preview_and_final_materials(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.tabs.zamowienie.tab_nowe_zamowienie import TabNoweZamowienie
+
+    image_path = tmp_path / "offer_ref.png"
+    image = QImage(220, 140, QImage.Format.Format_RGB32)
+    image.fill(QColor("#f1eadf"))
+    assert image.save(str(image_path))
+
+    w = TabNoweZamowienie()
+    w._set_quote_items(
+        [
+            {
+                "name": "RTV salon",
+                "kind": "RTV",
+                "description": "Szafka wiszaca i lamele",
+            }
+        ]
+    )
+    w._set_material_choices(
+        [
+            {
+                "scope": "Front",
+                "material": "MDF lakier",
+                "color": "Cashmere",
+                "code": "RAL 7044",
+                "status": "Wybrane finalnie",
+                "notes": "Wersja finalna",
+            }
+        ]
+    )
+    w._set_architect_attachments(
+        [
+            {
+                "path": str(image_path),
+                "kind": "Obraz",
+                "description": "Wizualizacja RTV",
+                "target_kind": "Oferta",
+                "target_name": "Oferta klienta",
+            }
+        ]
+    )
+    w._refresh_summary()
+
+    assert "RTV salon" in w.lab_offer_summary.text()
+    assert "Finalne materialy: 1" in w.lab_offer_summary.text()
+    assert w.tbl_offer_refs.rowCount() == 1
+    assert w.tbl_offer_refs.item(0, 0).text() == "offer_ref.png"
+    assert w.tbl_offer_refs.item(0, 1).text() == "Oferta klienta"
+    assert "Wizualizacja RTV" in w.tbl_offer_refs.item(0, 2).text()
+    assert w.lab_offer_ref_preview.pixmap() is not None
+    assert not w.lab_offer_ref_preview.pixmap().isNull()
+
+
 def test_nowe_zamowienie_tab_clear_removes_saved_draft(tmp_path, monkeypatch):
     monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TECH_MODUL_TESTING", "1")

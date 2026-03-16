@@ -240,6 +240,8 @@ class TabNoweZamowienie(QWidget):
         self._is_restoring_draft = False
         self._architect_preview_pages: list[dict[str, object]] = []
         self._architect_preview_header = ""
+        self._offer_reference_items: list[dict[str, str]] = []
+        self._offer_reference_pixmap = QPixmap()
 
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 18, 18, 18)
@@ -1388,6 +1390,45 @@ class TabNoweZamowienie(QWidget):
         self.tbl_order_materials.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         layout.addWidget(self.tbl_order_materials)
 
+        offer_title = QLabel("Oferta klienta")
+        offer_title.setStyleSheet("font-weight:600; color:#333333;")
+        layout.addWidget(offer_title)
+
+        self.lab_offer_summary = QLabel("")
+        self.lab_offer_summary.setWordWrap(True)
+        self.lab_offer_summary.setStyleSheet(
+            "color:#334155; background:#fffdf7; border:1px solid #eadfcb; border-radius:6px; padding:8px;"
+        )
+        layout.addWidget(self.lab_offer_summary)
+
+        self.tbl_offer_refs = QTableWidget(0, 3, self.grp_summary)
+        self.tbl_offer_refs.setHorizontalHeaderLabels(["Plik", "Cel", "Opis"])
+        self.tbl_offer_refs.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tbl_offer_refs.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.tbl_offer_refs.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl_offer_refs.verticalHeader().setVisible(False)
+        self.tbl_offer_refs.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_offer_refs.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_offer_refs.horizontalHeader().setStretchLastSection(True)
+        self.tbl_offer_refs.setAlternatingRowColors(True)
+        self.tbl_offer_refs.setMinimumHeight(130)
+        layout.addWidget(self.tbl_offer_refs)
+
+        self.lab_offer_ref_info = QLabel("Brak obrazow przypietych do oferty.")
+        self.lab_offer_ref_info.setWordWrap(True)
+        self.lab_offer_ref_info.setStyleSheet("color:#4b5563;")
+        layout.addWidget(self.lab_offer_ref_info)
+
+        self.lab_offer_ref_preview = QLabel("Brak podgladu obrazu oferty.")
+        self.lab_offer_ref_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lab_offer_ref_preview.setMinimumHeight(180)
+        self.lab_offer_ref_preview.setStyleSheet(
+            "border:1px solid #e5dccd; background:#fcfaf6; color:#6b7280; padding:6px;"
+        )
+        layout.addWidget(self.lab_offer_ref_preview)
+
+        self.tbl_offer_refs.itemSelectionChanged.connect(self._on_offer_reference_selection_changed)
+
     def _build_metric_card(self, title: str) -> tuple[QFrame, QLabel]:
         card = QFrame(self.grp_summary)
         card.setFrameShape(QFrame.Shape.StyledPanel)
@@ -1558,9 +1599,138 @@ class TabNoweZamowienie(QWidget):
         )
         if final_material_parts:
             self.lab_summary.setText(self.lab_summary.text() + "\nWybrane: " + "; ".join(final_material_parts))
+        quote_names = [
+            str(entry.get("name", "") or "").strip()
+            for entry in self._quote_items
+            if str(entry.get("name", "") or "").strip()
+        ]
+        offer_lines = [
+            f"Pozycje do oferty: {', '.join(quote_names[:4]) if quote_names else '-'}",
+            f"Finalne materialy: {len(final_material_choices)}",
+            f"Referencje obrazu do oferty: {len(self._collect_offer_reference_attachments())}",
+        ]
+        if final_material_parts:
+            offer_lines.append("Wybrane materialy: " + "; ".join(final_material_parts[:3]))
+        self.lab_offer_summary.setText("\n".join(offer_lines))
         self._refresh_order_walls_table()
         self._refresh_order_cost_summary()
+        self._refresh_offer_references()
         self._autosave_draft()
+
+    def _collect_offer_reference_attachments(self) -> list[dict[str, str]]:
+        results: list[dict[str, str]] = []
+        seen_paths: set[str] = set()
+        for attachment in list(self._architect_attachments):
+            path = str(attachment.get("path", "") or "").strip()
+            if not path or path in seen_paths:
+                continue
+            kind = str(attachment.get("kind", "") or "").strip().lower()
+            suffix = Path(path).suffix.lower()
+            if kind not in {"obraz", "referencja"} and suffix not in {".png", ".jpg", ".jpeg", ".bmp", ".webp"}:
+                continue
+            target_kind = str(attachment.get("target_kind", "") or "").strip()
+            if target_kind.lower() != "oferta":
+                continue
+            seen_paths.add(path)
+            results.append(
+                {
+                    "path": path,
+                    "target": str(attachment.get("target_name", "") or "").strip() or "Oferta",
+                    "description": str(attachment.get("description", "") or "").strip(),
+                }
+            )
+        return results
+
+    def _refresh_offer_references(self) -> None:
+        if not hasattr(self, "tbl_offer_refs"):
+            return
+        selected_path = self._selected_offer_reference_path()
+        self._offer_reference_items = self._collect_offer_reference_attachments()
+        self.tbl_offer_refs.setRowCount(len(self._offer_reference_items))
+        for row, entry in enumerate(self._offer_reference_items):
+            path_item = QTableWidgetItem(Path(str(entry.get("path", "") or "")).name)
+            path_item.setData(Qt.ItemDataRole.UserRole, str(entry.get("path", "") or ""))
+            target_item = QTableWidgetItem(str(entry.get("target", "") or "Oferta"))
+            description_item = QTableWidgetItem(str(entry.get("description", "") or "-"))
+            self.tbl_offer_refs.setItem(row, 0, path_item)
+            self.tbl_offer_refs.setItem(row, 1, target_item)
+            self.tbl_offer_refs.setItem(row, 2, description_item)
+        self.tbl_offer_refs.resizeColumnsToContents()
+
+        if self._offer_reference_items:
+            target_row = 0
+            if selected_path:
+                for row in range(self.tbl_offer_refs.rowCount()):
+                    item = self.tbl_offer_refs.item(row, 0)
+                    if item is not None and str(item.data(Qt.ItemDataRole.UserRole) or "") == selected_path:
+                        target_row = row
+                        break
+            self.tbl_offer_refs.selectRow(target_row)
+        else:
+            self.tbl_offer_refs.clearSelection()
+            self._offer_reference_pixmap = QPixmap()
+            self.lab_offer_ref_info.setText("Brak obrazow przypietych do oferty.")
+            self.lab_offer_ref_preview.setPixmap(QPixmap())
+            self.lab_offer_ref_preview.setText("Brak podgladu obrazu oferty.")
+
+    def _selected_offer_reference_path(self) -> str:
+        selection = (
+            self.tbl_offer_refs.selectionModel().selectedRows()
+            if self.tbl_offer_refs.selectionModel() is not None
+            else []
+        )
+        if not selection:
+            return ""
+        item = self.tbl_offer_refs.item(int(selection[0].row()), 0)
+        if item is None:
+            return ""
+        return str(item.data(Qt.ItemDataRole.UserRole) or "").strip()
+
+    def _update_offer_reference_preview(self) -> None:
+        if self._offer_reference_pixmap.isNull():
+            self.lab_offer_ref_preview.setPixmap(QPixmap())
+            return
+        target_size = self.lab_offer_ref_preview.size()
+        scaled = self._offer_reference_pixmap.scaled(
+            max(40, target_size.width() - 12),
+            max(40, target_size.height() - 12),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.lab_offer_ref_preview.setPixmap(scaled)
+
+    def _on_offer_reference_selection_changed(self) -> None:
+        selection = (
+            self.tbl_offer_refs.selectionModel().selectedRows()
+            if self.tbl_offer_refs.selectionModel() is not None
+            else []
+        )
+        if not selection:
+            self._offer_reference_pixmap = QPixmap()
+            self.lab_offer_ref_info.setText("Brak obrazow przypietych do oferty.")
+            self.lab_offer_ref_preview.setPixmap(QPixmap())
+            self.lab_offer_ref_preview.setText("Brak podgladu obrazu oferty.")
+            return
+        row = int(selection[0].row())
+        if row < 0 or row >= len(self._offer_reference_items):
+            return
+        entry = self._offer_reference_items[row]
+        path = str(entry.get("path", "") or "").strip()
+        info_parts = [
+            Path(path).name,
+            str(entry.get("target", "") or "").strip(),
+            str(entry.get("description", "") or "").strip(),
+        ]
+        self.lab_offer_ref_info.setText(" | ".join(part for part in info_parts if part))
+        pixmap = QPixmap(path)
+        if pixmap.isNull():
+            self._offer_reference_pixmap = QPixmap()
+            self.lab_offer_ref_preview.setPixmap(QPixmap())
+            self.lab_offer_ref_preview.setText("Nie udalo sie odczytac obrazu oferty.")
+            return
+        self._offer_reference_pixmap = pixmap
+        self.lab_offer_ref_preview.setText("")
+        self._update_offer_reference_preview()
 
     def _current_order_wall_names(self) -> list[str]:
         order_code = str(self.ed_order_code.text().strip())

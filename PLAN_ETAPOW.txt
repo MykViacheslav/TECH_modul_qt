@@ -342,8 +342,16 @@ Do wdrozenia:
   - Sciana
   - Komplet
 
+[DONE] Podstawowy podglad oferty klienta:
+- blok "Oferta klienta" w karcie Nowe zamowienie
+- pokazuje:
+  - pozycje do oferty
+  - liczbe finalnych wyborow materialowych
+  - obrazowe referencje przypiete do celu "Oferta"
+- wybrana referencja oferty ma podglad obrazu na miejscu
+
 [TODO] Dalsza praca z PDF od architekta:
-- wykorzystanie fragmentu w ofercie
+- eksport / wydruk oferty z tymi referencjami
 - lepsze powiazanie zalacznikow z pozycjami do wyceny
 
 
