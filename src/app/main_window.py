@@ -1,16 +1,67 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QHBoxLayout, QMainWindow, QPushButton, QTabWidget, QWidget
+from PyQt6.QtGui import QFont
+from PyQt6.QtWidgets import QApplication, QHBoxLayout, QMainWindow, QPushButton, QTabWidget, QWidget
 
 from src.tabs.registry import build_tabs
+
+
+def _apply_accessible_ui_scale() -> None:
+    app = QApplication.instance()
+    if app is None:
+        return
+    if bool(app.property("_tech_modul_accessible_scale_applied")):
+        return
+
+    base_font = QFont(app.font())
+    point_size = base_font.pointSizeF()
+    if point_size <= 0:
+        point_size = 9.0
+    base_font.setPointSizeF(max(point_size * 1.18, 11.5))
+    app.setFont(base_font)
+
+    app.setStyleSheet(
+        """
+        QTabBar::tab {
+            min-height: 34px;
+            min-width: 88px;
+            padding: 4px 10px;
+        }
+        QPushButton,
+        QComboBox,
+        QLineEdit,
+        QSpinBox,
+        QDoubleSpinBox,
+        QTextEdit,
+        QPlainTextEdit,
+        QListWidget,
+        QTreeWidget,
+        QTableWidget {
+            font-size: 13px;
+        }
+        QPushButton,
+        QComboBox,
+        QLineEdit,
+        QSpinBox,
+        QDoubleSpinBox {
+            min-height: 30px;
+        }
+        QHeaderView::section {
+            min-height: 26px;
+            padding: 4px 6px;
+        }
+        """
+    )
+    app.setProperty("_tech_modul_accessible_scale_applied", True)
 
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
+        _apply_accessible_ui_scale()
         self.setWindowTitle("TECH_modul")
-        self.resize(1400, 900)
+        self.resize(1560, 980)
 
         self.tabs = QTabWidget(self)
         self.setCentralWidget(self.tabs)

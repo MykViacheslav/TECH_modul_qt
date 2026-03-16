@@ -25,6 +25,22 @@ def test_main_window_has_start_order_modul_komplet_sciana_bazy_and_ustawienia_ta
     assert w.btn_nav_home.isEnabled() is False
 
 
+def test_main_window_applies_accessible_ui_scale_defaults(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+    app.setProperty("_tech_modul_accessible_scale_applied", False)
+    app.setStyleSheet("")
+
+    w = MainWindow()
+
+    assert bool(app.property("_tech_modul_accessible_scale_applied")) is True
+    assert w.width() == 1560
+    assert w.height() == 980
+    assert "QTabBar::tab" in app.styleSheet()
+
+
 def test_main_window_can_open_assembly_from_bazy_signal(tmp_path, monkeypatch):
     monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TECH_MODUL_TESTING", "1")

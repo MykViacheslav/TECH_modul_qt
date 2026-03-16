@@ -171,6 +171,10 @@ Zrobione w Etapie 1:
 - lepiej widac, ktore obszary trzeba dalej upraszczac pod szybka wycene
 - mamy juz dobry fundament pod biblioteke gotowych modulow
 - mamy juz fundament pod osobne koszty kompletow i zamowienia
+- poprawiona czytelnosc calej aplikacji:
+  - wiekszy globalny font
+  - wyzsze pola i przyciski
+  - wiekszy startowy rozmiar okna
 
 Jeszcze do zrobienia w Etapie 1:
 [TODO] Komplet:
