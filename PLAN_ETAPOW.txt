@@ -626,7 +626,10 @@ Do wdrozenia:
   - dodatkowe notatki i filtrowanie
   - powiazanie z konkretnym etapem
 - dopiac czas pracy do wyceny i kosztu robocizny:
-  - koszt godzin do projektu
+  - [DONE] pierwszy most Czas pracy -> Wycena:
+    - odczyt robocizny po kodzie projektu / zamowienia
+    - pokazanie kosztu godzin w karcie Wycena
+    - przepisanie do pola Robocizna jednym kliknieciem
   - koszt godzin do pracownika
   - porownanie planowane vs realne godziny
 - dopracowac rozliczanie czasu pracy:

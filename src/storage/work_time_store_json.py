@@ -32,6 +32,15 @@ class WorkTimeStoreJson:
             return WorkerMonthSheetDef.from_dict(raw)
         return WorkerMonthSheetDef(worker_name=worker_name, year=int(year), month=int(month))
 
+    def list_sheets(self) -> list[WorkerMonthSheetDef]:
+        raw_all = self._read_all()
+        result: list[WorkerMonthSheetDef] = []
+        for key in sorted(raw_all.keys()):
+            raw = raw_all.get(key)
+            if isinstance(raw, dict):
+                result.append(WorkerMonthSheetDef.from_dict(raw))
+        return result
+
     def save_sheet(self, sheet: WorkerMonthSheetDef) -> StoreResult:
         data = self._read_all()
         data[self._key(sheet.worker_name, sheet.year, sheet.month)] = sheet.to_dict()

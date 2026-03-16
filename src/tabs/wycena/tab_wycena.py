@@ -26,6 +26,8 @@ from src.storage.assembly_store_json import AssemblyStoreJson
 from src.storage.catalog_store_json import CatalogStoreJson
 from src.storage.order_store_json import OrderStoreJson
 from src.storage.wall_store_json import WallStoreJson
+from src.storage.work_time_store_json import WorkTimeStoreJson
+from src.storage.worker_store_json import WorkerStoreJson
 
 
 class TabWycena(QWidget):
@@ -36,12 +38,16 @@ class TabWycena(QWidget):
         order_store: OrderStoreJson | None = None,
         wall_store: WallStoreJson | None = None,
         catalog: CatalogStoreJson | None = None,
+        worker_store: WorkerStoreJson | None = None,
+        work_time_store: WorkTimeStoreJson | None = None,
     ) -> None:
         super().__init__(parent)
         self._assembly_store = assembly_store if assembly_store is not None else AssemblyStoreJson()
         self._order_store = order_store if order_store is not None else OrderStoreJson()
         self._wall_store = wall_store if wall_store is not None else WallStoreJson()
         self._catalog = catalog if catalog is not None else CatalogStoreJson()
+        self._worker_store = worker_store if worker_store is not None else WorkerStoreJson()
+        self._work_time_store = work_time_store if work_time_store is not None else WorkTimeStoreJson()
         self._rows: list[dict[str, object]] = []
         self._is_loading = False
 
@@ -176,6 +182,22 @@ class TabWycena(QWidget):
         editor_layout.addWidget(self.lab_status)
         right_layout.addWidget(editor, 0)
 
+        work_time_box = QFrame(right)
+        work_time_box.setStyleSheet("QFrame { border: 1px solid #d9e0ea; border-radius: 8px; background: #ffffff; }")
+        work_time_layout = QFormLayout(work_time_box)
+        work_time_layout.setContentsMargins(12, 12, 12, 12)
+        self.lab_time_days = QLabel("0", work_time_box)
+        self.lab_time_hours = QLabel("0.00 h", work_time_box)
+        self.lab_time_extra = QLabel("0.00 zl", work_time_box)
+        self.lab_time_cost = QLabel("0.00 zl", work_time_box)
+        self.btn_load_labor_from_time = QPushButton("Pobierz do robocizny", work_time_box)
+        work_time_layout.addRow("Dni z czasu pracy", self.lab_time_days)
+        work_time_layout.addRow("Godziny z czasu pracy", self.lab_time_hours)
+        work_time_layout.addRow("Dodatki", self.lab_time_extra)
+        work_time_layout.addRow("Koszt robocizny", self.lab_time_cost)
+        work_time_layout.addRow("", self.btn_load_labor_from_time)
+        right_layout.addWidget(work_time_box, 0)
+
         order_box = QFrame(right)
         order_box.setStyleSheet("QFrame { border: 1px solid #d9e0ea; border-radius: 8px; background: #ffffff; }")
         order_layout = QFormLayout(order_box)
@@ -198,6 +220,7 @@ class TabWycena(QWidget):
         self.tbl_assemblies.itemSelectionChanged.connect(self._on_selection_changed)
         self.btn_save.clicked.connect(self._on_save)
         self.btn_clear.clicked.connect(self._on_clear)
+        self.btn_load_labor_from_time.clicked.connect(self._on_load_labor_from_time)
         self.sp_labor.valueChanged.connect(self._refresh_editor_totals)
         self.sp_transport.valueChanged.connect(self._refresh_editor_totals)
         self.sp_montage.valueChanged.connect(self._refresh_editor_totals)
@@ -252,6 +275,45 @@ class TabWycena(QWidget):
         sale_total = assembly.commercial_sale_total(technical_total)
         profit_total = sale_total - base_total
         return technical_total, base_total, sale_total, profit_total
+
+    def _compute_work_time_cost(self, assembly) -> tuple[int, float, float, float]:
+        project_codes = {
+            str(getattr(assembly, "order_name", "") or "").strip(),
+            str(getattr(assembly, "name", "") or "").strip(),
+        }
+        project_codes = {code for code in project_codes if code}
+        if not project_codes:
+            return 0, 0.0, 0.0, 0.0
+
+        matched_days: set[tuple[str, str]] = set()
+        daily_costs: dict[tuple[str, str], float] = {}
+        hourly_cost = 0.0
+        overtime_cost = 0.0
+        extra_total = 0.0
+        total_hours = 0.0
+
+        for sheet in self._work_time_store.list_sheets():
+            worker = self._worker_store.get(str(sheet.worker_name or "").strip())
+            pay_mode = str(getattr(worker, "pay_mode", "Godzinowa") or "Godzinowa").strip() or "Godzinowa"
+            hourly_rate = float(getattr(worker, "hourly_rate", 0.0) or 0.0)
+            daily_rate = float(getattr(worker, "daily_rate", 0.0) or 0.0)
+            for entry in sheet.entries:
+                project_code = str(getattr(entry, "project_code", "") or "").strip()
+                if project_code not in project_codes:
+                    continue
+                date_iso = str(getattr(entry, "date_iso", "") or "").strip()
+                day_key = (str(sheet.worker_name or "").strip(), date_iso)
+                matched_days.add(day_key)
+                total_hours += float(getattr(entry, "hours", 0.0) or 0.0)
+                extra_total += float(getattr(entry, "extra_pay", 0.0) or 0.0)
+                overtime_cost += float(getattr(entry, "overtime_hours", 0.0) or 0.0) * hourly_rate
+                if pay_mode == "Dniowka":
+                    daily_costs[day_key] = daily_rate
+                else:
+                    hourly_cost += float(getattr(entry, "hours", 0.0) or 0.0) * hourly_rate
+
+        total_cost = round(hourly_cost + sum(daily_costs.values()) + overtime_cost + extra_total, 2)
+        return len(matched_days), round(total_hours, 2), round(extra_total, 2), total_cost
 
     def refresh_data(self) -> None:
         assemblies = self._assembly_store.list_assemblies()
@@ -361,6 +423,11 @@ class TabWycena(QWidget):
                 self.lab_base_total.setText("0.00 zl")
                 self.lab_sale_total.setText("0.00 zl")
                 self.lab_profit_total.setText("0.00 zl")
+                self.lab_time_days.setText("0")
+                self.lab_time_hours.setText("0.00 h")
+                self.lab_time_extra.setText("0.00 zl")
+                self.lab_time_cost.setText("0.00 zl")
+                self.btn_load_labor_from_time.setEnabled(False)
                 return
             self.lab_selected.setText(
                 f'Komplet: {assembly.name} | Zamowienie: {assembly.order_name or "-"} | Klient: {assembly.client_name or "-"}'
@@ -369,6 +436,12 @@ class TabWycena(QWidget):
             self.sp_transport.setValue(float(getattr(assembly, "transport_cost_pln", 0.0) or 0.0))
             self.sp_montage.setValue(float(getattr(assembly, "montage_cost_pln", 0.0) or 0.0))
             self.sp_margin.setValue(float(getattr(assembly, "margin_percent", 0.0) or 0.0))
+            tracked_days, tracked_hours, tracked_extra, tracked_cost = self._compute_work_time_cost(assembly)
+            self.lab_time_days.setText(str(tracked_days))
+            self.lab_time_hours.setText(f"{tracked_hours:.2f} h")
+            self.lab_time_extra.setText(f"{tracked_extra:.2f} zl")
+            self.lab_time_cost.setText(f"{tracked_cost:.2f} zl")
+            self.btn_load_labor_from_time.setEnabled(tracked_cost > 0.0)
             self._refresh_editor_totals()
         finally:
             self._is_loading = False
@@ -415,6 +488,15 @@ class TabWycena(QWidget):
         result = self._assembly_store.overwrite(assembly)
         self._refresh_table()
         self._set_status("Wyczyszczono kalkulacje handlowa." if result.ok else result.message_pl, ok=result.ok)
+
+    def _on_load_labor_from_time(self) -> None:
+        assembly = self._selected_assembly()
+        if assembly is None:
+            self._set_status("Wybierz komplet z listy.", ok=False)
+            return
+        _days, _hours, _extra, tracked_cost = self._compute_work_time_cost(assembly)
+        self.sp_labor.setValue(float(tracked_cost))
+        self._set_status("Przepisano robocizne z Czas pracy.", ok=True)
 
     def _set_status(self, message: str, ok: bool) -> None:
         color = "#2d6a4f" if ok else "#b42318"
