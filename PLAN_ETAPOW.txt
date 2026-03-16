@@ -252,6 +252,20 @@ Do wdrozenia:
     - standardy
     - niestandardowe
 
+[DONE] Podstawowe szybkie zmiany handlowe w komplecie:
+- blok "Materialy kompletu" ma teraz szybki preset handlowy
+- gotowe warianty:
+  - Standard bialy
+  - Deb premium
+  - Szafa grafit
+  - Witryna premium
+- jeden klik ustawia od razu:
+  - profil zestawu
+  - korpus
+  - front
+  - plecy
+- mozna tez szybko wyczyscic nadpisania materialowe i wracac do profilu bazowego
+
 [DONE] Materialy od architekta w zamowieniu:
 - blok "Zalaczniki od architekta" w karcie Nowe zamowienie
 - mozliwosc przypiecia PDF / obrazu / referencji do zamowienia
@@ -308,11 +322,10 @@ Do wdrozenia:
 - prosty i przewidywalny drag
 - szybka zmiana szerokosci / wysokosci / glebokosci tylko tam, gdzie to potrzebne
 
-[TODO] Szybkie zmiany handlowe:
-- korpus
-- front
-- kolor / dekor
-- okucia
+[TODO] Rozszerzone szybkie zmiany handlowe:
+- kolor / dekor po calym komplecie
+- gotowe warianty okuć
+- szybsze przelaczanie materialow pod konkretne kolekcje firmowe
 
 [TODO] Glosowe uzupelnianie prostych pol:
 - klient

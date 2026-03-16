@@ -1966,6 +1966,7 @@ class TabSciana(QWidget):
         splitter.setSizes([330, 1080, 300])
 
         self._reload_profiles()
+        self._reload_quick_material_presets()
         self._reload_material_choices()
         self._reload_worker_choices()
         self._reload_saved_walls()
@@ -1978,6 +1979,8 @@ class TabSciana(QWidget):
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
+        self._reload_profiles()
+        self._reload_quick_material_presets()
         self._reload_material_choices()
         self._reload_worker_choices(current_worker=str(getattr(self._assembly, "worker_name", "") or ""))
         self._reload_saved_walls()
@@ -2031,6 +2034,14 @@ class TabSciana(QWidget):
         self.cb_material_carcass = QComboBox()
         self.cb_material_front = QComboBox()
         self.cb_material_back = QComboBox()
+        self.cb_quick_material_preset = QComboBox()
+        self.cb_quick_material_preset.setMinimumContentsLength(18)
+        self.cb_quick_material_preset.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContentsOnFirstShow)
+        self.btn_apply_material_preset = QPushButton("Zastosuj")
+        self.btn_clear_material_overrides = QPushButton("Wyczysc nadpisania")
+        self.lab_material_preset_hint = QLabel("")
+        self.lab_material_preset_hint.setWordWrap(True)
+        self.lab_material_preset_hint.setStyleSheet("color:#666666;")
         self.ed_client = QLineEdit()
         self.ed_client.setReadOnly(True)
         self.ed_order = QLineEdit()
@@ -2087,9 +2098,18 @@ class TabSciana(QWidget):
 
         self.box_materials = QGroupBox("", panel)
         materials_form = QFormLayout(self.box_materials)
+        preset_row = QWidget(self.box_materials)
+        preset_row_layout = QHBoxLayout(preset_row)
+        preset_row_layout.setContentsMargins(0, 0, 0, 0)
+        preset_row_layout.setSpacing(6)
+        preset_row_layout.addWidget(self.cb_quick_material_preset, 1)
+        preset_row_layout.addWidget(self.btn_apply_material_preset, 0)
+        materials_form.addRow("Szybki preset", preset_row)
         materials_form.addRow("Korpus", self.cb_material_carcass)
         materials_form.addRow("Front", self.cb_material_front)
         materials_form.addRow("Plecy", self.cb_material_back)
+        materials_form.addRow("", self.btn_clear_material_overrides)
+        materials_form.addRow("", self.lab_material_preset_hint)
 
         self.block_materials = CollapsibleBlock("Materialy kompletu", panel)
         self.block_materials.content_layout().addWidget(self.box_materials)
@@ -2182,6 +2202,9 @@ class TabSciana(QWidget):
         self.sp_gap.valueChanged.connect(self._on_assembly_changed)
         self.cb_profile.currentIndexChanged.connect(self._on_assembly_changed)
         self.chk_force_hardware.toggled.connect(self._on_assembly_changed)
+        self.cb_quick_material_preset.currentIndexChanged.connect(self._refresh_quick_material_preset_hint)
+        self.btn_apply_material_preset.clicked.connect(self._apply_selected_quick_material_preset)
+        self.btn_clear_material_overrides.clicked.connect(self._clear_material_overrides)
         self.cb_material_carcass.currentIndexChanged.connect(self._on_assembly_changed)
         self.cb_material_front.currentIndexChanged.connect(self._on_assembly_changed)
         self.cb_material_back.currentIndexChanged.connect(self._on_assembly_changed)
@@ -2665,6 +2688,34 @@ class TabSciana(QWidget):
             self.cb_profile.setCurrentIndex(idx)
         self.cb_profile.blockSignals(False)
 
+    def _reload_quick_material_presets(self) -> None:
+        current_key = str(self.cb_quick_material_preset.currentData() or "")
+        assembly_key = str(getattr(self._assembly, "material_profile_key", "STD_WHITE") or "STD_WHITE")
+        profiles = self._catalog.list_material_profiles()
+
+        self.cb_quick_material_preset.blockSignals(True)
+        self.cb_quick_material_preset.clear()
+        self.cb_quick_material_preset.addItem("[bez szybkiego presetu]", "")
+        self.cb_quick_material_preset.setItemData(
+            0,
+            "Pozostawia reczne ustawienie materialow bez gotowego wariantu handlowego.",
+            Qt.ItemDataRole.ToolTipRole,
+        )
+        for profile in profiles:
+            label = profile.name_pl
+            self.cb_quick_material_preset.addItem(label, profile.key)
+            index = self.cb_quick_material_preset.count() - 1
+            self.cb_quick_material_preset.setItemData(index, str(getattr(profile, "description", "") or ""), Qt.ItemDataRole.ToolTipRole)
+
+        idx = self.cb_quick_material_preset.findData(current_key)
+        if idx < 0:
+            idx = self.cb_quick_material_preset.findData(assembly_key)
+        if idx < 0:
+            idx = 0
+        self.cb_quick_material_preset.setCurrentIndex(idx)
+        self.cb_quick_material_preset.blockSignals(False)
+        self._refresh_quick_material_preset_hint()
+
     def _material_label(self, material) -> str:
         label = f"{material.key} ({material.thickness_mm:g} mm) - {material.name_pl}"
         extras: list[str] = []
@@ -2702,6 +2753,64 @@ class TabSciana(QWidget):
         fill(self.cb_material_carcass, current_values["carcass"])
         fill(self.cb_material_front, current_values["front"])
         fill(self.cb_material_back, current_values["back"])
+
+    def _refresh_quick_material_preset_hint(self) -> None:
+        preset_key = str(self.cb_quick_material_preset.currentData() or "").strip()
+        if not preset_key:
+            self.lab_material_preset_hint.setText(
+                "Jeden klik ustawia typowy wariant handlowy dla korpusu, frontu i plecow."
+            )
+            return
+
+        description = ""
+        for profile in self._catalog.list_material_profiles():
+            if str(getattr(profile, "key", "") or "").strip() == preset_key:
+                description = str(getattr(profile, "description", "") or "").strip()
+                break
+        if not description:
+            description = f"Gotowy wariant handlowy: {preset_key}."
+        self.lab_material_preset_hint.setText(description)
+
+    def _set_material_combo_to_key(self, cb: QComboBox, material_key: str) -> None:
+        normalized_key = str(material_key or "").strip()
+        idx = cb.findData(normalized_key)
+        cb.setCurrentIndex(idx if idx >= 0 else 0)
+
+    def _apply_selected_quick_material_preset(self) -> None:
+        preset_key = str(self.cb_quick_material_preset.currentData() or "").strip()
+        if not preset_key:
+            return
+
+        profile = self._catalog.get_material_profile(preset_key)
+        self._is_pushing_ui = True
+        try:
+            profile_idx = self.cb_profile.findData(profile.key)
+            if profile_idx >= 0:
+                self.cb_profile.setCurrentIndex(profile_idx)
+            self._set_material_combo_to_key(
+                self.cb_material_carcass,
+                str(profile.material_map.get("carcass", profile.material_map.get("side", "")) or ""),
+            )
+            self._set_material_combo_to_key(self.cb_material_front, str(profile.material_map.get("front", "") or ""))
+            self._set_material_combo_to_key(self.cb_material_back, str(profile.material_map.get("back", "") or ""))
+        finally:
+            self._is_pushing_ui = False
+
+        self._refresh_quick_material_preset_hint()
+        self._pull_ui_to_assembly()
+        self._rebuild_assembly()
+
+    def _clear_material_overrides(self) -> None:
+        self._is_pushing_ui = True
+        try:
+            self.cb_material_carcass.setCurrentIndex(0)
+            self.cb_material_front.setCurrentIndex(0)
+            self.cb_material_back.setCurrentIndex(0)
+        finally:
+            self._is_pushing_ui = False
+
+        self._pull_ui_to_assembly()
+        self._rebuild_assembly()
 
     def _reload_worker_choices(self, current_worker: str = "") -> None:
         current_worker = str(current_worker or "").strip()
@@ -3117,6 +3226,8 @@ class TabSciana(QWidget):
                 idx = 0
             if idx >= 0:
                 self.cb_profile.setCurrentIndex(idx)
+            quick_idx = self.cb_quick_material_preset.findData(profile_key)
+            self.cb_quick_material_preset.setCurrentIndex(quick_idx if quick_idx >= 0 else 0)
 
             material_overrides = dict(getattr(self._assembly, "material_overrides", {}) or {})
 
@@ -3128,6 +3239,7 @@ class TabSciana(QWidget):
             set_material_combo(self.cb_material_carcass, "carcass")
             set_material_combo(self.cb_material_front, "front")
             set_material_combo(self.cb_material_back, "back")
+            self._refresh_quick_material_preset_hint()
         finally:
             self._is_pushing_ui = False
 

@@ -1715,6 +1715,33 @@ def test_sciana_tab_applies_wall_inheritance_and_profile(tmp_path, monkeypatch):
     assert resolved.hinge_vendor == "blum"
 
 
+def test_sciana_tab_quick_material_preset_applies_profile_and_overrides(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    w = TabSciana()
+    preset_idx = w.cb_quick_material_preset.findData("WARDROBE_GRAPHITE")
+    assert preset_idx >= 0
+
+    w.cb_quick_material_preset.setCurrentIndex(preset_idx)
+    w.btn_apply_material_preset.click()
+    app.processEvents()
+
+    assert str(w.cb_profile.currentData() or "") == "WARDROBE_GRAPHITE"
+    assert str(w.cb_material_carcass.currentData() or "") == "PB16"
+    assert str(w.cb_material_front.currentData() or "") == "MDF19"
+    assert str(w.cb_material_back.currentData() or "") == "HDF3"
+    assert str(w._assembly.material_profile_key or "") == "WARDROBE_GRAPHITE"
+    assert dict(w._assembly.material_overrides or {}) == {
+        "carcass": "PB16",
+        "front": "MDF19",
+        "back": "HDF3",
+    }
+
+
 def test_sciana_tab_can_bind_assembly_to_saved_wall_and_metadata(tmp_path, monkeypatch):
     monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TECH_MODUL_TESTING", "1")
