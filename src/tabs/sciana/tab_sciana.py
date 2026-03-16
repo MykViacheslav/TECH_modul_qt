@@ -377,7 +377,11 @@ class AssemblyPreviewView(QGraphicsView):
     sig_module_position_changed = pyqtSignal(int, float, float)
     sig_module_top_position_changed = pyqtSignal(int, float, float)
     sig_apply_module_height_to_selected = pyqtSignal(int)
+    sig_apply_module_width_to_selected = pyqtSignal(int)
+    sig_apply_module_depth_to_selected = pyqtSignal(int)
     sig_apply_module_front_material_to_selected = pyqtSignal(int)
+    sig_apply_module_carcass_material_to_selected = pyqtSignal(int)
+    sig_apply_module_back_material_to_selected = pyqtSignal(int)
 
     def __init__(
         self,
@@ -1885,7 +1889,12 @@ class AssemblyPreviewView(QGraphicsView):
             act_toggle = menu.addAction("Dodaj ten modul do zaznaczenia (Ctrl)")
         menu.addSeparator()
         act_apply_height = menu.addAction("Przepisz wysokosc tego modulu do zaznaczonych")
+        act_apply_width = menu.addAction("Przepisz szerokosc tego modulu do zaznaczonych")
+        act_apply_depth = menu.addAction("Przepisz glebokosc tego modulu do zaznaczonych")
+        menu.addSeparator()
         act_apply_front = menu.addAction("Przepisz material frontu do zaznaczonych")
+        act_apply_carcass = menu.addAction("Przepisz material korpusu do zaznaczonych")
+        act_apply_back = menu.addAction("Przepisz material plecow do zaznaczonych")
 
         chosen = menu.exec(self.viewport().mapToGlobal(event.pos()))
         if chosen == act_select_only:
@@ -1900,8 +1909,24 @@ class AssemblyPreviewView(QGraphicsView):
             self.sig_apply_module_height_to_selected.emit(index)
             event.accept()
             return
+        if chosen == act_apply_width:
+            self.sig_apply_module_width_to_selected.emit(index)
+            event.accept()
+            return
+        if chosen == act_apply_depth:
+            self.sig_apply_module_depth_to_selected.emit(index)
+            event.accept()
+            return
         if chosen == act_apply_front:
             self.sig_apply_module_front_material_to_selected.emit(index)
+            event.accept()
+            return
+        if chosen == act_apply_carcass:
+            self.sig_apply_module_carcass_material_to_selected.emit(index)
+            event.accept()
+            return
+        if chosen == act_apply_back:
+            self.sig_apply_module_back_material_to_selected.emit(index)
             event.accept()
             return
         super().contextMenuEvent(event)
@@ -2191,7 +2216,11 @@ class TabSciana(QWidget):
         self.preview.sig_module_selection_requested.connect(self._on_preview_module_selection_requested)
         self.preview.sig_module_selection_group_requested.connect(self._on_preview_module_selection_group_requested)
         self.preview.sig_apply_module_height_to_selected.connect(self._on_preview_apply_height_to_selected)
+        self.preview.sig_apply_module_width_to_selected.connect(self._on_preview_apply_width_to_selected)
+        self.preview.sig_apply_module_depth_to_selected.connect(self._on_preview_apply_depth_to_selected)
         self.preview.sig_apply_module_front_material_to_selected.connect(self._on_preview_apply_front_material_to_selected)
+        self.preview.sig_apply_module_carcass_material_to_selected.connect(self._on_preview_apply_carcass_material_to_selected)
+        self.preview.sig_apply_module_back_material_to_selected.connect(self._on_preview_apply_back_material_to_selected)
         self.preview.sig_module_reordered.connect(self._on_preview_module_reordered)
         self.preview.sig_module_offset_changed.connect(self._on_preview_module_offset_changed)
         self.preview.sig_module_position_changed.connect(self._on_preview_module_position_changed)
@@ -2199,7 +2228,11 @@ class TabSciana(QWidget):
         self.preview_top.sig_module_selection_requested.connect(self._on_preview_module_selection_requested)
         self.preview_top.sig_module_selection_group_requested.connect(self._on_preview_module_selection_group_requested)
         self.preview_top.sig_apply_module_height_to_selected.connect(self._on_preview_apply_height_to_selected)
+        self.preview_top.sig_apply_module_width_to_selected.connect(self._on_preview_apply_width_to_selected)
+        self.preview_top.sig_apply_module_depth_to_selected.connect(self._on_preview_apply_depth_to_selected)
         self.preview_top.sig_apply_module_front_material_to_selected.connect(self._on_preview_apply_front_material_to_selected)
+        self.preview_top.sig_apply_module_carcass_material_to_selected.connect(self._on_preview_apply_carcass_material_to_selected)
+        self.preview_top.sig_apply_module_back_material_to_selected.connect(self._on_preview_apply_back_material_to_selected)
         self.preview_top.sig_module_top_position_changed.connect(self._on_preview_top_position_changed)
 
         splitter.addWidget(self.left_zone)
@@ -4264,6 +4297,32 @@ class TabSciana(QWidget):
         self._set_store_status(f"Przepisano wysokosc modulu do {len(targets)} zaznaczonych elementow.", ok=True)
         self._rebuild_assembly(select_indexes=targets)
 
+    def _on_preview_apply_width_to_selected(self, source_index: int) -> None:
+        source_index = int(source_index)
+        if source_index < 0 or source_index >= len(self._assembly.items):
+            return
+        targets = [index for index in self._selected_indexes() if 0 <= index < len(self._assembly.items)]
+        if not targets:
+            targets = [source_index]
+        source_width = float(getattr(self._assembly.items[source_index].module, "width_mm", 0.0) or 0.0)
+        for index in targets:
+            self._assembly.items[index].module.width_mm = source_width
+        self._set_store_status(f"Przepisano szerokosc modulu do {len(targets)} zaznaczonych elementow.", ok=True)
+        self._rebuild_assembly(select_indexes=targets)
+
+    def _on_preview_apply_depth_to_selected(self, source_index: int) -> None:
+        source_index = int(source_index)
+        if source_index < 0 or source_index >= len(self._assembly.items):
+            return
+        targets = [index for index in self._selected_indexes() if 0 <= index < len(self._assembly.items)]
+        if not targets:
+            targets = [source_index]
+        source_depth = float(getattr(self._assembly.items[source_index].module, "depth_mm", 0.0) or 0.0)
+        for index in targets:
+            self._assembly.items[index].module.depth_mm = source_depth
+        self._set_store_status(f"Glebokosc modulu przepisano do {len(targets)} zaznaczonych elementow.", ok=True)
+        self._rebuild_assembly(select_indexes=targets)
+
     def _on_preview_apply_front_material_to_selected(self, source_index: int) -> None:
         source_index = int(source_index)
         if source_index < 0 or source_index >= len(self._assembly.items):
@@ -4281,6 +4340,44 @@ class TabSciana(QWidget):
             material_map["front"] = source_front
             self._assembly.items[index].module.materials = material_map
         self._set_store_status(f'Przepisano material frontu "{source_front}" do {len(targets)} zaznaczonych elementow.', ok=True)
+        self._rebuild_assembly(select_indexes=targets)
+
+    def _on_preview_apply_carcass_material_to_selected(self, source_index: int) -> None:
+        source_index = int(source_index)
+        if source_index < 0 or source_index >= len(self._assembly.items):
+            return
+        targets = [index for index in self._selected_indexes() if 0 <= index < len(self._assembly.items)]
+        if not targets:
+            targets = [source_index]
+        source_materials = dict(getattr(self._assembly.items[source_index].module, "materials", {}) or {})
+        source_carcass = str(source_materials.get("carcass", "") or "").strip()
+        if not source_carcass:
+            self._set_store_status("Wybrany modul nie ma ustawionego materialu korpusu.", ok=False)
+            return
+        for index in targets:
+            material_map = dict(getattr(self._assembly.items[index].module, "materials", {}) or {})
+            material_map["carcass"] = source_carcass
+            self._assembly.items[index].module.materials = material_map
+        self._set_store_status(f'Przepisano material korpusu "{source_carcass}" do {len(targets)} zaznaczonych elementow.', ok=True)
+        self._rebuild_assembly(select_indexes=targets)
+
+    def _on_preview_apply_back_material_to_selected(self, source_index: int) -> None:
+        source_index = int(source_index)
+        if source_index < 0 or source_index >= len(self._assembly.items):
+            return
+        targets = [index for index in self._selected_indexes() if 0 <= index < len(self._assembly.items)]
+        if not targets:
+            targets = [source_index]
+        source_materials = dict(getattr(self._assembly.items[source_index].module, "materials", {}) or {})
+        source_back = str(source_materials.get("back", "") or "").strip()
+        if not source_back:
+            self._set_store_status("Wybrany modul nie ma ustawionego materialu plecow.", ok=False)
+            return
+        for index in targets:
+            material_map = dict(getattr(self._assembly.items[index].module, "materials", {}) or {})
+            material_map["back"] = source_back
+            self._assembly.items[index].module.materials = material_map
+        self._set_store_status(f'Przepisano material plecow "{source_back}" do {len(targets)} zaznaczonych elementow.', ok=True)
         self._rebuild_assembly(select_indexes=targets)
 
     def _on_preview_module_reordered(self, old_index: int, target_index: int) -> None:

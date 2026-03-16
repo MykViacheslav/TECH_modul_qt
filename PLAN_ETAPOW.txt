@@ -83,6 +83,18 @@ NOWY KIERUNEK PRODUKTU
 - nie kazda wycena przechodzi dalej do produkcji
 - dlatego szybki handlowy konfigurator jest wazniejszy niz natychmiastowy import techniczny
 
+[DONE] Wniosek po analizie arkusza "Szablon zmiany_27.06.xlsx":
+- arkusz jest wartosciowym zrodlem logiki wyceny i kategorii kosztowych
+- nie powinien byc wzorem calej aplikacji ani glownym silnikiem interfejsu
+- warto przenosic z niego:
+  - strukture kalkulacji
+  - kategorie kosztow
+  - materialy / obrobki / marze / transport / montaz
+- nie warto przenosic 1:1:
+  - dziesiatek arkuszy pozycyjnych
+  - tysiecy formul excela
+  - calej architektury szablonu
+
 
 --------------------------------------------------
 ETAP 1 - UX I CZYTELNOSC EKRANOW ROBOCZYCH
@@ -360,6 +372,11 @@ Do wdrozenia:
 - [DONE] grupowa zmiana wysokosci i materialow zaznaczonych modulow w komplecie
 - [DONE] ctrl+klik i szybkie akcje grupowe z preview w komplecie
 - [DONE] prostokatne zaznaczanie wielu modulow bezposrednio na preview
+- [DONE] szybkie akcje grupowe z preview dla:
+  - szerokosci
+  - glebokosci
+  - materialu korpusu
+  - materialu plecow
 
 [TODO] Rozszerzone szybkie zmiany handlowe:
 - podpiecie dekorow pod realne warianty katalogu materialow, gdy baza bedzie bogatsza

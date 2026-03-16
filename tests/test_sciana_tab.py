@@ -2267,6 +2267,70 @@ def test_sciana_tab_can_apply_selected_module_height_from_preview_action(tmp_pat
     assert [dict(item.module.materials or {}).get("front") for item in w._assembly.items] == ["MDF19_LAK", "MDF19_LAK"]
 
 
+def test_sciana_tab_can_apply_selected_module_dimensions_and_materials_from_preview_actions(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    catalog = CatalogStoreJson()
+    store = ModuleStoreJson()
+
+    module_a = ModuleDef(
+        name="CTX_EXT_A",
+        width_mm=620.0,
+        depth_mm=540.0,
+        height_mm=780.0,
+        materials={"carcass": "PB18", "front": "MDF19_LAK", "back": "HDF2.5"},
+    )
+    module_b = ModuleDef(
+        name="CTX_EXT_B",
+        width_mm=900.0,
+        depth_mm=420.0,
+        height_mm=650.0,
+        materials={"carcass": "MDF19", "front": "MDF19", "back": "PB18"},
+    )
+    module_a.parts = build_module_parts(module_a, catalog)
+    module_b.parts = build_module_parts(module_b, catalog)
+    store.save_new(module_a)
+    store.save_new(module_b)
+
+    w = TabSciana(module_store=store)
+    w.show()
+    app.processEvents()
+
+    assert _select_saved_module(w.tree_saved_modules, "CTX_EXT_A")
+    w.btn_add_saved.click()
+    assert _select_saved_module(w.tree_saved_modules, "CTX_EXT_B")
+    w.btn_add_saved.click()
+    app.processEvents()
+
+    selection_model = w.tbl_items.selectionModel()
+    assert selection_model is not None
+    selection_model.clearSelection()
+    flags = QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows
+    selection_model.select(w.tbl_items.model().index(0, 0), flags)
+    selection_model.select(w.tbl_items.model().index(1, 0), flags)
+    app.processEvents()
+
+    w._on_preview_apply_width_to_selected(0)
+    w._on_preview_apply_depth_to_selected(0)
+    w._on_preview_apply_carcass_material_to_selected(0)
+    w._on_preview_apply_back_material_to_selected(0)
+    app.processEvents()
+
+    assert [float(item.module.width_mm) for item in w._assembly.items] == [620.0, 620.0]
+    assert [float(item.module.depth_mm) for item in w._assembly.items] == [540.0, 540.0]
+    assert [dict(item.module.materials or {}).get("carcass") for item in w._assembly.items] == ["PB18", "PB18"]
+    assert [dict(item.module.materials or {}).get("back") for item in w._assembly.items] == ["HDF2.5", "HDF2.5"]
+
+
 def test_sciana_tab_can_bind_assembly_to_saved_wall_and_metadata(tmp_path, monkeypatch):
     monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TECH_MODUL_TESTING", "1")
