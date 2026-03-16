@@ -41,7 +41,7 @@ from src.domain.assembly_models import (
     normalize_assembly_offset_ref_mode,
 )
 from src.domain.assembly_resolution_service import resolve_assembly_items
-from src.domain.module_base_group import module_base_group_label_pl
+from src.domain.module_base_group import module_base_group_label_pl, normalize_module_base_group
 from src.domain.module_models import ModuleDef, normalize_module_type
 from src.domain.wall_models import WallLayoutDef
 from src.storage.assembly_store_json import AssemblyStoreJson
@@ -85,6 +85,20 @@ WIDTH_VARIANT_LABELS = {
     "90": "Ok. 90 cm",
     "wide": "100+ cm",
     "other": "Inne szer.",
+}
+
+BUSINESS_LIBRARY_LABELS = {
+    "all": "Wszystkie",
+    "kitchen": "Kuchnia",
+    "wardrobe": "Szafy / garderoby",
+    "bathroom": "Lazienka",
+    "other": "Inne",
+}
+
+PRESET_VARIANT_LABELS = {
+    "all": "Wszystkie",
+    "standard": "Standardy",
+    "custom": "Niestandardowe",
 }
 
 _IMAGE_ATTACHMENT_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
@@ -159,6 +173,60 @@ def _saved_module_width_variant_key(module: ModuleDef | None) -> str:
 
 def _saved_module_width_variant_label(key: str) -> str:
     return WIDTH_VARIANT_LABELS.get(str(key or "").strip().lower(), WIDTH_VARIANT_LABELS["other"])
+
+
+def _saved_module_business_group_key(module: ModuleDef | None) -> str:
+    if module is None:
+        return "other"
+
+    base_group = normalize_module_base_group(str(getattr(module, "base_group", "") or ""))
+    if base_group in BUSINESS_LIBRARY_LABELS:
+        return base_group
+
+    name_blob = " ".join(
+        [
+            str(getattr(module, "name", "") or ""),
+            str(getattr(module, "module_family", "") or ""),
+            str(getattr(module, "base_group", "") or ""),
+        ]
+    ).strip().lower()
+
+    if any(token in name_blob for token in ("wardrobe", "garder", "szafa")):
+        return "wardrobe"
+    if any(token in name_blob for token in ("bath", "lazien")):
+        return "bathroom"
+    if any(token in name_blob for token in ("kitchen", "kuch")):
+        return "kitchen"
+    return "other"
+
+
+def _saved_module_business_group_label(key: str) -> str:
+    return BUSINESS_LIBRARY_LABELS.get(str(key or "").strip().lower(), BUSINESS_LIBRARY_LABELS["other"])
+
+
+def _saved_module_preset_variant_key(module: ModuleDef | None) -> str:
+    if module is None:
+        return "custom"
+
+    name_blob = " ".join(
+        [
+            str(getattr(module, "name", "") or ""),
+            str(getattr(module, "module_family", "") or ""),
+            str(getattr(module, "base_group", "") or ""),
+        ]
+    ).strip().lower()
+
+    width_variant = _saved_module_width_variant_key(module)
+    business_group = _saved_module_business_group_key(module)
+    if any(token in name_blob for token in ("std", "standard", "fast")):
+        return "standard"
+    if business_group in {"kitchen", "wardrobe", "bathroom"} and width_variant in {"60", "80", "90"}:
+        return "standard"
+    return "custom"
+
+
+def _saved_module_preset_variant_label(key: str) -> str:
+    return PRESET_VARIANT_LABELS.get(str(key or "").strip().lower(), PRESET_VARIANT_LABELS["custom"])
 
 
 class SavedModulesTreeWidget(QTreeWidget):
@@ -2058,6 +2126,20 @@ class TabSciana(QWidget):
         variant_row.addWidget(self.cb_saved_width_variant, 1)
         store_layout.addLayout(variant_row)
 
+        business_row = QHBoxLayout()
+        self.cb_saved_business_group = QComboBox(box_store)
+        for key, label in BUSINESS_LIBRARY_LABELS.items():
+            self.cb_saved_business_group.addItem(label, key)
+        business_row.addWidget(QLabel("Zastos.:", box_store), 0)
+        business_row.addWidget(self.cb_saved_business_group, 1)
+
+        self.cb_saved_preset_variant = QComboBox(box_store)
+        for key, label in PRESET_VARIANT_LABELS.items():
+            self.cb_saved_preset_variant.addItem(label, key)
+        business_row.addWidget(QLabel("Preset:", box_store), 0)
+        business_row.addWidget(self.cb_saved_preset_variant, 1)
+        store_layout.addLayout(business_row)
+
         self.ed_saved_search = QLineEdit(box_store)
         self.ed_saved_search.setPlaceholderText("Szukaj modulu...")
         store_layout.addWidget(self.ed_saved_search)
@@ -2107,6 +2189,8 @@ class TabSciana(QWidget):
         self.cb_saved_quick_group.currentIndexChanged.connect(self._reload_saved_modules)
         self.cb_saved_front_variant.currentIndexChanged.connect(self._reload_saved_modules)
         self.cb_saved_width_variant.currentIndexChanged.connect(self._reload_saved_modules)
+        self.cb_saved_business_group.currentIndexChanged.connect(self._reload_saved_modules)
+        self.cb_saved_preset_variant.currentIndexChanged.connect(self._reload_saved_modules)
         self.ed_saved_search.textChanged.connect(self._reload_saved_modules)
         self.btn_add_saved.clicked.connect(self._on_add_saved_module)
         self.tree_saved_modules.currentItemChanged.connect(self._on_saved_module_selection_changed)
@@ -2875,6 +2959,8 @@ class TabSciana(QWidget):
         selected_quick_group = str(self.cb_saved_quick_group.currentData() or "all").strip().lower() if hasattr(self, "cb_saved_quick_group") else "all"
         selected_front_variant = str(self.cb_saved_front_variant.currentData() or "all").strip().lower() if hasattr(self, "cb_saved_front_variant") else "all"
         selected_width_variant = str(self.cb_saved_width_variant.currentData() or "all").strip().lower() if hasattr(self, "cb_saved_width_variant") else "all"
+        selected_business_group = str(self.cb_saved_business_group.currentData() or "all").strip().lower() if hasattr(self, "cb_saved_business_group") else "all"
+        selected_preset_variant = str(self.cb_saved_preset_variant.currentData() or "all").strip().lower() if hasattr(self, "cb_saved_preset_variant") else "all"
         search_text = str(self.ed_saved_search.text() or "").strip().lower() if hasattr(self, "ed_saved_search") else ""
 
         self.tree_saved_modules.blockSignals(True)
@@ -2896,6 +2982,8 @@ class TabSciana(QWidget):
                     selected_quick_group,
                     selected_front_variant,
                     selected_width_variant,
+                    selected_business_group,
+                    selected_preset_variant,
                     search_text,
                 ):
                     continue
@@ -2905,6 +2993,8 @@ class TabSciana(QWidget):
                 quick_label = _saved_module_quick_group_label(_saved_module_quick_group_key(module))
                 front_label = _saved_module_front_variant_label(_saved_module_front_variant_key(module))
                 width_label = _saved_module_width_variant_label(_saved_module_width_variant_key(module))
+                business_label = _saved_module_business_group_label(_saved_module_business_group_key(module))
+                preset_label = _saved_module_preset_variant_label(_saved_module_preset_variant_key(module))
                 child = QTreeWidgetItem([f"{name} | {width_mm:.0f}x{height_mm:.0f}x{depth_mm:.0f} | {front_label}"])
                 child.setData(0, Qt.ItemDataRole.UserRole, name)
                 child.setData(0, SAVED_MODULE_NAME_ROLE, name)
@@ -2913,7 +3003,7 @@ class TabSciana(QWidget):
                 child.setData(0, SAVED_MODULE_KIND_ROLE, str(getattr(module, "cabinet_kind", "lower") or "lower"))
                 child.setToolTip(
                     0,
-                    f"{quick_label} | {front_label} | {width_label} | "
+                    f"{business_label} | {preset_label} | {quick_label} | {front_label} | {width_label} | "
                     f"{width_mm:.0f} x {height_mm:.0f} x {depth_mm:.0f} mm",
                 )
                 group_item.addChild(child)
@@ -2942,21 +3032,31 @@ class TabSciana(QWidget):
         quick_group: str,
         front_variant: str,
         width_variant: str,
+        business_group: str,
+        preset_variant: str,
         search_text: str,
     ) -> bool:
         quick_group = str(quick_group or "all").strip().lower() or "all"
         front_variant = str(front_variant or "all").strip().lower() or "all"
         width_variant = str(width_variant or "all").strip().lower() or "all"
+        business_group = str(business_group or "all").strip().lower() or "all"
+        preset_variant = str(preset_variant or "all").strip().lower() or "all"
         search_text = str(search_text or "").strip().lower()
 
         module_quick_group = _saved_module_quick_group_key(module)
         module_front_variant = _saved_module_front_variant_key(module)
         module_width_variant = _saved_module_width_variant_key(module)
+        module_business_group = _saved_module_business_group_key(module)
+        module_preset_variant = _saved_module_preset_variant_key(module)
         if quick_group != "all" and module_quick_group != quick_group:
             return False
         if front_variant != "all" and module_front_variant != front_variant:
             return False
         if width_variant != "all" and module_width_variant != width_variant:
+            return False
+        if business_group != "all" and module_business_group != business_group:
+            return False
+        if preset_variant != "all" and module_preset_variant != preset_variant:
             return False
 
         if not search_text:
@@ -2971,6 +3071,8 @@ class TabSciana(QWidget):
                 _saved_module_quick_group_label(module_quick_group),
                 _saved_module_front_variant_label(module_front_variant),
                 _saved_module_width_variant_label(module_width_variant),
+                _saved_module_business_group_label(module_business_group),
+                _saved_module_preset_variant_label(module_preset_variant),
                 f"{float(getattr(module, 'width_mm', 0.0) or 0.0):.0f}",
             ]
         ).lower()

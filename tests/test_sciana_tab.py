@@ -129,6 +129,31 @@ def test_sciana_tab_saved_module_library_supports_quick_filters_and_search(tmp_p
     corner.parts = build_module_parts(corner, catalog)
     store.save_new(corner)
 
+    wardrobe = ModuleDef(
+        name="SZAFA_STD_60",
+        width_mm=600.0,
+        depth_mm=620.0,
+        height_mm=2200.0,
+        cabinet_kind="lower",
+        module_type="legs_plinth",
+        module_family="wardrobe",
+        base_group="wardrobe",
+    )
+    wardrobe.parts = build_module_parts(wardrobe, catalog)
+    store.save_new(wardrobe)
+
+    bathroom = ModuleDef(
+        name="LAZIENKA_CUSTOM_77",
+        width_mm=770.0,
+        depth_mm=500.0,
+        height_mm=720.0,
+        cabinet_kind="lower",
+        module_type="legs",
+        base_group="bathroom",
+    )
+    bathroom.parts = build_module_parts(bathroom, catalog)
+    store.save_new(bathroom)
+
     w = TabSciana(module_store=store)
     w.show()
     app.processEvents()
@@ -136,6 +161,8 @@ def test_sciana_tab_saved_module_library_supports_quick_filters_and_search(tmp_p
     assert hasattr(w, "cb_saved_quick_group")
     assert hasattr(w, "cb_saved_front_variant")
     assert hasattr(w, "cb_saved_width_variant")
+    assert hasattr(w, "cb_saved_business_group")
+    assert hasattr(w, "cb_saved_preset_variant")
     assert hasattr(w, "ed_saved_search")
 
     idx_upper = w.cb_saved_quick_group.findData("upper")
@@ -156,7 +183,7 @@ def test_sciana_tab_saved_module_library_supports_quick_filters_and_search(tmp_p
     assert idx_tall >= 0
     w.cb_saved_quick_group.setCurrentIndex(idx_tall)
     app.processEvents()
-    assert _visible_saved_module_names(w.tree_saved_modules) == ["SLUPEK_FAST"]
+    assert set(_visible_saved_module_names(w.tree_saved_modules)) == {"SLUPEK_FAST", "SZAFA_STD_60"}
 
     idx_all = w.cb_saved_quick_group.findData("all")
     assert idx_all >= 0
@@ -174,7 +201,39 @@ def test_sciana_tab_saved_module_library_supports_quick_filters_and_search(tmp_p
     assert idx_width_60 >= 0
     w.cb_saved_width_variant.setCurrentIndex(idx_width_60)
     app.processEvents()
-    assert set(_visible_saved_module_names(w.tree_saved_modules)) == {"LOWER_FAST", "UPPER_FAST", "SLUPEK_FAST"}
+    assert set(_visible_saved_module_names(w.tree_saved_modules)) == {"LOWER_FAST", "UPPER_FAST", "SLUPEK_FAST", "SZAFA_STD_60"}
+
+    idx_width_all = w.cb_saved_width_variant.findData("all")
+    assert idx_width_all >= 0
+    w.cb_saved_width_variant.setCurrentIndex(idx_width_all)
+    idx_business_wardrobe = w.cb_saved_business_group.findData("wardrobe")
+    assert idx_business_wardrobe >= 0
+    w.cb_saved_business_group.setCurrentIndex(idx_business_wardrobe)
+    app.processEvents()
+    assert _visible_saved_module_names(w.tree_saved_modules) == ["SZAFA_STD_60"]
+
+    idx_business_bathroom = w.cb_saved_business_group.findData("bathroom")
+    assert idx_business_bathroom >= 0
+    w.cb_saved_business_group.setCurrentIndex(idx_business_bathroom)
+    app.processEvents()
+    assert _visible_saved_module_names(w.tree_saved_modules) == ["LAZIENKA_CUSTOM_77"]
+
+    idx_business_all = w.cb_saved_business_group.findData("all")
+    assert idx_business_all >= 0
+    w.cb_saved_business_group.setCurrentIndex(idx_business_all)
+    idx_preset_standard = w.cb_saved_preset_variant.findData("standard")
+    assert idx_preset_standard >= 0
+    w.cb_saved_preset_variant.setCurrentIndex(idx_preset_standard)
+    app.processEvents()
+    assert set(_visible_saved_module_names(w.tree_saved_modules)) == {
+        "LOWER_FAST",
+        "UPPER_FAST",
+        "SLUPEK_FAST",
+        "SZUFLADY_80_FAST",
+        "NAROZNA_FAST",
+        "SZAFA_STD_60",
+        "LAZIENKA_CUSTOM_77",
+    }
 
 
 def test_sciana_tab_wall_selector_uses_short_readable_labels(tmp_path, monkeypatch):

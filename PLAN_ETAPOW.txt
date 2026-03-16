@@ -243,6 +243,14 @@ Do wdrozenia:
   - nazwa
   - W x H x D
   - typ frontu
+- mocniejsze filtry handlowe:
+  - zastosowanie:
+    - kuchnia
+    - szafy / garderoby
+    - lazienka
+  - preset:
+    - standardy
+    - niestandardowe
 
 [DONE] Materialy od architekta w zamowieniu:
 - blok "Zalaczniki od architekta" w karcie Nowe zamowienie
@@ -291,9 +299,8 @@ Do wdrozenia:
 
 [TODO] Rozszerzenie biblioteki gotowych modulow:
 - dopiac jeszcze mocniejsze gotowe warianty handlowe:
-  - szafy
-  - garderoby
   - warianty standardowe pod konkretne kolekcje firmy
+  - gotowe zestawy nazwane po waszemu
 
 [TODO] Bardzo szybki Komplet / Sciana:
 - skladanie ukladu z biblioteki modulow
