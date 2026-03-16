@@ -101,6 +101,49 @@ PRESET_VARIANT_LABELS = {
     "custom": "Niestandardowe",
 }
 
+NAMED_LIBRARY_SET_LABELS = {
+    "": "[bez zestawu]",
+    "kitchen_upper_standard": "Kuchnia - gorne standard",
+    "kitchen_drawers_80": "Kuchnia - szuflady 80",
+    "wardrobe_standard": "Szafa - standard",
+    "bathroom_basic": "Lazienka - basic",
+}
+
+NAMED_LIBRARY_SET_VALUES = {
+    "kitchen_upper_standard": {
+        "quick_group": "upper",
+        "front_variant": "all",
+        "width_variant": "all",
+        "business_group": "kitchen",
+        "preset_variant": "standard",
+        "search": "",
+    },
+    "kitchen_drawers_80": {
+        "quick_group": "all",
+        "front_variant": "drawers",
+        "width_variant": "80",
+        "business_group": "kitchen",
+        "preset_variant": "standard",
+        "search": "",
+    },
+    "wardrobe_standard": {
+        "quick_group": "tall",
+        "front_variant": "all",
+        "width_variant": "all",
+        "business_group": "wardrobe",
+        "preset_variant": "standard",
+        "search": "",
+    },
+    "bathroom_basic": {
+        "quick_group": "lower",
+        "front_variant": "all",
+        "width_variant": "all",
+        "business_group": "bathroom",
+        "preset_variant": "all",
+        "search": "",
+    },
+}
+
 HARDWARE_VENDOR_LABELS = {
     "": "[z profilu]",
     "generic": "Ogolne",
@@ -2207,6 +2250,16 @@ class TabSciana(QWidget):
         store_row.addWidget(self.btn_refresh_saved, 0)
         store_layout.addLayout(store_row)
 
+        named_set_row = QHBoxLayout()
+        self.cb_saved_named_set = QComboBox(box_store)
+        for key, label in NAMED_LIBRARY_SET_LABELS.items():
+            self.cb_saved_named_set.addItem(label, key)
+        self.btn_apply_saved_named_set = QPushButton("Zastosuj zestaw")
+        named_set_row.addWidget(QLabel("Zestaw:", box_store), 0)
+        named_set_row.addWidget(self.cb_saved_named_set, 1)
+        named_set_row.addWidget(self.btn_apply_saved_named_set, 0)
+        store_layout.addLayout(named_set_row)
+
         filter_row = QHBoxLayout()
         self.cb_saved_quick_group = QComboBox(box_store)
         for key, label in QUICK_LIBRARY_LABELS.items():
@@ -2298,6 +2351,7 @@ class TabSciana(QWidget):
         self.ed_decor_front.textChanged.connect(self._on_assembly_changed)
         self.btn_clear_decor_labels.clicked.connect(self._clear_decor_labels)
         self.btn_refresh_saved.clicked.connect(self._reload_saved_modules)
+        self.btn_apply_saved_named_set.clicked.connect(self._apply_selected_saved_named_set)
         self.cb_saved_quick_group.currentIndexChanged.connect(self._reload_saved_modules)
         self.cb_saved_front_variant.currentIndexChanged.connect(self._reload_saved_modules)
         self.cb_saved_width_variant.currentIndexChanged.connect(self._reload_saved_modules)
@@ -3394,6 +3448,32 @@ class TabSciana(QWidget):
 
         self.tree_saved_modules.blockSignals(False)
         self._on_saved_module_selection_changed(self.tree_saved_modules.currentItem(), None)
+
+    def _set_combo_to_data(self, combo: QComboBox, value: str) -> None:
+        idx = combo.findData(value)
+        combo.setCurrentIndex(idx if idx >= 0 else 0)
+
+    def _apply_selected_saved_named_set(self) -> None:
+        set_key = str(self.cb_saved_named_set.currentData() or "").strip()
+        if not set_key:
+            return
+
+        values = dict(NAMED_LIBRARY_SET_VALUES.get(set_key, {}))
+        for combo, value in (
+            (self.cb_saved_quick_group, str(values.get("quick_group", "all") or "all")),
+            (self.cb_saved_front_variant, str(values.get("front_variant", "all") or "all")),
+            (self.cb_saved_width_variant, str(values.get("width_variant", "all") or "all")),
+            (self.cb_saved_business_group, str(values.get("business_group", "all") or "all")),
+            (self.cb_saved_preset_variant, str(values.get("preset_variant", "all") or "all")),
+        ):
+            combo.blockSignals(True)
+            self._set_combo_to_data(combo, value)
+            combo.blockSignals(False)
+
+        self.ed_saved_search.blockSignals(True)
+        self.ed_saved_search.setText(str(values.get("search", "") or ""))
+        self.ed_saved_search.blockSignals(False)
+        self._reload_saved_modules()
 
     def _saved_module_matches_library_filter(
         self,

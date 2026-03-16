@@ -338,9 +338,18 @@ Do wdrozenia:
   - opis pozycji
 - nowa Sciana i nowy Komplet startuja od razu z nazwa wybranej pozycji handlowej
 
-[TODO] Rozszerzenie biblioteki gotowych modulow:
-- dopiac jeszcze mocniejsze gotowe warianty handlowe:
-  - gotowe zestawy nazwane po waszemu
+[DONE] Rozszerzenie biblioteki gotowych modulow:
+- filtry handlowe:
+  - typ
+  - front
+  - szerokosc
+  - zastosowanie
+  - preset
+- gotowe zestawy nazwane po waszemu:
+  - kuchnia - gorne standard
+  - kuchnia - szuflady 80
+  - szafa - standard
+  - lazienka - basic
 
 [TODO] Bardzo szybki Komplet / Sciana:
 - skladanie ukladu z biblioteki modulow

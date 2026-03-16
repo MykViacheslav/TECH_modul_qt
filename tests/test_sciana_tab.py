@@ -236,6 +236,104 @@ def test_sciana_tab_saved_module_library_supports_quick_filters_and_search(tmp_p
     }
 
 
+def test_sciana_tab_saved_module_library_supports_named_business_sets(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    catalog = CatalogStoreJson()
+    store = ModuleStoreJson()
+
+    upper = ModuleDef(name="SET_UPPER_60", width_mm=600.0, depth_mm=320.0, height_mm=720.0, cabinet_kind="upper", module_type="hanging")
+    upper.parts = build_module_parts(upper, catalog)
+    store.save_new(upper)
+
+    drawers = ModuleDef(
+        name="SET_DRAWERS_80",
+        width_mm=800.0,
+        depth_mm=560.0,
+        height_mm=720.0,
+        cabinet_kind="lower",
+        module_type="legs_plinth",
+        facade_mode="drawers",
+    )
+    drawers.parts = build_module_parts(drawers, catalog)
+    store.save_new(drawers)
+
+    wardrobe = ModuleDef(
+        name="SET_WARDROBE_STD",
+        width_mm=600.0,
+        depth_mm=620.0,
+        height_mm=2200.0,
+        cabinet_kind="lower",
+        module_type="legs_plinth",
+        module_family="wardrobe",
+        base_group="wardrobe",
+    )
+    wardrobe.parts = build_module_parts(wardrobe, catalog)
+    store.save_new(wardrobe)
+
+    bathroom = ModuleDef(
+        name="SET_BATHROOM",
+        width_mm=770.0,
+        depth_mm=500.0,
+        height_mm=720.0,
+        cabinet_kind="lower",
+        module_type="legs",
+        base_group="bathroom",
+    )
+    bathroom.parts = build_module_parts(bathroom, catalog)
+    store.save_new(bathroom)
+
+    w = TabSciana(module_store=store)
+    w.show()
+    app.processEvents()
+
+    idx_upper = w.cb_saved_named_set.findData("kitchen_upper_standard")
+    assert idx_upper >= 0
+    w.cb_saved_named_set.setCurrentIndex(idx_upper)
+    w.btn_apply_saved_named_set.click()
+    app.processEvents()
+    assert str(w.cb_saved_quick_group.currentData() or "") == "upper"
+    assert str(w.cb_saved_business_group.currentData() or "") == "kitchen"
+    assert str(w.cb_saved_preset_variant.currentData() or "") == "standard"
+    assert _visible_saved_module_names(w.tree_saved_modules) == ["SET_UPPER_60"]
+
+    idx_drawers = w.cb_saved_named_set.findData("kitchen_drawers_80")
+    assert idx_drawers >= 0
+    w.cb_saved_named_set.setCurrentIndex(idx_drawers)
+    w.btn_apply_saved_named_set.click()
+    app.processEvents()
+    assert str(w.cb_saved_front_variant.currentData() or "") == "drawers"
+    assert str(w.cb_saved_width_variant.currentData() or "") == "80"
+    assert _visible_saved_module_names(w.tree_saved_modules) == ["SET_DRAWERS_80"]
+
+    idx_wardrobe = w.cb_saved_named_set.findData("wardrobe_standard")
+    assert idx_wardrobe >= 0
+    w.cb_saved_named_set.setCurrentIndex(idx_wardrobe)
+    w.btn_apply_saved_named_set.click()
+    app.processEvents()
+    assert str(w.cb_saved_quick_group.currentData() or "") == "tall"
+    assert str(w.cb_saved_business_group.currentData() or "") == "wardrobe"
+    assert _visible_saved_module_names(w.tree_saved_modules) == ["SET_WARDROBE_STD"]
+
+    idx_bathroom = w.cb_saved_named_set.findData("bathroom_basic")
+    assert idx_bathroom >= 0
+    w.cb_saved_named_set.setCurrentIndex(idx_bathroom)
+    w.btn_apply_saved_named_set.click()
+    app.processEvents()
+    assert str(w.cb_saved_quick_group.currentData() or "") == "lower"
+    assert str(w.cb_saved_business_group.currentData() or "") == "bathroom"
+    assert _visible_saved_module_names(w.tree_saved_modules) == ["SET_BATHROOM"]
+
+
 def test_sciana_tab_wall_selector_uses_short_readable_labels(tmp_path, monkeypatch):
     monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TECH_MODUL_TESTING", "1")
