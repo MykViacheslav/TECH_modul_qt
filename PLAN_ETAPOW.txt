@@ -219,6 +219,22 @@ Do wdrozenia:
   - narozne
 - wyszukiwarka po nazwie modulu
 - lepsze odnajdywanie gotowych modulow w karcie Komplet
+- dodatkowe szybkie filtry:
+  - uklad frontu:
+    - drzwi
+    - szuflady
+    - mieszane
+    - otwarte
+  - szerokosc standardowa:
+    - do 45 cm
+    - ok. 60 cm
+    - ok. 80 cm
+    - ok. 90 cm
+    - 100+ cm
+- czytelniejsze etykiety modulow w drzewie:
+  - nazwa
+  - W x H x D
+  - typ frontu
 
 [DONE] Materialy od architekta w zamowieniu:
 - blok "Zalaczniki od architekta" w karcie Nowe zamowienie
@@ -266,12 +282,10 @@ Do wdrozenia:
 - nowa Sciana i nowy Komplet startuja od razu z nazwa wybranej pozycji handlowej
 
 [TODO] Rozszerzenie biblioteki gotowych modulow:
-- dolne
-- gorne
-- slupki
-- szafy
-- narozne
-- szuflady / fronty / warianty standardowe
+- dopiac jeszcze mocniejsze gotowe warianty handlowe:
+  - szafy
+  - garderoby
+  - warianty standardowe pod konkretne kolekcje firmy
 
 [TODO] Bardzo szybki Komplet / Sciana:
 - skladanie ukladu z biblioteki modulow

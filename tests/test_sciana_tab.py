@@ -109,6 +109,18 @@ def test_sciana_tab_saved_module_library_supports_quick_filters_and_search(tmp_p
     upper.parts = build_module_parts(upper, catalog)
     store.save_new(upper)
 
+    drawers = ModuleDef(
+        name="SZUFLADY_80_FAST",
+        width_mm=800.0,
+        depth_mm=560.0,
+        height_mm=720.0,
+        cabinet_kind="lower",
+        module_type="legs_plinth",
+        facade_mode="drawers",
+    )
+    drawers.parts = build_module_parts(drawers, catalog)
+    store.save_new(drawers)
+
     tall = ModuleDef(name="SLUPEK_FAST", width_mm=600.0, depth_mm=560.0, height_mm=2200.0, cabinet_kind="lower", module_type="legs_plinth")
     tall.parts = build_module_parts(tall, catalog)
     store.save_new(tall)
@@ -122,6 +134,8 @@ def test_sciana_tab_saved_module_library_supports_quick_filters_and_search(tmp_p
     app.processEvents()
 
     assert hasattr(w, "cb_saved_quick_group")
+    assert hasattr(w, "cb_saved_front_variant")
+    assert hasattr(w, "cb_saved_width_variant")
     assert hasattr(w, "ed_saved_search")
 
     idx_upper = w.cb_saved_quick_group.findData("upper")
@@ -143,6 +157,24 @@ def test_sciana_tab_saved_module_library_supports_quick_filters_and_search(tmp_p
     w.cb_saved_quick_group.setCurrentIndex(idx_tall)
     app.processEvents()
     assert _visible_saved_module_names(w.tree_saved_modules) == ["SLUPEK_FAST"]
+
+    idx_all = w.cb_saved_quick_group.findData("all")
+    assert idx_all >= 0
+    w.cb_saved_quick_group.setCurrentIndex(idx_all)
+    idx_drawers = w.cb_saved_front_variant.findData("drawers")
+    assert idx_drawers >= 0
+    w.cb_saved_front_variant.setCurrentIndex(idx_drawers)
+    app.processEvents()
+    assert _visible_saved_module_names(w.tree_saved_modules) == ["SZUFLADY_80_FAST"]
+
+    idx_front_all = w.cb_saved_front_variant.findData("all")
+    assert idx_front_all >= 0
+    w.cb_saved_front_variant.setCurrentIndex(idx_front_all)
+    idx_width_60 = w.cb_saved_width_variant.findData("60")
+    assert idx_width_60 >= 0
+    w.cb_saved_width_variant.setCurrentIndex(idx_width_60)
+    app.processEvents()
+    assert set(_visible_saved_module_names(w.tree_saved_modules)) == {"LOWER_FAST", "UPPER_FAST", "SLUPEK_FAST"}
 
 
 def test_sciana_tab_preview_draws_module_parts_not_only_outer_block(tmp_path, monkeypatch):

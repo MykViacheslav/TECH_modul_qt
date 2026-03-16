@@ -69,6 +69,24 @@ QUICK_LIBRARY_LABELS = {
     "other": "Inne",
 }
 
+FRONT_VARIANT_LABELS = {
+    "all": "Wszystkie",
+    "doors": "Drzwi",
+    "drawers": "Szuflady",
+    "mixed": "Mieszane",
+    "open": "Otwarte",
+}
+
+WIDTH_VARIANT_LABELS = {
+    "all": "Wszystkie",
+    "narrow": "Do 45 cm",
+    "60": "Ok. 60 cm",
+    "80": "Ok. 80 cm",
+    "90": "Ok. 90 cm",
+    "wide": "100+ cm",
+    "other": "Inne szer.",
+}
+
 _IMAGE_ATTACHMENT_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
 
 
@@ -100,6 +118,47 @@ def _saved_module_quick_group_key(module: ModuleDef | None) -> str:
 
 def _saved_module_quick_group_label(key: str) -> str:
     return QUICK_LIBRARY_LABELS.get(str(key or "").strip().lower(), QUICK_LIBRARY_LABELS["other"])
+
+
+def _saved_module_front_variant_key(module: ModuleDef | None) -> str:
+    if module is None:
+        return "open"
+
+    facade_mode = str(getattr(module, "facade_mode", "doors") or "doors").strip().lower()
+    visible_parts = {str(part or "").strip().lower() for part in (getattr(module, "visible_parts", set()) or set())}
+
+    if facade_mode == "drawers":
+        return "drawers"
+    if facade_mode == "mixed":
+        return "mixed"
+    if facade_mode in ("open", "open_shelves", "none"):
+        return "open"
+    if "front" not in visible_parts and facade_mode not in ("doors", "drawers", "mixed"):
+        return "open"
+    return "doors"
+
+
+def _saved_module_front_variant_label(key: str) -> str:
+    return FRONT_VARIANT_LABELS.get(str(key or "").strip().lower(), FRONT_VARIANT_LABELS["open"])
+
+
+def _saved_module_width_variant_key(module: ModuleDef | None) -> str:
+    width_mm = float(getattr(module, "width_mm", 0.0) or 0.0) if module is not None else 0.0
+    if width_mm <= 450.0:
+        return "narrow"
+    if 550.0 <= width_mm <= 650.0:
+        return "60"
+    if 750.0 <= width_mm <= 850.0:
+        return "80"
+    if 850.0 < width_mm <= 950.0:
+        return "90"
+    if width_mm >= 1000.0:
+        return "wide"
+    return "other"
+
+
+def _saved_module_width_variant_label(key: str) -> str:
+    return WIDTH_VARIANT_LABELS.get(str(key or "").strip().lower(), WIDTH_VARIANT_LABELS["other"])
 
 
 class SavedModulesTreeWidget(QTreeWidget):
@@ -1983,6 +2042,20 @@ class TabSciana(QWidget):
         filter_row.addWidget(self.cb_saved_quick_group, 1)
         store_layout.addLayout(filter_row)
 
+        variant_row = QHBoxLayout()
+        self.cb_saved_front_variant = QComboBox(box_store)
+        for key, label in FRONT_VARIANT_LABELS.items():
+            self.cb_saved_front_variant.addItem(label, key)
+        variant_row.addWidget(QLabel("Front:", box_store), 0)
+        variant_row.addWidget(self.cb_saved_front_variant, 1)
+
+        self.cb_saved_width_variant = QComboBox(box_store)
+        for key, label in WIDTH_VARIANT_LABELS.items():
+            self.cb_saved_width_variant.addItem(label, key)
+        variant_row.addWidget(QLabel("Szer.:", box_store), 0)
+        variant_row.addWidget(self.cb_saved_width_variant, 1)
+        store_layout.addLayout(variant_row)
+
         self.ed_saved_search = QLineEdit(box_store)
         self.ed_saved_search.setPlaceholderText("Szukaj modulu...")
         store_layout.addWidget(self.ed_saved_search)
@@ -2030,6 +2103,8 @@ class TabSciana(QWidget):
         self.cb_material_back.currentIndexChanged.connect(self._on_assembly_changed)
         self.btn_refresh_saved.clicked.connect(self._reload_saved_modules)
         self.cb_saved_quick_group.currentIndexChanged.connect(self._reload_saved_modules)
+        self.cb_saved_front_variant.currentIndexChanged.connect(self._reload_saved_modules)
+        self.cb_saved_width_variant.currentIndexChanged.connect(self._reload_saved_modules)
         self.ed_saved_search.textChanged.connect(self._reload_saved_modules)
         self.btn_add_saved.clicked.connect(self._on_add_saved_module)
         self.tree_saved_modules.currentItemChanged.connect(self._on_saved_module_selection_changed)
@@ -2784,6 +2859,8 @@ class TabSciana(QWidget):
         current_name = self._selected_saved_module_name()
         grouped = self._store.list_grouped_names() if hasattr(self._store, "list_grouped_names") else {}
         selected_quick_group = str(self.cb_saved_quick_group.currentData() or "all").strip().lower() if hasattr(self, "cb_saved_quick_group") else "all"
+        selected_front_variant = str(self.cb_saved_front_variant.currentData() or "all").strip().lower() if hasattr(self, "cb_saved_front_variant") else "all"
+        selected_width_variant = str(self.cb_saved_width_variant.currentData() or "all").strip().lower() if hasattr(self, "cb_saved_width_variant") else "all"
         search_text = str(self.ed_saved_search.text() or "").strip().lower() if hasattr(self, "ed_saved_search") else ""
 
         self.tree_saved_modules.blockSignals(True)
@@ -2799,20 +2876,31 @@ class TabSciana(QWidget):
 
             for name in names:
                 module = self._store.get(name)
-                if not self._saved_module_matches_library_filter(module, name, selected_quick_group, search_text):
+                if not self._saved_module_matches_library_filter(
+                    module,
+                    name,
+                    selected_quick_group,
+                    selected_front_variant,
+                    selected_width_variant,
+                    search_text,
+                ):
                     continue
-                child = QTreeWidgetItem([name])
+                width_mm = float(getattr(module, "width_mm", 0.0) or 0.0)
+                height_mm = float(getattr(module, "height_mm", 0.0) or 0.0)
+                depth_mm = float(getattr(module, "depth_mm", 0.0) or 0.0)
+                quick_label = _saved_module_quick_group_label(_saved_module_quick_group_key(module))
+                front_label = _saved_module_front_variant_label(_saved_module_front_variant_key(module))
+                width_label = _saved_module_width_variant_label(_saved_module_width_variant_key(module))
+                child = QTreeWidgetItem([f"{name} | {width_mm:.0f}x{height_mm:.0f}x{depth_mm:.0f} | {front_label}"])
                 child.setData(0, Qt.ItemDataRole.UserRole, name)
                 child.setData(0, SAVED_MODULE_NAME_ROLE, name)
-                child.setData(0, SAVED_MODULE_WIDTH_ROLE, float(getattr(module, "width_mm", 0.0) or 0.0))
-                child.setData(0, SAVED_MODULE_HEIGHT_ROLE, float(getattr(module, "height_mm", 0.0) or 0.0))
+                child.setData(0, SAVED_MODULE_WIDTH_ROLE, width_mm)
+                child.setData(0, SAVED_MODULE_HEIGHT_ROLE, height_mm)
                 child.setData(0, SAVED_MODULE_KIND_ROLE, str(getattr(module, "cabinet_kind", "lower") or "lower"))
-                quick_label = _saved_module_quick_group_label(_saved_module_quick_group_key(module))
                 child.setToolTip(
                     0,
-                    f"{quick_label} | {float(getattr(module, 'width_mm', 0.0) or 0.0):.0f} x "
-                    f"{float(getattr(module, 'height_mm', 0.0) or 0.0):.0f} x "
-                    f"{float(getattr(module, 'depth_mm', 0.0) or 0.0):.0f} mm",
+                    f"{quick_label} | {front_label} | {width_label} | "
+                    f"{width_mm:.0f} x {height_mm:.0f} x {depth_mm:.0f} mm",
                 )
                 group_item.addChild(child)
                 visible_children.append(child)
@@ -2838,13 +2926,23 @@ class TabSciana(QWidget):
         module: ModuleDef | None,
         module_name: str,
         quick_group: str,
+        front_variant: str,
+        width_variant: str,
         search_text: str,
     ) -> bool:
         quick_group = str(quick_group or "all").strip().lower() or "all"
+        front_variant = str(front_variant or "all").strip().lower() or "all"
+        width_variant = str(width_variant or "all").strip().lower() or "all"
         search_text = str(search_text or "").strip().lower()
 
         module_quick_group = _saved_module_quick_group_key(module)
+        module_front_variant = _saved_module_front_variant_key(module)
+        module_width_variant = _saved_module_width_variant_key(module)
         if quick_group != "all" and module_quick_group != quick_group:
+            return False
+        if front_variant != "all" and module_front_variant != front_variant:
+            return False
+        if width_variant != "all" and module_width_variant != width_variant:
             return False
 
         if not search_text:
@@ -2857,6 +2955,9 @@ class TabSciana(QWidget):
                 str(getattr(module, "base_group", "") or ""),
                 str(getattr(module, "cabinet_kind", "") or ""),
                 _saved_module_quick_group_label(module_quick_group),
+                _saved_module_front_variant_label(module_front_variant),
+                _saved_module_width_variant_label(module_width_variant),
+                f"{float(getattr(module, 'width_mm', 0.0) or 0.0):.0f}",
             ]
         ).lower()
         return search_text in haystack
