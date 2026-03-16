@@ -254,6 +254,9 @@ class TabNoweZamowienie(QWidget):
         self._offer_reference_pixmap = QPixmap()
         self._quote_reference_items: list[dict[str, str]] = []
         self._quote_reference_pixmap = QPixmap()
+        self._current_order_calendar_stage = ""
+        self._current_order_calendar_date = ""
+        self._current_order_calendar_note = ""
 
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 18, 18, 18)
@@ -1719,6 +1722,9 @@ class TabNoweZamowienie(QWidget):
         self.ed_order_code.clear()
         self.cb_order_status.setCurrentIndex(0)
         self.sp_order_progress.setValue(0)
+        self._current_order_calendar_stage = ""
+        self._current_order_calendar_date = ""
+        self._current_order_calendar_note = ""
         self.ed_order_address.clear()
         self.ed_order_notes.clear()
 
@@ -1763,6 +1769,8 @@ class TabNoweZamowienie(QWidget):
         worker_name = str(payload.get("worker_name", "") or "").strip()
         order_status = str(payload.get("order_status", "") or "").strip()
         order_progress_percent = int(float(payload.get("order_progress_percent", 0.0) or 0.0))
+        order_calendar_stage = str(payload.get("order_calendar_stage", "") or "").strip()
+        order_calendar_date = str(payload.get("order_calendar_date", "") or "").strip()
         site_address = str(payload.get("site_address", "") or "").strip()
 
         self._reload_client_choices()
@@ -1786,6 +1794,9 @@ class TabNoweZamowienie(QWidget):
             self.cb_order_status.setCurrentIndex(idx if idx >= 0 else 0)
             effective_progress = int(round(float(getattr(order, "progress_percent", 0.0) or order_progress_percent or 0.0)))
             self.sp_order_progress.setValue(max(0, min(100, effective_progress)))
+            self._current_order_calendar_stage = str(getattr(order, "calendar_stage", "") or order_calendar_stage)
+            self._current_order_calendar_date = str(getattr(order, "calendar_date", "") or order_calendar_date)
+            self._current_order_calendar_note = str(getattr(order, "calendar_note", "") or "")
             self.ed_order_address.setText(str(getattr(order, "site_address", "") or site_address))
             self.ed_order_notes.setPlainText(str(getattr(order, "notes", "") or ""))
 
@@ -1811,6 +1822,8 @@ class TabNoweZamowienie(QWidget):
         worker_name = self.cb_worker_name.currentText().strip() or "-"
         status_name = self.cb_order_status.currentText().strip() or "-"
         progress_percent = int(self.sp_order_progress.value())
+        calendar_stage = str(self._current_order_calendar_stage or "").strip()
+        calendar_date = str(self._current_order_calendar_date or "").strip()
         wall_count = len(self._current_order_wall_names())
         assembly_count = len(self._current_order_assemblies())
         attachment_count = len(self._architect_attachments)
@@ -1846,6 +1859,12 @@ class TabNoweZamowienie(QWidget):
         )
         if final_material_parts:
             self.lab_summary.setText(self.lab_summary.text() + "\nWybrane: " + "; ".join(final_material_parts))
+        if calendar_stage or calendar_date:
+            self.lab_summary.setText(
+                self.lab_summary.text()
+                + f"\nKalendarz: {calendar_stage or '-'}"
+                + (f" | {calendar_date}" if calendar_date else "")
+            )
         quote_names = [
             str(entry.get("name", "") or "").strip()
             for entry in self._quote_items
@@ -2142,6 +2161,8 @@ class TabNoweZamowienie(QWidget):
         worker_name = str(self.cb_worker_name.currentText().strip() or "-")
         status_name = str(self.cb_order_status.currentText().strip() or "-")
         progress_percent = int(self.sp_order_progress.value())
+        calendar_stage = str(self._current_order_calendar_stage or "").strip() or "-"
+        calendar_date = str(self._current_order_calendar_date or "").strip() or "-"
         site_address = str(self.ed_order_address.text().strip() or "-")
         order_notes = str(self.ed_order_notes.toPlainText().strip())
         quote_items = [dict(item) for item in self._quote_items]
@@ -2294,7 +2315,9 @@ class TabNoweZamowienie(QWidget):
       <div><strong>Pracownik:</strong> {escape(worker_name)}</div>
       <div><strong>Status:</strong> {escape(status_name)}</div>
       <div><strong>Zaawansowanie:</strong> {progress_percent}%</div>
+      <div><strong>Etap kalendarza:</strong> {escape(calendar_stage)}</div>
       <div><strong>Adres realizacji:</strong> {escape(site_address)}</div>
+      <div><strong>Termin etapu:</strong> {escape(calendar_date)}</div>
       <div><strong>Data eksportu:</strong> {escape(datetime.now().strftime("%Y-%m-%d %H:%M"))}</div>
     </div>
   <div class="summary">
@@ -2618,6 +2641,9 @@ class TabNoweZamowienie(QWidget):
             "order_code": str(self.ed_order_code.text().strip()),
             "order_status": str(self.cb_order_status.currentText().strip()),
             "order_progress_percent": int(self.sp_order_progress.value()),
+            "order_calendar_stage": str(self._current_order_calendar_stage or ""),
+            "order_calendar_date": str(self._current_order_calendar_date or ""),
+            "order_calendar_note": str(self._current_order_calendar_note or ""),
             "order_address": str(self.ed_order_address.text().strip()),
             "order_notes": str(self.ed_order_notes.toPlainText().strip()),
             "worker_name": str(self.cb_worker_name.currentText().strip()),
@@ -2668,6 +2694,9 @@ class TabNoweZamowienie(QWidget):
             self.cb_order_status.setCurrentIndex(idx if idx >= 0 else 0)
             order_progress_percent = int(float(payload.get("order_progress_percent", 0.0) or 0.0))
             self.sp_order_progress.setValue(max(0, min(100, order_progress_percent)))
+            self._current_order_calendar_stage = str(payload.get("order_calendar_stage", "") or "")
+            self._current_order_calendar_date = str(payload.get("order_calendar_date", "") or "")
+            self._current_order_calendar_note = str(payload.get("order_calendar_note", "") or "")
             self.ed_order_address.setText(str(payload.get("order_address", "") or ""))
             self.ed_order_notes.setPlainText(str(payload.get("order_notes", "") or ""))
 
@@ -2763,6 +2792,9 @@ class TabNoweZamowienie(QWidget):
             worker_name=str(self.cb_worker_name.currentText().strip()),
             status=str(self.cb_order_status.currentText().strip() or "Nowe"),
             progress_percent=float(self.sp_order_progress.value()),
+            calendar_stage=str(self._current_order_calendar_stage or ""),
+            calendar_date=str(self._current_order_calendar_date or ""),
+            calendar_note=str(self._current_order_calendar_note or ""),
             site_address=str(self.ed_order_address.text().strip()),
             notes=str(self.ed_order_notes.toPlainText().strip()),
             attachments=[dict(item) for item in self._architect_attachments],
@@ -2778,6 +2810,8 @@ class TabNoweZamowienie(QWidget):
             "worker_name": str(order.worker_name or "").strip(),
             "order_status": str(order.status or "").strip(),
             "order_progress_percent": float(order.progress_percent or 0.0),
+            "order_calendar_stage": str(order.calendar_stage or "").strip(),
+            "order_calendar_date": str(order.calendar_date or "").strip(),
             "site_address": str(order.site_address or "").strip(),
         }
 
@@ -2910,6 +2944,9 @@ class TabNoweZamowienie(QWidget):
         idx = self.cb_order_status.findText(order.status)
         self.cb_order_status.setCurrentIndex(idx if idx >= 0 else 0)
         self.sp_order_progress.setValue(max(0, min(100, int(round(float(getattr(order, "progress_percent", 0.0) or 0.0))))))
+        self._current_order_calendar_stage = str(getattr(order, "calendar_stage", "") or "")
+        self._current_order_calendar_date = str(getattr(order, "calendar_date", "") or "")
+        self._current_order_calendar_note = str(getattr(order, "calendar_note", "") or "")
         self.ed_order_address.setText(order.site_address)
         self.ed_order_notes.setPlainText(order.notes)
         self._set_architect_attachments(list(getattr(order, "attachments", []) or []))

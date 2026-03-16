@@ -528,6 +528,23 @@ Do wdrozenia:
   - zapis i odczyt w drafcie
   - pokazanie w summary i eksporcie oferty
 
+[DONE] pierwszy praktyczny Kalendarz prac:
+  - osobna karta "Kalendarz"
+  - lista projektow z:
+    - terminem
+    - etapem
+    - statusem
+    - procentem zaawansowania
+    - pracownikiem
+    - notatka
+  - szybkie filtrowanie po statusie i etapie
+  - mozliwosc zapisania:
+    - etapu
+    - terminu
+    - pracownika
+    - notatki
+  - zapis planu etapu bezposrednio do zamowienia
+
 [TODO] dalsze statusy zamowienia:
   - wycena w toku
   - wycena gotowa
@@ -569,6 +586,22 @@ Do wdrozenia:
   - paragonow
   - rachunkow
   - dokumentow zakupu
+- obsluga wielu ukladów dokumentow dostawcow:
+  - Adler
+  - Pakdrew
+  - Schachermayer
+  - Wurth
+  - faktura VAT
+  - WZ
+  - dokument dostawy
+- tryb OCR + potwierdzenie reczne przy imporcie pozycji:
+  - nazwa
+  - kod
+  - ilosc
+  - jednostka
+  - cena netto
+  - dostawca
+  - numer dokumentu
 - odczyt i zapis do bazy:
   - nazwy materialu
   - kodu
@@ -661,11 +694,15 @@ Do wdrozenia:
 NAJBLIZSZY PRAKTYCZNY KROK
 --------------------------------------------------
 
-[IN PROGRESS] Domknac Etap 1 i przejsc plynnie do Etapu 1A:
-- dalej upraszczac Komplet i Sciana pod szybsza prace
-- przygotowac biblioteke gotowych modulow do szybkiej wyceny
-- dopracowac szybka zmiane materialow / frontow / kolorow
+[IN PROGRESS] Domknac Etap 3 i przejsc do kolejnych narzedzi prowadzenia pracy:
+- rozwinac Kalendarz o kolejne etapy i widok obciazenia
+- dopiac historie zmian statusu
 - utrzymywac w tym pliku aktualny stan:
   - co zrobione
   - co jest w toku
   - co zostaje do pracy
+
+[IN PROGRESS] Rownolegle dalej wzmacniac Etap 1 i Etap 1A:
+- dalej upraszczac Komplet i Sciana pod szybsza prace
+- przygotowac biblioteke gotowych modulow do szybkiej wyceny
+- dopracowac szybka zmiane materialow / frontow / kolorow

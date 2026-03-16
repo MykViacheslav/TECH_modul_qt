@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import QApplication, QTabWidget
 from src.app.main_window import MainWindow
 
 
-def test_main_window_has_start_order_modul_komplet_sciana_bazy_and_ustawienia_tabs(tmp_path, monkeypatch):
+def test_main_window_has_start_order_calendar_modul_komplet_sciana_bazy_and_ustawienia_tabs(tmp_path, monkeypatch):
     monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TECH_MODUL_TESTING", "1")
 
@@ -18,7 +18,7 @@ def test_main_window_has_start_order_modul_komplet_sciana_bazy_and_ustawienia_ta
 
     titles = [tabs.tabText(i) for i in range(tabs.count())]
 
-    assert titles == ["Start", "Nowe zamowienie", "Modul", "Komplet", "Sciana", "Bazy", "Ustawienia"]
+    assert titles == ["Start", "Nowe zamowienie", "Kalendarz", "Modul", "Komplet", "Sciana", "Bazy", "Ustawienia"]
     assert tabs.currentWidget() is w._tabs_by_title["Start"]
     assert w.btn_nav_back.isEnabled() is False
     assert w.btn_nav_forward.isEnabled() is False
@@ -79,6 +79,21 @@ def test_main_window_start_new_order_button_opens_dedicated_order_tab(tmp_path, 
     assert w.tabs.currentWidget() is tab_order
     assert tab_order.ed_order_code.text() == ""
     assert tab_order.cb_client_name.currentText() == ""
+
+
+def test_main_window_start_calendar_button_opens_calendar_tab(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    w = MainWindow()
+    tab_start = w._tabs_by_title["Start"]
+    tab_calendar = w._tabs_by_title["Kalendarz"]
+
+    QTest.mouseClick(tab_start.btn_calendar, Qt.MouseButton.LeftButton)
+
+    assert w.tabs.currentWidget() is tab_calendar
 
 
 def test_main_window_navigation_buttons_track_history(tmp_path, monkeypatch):

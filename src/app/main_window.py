@@ -181,6 +181,8 @@ class MainWindow(QMainWindow):
         if tab_start is not None:
             if hasattr(tab_start, "sig_new_order_requested"):
                 tab_start.sig_new_order_requested.connect(self._open_new_order)
+            if hasattr(tab_start, "sig_open_calendar_requested"):
+                tab_start.sig_open_calendar_requested.connect(self._open_calendar)
             if hasattr(tab_start, "sig_open_clients_requested"):
                 tab_start.sig_open_clients_requested.connect(self._open_clients_in_bazy)
             if hasattr(tab_start, "sig_new_wall_requested"):
@@ -292,6 +294,16 @@ class MainWindow(QMainWindow):
         if hasattr(tab_modul, "start_new_module"):
             tab_modul.start_new_module()
         index = self.tabs.indexOf(tab_modul)
+        if index >= 0:
+            self.tabs.setCurrentIndex(index)
+
+    def _open_calendar(self) -> None:
+        tab_kalendarz = self._tabs_by_title.get("Kalendarz")
+        if tab_kalendarz is None:
+            return
+        if hasattr(tab_kalendarz, "refresh_data"):
+            tab_kalendarz.refresh_data()
+        index = self.tabs.indexOf(tab_kalendarz)
         if index >= 0:
             self.tabs.setCurrentIndex(index)
 

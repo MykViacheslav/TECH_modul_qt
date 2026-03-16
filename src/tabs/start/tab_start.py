@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import QGridLayout, QLabel, QPushButton, QVBoxLayout, QWidg
 
 class TabStart(QWidget):
     sig_new_order_requested = pyqtSignal()
+    sig_open_calendar_requested = pyqtSignal()
     sig_open_clients_requested = pyqtSignal()
     sig_new_wall_requested = pyqtSignal()
     sig_new_assembly_requested = pyqtSignal()
@@ -47,6 +48,7 @@ class TabStart(QWidget):
         grid.setVerticalSpacing(14)
 
         self.btn_clients = self._make_card("Klienci", "Przejdz do bazy klientow.", primary=False)
+        self.btn_calendar = self._make_card("Kalendarz", "Sprawdz statusy i terminy projektow.", primary=False)
         self.btn_sciana = self._make_card("Sciana", "Zacznij nowa sciane lub pomiar.", primary=False)
         self.btn_komplet = self._make_card("Komplet", "Zbuduj komplet modulow.", primary=False)
         self.btn_modul = self._make_card("Modul", "Edytuj lub zbuduj pojedynczy modul.", primary=False)
@@ -54,17 +56,19 @@ class TabStart(QWidget):
         self.btn_settings = self._make_card("Ustawienia", "Przejdz do ustawien rysunku i programu.", primary=False)
 
         grid.addWidget(self.btn_clients, 0, 0)
-        grid.addWidget(self.btn_sciana, 0, 1)
-        grid.addWidget(self.btn_komplet, 1, 0)
-        grid.addWidget(self.btn_modul, 1, 1)
-        grid.addWidget(self.btn_bazy, 2, 0)
-        grid.addWidget(self.btn_settings, 2, 1)
+        grid.addWidget(self.btn_calendar, 0, 1)
+        grid.addWidget(self.btn_sciana, 1, 0)
+        grid.addWidget(self.btn_komplet, 1, 1)
+        grid.addWidget(self.btn_modul, 2, 0)
+        grid.addWidget(self.btn_bazy, 2, 1)
+        grid.addWidget(self.btn_settings, 3, 0)
 
         root.addLayout(grid)
         root.addStretch(1)
 
         self.btn_new_order.clicked.connect(self.sig_new_order_requested.emit)
         self.btn_clients.clicked.connect(self.sig_open_clients_requested.emit)
+        self.btn_calendar.clicked.connect(self.sig_open_calendar_requested.emit)
         self.btn_sciana.clicked.connect(self.sig_new_wall_requested.emit)
         self.btn_komplet.clicked.connect(self.sig_new_assembly_requested.emit)
         self.btn_modul.clicked.connect(self.sig_new_module_requested.emit)

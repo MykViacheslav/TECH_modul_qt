@@ -5,6 +5,7 @@ from typing import List, Tuple
 from PyQt6.QtWidgets import QWidget
 
 from src.tabs.bazy.tab_bazy import TabBazy
+from src.tabs.kalendarz.tab_kalendarz import TabKalendarz
 from src.tabs.modul.tab_modul import TabModul
 from src.tabs.rysunek.tab_rysunek import TabRysunek
 from src.tabs.sciana.tab_sciana import TabSciana
@@ -17,6 +18,7 @@ def build_tabs() -> List[Tuple[str, QWidget]]:
     return [
         ("Start", TabStart()),
         ("Nowe zamowienie", TabNoweZamowienie()),
+        ("Kalendarz", TabKalendarz()),
         ("Modul", TabModul()),
         ("Komplet", TabSciana()),
         ("Sciana", TabScianaLayout()),

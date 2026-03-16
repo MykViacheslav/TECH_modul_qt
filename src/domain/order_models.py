@@ -88,6 +88,9 @@ class OrderDef:
     worker_name: str = ""
     status: str = "Nowe"
     progress_percent: float = 0.0
+    calendar_stage: str = ""
+    calendar_date: str = ""
+    calendar_note: str = ""
     site_address: str = ""
     notes: str = ""
     attachments: List[Dict[str, str]] = field(default_factory=list)
@@ -101,6 +104,9 @@ class OrderDef:
             "worker_name": self.worker_name,
             "status": self.status,
             "progress_percent": float(self.progress_percent),
+            "calendar_stage": self.calendar_stage,
+            "calendar_date": self.calendar_date,
+            "calendar_note": self.calendar_note,
             "site_address": self.site_address,
             "notes": self.notes,
             "attachments": _normalize_attachments(self.attachments),
@@ -117,6 +123,9 @@ class OrderDef:
             worker_name=str(data.get("worker_name", "") or ""),
             status=str(data.get("status", "Nowe") or "Nowe"),
             progress_percent=float(data.get("progress_percent", 0.0) or 0.0),
+            calendar_stage=str(data.get("calendar_stage", "") or ""),
+            calendar_date=str(data.get("calendar_date", "") or ""),
+            calendar_note=str(data.get("calendar_note", "") or ""),
             site_address=str(data.get("site_address", "") or ""),
             notes=str(data.get("notes", "") or ""),
             attachments=_normalize_attachments(data.get("attachments", [])),
