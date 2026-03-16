@@ -5,6 +5,7 @@ from datetime import date, datetime
 
 from PyQt6.QtCore import QDate, Qt
 from PyQt6.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QDateEdit,
@@ -132,6 +133,28 @@ class TabKalendarz(QWidget):
             stage_stats_row.addWidget(frame)
         stage_stats_row.addStretch(1)
         root.addLayout(stage_stats_row)
+
+        self._stage_bucket_filter = ""
+        stage_filter_row = QHBoxLayout()
+        stage_filter_row.setSpacing(8)
+        stage_filter_row.addWidget(QLabel("Szybki filtr etapow:", self))
+        self.stage_filter_group = QButtonGroup(self)
+        self.stage_filter_group.setExclusive(True)
+        self.stage_filter_buttons: dict[str, QPushButton] = {}
+        for label, bucket in (("Wszystkie", ""), *[(name, name) for name in CALENDAR_STAGE_SUMMARY_ITEMS]):
+            button = QPushButton(label, self)
+            button.setCheckable(True)
+            button.setStyleSheet(
+                "QPushButton { padding: 4px 10px; border: 1px solid #cbd5e1; border-radius: 12px; background:#ffffff; }"
+                "QPushButton:checked { background:#e2ecff; border-color:#7c9cff; font-weight:700; }"
+            )
+            button.clicked.connect(lambda checked=False, value=bucket: self._set_stage_bucket_filter(value))
+            self.stage_filter_group.addButton(button)
+            self.stage_filter_buttons[bucket] = button
+            stage_filter_row.addWidget(button)
+        self.stage_filter_buttons[""].setChecked(True)
+        stage_filter_row.addStretch(1)
+        root.addLayout(stage_filter_row)
 
         filters = QHBoxLayout()
         filters.setSpacing(10)
@@ -362,6 +385,7 @@ class TabKalendarz(QWidget):
         search = self.ed_search.text().strip().lower()
         status_filter = self.cb_status_filter.currentText().strip()
         stage_filter = self.cb_stage_filter.currentText().strip()
+        stage_bucket_filter = self._stage_bucket_filter
         rows: list[dict[str, object]] = []
         for order in self._order_store.list_orders():
             order_status = str(order.status or "").strip()
@@ -369,6 +393,8 @@ class TabKalendarz(QWidget):
             if status_filter and status_filter != "Wszystkie statusy" and order_status != status_filter:
                 continue
             if stage_filter and stage_filter != "Wszystkie etapy" and calendar_stage != stage_filter:
+                continue
+            if stage_bucket_filter and not _matches_stage_bucket(order, calendar_stage, stage_bucket_filter):
                 continue
             haystack = " ".join(
                 [
@@ -484,6 +510,13 @@ class TabKalendarz(QWidget):
                     self.tbl_orders.selectRow(row)
                     break
         self._on_selection_changed()
+
+    def _set_stage_bucket_filter(self, bucket: str) -> None:
+        self._stage_bucket_filter = str(bucket or "")
+        button = self.stage_filter_buttons.get(self._stage_bucket_filter)
+        if button is not None:
+            button.setChecked(True)
+        self._refresh_table()
 
     def _selected_order_code(self) -> str:
         rows = self.tbl_orders.selectionModel().selectedRows() if self.tbl_orders.selectionModel() is not None else []

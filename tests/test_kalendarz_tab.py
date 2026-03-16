@@ -143,3 +143,45 @@ def test_kalendarz_tab_shows_status_history_for_selected_order(tmp_path, monkeyp
     assert w.tbl_status_history.item(0, 2).text() == "Produkcja"
     assert w.tbl_status_history.item(0, 3).text() == "Jan Test"
     assert "Klient zaakceptowal" in w.lab_history_note.text()
+
+
+def test_kalendarz_tab_quick_stage_filters_limit_table(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.domain.order_models import OrderDef
+    from src.storage.order_store_json import OrderStoreJson
+    from src.tabs.kalendarz.tab_kalendarz import TabKalendarz
+
+    order_store = OrderStoreJson(path=tmp_path / "orders.json")
+    order_store.save_new(
+        OrderDef(code="ORD-KAL-05", client_name="Klient Wycena", status="Wycena", calendar_stage="Wycena")
+    )
+    order_store.save_new(
+        OrderDef(
+            code="ORD-KAL-06",
+            client_name="Klient Zakup",
+            status="Zakup materialow",
+            calendar_stage="Zakup materialow",
+        )
+    )
+    order_store.save_new(
+        OrderDef(code="ORD-KAL-07", client_name="Klient Montaz", status="Montaz", calendar_stage="Montaz")
+    )
+
+    w = TabKalendarz(order_store=order_store)
+    assert w.tbl_orders.rowCount() == 3
+
+    QTest.mouseClick(w.stage_filter_buttons["Wycena"], Qt.MouseButton.LeftButton)
+    assert w.tbl_orders.rowCount() == 1
+    assert w.tbl_orders.item(0, 2).text() == "ORD-KAL-05"
+    assert w.lab_metric_total.metric_value.text() == "1"  # type: ignore[attr-defined]
+
+    QTest.mouseClick(w.stage_filter_buttons["Zakup materialow"], Qt.MouseButton.LeftButton)
+    assert w.tbl_orders.rowCount() == 1
+    assert w.tbl_orders.item(0, 2).text() == "ORD-KAL-06"
+
+    QTest.mouseClick(w.stage_filter_buttons[""], Qt.MouseButton.LeftButton)
+    assert w.tbl_orders.rowCount() == 3
