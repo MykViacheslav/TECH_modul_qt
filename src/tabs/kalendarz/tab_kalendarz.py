@@ -156,6 +156,10 @@ class TabKalendarz(QWidget):
         stage_filter_row.addStretch(1)
         root.addLayout(stage_filter_row)
 
+        filters_box, filters_layout = self._make_panel(
+            "Pulpit filtrowania",
+            "Tutaj szybko zawezasz projekty po etapie, pracowniku, terminie i statusie.",
+        )
         filters = QHBoxLayout()
         filters.setSpacing(10)
         self.ed_search = QLineEdit(self)
@@ -166,15 +170,38 @@ class TabKalendarz(QWidget):
         self.cb_stage_filter.addItem("Wszystkie etapy")
         for stage in CALENDAR_STAGE_ITEMS:
             self.cb_stage_filter.addItem(stage)
+        self.cb_worker_filter = QComboBox(self)
+        self.cb_worker_filter.addItem("Wszyscy pracownicy")
+        self.cb_time_filter = QComboBox(self)
+        self.cb_time_filter.addItems(
+            [
+                "Wszystkie terminy",
+                "Dzis",
+                "Ten tydzien",
+                "Po terminie",
+                "Bez terminu",
+            ]
+        )
         self.btn_refresh = QPushButton("Odswiez", self)
         filters.addWidget(QLabel("Szukaj:", self))
         filters.addWidget(self.ed_search, 1)
+        filters.addWidget(QLabel("Pracownik:", self))
+        filters.addWidget(self.cb_worker_filter, 0)
+        filters.addWidget(QLabel("Termin:", self))
+        filters.addWidget(self.cb_time_filter, 0)
         filters.addWidget(QLabel("Status:", self))
         filters.addWidget(self.cb_status_filter, 0)
         filters.addWidget(QLabel("Etap:", self))
         filters.addWidget(self.cb_stage_filter, 0)
         filters.addWidget(self.btn_refresh, 0)
-        root.addLayout(filters)
+        filters_layout.addLayout(filters)
+        filters_hint = QLabel(
+            "Najwygodniej pracuje sie tu jak wchodzisz np. tylko w wyceny, tylko montaze albo tylko rzeczy po terminie."
+        )
+        filters_hint.setWordWrap(True)
+        filters_hint.setStyleSheet("color:#6b7280;")
+        filters_layout.addWidget(filters_hint)
+        root.addWidget(filters_box, 0)
 
         self.tbl_orders = QTableWidget(0, 8, self)
         self.tbl_orders.setHorizontalHeaderLabels(
@@ -196,16 +223,10 @@ class TabKalendarz(QWidget):
         header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
         root.addWidget(self.tbl_orders, 1)
 
-        editor = QFrame(self)
-        editor.setFrameShape(QFrame.Shape.StyledPanel)
-        editor.setStyleSheet("QFrame { border: 1px solid #d9e0ea; border-radius: 8px; background: #fbfcfe; }")
-        editor_layout = QVBoxLayout(editor)
-        editor_layout.setContentsMargins(12, 12, 12, 12)
-        editor_layout.setSpacing(10)
-
-        editor_title = QLabel("Plan etapu", editor)
-        editor_title.setStyleSheet("font-weight: 700;")
-        editor_layout.addWidget(editor_title)
+        editor, editor_layout = self._make_panel(
+            "Plan etapu",
+            "Tutaj zapisujesz, kto prowadzi zamowienie, na jakim jest etapie i jaki ma termin.",
+        )
 
         self.lab_selected = QLabel("Wybierz zamowienie z listy.", editor)
         self.lab_selected.setWordWrap(True)
@@ -257,15 +278,10 @@ class TabKalendarz(QWidget):
         lower_panels = QHBoxLayout()
         lower_panels.setSpacing(12)
 
-        workload_box = QFrame(self)
-        workload_box.setFrameShape(QFrame.Shape.StyledPanel)
-        workload_box.setStyleSheet("QFrame { border: 1px solid #d9e0ea; border-radius: 8px; background: #ffffff; }")
-        workload_layout = QVBoxLayout(workload_box)
-        workload_layout.setContentsMargins(12, 12, 12, 12)
-        workload_layout.setSpacing(8)
-        workload_title = QLabel("Obciazenie pracownikow", workload_box)
-        workload_title.setStyleSheet("font-weight: 700;")
-        workload_layout.addWidget(workload_title)
+        workload_box, workload_layout = self._make_panel(
+            "Obciazenie pracownikow",
+            "Szybki widok: kto ma ile projektow, montazy i rzeczy po terminie.",
+        )
         self.tbl_workload = QTableWidget(0, 4, workload_box)
         self.tbl_workload.setHorizontalHeaderLabels(["Pracownik", "Projekty", "Montaz", "Po terminie"])
         self.tbl_workload.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -280,15 +296,10 @@ class TabKalendarz(QWidget):
         workload_layout.addWidget(self.tbl_workload, 1)
         lower_panels.addWidget(workload_box, 1)
 
-        history_box = QFrame(self)
-        history_box.setFrameShape(QFrame.Shape.StyledPanel)
-        history_box.setStyleSheet("QFrame { border: 1px solid #d9e0ea; border-radius: 8px; background: #ffffff; }")
-        history_layout = QVBoxLayout(history_box)
-        history_layout.setContentsMargins(12, 12, 12, 12)
-        history_layout.setSpacing(8)
-        history_title = QLabel("Historia statusu", history_box)
-        history_title.setStyleSheet("font-weight: 700;")
-        history_layout.addWidget(history_title)
+        history_box, history_layout = self._make_panel(
+            "Historia statusu",
+            "Tu wraca chronologia decyzji: z jakiego statusu na jaki, kiedy i przez kogo.",
+        )
         self.tbl_status_history = QTableWidget(0, 4, history_box)
         self.tbl_status_history.setHorizontalHeaderLabels(["Data", "Z", "Na", "Kto"])
         self.tbl_status_history.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -310,6 +321,8 @@ class TabKalendarz(QWidget):
         root.addLayout(lower_panels, 0)
 
         self.ed_search.textChanged.connect(self._refresh_table)
+        self.cb_worker_filter.currentTextChanged.connect(self._refresh_table)
+        self.cb_time_filter.currentTextChanged.connect(self._refresh_table)
         self.cb_status_filter.currentTextChanged.connect(self._refresh_table)
         self.cb_stage_filter.currentTextChanged.connect(self._refresh_table)
         self.btn_refresh.clicked.connect(self.refresh_data)
@@ -321,16 +334,36 @@ class TabKalendarz(QWidget):
         self._reload_worker_choices()
         self.refresh_data()
 
+    def _make_panel(self, title: str, subtitle: str = "") -> tuple[QFrame, QVBoxLayout]:
+        frame = QFrame(self)
+        frame.setStyleSheet(
+            "QFrame { border: 1px solid #d8e2ec; border-radius: 12px; background: #fdfdfd; }"
+        )
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(8)
+        head = QLabel(title, frame)
+        head.setStyleSheet("font-size:16px; font-weight:800; color:#122033;")
+        layout.addWidget(head)
+        if subtitle:
+            sub = QLabel(subtitle, frame)
+            sub.setWordWrap(True)
+            sub.setStyleSheet("color:#64748b;")
+            layout.addWidget(sub)
+        return frame, layout
+
     def _make_metric_card(self, title: str, value: str) -> QFrame:
         frame = QFrame(self)
-        frame.setStyleSheet("QFrame { border: 1px solid #d8e2ec; border-radius: 10px; background: #ffffff; }")
+        frame.setStyleSheet(
+            "QFrame { border: 1px solid #d8e2ec; border-radius: 14px; background: #ffffff; min-width: 124px; }"
+        )
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(2)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(4)
         lab_title = QLabel(title, frame)
-        lab_title.setStyleSheet("color:#64748b; font-weight:600;")
+        lab_title.setStyleSheet("color:#64748b; font-weight:700;")
         lab_value = QLabel(value, frame)
-        lab_value.setStyleSheet("font-size: 20px; font-weight: 800; color:#0f172a;")
+        lab_value.setStyleSheet("font-size: 28px; font-weight: 800; color:#0f172a;")
         lab_value.setObjectName("metricValue")
         layout.addWidget(lab_title)
         layout.addWidget(lab_value)
@@ -344,11 +377,17 @@ class TabKalendarz(QWidget):
 
     def _reload_worker_choices(self) -> None:
         current = self.cb_calendar_worker.currentText().strip()
+        current_filter = self.cb_worker_filter.currentText().strip()
         self.cb_calendar_worker.clear()
         self.cb_calendar_worker.addItem("")
+        self.cb_worker_filter.clear()
+        self.cb_worker_filter.addItem("Wszyscy pracownicy")
         for name in self._worker_store.list_names():
             self.cb_calendar_worker.addItem(name)
+            self.cb_worker_filter.addItem(name)
         self.cb_calendar_worker.setCurrentText(current)
+        if current_filter:
+            self.cb_worker_filter.setCurrentText(current_filter)
 
     def refresh_data(self) -> None:
         orders = self._order_store.list_orders()
@@ -385,14 +424,22 @@ class TabKalendarz(QWidget):
         search = self.ed_search.text().strip().lower()
         status_filter = self.cb_status_filter.currentText().strip()
         stage_filter = self.cb_stage_filter.currentText().strip()
+        worker_filter = self.cb_worker_filter.currentText().strip()
+        time_filter = self.cb_time_filter.currentText().strip()
         stage_bucket_filter = self._stage_bucket_filter
+        today = date.today()
+        week_start = today.fromordinal(today.toordinal() - today.weekday())
+        week_end = today.fromordinal(week_start.toordinal() + 6)
         rows: list[dict[str, object]] = []
         for order in self._order_store.list_orders():
             order_status = str(order.status or "").strip()
             calendar_stage = str(getattr(order, "calendar_stage", "") or "").strip()
+            worker_name = str(getattr(order, "worker_name", "") or "").strip()
             if status_filter and status_filter != "Wszystkie statusy" and order_status != status_filter:
                 continue
             if stage_filter and stage_filter != "Wszystkie etapy" and calendar_stage != stage_filter:
+                continue
+            if worker_filter and worker_filter != "Wszyscy pracownicy" and worker_name != worker_filter:
                 continue
             if stage_bucket_filter and not _matches_stage_bucket(order, calendar_stage, stage_bucket_filter):
                 continue
@@ -408,13 +455,26 @@ class TabKalendarz(QWidget):
             if search and search not in haystack:
                 continue
             calendar_date = str(getattr(order, "calendar_date", "") or "").strip()
+            parsed_date = _parse_iso_date(calendar_date)
+            if time_filter == "Dzis" and parsed_date != today:
+                continue
+            if time_filter == "Ten tydzien" and (parsed_date is None or parsed_date < week_start or parsed_date > week_end):
+                continue
+            if time_filter == "Po terminie" and (
+                parsed_date is None
+                or parsed_date >= today
+                or str(getattr(order, "status", "") or "").strip().lower() == "zakonczone"
+            ):
+                continue
+            if time_filter == "Bez terminu" and parsed_date is not None:
+                continue
             rows.append(
                 {
                     "order": order,
                     "calendar_date": calendar_date,
                     "calendar_stage": calendar_stage,
                     "calendar_note": str(getattr(order, "calendar_note", "") or "").strip(),
-                    "parsed_date": _parse_iso_date(calendar_date),
+                    "parsed_date": parsed_date,
                 }
             )
         rows.sort(

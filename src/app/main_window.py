@@ -23,10 +23,41 @@ def _apply_accessible_ui_scale() -> None:
 
     app.setStyleSheet(
         """
+        QMainWindow {
+            background: #f5f1ea;
+        }
+        QTabWidget::pane {
+            border: 1px solid #ded7cb;
+            background: #fbf9f5;
+            top: -1px;
+        }
         QTabBar::tab {
-            min-height: 34px;
-            min-width: 88px;
-            padding: 4px 10px;
+            min-height: 38px;
+            min-width: 92px;
+            padding: 6px 14px;
+            margin-right: 2px;
+            border: 1px solid #d8d1c4;
+            border-bottom: none;
+            border-top-left-radius: 10px;
+            border-top-right-radius: 10px;
+            background: #efe8dc;
+            color: #28323f;
+            font-weight: 600;
+        }
+        QTabBar::tab:selected {
+            background: #fbf9f5;
+            color: #10233f;
+            font-weight: 800;
+        }
+        QTabBar::tab:hover:!selected {
+            background: #f6efe5;
+        }
+        QWidget {
+            selection-background-color: #d7e7ff;
+            selection-color: #10233f;
+        }
+        QLabel {
+            color: #243243;
         }
         QPushButton,
         QComboBox,
@@ -45,11 +76,83 @@ def _apply_accessible_ui_scale() -> None:
         QLineEdit,
         QSpinBox,
         QDoubleSpinBox {
-            min-height: 30px;
+            min-height: 34px;
+            border-radius: 10px;
+        }
+        QPushButton {
+            padding: 4px 12px;
+            border: 1px solid #d0c5b4;
+            background: #fffdfa;
+            color: #1f2d3d;
+            font-weight: 600;
+        }
+        QPushButton:hover {
+            background: #f3ede3;
+            border-color: #bba98c;
+        }
+        QPushButton:disabled {
+            color: #9aa4af;
+            background: #f5f5f5;
+            border-color: #e5e7eb;
+        }
+        QComboBox,
+        QLineEdit,
+        QSpinBox,
+        QDoubleSpinBox,
+        QTextEdit,
+        QPlainTextEdit {
+            border: 1px solid #d7cfbf;
+            background: #fffdfa;
+            padding: 4px 8px;
+            color: #18212b;
+        }
+        QComboBox::drop-down {
+            border: none;
+            width: 24px;
+        }
+        QAbstractItemView,
+        QListWidget,
+        QTreeWidget,
+        QTableWidget {
+            border: 1px solid #ddd5c8;
+            background: #ffffff;
+            alternate-background-color: #f9f6f0;
+            gridline-color: #ece5d8;
         }
         QHeaderView::section {
-            min-height: 26px;
-            padding: 4px 6px;
+            min-height: 28px;
+            padding: 5px 8px;
+            background: #f1ebdf;
+            color: #334155;
+            border: none;
+            border-right: 1px solid #e5dccd;
+            border-bottom: 1px solid #ddd5c8;
+            font-weight: 700;
+        }
+        QScrollArea {
+            border: none;
+            background: transparent;
+        }
+        QScrollBar:vertical {
+            width: 12px;
+            background: #f1ede6;
+            margin: 2px;
+        }
+        QScrollBar::handle:vertical {
+            background: #cbbca2;
+            min-height: 24px;
+            border-radius: 6px;
+        }
+        QScrollBar::add-line:vertical,
+        QScrollBar::sub-line:vertical,
+        QScrollBar::add-page:vertical,
+        QScrollBar::sub-page:vertical,
+        QScrollBar::add-line:horizontal,
+        QScrollBar::sub-line:horizontal,
+        QScrollBar::add-page:horizontal,
+        QScrollBar::sub-page:horizontal {
+            background: transparent;
+            border: none;
         }
         """
     )
@@ -181,8 +284,12 @@ class MainWindow(QMainWindow):
         if tab_start is not None:
             if hasattr(tab_start, "sig_new_order_requested"):
                 tab_start.sig_new_order_requested.connect(self._open_new_order)
+            if hasattr(tab_start, "sig_open_quote_requested"):
+                tab_start.sig_open_quote_requested.connect(self._open_quote)
             if hasattr(tab_start, "sig_open_calendar_requested"):
                 tab_start.sig_open_calendar_requested.connect(self._open_calendar)
+            if hasattr(tab_start, "sig_open_work_time_requested"):
+                tab_start.sig_open_work_time_requested.connect(self._open_work_time)
             if hasattr(tab_start, "sig_open_clients_requested"):
                 tab_start.sig_open_clients_requested.connect(self._open_clients_in_bazy)
             if hasattr(tab_start, "sig_new_wall_requested"):
@@ -294,6 +401,22 @@ class MainWindow(QMainWindow):
         if hasattr(tab_modul, "start_new_module"):
             tab_modul.start_new_module()
         index = self.tabs.indexOf(tab_modul)
+        if index >= 0:
+            self.tabs.setCurrentIndex(index)
+
+    def _open_quote(self) -> None:
+        tab = self._tabs_by_title.get("Wycena")
+        if tab is None:
+            return
+        index = self.tabs.indexOf(tab)
+        if index >= 0:
+            self.tabs.setCurrentIndex(index)
+
+    def _open_work_time(self) -> None:
+        tab = self._tabs_by_title.get("Czas pracy")
+        if tab is None:
+            return
+        index = self.tabs.indexOf(tab)
         if index >= 0:
             self.tabs.setCurrentIndex(index)
 

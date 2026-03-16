@@ -804,6 +804,8 @@ NAJBLIZSZY PRAKTYCZNY KROK
 [IN PROGRESS] Domknac Etap 3 i przejsc do kolejnych narzedzi prowadzenia pracy:
 - rozwinac Kalendarz o kolejne etapy i widok obciazenia
 - dopiac historie zmian statusu
+- dodac czytelniejsze filtry po pracowniku i czasie
+- uspokoic wizualnie Kalendarz, zeby wygladal bardziej jak narzedzie pracy firmy
 - utrzymywac w tym pliku aktualny stan:
   - co zrobione
   - co jest w toku
@@ -813,3 +815,17 @@ NAJBLIZSZY PRAKTYCZNY KROK
 - dalej upraszczac Komplet i Sciana pod szybsza prace
 - przygotowac biblioteke gotowych modulow do szybkiej wyceny
 - dopracowac szybka zmiane materialow / frontow / kolorow
+- odchudzic i uspokoic Start, Nowe zamowienie, Bazy i Czas pracy
+- budowac bardziej roboczy wyglad kart zamiast surowych formularzy
+
+[DONE] Pakiet porzadkow UI po przegladzie ekranow:
+- Start ma bardziej kierunkowy dashboard pracy z szybszym przejsciem do Wycena i Czas pracy
+- Nowe zamowienie ma spokojniejszy uklad sekcji pomocniczych:
+  - Zalaczniki od architekta
+  - Pozycje do wyceny
+  - Probki i finalne materialy
+  - Kasa klienta
+- Kasa klienta ma bardziej panelowy uklad zamiast surowego formularza
+- Kalendarz ma filtry po pracowniku i czasie oraz spokojniejszy podzial na panele
+- Czas pracy ma czytelniejsze sekcje planu miesiaca i rozliczenia
+- Bazy dostaly bardziej robocze widoki dla Materialow i Pracownikow

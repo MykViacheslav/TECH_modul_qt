@@ -4,7 +4,10 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
+    QDoubleSpinBox,
+    QFrame,
     QFormLayout,
+    QGridLayout,
     QHeaderView,
     QHBoxLayout,
     QInputDialog,
@@ -141,6 +144,49 @@ class TabBazy(QWidget):
         button.setMaximumWidth(max_width)
         button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
+    def _make_section_box(self, title: str, subtitle: str = "") -> tuple[QFrame, QVBoxLayout]:
+        box = QFrame(self)
+        box.setStyleSheet(
+            "QFrame {"
+            " background:#fffdf8;"
+            " border:1px solid #e6d9c8;"
+            " border-radius:12px;"
+            "}"
+        )
+        layout = QVBoxLayout(box)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(8)
+
+        head = QLabel(title, box)
+        head.setStyleSheet("font-size:16px; font-weight:800; color:#2f241b;")
+        layout.addWidget(head)
+        if subtitle:
+            sub = QLabel(subtitle, box)
+            sub.setWordWrap(True)
+            sub.setStyleSheet("color:#6b5b4b;")
+            layout.addWidget(sub)
+        return box, layout
+
+    def _make_stat_card(self, title: str) -> tuple[QFrame, QLabel]:
+        box = QFrame(self)
+        box.setStyleSheet(
+            "QFrame {"
+            " background:#f7efe2;"
+            " border:1px solid #e2d2bc;"
+            " border-radius:12px;"
+            "}"
+        )
+        layout = QVBoxLayout(box)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(2)
+        lab_title = QLabel(title, box)
+        lab_title.setStyleSheet("font-size:11px; font-weight:700; color:#80684f;")
+        lab_value = QLabel("-", box)
+        lab_value.setStyleSheet("font-size:20px; font-weight:900; color:#2f241b;")
+        layout.addWidget(lab_title)
+        layout.addWidget(lab_value)
+        return box, lab_value
+
     def _configure_content_width_table(self, table: QTableWidget) -> None:
         header = table.horizontalHeader()
         header.setStretchLastSection(True)
@@ -170,6 +216,37 @@ class TabBazy(QWidget):
         self.tree_modules = QTreeWidget(panel)
         self.tree_modules.setHeaderHidden(True)
         layout.addWidget(self.tree_modules, 1)
+
+        details_box, details_layout = self._make_section_box(
+            "Wybrany modul",
+            "Szybki opis zaznaczonego modulu: rozmiar, typ, front i wnetrze.",
+        )
+        details_grid = QGridLayout()
+        details_grid.setHorizontalSpacing(12)
+        details_grid.setVerticalSpacing(6)
+        details_grid.addWidget(QLabel("Nazwa"), 0, 0)
+        self.lab_module_detail_name = QLabel("-")
+        details_grid.addWidget(self.lab_module_detail_name, 0, 1)
+        details_grid.addWidget(QLabel("Grupa"), 1, 0)
+        self.lab_module_detail_group = QLabel("-")
+        details_grid.addWidget(self.lab_module_detail_group, 1, 1)
+        details_grid.addWidget(QLabel("Wymiary"), 2, 0)
+        self.lab_module_detail_dims = QLabel("-")
+        details_grid.addWidget(self.lab_module_detail_dims, 2, 1)
+        details_grid.addWidget(QLabel("Typ"), 3, 0)
+        self.lab_module_detail_kind = QLabel("-")
+        details_grid.addWidget(self.lab_module_detail_kind, 3, 1)
+        details_grid.addWidget(QLabel("Front"), 4, 0)
+        self.lab_module_detail_front = QLabel("-")
+        details_grid.addWidget(self.lab_module_detail_front, 4, 1)
+        details_grid.addWidget(QLabel("Srodek"), 5, 0)
+        self.lab_module_detail_inside = QLabel("-")
+        details_grid.addWidget(self.lab_module_detail_inside, 5, 1)
+        details_grid.addWidget(QLabel("Profil"), 6, 0)
+        self.lab_module_detail_profile = QLabel("-")
+        details_grid.addWidget(self.lab_module_detail_profile, 6, 1)
+        details_layout.addLayout(details_grid)
+        layout.addWidget(details_box, 0)
 
         manage_row = QHBoxLayout()
         self.cb_module_target_group = QComboBox(panel)
@@ -488,14 +565,77 @@ class TabBazy(QWidget):
         panel = QWidget(self)
         layout = QVBoxLayout(panel)
 
+        metrics_row = QHBoxLayout()
+        metrics_row.setSpacing(12)
+        self.card_materials_total, self.lab_materials_total = self._make_stat_card("Materialy")
+        self.card_edgebands_total, self.lab_edgebands_total = self._make_stat_card("Okleiny")
+        self.card_hardware_total, self.lab_hardware_total = self._make_stat_card("Okucia")
+        self.card_profiles_total, self.lab_profiles_total = self._make_stat_card("Profile")
+        for card in (
+            self.card_materials_total,
+            self.card_edgebands_total,
+            self.card_hardware_total,
+            self.card_profiles_total,
+        ):
+            metrics_row.addWidget(card, 1)
+        layout.addLayout(metrics_row)
+
         self.lab_materials_info = QLabel("-")
         self.lab_materials_info.setWordWrap(True)
         layout.addWidget(self.lab_materials_info)
 
         self.btn_open_catalog = QPushButton("Otworz edytor bazy cen")
         self._make_compact_button(self.btn_open_catalog, min_width=180, max_width=220)
-        layout.addWidget(self.btn_open_catalog, 0)
-        layout.addStretch(1)
+        button_row = QHBoxLayout()
+        button_row.addWidget(self.btn_open_catalog, 0)
+        button_row.addStretch(1)
+        layout.addLayout(button_row)
+
+        tables_row = QHBoxLayout()
+        tables_row.setSpacing(12)
+
+        materials_box, materials_layout = self._make_section_box("Materialy", "Podglad najwazniejszych materialow.")
+        self.tbl_materials_preview = QTableWidget(0, 4, panel)
+        self.tbl_materials_preview.setHorizontalHeaderLabels(["Material", "Grupa", "mm", "zl/m2"])
+        self.tbl_materials_preview.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl_materials_preview.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.tbl_materials_preview.setAlternatingRowColors(True)
+        self.tbl_materials_preview.verticalHeader().setVisible(False)
+        self.tbl_materials_preview.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.tbl_materials_preview.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_materials_preview.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_materials_preview.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        materials_layout.addWidget(self.tbl_materials_preview, 1)
+        tables_row.addWidget(materials_box, 2)
+
+        edgebands_box, edgebands_layout = self._make_section_box("Okleiny", "Podglad najwazniejszych oklein.")
+        self.tbl_edgebands_preview = QTableWidget(0, 3, panel)
+        self.tbl_edgebands_preview.setHorizontalHeaderLabels(["Okleina", "mm", "zl/mb"])
+        self.tbl_edgebands_preview.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl_edgebands_preview.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.tbl_edgebands_preview.setAlternatingRowColors(True)
+        self.tbl_edgebands_preview.verticalHeader().setVisible(False)
+        self.tbl_edgebands_preview.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.tbl_edgebands_preview.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_edgebands_preview.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        edgebands_layout.addWidget(self.tbl_edgebands_preview, 1)
+        tables_row.addWidget(edgebands_box, 1)
+
+        hardware_box, hardware_layout = self._make_section_box("Okucia", "Podglad najwazniejszych okuć i cen.")
+        self.tbl_hardware_preview = QTableWidget(0, 4, panel)
+        self.tbl_hardware_preview.setHorizontalHeaderLabels(["Okucie", "Producent", "Jedn.", "zl"])
+        self.tbl_hardware_preview.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl_hardware_preview.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.tbl_hardware_preview.setAlternatingRowColors(True)
+        self.tbl_hardware_preview.verticalHeader().setVisible(False)
+        self.tbl_hardware_preview.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.tbl_hardware_preview.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_hardware_preview.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_hardware_preview.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        hardware_layout.addWidget(self.tbl_hardware_preview, 1)
+        tables_row.addWidget(hardware_box, 2)
+
+        layout.addLayout(tables_row, 1)
 
         self.btn_open_catalog.clicked.connect(self._open_catalog_editor)
         return panel
@@ -504,6 +644,12 @@ class TabBazy(QWidget):
         panel = QWidget(self)
         layout = QVBoxLayout(panel)
 
+        top_row = QHBoxLayout()
+
+        contact_box, contact_layout = self._make_section_box(
+            "Dane pracownika",
+            "Podstawowe dane kontaktowe i rola w firmie.",
+        )
         form = QFormLayout()
         self.ed_worker_name = QLineEdit()
         self.ed_worker_role = QLineEdit()
@@ -517,7 +663,55 @@ class TabBazy(QWidget):
         form.addRow("Telefon", self.ed_worker_phone)
         form.addRow("E-mail", self.ed_worker_email)
         form.addRow("Notatki", self.ed_worker_notes)
-        layout.addLayout(form)
+        contact_layout.addLayout(form)
+        top_row.addWidget(contact_box, 2)
+
+        payroll_box, payroll_layout = self._make_section_box(
+            "Baza rozliczenia",
+            "Te stawki sa podstawa pod Czas pracy, robocizne i przyszle wyplaty.",
+        )
+        payroll_form = QFormLayout()
+        self.cb_worker_pay_mode = QComboBox()
+        self.cb_worker_pay_mode.addItems(["Godzinowa", "Dniowka"])
+        self.sp_worker_hourly_rate = QDoubleSpinBox()
+        self.sp_worker_hourly_rate.setRange(0.0, 9999.99)
+        self.sp_worker_hourly_rate.setDecimals(2)
+        self.sp_worker_hourly_rate.setSuffix(" PLN/h")
+        self.sp_worker_daily_rate = QDoubleSpinBox()
+        self.sp_worker_daily_rate.setRange(0.0, 99999.99)
+        self.sp_worker_daily_rate.setDecimals(2)
+        self.sp_worker_daily_rate.setSuffix(" PLN/dzien")
+        self.sp_worker_overtime_multiplier = QDoubleSpinBox()
+        self.sp_worker_overtime_multiplier.setRange(1.0, 5.0)
+        self.sp_worker_overtime_multiplier.setDecimals(2)
+        self.sp_worker_overtime_multiplier.setSingleStep(0.1)
+        self.sp_worker_delegation = QDoubleSpinBox()
+        self.sp_worker_delegation.setRange(0.0, 9999.99)
+        self.sp_worker_delegation.setDecimals(2)
+        self.sp_worker_delegation.setSuffix(" PLN/dzien")
+        self.sp_worker_montage = QDoubleSpinBox()
+        self.sp_worker_montage.setRange(0.0, 9999.99)
+        self.sp_worker_montage.setDecimals(2)
+        self.sp_worker_montage.setSuffix(" PLN/h")
+        self.sp_worker_onsite = QDoubleSpinBox()
+        self.sp_worker_onsite.setRange(0.0, 9999.99)
+        self.sp_worker_onsite.setDecimals(2)
+        self.sp_worker_onsite.setSuffix(" PLN/h")
+        self.sp_worker_lacquer = QDoubleSpinBox()
+        self.sp_worker_lacquer.setRange(0.0, 9999.99)
+        self.sp_worker_lacquer.setDecimals(2)
+        self.sp_worker_lacquer.setSuffix(" PLN/h")
+        payroll_form.addRow("Tryb", self.cb_worker_pay_mode)
+        payroll_form.addRow("Godz.", self.sp_worker_hourly_rate)
+        payroll_form.addRow("Dniowka", self.sp_worker_daily_rate)
+        payroll_form.addRow("Nadgodz. x", self.sp_worker_overtime_multiplier)
+        payroll_form.addRow("Delegacja", self.sp_worker_delegation)
+        payroll_form.addRow("Montaz", self.sp_worker_montage)
+        payroll_form.addRow("Na miejscu", self.sp_worker_onsite)
+        payroll_form.addRow("Lakiernia", self.sp_worker_lacquer)
+        payroll_layout.addLayout(payroll_form)
+        top_row.addWidget(payroll_box, 1)
+        layout.addLayout(top_row)
 
         btns = QHBoxLayout()
         self.btn_worker_add = QPushButton("Dodaj")
@@ -538,8 +732,8 @@ class TabBazy(QWidget):
         btns.addStretch(1)
         layout.addLayout(btns)
 
-        self.tbl_workers = QTableWidget(0, 4, panel)
-        self.tbl_workers.setHorizontalHeaderLabels(["Nazwa", "Rola", "Telefon", "E-mail"])
+        self.tbl_workers = QTableWidget(0, 7, panel)
+        self.tbl_workers.setHorizontalHeaderLabels(["Nazwa", "Rola", "Tryb", "Godz.", "Dniowka", "Telefon", "E-mail"])
         self.tbl_workers.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tbl_workers.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.tbl_workers.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -667,10 +861,33 @@ class TabBazy(QWidget):
         self.btn_open_module.setEnabled(has_selection)
         self.btn_delete_module.setEnabled(has_selection)
         if not has_selection:
+            self.lab_module_detail_name.setText("-")
+            self.lab_module_detail_group.setText("-")
+            self.lab_module_detail_dims.setText("-")
+            self.lab_module_detail_kind.setText("-")
+            self.lab_module_detail_front.setText("-")
+            self.lab_module_detail_inside.setText("-")
+            self.lab_module_detail_profile.setText("-")
             return
         module = self._module_store.get(name) if hasattr(self._module_store, "get") else None
         current_group = str(getattr(module, "base_group", "") or "")
         self._reload_module_group_choices(current_group=current_group)
+        if module is not None:
+            self.lab_module_detail_name.setText(module.name or "-")
+            self.lab_module_detail_group.setText(module_base_group_label_pl(current_group) or "-")
+            self.lab_module_detail_dims.setText(
+                f'{float(module.width_mm or 0.0):.0f} x {float(module.height_mm or 0.0):.0f} x {float(module.depth_mm or 0.0):.0f} mm'
+            )
+            self.lab_module_detail_kind.setText(
+                f'{str(getattr(module, "cabinet_kind", "") or "-")} / {str(getattr(module, "module_family", "") or "-")}'
+            )
+            self.lab_module_detail_front.setText(
+                f'{str(getattr(module, "facade_mode", "") or "-")} | szuflady: {int(getattr(module, "drawer_count", 0) or 0)}'
+            )
+            self.lab_module_detail_inside.setText(
+                f'polki: {int(getattr(module, "shelf_count", 0) or 0)}, piony: {int(getattr(module, "divider_count", 0) or 0)}'
+            )
+            self.lab_module_detail_profile.setText(str(getattr(module, "material_profile_key", "") or "-"))
 
     def _on_new_module(self) -> None:
         self.sig_new_module_requested.emit()
@@ -1241,17 +1458,55 @@ class TabBazy(QWidget):
         self._clear_order_form()
 
     def _reload_materials_tab(self) -> None:
-        materials = len(self._catalog.list_materials())
-        edgebands = len(self._catalog.list_edgebands())
-        hardware = len(self._catalog.list_hardware())
-        profiles = len(self._catalog.list_material_profiles())
+        materials_list = self._catalog.list_materials()
+        edgebands_list = self._catalog.list_edgebands()
+        hardware_list = self._catalog.list_hardware()
+        profiles_list = self._catalog.list_material_profiles()
+        materials = len(materials_list)
+        edgebands = len(edgebands_list)
+        hardware = len(hardware_list)
+        profiles = len(profiles_list)
+        self.lab_materials_total.setText(str(materials))
+        self.lab_edgebands_total.setText(str(edgebands))
+        self.lab_hardware_total.setText(str(hardware))
+        self.lab_profiles_total.setText(str(profiles))
         self.lab_materials_info.setText(
-            "Baza materialow korzysta z tego samego katalogu, co Modul.\n\n"
-            f"Materialy: {materials}\n"
-            f"Okleiny: {edgebands}\n"
-            f"Okucia: {hardware}\n"
-            f"Profile: {profiles}"
+            "Baza materialow korzysta z tego samego katalogu, co Modul i bedzie baza pod wycene, zakupy i magazyn.\n\n"
+            "To tutaj pozniej trafia ceny z dokumentow dostawy, WZ i faktur od dostawcow."
         )
+        self.tbl_materials_preview.setRowCount(0)
+        for row, material in enumerate(materials_list[:8]):
+            self.tbl_materials_preview.insertRow(row)
+            values = [
+                material.name_pl,
+                material.material_group or "-",
+                f"{material.thickness_mm:.1f}",
+                f"{material.price_pln_per_m2:.2f}",
+            ]
+            for col, value in enumerate(values):
+                self.tbl_materials_preview.setItem(row, col, QTableWidgetItem(value))
+
+        self.tbl_edgebands_preview.setRowCount(0)
+        for row, band in enumerate(edgebands_list[:8]):
+            self.tbl_edgebands_preview.insertRow(row)
+            values = [band.name_pl, f"{band.thickness_mm:.1f}", f"{band.price_pln_per_m:.2f}"]
+            for col, value in enumerate(values):
+                self.tbl_edgebands_preview.setItem(row, col, QTableWidgetItem(value))
+
+        self.tbl_hardware_preview.setRowCount(0)
+        for row, hardware_item in enumerate(hardware_list[:8]):
+            self.tbl_hardware_preview.insertRow(row)
+            values = [
+                hardware_item.name_pl,
+                hardware_item.manufacturer or "-",
+                hardware_item.unit or "szt",
+                f"{hardware_item.price_pln:.2f}",
+            ]
+            for col, value in enumerate(values):
+                self.tbl_hardware_preview.setItem(row, col, QTableWidgetItem(value))
+        self._resize_table_to_contents(self.tbl_materials_preview)
+        self._resize_table_to_contents(self.tbl_edgebands_preview)
+        self._resize_table_to_contents(self.tbl_hardware_preview)
 
     def _open_catalog_editor(self) -> None:
         dlg = CatalogEditorDialog(self, self._catalog)
@@ -1265,6 +1520,14 @@ class TabBazy(QWidget):
             phone=str(self.ed_worker_phone.text().strip()),
             email=str(self.ed_worker_email.text().strip()),
             notes=str(self.ed_worker_notes.toPlainText().strip()),
+            pay_mode=str(self.cb_worker_pay_mode.currentText().strip() or "Godzinowa"),
+            hourly_rate=float(self.sp_worker_hourly_rate.value()),
+            daily_rate=float(self.sp_worker_daily_rate.value()),
+            overtime_multiplier=float(self.sp_worker_overtime_multiplier.value()),
+            delegation_day_addon_pln=float(self.sp_worker_delegation.value()),
+            montage_hour_addon_pln=float(self.sp_worker_montage.value()),
+            onsite_hour_addon_pln=float(self.sp_worker_onsite.value()),
+            lacquer_hour_addon_pln=float(self.sp_worker_lacquer.value()),
         )
 
     def _selected_worker_name(self) -> str:
@@ -1283,6 +1546,14 @@ class TabBazy(QWidget):
             self.ed_worker_phone.clear()
             self.ed_worker_email.clear()
             self.ed_worker_notes.clear()
+            self.cb_worker_pay_mode.setCurrentText("Godzinowa")
+            self.sp_worker_hourly_rate.setValue(0.0)
+            self.sp_worker_daily_rate.setValue(0.0)
+            self.sp_worker_overtime_multiplier.setValue(1.0)
+            self.sp_worker_delegation.setValue(0.0)
+            self.sp_worker_montage.setValue(0.0)
+            self.sp_worker_onsite.setValue(0.0)
+            self.sp_worker_lacquer.setValue(0.0)
         finally:
             self._is_syncing_worker_ui = False
 
@@ -1300,6 +1571,14 @@ class TabBazy(QWidget):
             self.ed_worker_phone.setText(worker.phone)
             self.ed_worker_email.setText(worker.email)
             self.ed_worker_notes.setPlainText(worker.notes)
+            self.cb_worker_pay_mode.setCurrentText(worker.pay_mode or "Godzinowa")
+            self.sp_worker_hourly_rate.setValue(float(worker.hourly_rate or 0.0))
+            self.sp_worker_daily_rate.setValue(float(worker.daily_rate or 0.0))
+            self.sp_worker_overtime_multiplier.setValue(float(worker.overtime_multiplier or 1.0))
+            self.sp_worker_delegation.setValue(float(worker.delegation_day_addon_pln or 0.0))
+            self.sp_worker_montage.setValue(float(worker.montage_hour_addon_pln or 0.0))
+            self.sp_worker_onsite.setValue(float(worker.onsite_hour_addon_pln or 0.0))
+            self.sp_worker_lacquer.setValue(float(worker.lacquer_hour_addon_pln or 0.0))
         finally:
             self._is_syncing_worker_ui = False
 
@@ -1307,7 +1586,15 @@ class TabBazy(QWidget):
         workers = self._worker_store.list_workers()
         self.tbl_workers.setRowCount(len(workers))
         for row, worker in enumerate(workers):
-            values = [worker.name, worker.role, worker.phone, worker.email]
+            values = [
+                worker.name,
+                worker.role,
+                worker.pay_mode,
+                f"{float(worker.hourly_rate or 0.0):.2f}",
+                f"{float(worker.daily_rate or 0.0):.2f}",
+                worker.phone,
+                worker.email,
+            ]
             for col, value in enumerate(values):
                 self.tbl_workers.setItem(row, col, QTableWidgetItem(value))
         self._resize_table_to_contents(self.tbl_workers)

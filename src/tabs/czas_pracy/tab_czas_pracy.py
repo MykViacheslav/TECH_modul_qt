@@ -127,13 +127,13 @@ class TabCzasPracy(QWidget):
         top_row = QHBoxLayout()
         top_row.setSpacing(12)
 
-        controls = QFrame(self)
-        controls.setFrameShape(QFrame.Shape.StyledPanel)
-        controls.setStyleSheet("QFrame { border: 1px solid #d9e0ea; border-radius: 8px; background: #fbfcfe; }")
-        controls_layout = QVBoxLayout(controls)
-        controls_layout.setContentsMargins(12, 12, 12, 12)
-        controls_layout.setSpacing(10)
-
+        controls, controls_layout = self._make_panel(
+            "Plan miesiaca",
+            "Tutaj wybierasz pracownika, miesiac i podstawowe reguly rozliczenia tego okresu.",
+        )
+        period_title = QLabel("Okres i pracownik", controls)
+        period_title.setStyleSheet("font-weight:700; color:#0f172a;")
+        controls_layout.addWidget(period_title)
         form = QFormLayout()
         self.cb_worker = QComboBox(self)
         self.cb_month = QComboBox(self)
@@ -183,52 +183,83 @@ class TabCzasPracy(QWidget):
         form.addRow("Pracownik", self.cb_worker)
         form.addRow("Miesiac", self.cb_month)
         form.addRow("Rok", self.sp_year)
-        form.addRow("Tryb rozlicz.", self.cb_pay_mode)
-        form.addRow("Stawka godz.", self.sp_hourly_rate)
-        form.addRow("Dniowka", self.sp_daily_rate)
-        form.addRow("Nadgodz. x", self.sp_overtime_multiplier)
-        form.addRow("Delegacja / dzien", self.sp_delegation_day_addon)
-        form.addRow("Montaz / godz.", self.sp_montage_hour_addon)
-        form.addRow("Na miejscu / godz.", self.sp_onsite_hour_addon)
-        form.addRow("Lakiernia / godz.", self.sp_lacquer_hour_addon)
         controls_layout.addLayout(form)
 
         buttons = QHBoxLayout()
         self.btn_refresh = QPushButton("Wczytaj miesiac", self)
-        self.btn_save_rate = QPushButton("Zapisz stawke", self)
-        self.btn_save_sheet = QPushButton("Zapisz godziny", self)
         buttons.addWidget(self.btn_refresh)
-        buttons.addWidget(self.btn_save_rate)
-        buttons.addWidget(self.btn_save_sheet)
         buttons.addStretch(1)
         controls_layout.addLayout(buttons)
+
+        rates_title = QLabel("Rozliczenie i dodatki", controls)
+        rates_title.setStyleSheet("font-weight:700; color:#0f172a; margin-top:6px;")
+        controls_layout.addWidget(rates_title)
+        rates_form = QFormLayout()
+        rates_form.addRow("Tryb rozlicz.", self.cb_pay_mode)
+        rates_form.addRow("Stawka godz.", self.sp_hourly_rate)
+        rates_form.addRow("Dniowka", self.sp_daily_rate)
+        rates_form.addRow("Nadgodz. x", self.sp_overtime_multiplier)
+        rates_form.addRow("Delegacja / dzien", self.sp_delegation_day_addon)
+        rates_form.addRow("Montaz / godz.", self.sp_montage_hour_addon)
+        rates_form.addRow("Na miejscu / godz.", self.sp_onsite_hour_addon)
+        rates_form.addRow("Lakiernia / godz.", self.sp_lacquer_hour_addon)
+        controls_layout.addLayout(rates_form)
+
+        action_title = QLabel("Zapis", controls)
+        action_title.setStyleSheet("font-weight:700; color:#0f172a; margin-top:6px;")
+        controls_layout.addWidget(action_title)
+        action_note = QLabel(
+            "Najpierw ustawiasz stawki pracownika, potem wpisujesz dni i zapisujesz miesiac pracy."
+        )
+        action_note.setWordWrap(True)
+        action_note.setStyleSheet("color:#64748b;")
+        controls_layout.addWidget(action_note)
+        action_buttons = QHBoxLayout()
+        self.btn_save_rate = QPushButton("Zapisz stawke", self)
+        self.btn_save_sheet = QPushButton("Zapisz godziny", self)
+        action_buttons.addWidget(self.btn_save_rate)
+        action_buttons.addWidget(self.btn_save_sheet)
+        action_buttons.addStretch(1)
+        controls_layout.addLayout(action_buttons)
 
         self.lab_status = QLabel("", self)
         self.lab_status.setWordWrap(True)
         controls_layout.addWidget(self.lab_status)
         top_row.addWidget(controls, 1)
 
-        summary = QFrame(self)
-        summary.setFrameShape(QFrame.Shape.StyledPanel)
-        summary.setStyleSheet("QFrame { border: 1px solid #d9e0ea; border-radius: 8px; background: #ffffff; }")
-        summary_layout = QGridLayout(summary)
-        summary_layout.setContentsMargins(12, 12, 12, 12)
-        summary_layout.setSpacing(10)
+        summary, summary_layout = self._make_panel(
+            "Podsumowanie miesiaca",
+            "To jest szybki koszt pracownika z wybranego miesiaca, razem z nadgodzinami i dodatkami etapow.",
+        )
+        summary_grid = QGridLayout()
+        summary_grid.setSpacing(10)
         self.lab_days = self._make_metric_card("Dni pracy", "0")
         self.lab_hours = self._make_metric_card("Godziny", "0.0")
         self.lab_overtime = self._make_metric_card("Nadgodziny", "0.0")
         self.lab_cost = self._make_metric_card("Koszt miesiaca", "0.00 PLN")
-        summary_layout.addWidget(self.lab_days, 0, 0)
-        summary_layout.addWidget(self.lab_hours, 0, 1)
-        summary_layout.addWidget(self.lab_overtime, 1, 0)
-        summary_layout.addWidget(self.lab_cost, 1, 1)
+        summary_grid.addWidget(self.lab_days, 0, 0)
+        summary_grid.addWidget(self.lab_hours, 0, 1)
+        summary_grid.addWidget(self.lab_overtime, 1, 0)
+        summary_grid.addWidget(self.lab_cost, 1, 1)
+        summary_layout.addLayout(summary_grid)
         self.lab_breakdown = QLabel("", self)
         self.lab_breakdown.setWordWrap(True)
         self.lab_breakdown.setStyleSheet("color:#475569;")
-        summary_layout.addWidget(self.lab_breakdown, 2, 0, 1, 2)
+        summary_layout.addWidget(self.lab_breakdown)
         top_row.addWidget(summary, 1)
 
         root.addLayout(top_row)
+
+        sheet_box, sheet_layout = self._make_panel(
+            "Tabela miesiaca",
+            "Wpisujesz tutaj realne dni pracy, typ pracy, godziny, nadgodziny, dodatki i kod projektu.",
+        )
+        sheet_hint = QLabel(
+            "Przyklady rodzaju pracy: Projekt / wycena, Produkcja, Montaz, Praca na miejscu, Lakiernia, Delegacja / wyjazd."
+        )
+        sheet_hint.setWordWrap(True)
+        sheet_hint.setStyleSheet("color:#64748b;")
+        sheet_layout.addWidget(sheet_hint)
 
         self.tbl_hours = QTableWidget(0, 10, self)
         self.tbl_hours.setHorizontalHeaderLabels(
@@ -247,7 +278,8 @@ class TabCzasPracy(QWidget):
         header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(9, QHeaderView.ResizeMode.Stretch)
-        root.addWidget(self.tbl_hours, 1)
+        sheet_layout.addWidget(self.tbl_hours, 1)
+        root.addWidget(sheet_box, 1)
 
         self.cb_worker.currentTextChanged.connect(self._load_selected_month)
         self.cb_month.currentIndexChanged.connect(self._load_selected_month)
@@ -269,16 +301,36 @@ class TabCzasPracy(QWidget):
         self.cb_month.setCurrentIndex(month_index)
         self._load_selected_month()
 
+    def _make_panel(self, title: str, subtitle: str = "") -> tuple[QFrame, QVBoxLayout]:
+        frame = QFrame(self)
+        frame.setStyleSheet(
+            "QFrame { border: 1px solid #d8e2ec; border-radius: 12px; background: #fdfdfd; }"
+        )
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(8)
+        head = QLabel(title, frame)
+        head.setStyleSheet("font-size:16px; font-weight:800; color:#122033;")
+        layout.addWidget(head)
+        if subtitle:
+            sub = QLabel(subtitle, frame)
+            sub.setWordWrap(True)
+            sub.setStyleSheet("color:#64748b;")
+            layout.addWidget(sub)
+        return frame, layout
+
     def _make_metric_card(self, title: str, value: str) -> QFrame:
         frame = QFrame(self)
-        frame.setStyleSheet("QFrame { border: 1px solid #d8e2ec; border-radius: 10px; background: #ffffff; }")
+        frame.setStyleSheet(
+            "QFrame { border: 1px solid #d8e2ec; border-radius: 14px; background: #ffffff; min-width: 150px; }"
+        )
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(2)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(4)
         lab_title = QLabel(title, frame)
-        lab_title.setStyleSheet("color:#64748b; font-weight:600;")
+        lab_title.setStyleSheet("color:#64748b; font-weight:700;")
         lab_value = QLabel(value, frame)
-        lab_value.setStyleSheet("font-size: 20px; font-weight: 800; color:#0f172a;")
+        lab_value.setStyleSheet("font-size: 28px; font-weight: 800; color:#0f172a;")
         lab_value.setObjectName("metricValue")
         layout.addWidget(lab_title)
         layout.addWidget(lab_value)

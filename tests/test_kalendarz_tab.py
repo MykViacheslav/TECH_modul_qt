@@ -185,3 +185,58 @@ def test_kalendarz_tab_quick_stage_filters_limit_table(tmp_path, monkeypatch):
 
     QTest.mouseClick(w.stage_filter_buttons[""], Qt.MouseButton.LeftButton)
     assert w.tbl_orders.rowCount() == 3
+
+
+def test_kalendarz_tab_filters_by_worker_and_time_bucket(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.domain.order_models import OrderDef
+    from src.domain.worker_models import WorkerDef
+    from src.storage.order_store_json import OrderStoreJson
+    from src.storage.worker_store_json import WorkerStoreJson
+    from src.tabs.kalendarz.tab_kalendarz import TabKalendarz
+
+    order_store = OrderStoreJson(path=tmp_path / "orders.json")
+    worker_store = WorkerStoreJson(path=tmp_path / "workers.json")
+
+    worker_store.save_new(WorkerDef(name="Anna Montaz", role="Montaz"))
+    worker_store.save_new(WorkerDef(name="Jan Projekt", role="Projekt"))
+
+    order_store.save_new(
+        OrderDef(
+            code="ORD-KAL-F1",
+            client_name="Klient Anna",
+            worker_name="Anna Montaz",
+            status="Montaz",
+            calendar_stage="Montaz",
+            calendar_date="",
+        )
+    )
+    order_store.save_new(
+        OrderDef(
+            code="ORD-KAL-F2",
+            client_name="Klient Jan",
+            worker_name="Jan Projekt",
+            status="Wycena",
+            calendar_stage="Wycena",
+            calendar_date="2030-01-01",
+        )
+    )
+
+    w = TabKalendarz(order_store=order_store, worker_store=worker_store)
+    assert w.tbl_orders.rowCount() == 2
+
+    w.cb_worker_filter.setCurrentText("Anna Montaz")
+    assert w.tbl_orders.rowCount() == 1
+    assert w.tbl_orders.item(0, 2).text() == "ORD-KAL-F1"
+
+    w.cb_time_filter.setCurrentText("Bez terminu")
+    assert w.tbl_orders.rowCount() == 1
+    assert w.tbl_orders.item(0, 2).text() == "ORD-KAL-F1"
+
+    w.cb_worker_filter.setCurrentText("Wszyscy pracownicy")
+    assert w.tbl_orders.rowCount() == 1
+    assert w.tbl_orders.item(0, 2).text() == "ORD-KAL-F1"

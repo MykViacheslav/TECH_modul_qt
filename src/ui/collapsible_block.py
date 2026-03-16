@@ -25,9 +25,10 @@ class CollapsibleBlock(QWidget):
 
         self._content = QFrame(self)
         self._content.setFrameShape(QFrame.Shape.NoFrame)
+        self._content.setObjectName("contentPanel")
         self._content_lay = QVBoxLayout(self._content)
-        self._content_lay.setContentsMargins(10, 8, 10, 10)
-        self._content_lay.setSpacing(8)
+        self._content_lay.setContentsMargins(14, 12, 14, 14)
+        self._content_lay.setSpacing(10)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -39,18 +40,25 @@ class CollapsibleBlock(QWidget):
 
         self.setStyleSheet("""
             QToolButton {
-                padding: 6px;
-                font-weight: 600;
-                border: 1px solid #cfcfcf;
-                border-radius: 6px;
-                background: #fafafa;
+                padding: 10px 12px;
+                font-size: 14px;
+                font-weight: 700;
+                text-align: left;
+                border: 1px solid #d7cfbf;
+                border-radius: 12px;
+                background: #fffdfa;
+                color: #213042;
             }
-            QFrame {
-                border: 1px solid #e4e4e4;
+            QToolButton:hover {
+                background: #f6efe4;
+                border-color: #cdbca0;
+            }
+            QFrame#contentPanel {
+                border: 1px solid #e2d8c9;
                 border-top: 0px;
-                border-bottom-left-radius: 6px;
-                border-bottom-right-radius: 6px;
-                background: #ffffff;
+                border-bottom-left-radius: 12px;
+                border-bottom-right-radius: 12px;
+                background: #fcfaf6;
             }
         """)
 
