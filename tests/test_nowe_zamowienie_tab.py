@@ -771,6 +771,7 @@ def test_nowe_zamowienie_tab_uses_collapsible_blocks(tmp_path, monkeypatch):
     assert isinstance(w.grp_architect, CollapsibleBlock)
     assert isinstance(w.grp_quote_items, CollapsibleBlock)
     assert isinstance(w.grp_material_choices, CollapsibleBlock)
+    assert isinstance(w.grp_customer_cash, CollapsibleBlock)
     assert isinstance(w.grp_walls, CollapsibleBlock)
     assert isinstance(w.grp_summary, CollapsibleBlock)
     assert not w.grp_worker.is_expanded()
@@ -801,9 +802,57 @@ def test_nowe_zamowienie_tab_places_order_and_actions_in_left_column(tmp_path, m
         w.grp_architect,
         w.grp_quote_items,
         w.grp_material_choices,
+        w.grp_customer_cash,
         w.grp_walls,
         w.grp_summary,
     ]
+
+
+def test_nowe_zamowienie_tab_saves_and_loads_customer_payments_with_order(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.tabs.zamowienie import tab_nowe_zamowienie as order_tab_module
+    from src.storage.order_store_json import OrderStoreJson
+    from src.tabs.zamowienie.tab_nowe_zamowienie import TabNoweZamowienie
+
+    order_store = OrderStoreJson(path=tmp_path / "orders.json")
+
+    w = TabNoweZamowienie(order_store=order_store)
+    w.cb_client_name.setCurrentText("Klient Kasa")
+    w.ed_order_code.setText("ORDER-CASH-1")
+    QTest.mouseClick(w.btn_customer_payment_prefill, Qt.MouseButton.LeftButton)
+    w.tbl_customer_payments.selectRow(0)
+    app.processEvents()
+    w.sp_customer_payment_amount.setValue(5000.0)
+    w.chk_customer_payment_paid.setChecked(True)
+    w.ed_customer_payment_note.setText("Rezerwacja terminu")
+    QTest.mouseClick(w.btn_add_customer_payment, Qt.MouseButton.LeftButton)
+    QTest.mouseClick(w.btn_save_order, Qt.MouseButton.LeftButton)
+
+    saved = order_store.get("ORDER-CASH-1")
+    assert saved is not None
+    assert len(saved.customer_payments) == 4
+    assert saved.customer_payments[0]["stage"] == "Rezerwacja terminu"
+    assert float(saved.customer_payments[0]["amount"]) == 5000.0
+    assert bool(saved.customer_payments[0]["paid"]) is True
+
+    monkeypatch.setattr(
+        order_tab_module.QInputDialog,
+        "getItem",
+        lambda *args, **kwargs: ("ORDER-CASH-1", True),
+    )
+
+    w2 = TabNoweZamowienie(order_store=order_store)
+    QTest.mouseClick(w2.btn_pick_order, Qt.MouseButton.LeftButton)
+
+    assert w2.tbl_customer_payments.rowCount() == 4
+    assert w2.tbl_customer_payments.item(0, 0).text() == "Rezerwacja terminu"
+    assert w2.tbl_customer_payments.item(0, 1).text() == "5000.00 zl"
+    assert w2.tbl_customer_payments.item(0, 2).text() == "Tak"
+    assert "Oplacone: 5000.00 zl" in w2.lab_customer_cash_summary.text()
 
 
 def test_nowe_zamowienie_tab_uses_scroll_area_for_full_order_view(tmp_path, monkeypatch):

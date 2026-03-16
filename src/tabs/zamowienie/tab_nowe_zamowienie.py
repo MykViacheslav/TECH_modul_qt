@@ -13,7 +13,9 @@ from PyQt6.QtPdf import QPdfDocument
 from PyQt6.QtPrintSupport import QPrinter
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QFileDialog,
     QFrame,
     QFormLayout,
@@ -97,6 +99,14 @@ ATTACHMENT_TARGET_ITEMS: tuple[str, ...] = (
     "Sciana",
     "Komplet",
     "Oferta",
+)
+
+CUSTOMER_PAYMENT_STAGE_ITEMS: tuple[str, ...] = (
+    "Rezerwacja terminu",
+    "Start pracy / 60%",
+    "Przed montazem / 20%",
+    "Koniec / 10%",
+    "Inne",
 )
 
 
@@ -257,6 +267,7 @@ class TabNoweZamowienie(QWidget):
         self._current_order_calendar_stage = ""
         self._current_order_calendar_date = ""
         self._current_order_calendar_note = ""
+        self._customer_payments: list[dict[str, object]] = []
 
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 18, 18, 18)
@@ -297,6 +308,7 @@ class TabNoweZamowienie(QWidget):
         self.grp_architect = CollapsibleBlock("Zalaczniki od architekta", self)
         self.grp_quote_items = CollapsibleBlock("Pozycje do wyceny", self)
         self.grp_material_choices = CollapsibleBlock("Probki i finalne materialy", self)
+        self.grp_customer_cash = CollapsibleBlock("Kasa klienta", self)
         self.grp_walls = CollapsibleBlock("Sciany zamowienia", self)
         self.grp_summary = CollapsibleBlock("Podsumowanie zamowienia", self)
 
@@ -307,6 +319,7 @@ class TabNoweZamowienie(QWidget):
         body.addWidget(self.grp_architect)
         body.addWidget(self.grp_quote_items)
         body.addWidget(self.grp_material_choices)
+        body.addWidget(self.grp_customer_cash)
         body.addWidget(self.grp_walls)
         body.addWidget(self.grp_summary)
         body.addStretch(1)
@@ -319,6 +332,7 @@ class TabNoweZamowienie(QWidget):
             self.grp_architect,
             self.grp_quote_items,
             self.grp_material_choices,
+            self.grp_customer_cash,
             self.grp_walls,
             self.grp_summary,
         ):
@@ -331,10 +345,12 @@ class TabNoweZamowienie(QWidget):
         self._build_architect_group()
         self._build_quote_items_group()
         self._build_material_choices_group()
+        self._build_customer_cash_group()
         self._build_walls_group()
         self._build_summary_group()
 
         self.grp_worker.set_expanded(False)
+        self.grp_customer_cash.set_expanded(False)
 
         self.lab_status = QLabel("")
         self.lab_status.setWordWrap(True)
@@ -389,6 +405,10 @@ class TabNoweZamowienie(QWidget):
         self.btn_add_material_choice.clicked.connect(self._on_add_material_choice)
         self.btn_remove_material_choice.clicked.connect(self._on_remove_material_choice)
         self.tbl_material_choices.itemSelectionChanged.connect(self._on_material_choice_selection_changed)
+        self.btn_customer_payment_prefill.clicked.connect(self._on_prefill_customer_payments)
+        self.btn_add_customer_payment.clicked.connect(self._on_add_customer_payment)
+        self.btn_remove_customer_payment.clicked.connect(self._on_remove_customer_payment)
+        self.tbl_customer_payments.itemSelectionChanged.connect(self._on_customer_payment_selection_changed)
         self.btn_new_wall.clicked.connect(self._on_go_to_sciana)
         self.btn_open_wall.clicked.connect(self._on_open_selected_wall)
         self.btn_refresh_walls.clicked.connect(self._refresh_order_walls_table)
@@ -853,6 +873,200 @@ class TabNoweZamowienie(QWidget):
         self.tbl_material_choices.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         layout.addWidget(self.tbl_material_choices)
         self._set_material_choices([])
+
+    def _build_customer_cash_group(self) -> None:
+        layout = self.grp_customer_cash.content_layout()
+
+        note = QLabel(
+            "Tutaj zapisujesz harmonogram wpłat klienta: rezerwacja terminu, start pracy, przed montazem i rozliczenie koncowe."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color:#555555;")
+        layout.addWidget(note)
+
+        row_meta = QHBoxLayout()
+        self.cb_customer_payment_stage = QComboBox(self.grp_customer_cash)
+        self.cb_customer_payment_stage.addItems(list(CUSTOMER_PAYMENT_STAGE_ITEMS))
+        self.cb_customer_payment_stage.setMaximumWidth(220)
+        self.sp_customer_payment_amount = QDoubleSpinBox(self.grp_customer_cash)
+        self.sp_customer_payment_amount.setRange(0.0, 9_999_999.99)
+        self.sp_customer_payment_amount.setDecimals(2)
+        self.sp_customer_payment_amount.setSuffix(" zl")
+        self.sp_customer_payment_amount.setMaximumWidth(160)
+        self.chk_customer_payment_paid = QCheckBox("Oplacone", self.grp_customer_cash)
+        row_meta.addWidget(self.cb_customer_payment_stage, 0)
+        row_meta.addWidget(self.sp_customer_payment_amount, 0)
+        row_meta.addWidget(self.chk_customer_payment_paid, 0)
+        row_meta.addStretch(1)
+        layout.addLayout(row_meta)
+
+        self.ed_customer_payment_note = QLineEdit(self.grp_customer_cash)
+        self.ed_customer_payment_note.setPlaceholderText(
+            "Uwagi, np. zadatek na rezerwacje terminu / 60% po akceptacji projektu"
+        )
+        layout.addWidget(self.ed_customer_payment_note)
+
+        btns = QHBoxLayout()
+        self.btn_customer_payment_prefill = QPushButton("Wstaw etapy", self.grp_customer_cash)
+        self.btn_add_customer_payment = QPushButton("Dodaj / zapisz", self.grp_customer_cash)
+        self.btn_remove_customer_payment = QPushButton("Usun zaznaczony", self.grp_customer_cash)
+        self._make_compact_button(self.btn_customer_payment_prefill, min_width=110, max_width=130)
+        self._make_compact_button(self.btn_add_customer_payment, min_width=120, max_width=150)
+        self._make_compact_button(self.btn_remove_customer_payment, min_width=140, max_width=170)
+        btns.addWidget(self.btn_customer_payment_prefill, 0)
+        btns.addWidget(self.btn_add_customer_payment, 0)
+        btns.addWidget(self.btn_remove_customer_payment, 0)
+        btns.addStretch(1)
+        layout.addLayout(btns)
+
+        self.tbl_customer_payments = QTableWidget(0, 4, self.grp_customer_cash)
+        self.tbl_customer_payments.setHorizontalHeaderLabels(["Etap", "Kwota", "Oplacone", "Uwagi"])
+        self.tbl_customer_payments.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tbl_customer_payments.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.tbl_customer_payments.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl_customer_payments.verticalHeader().setVisible(False)
+        self.tbl_customer_payments.horizontalHeader().setStretchLastSection(True)
+        self.tbl_customer_payments.setAlternatingRowColors(True)
+        self.tbl_customer_payments.setMinimumHeight(150)
+        self.tbl_customer_payments.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_customer_payments.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_customer_payments.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        layout.addWidget(self.tbl_customer_payments)
+
+        self.lab_customer_cash_summary = QLabel("")
+        self.lab_customer_cash_summary.setWordWrap(True)
+        self.lab_customer_cash_summary.setStyleSheet(
+            "color:#1f2937; background:#f8fafc; border:1px solid #dbeafe; border-radius:6px; padding:8px;"
+        )
+        layout.addWidget(self.lab_customer_cash_summary)
+        self._set_customer_payments([])
+
+    def _normalize_customer_payment(self, item: dict | None) -> dict[str, object] | None:
+        if not isinstance(item, dict):
+            return None
+        stage = str(item.get("stage", "") or "").strip()
+        amount = float(item.get("amount", 0.0) or 0.0)
+        paid = bool(item.get("paid", False))
+        note = str(item.get("note", "") or "").strip()
+        if not stage and abs(amount) <= 0.0001 and not note:
+            return None
+        return {
+            "stage": stage or "Inne",
+            "amount": amount,
+            "paid": paid,
+            "note": note,
+        }
+
+    def _set_customer_payments(self, items: list[dict] | None) -> None:
+        normalized: list[dict[str, object]] = []
+        for item in items or []:
+            entry = self._normalize_customer_payment(item)
+            if entry is not None:
+                normalized.append(entry)
+        self._customer_payments = normalized
+        self._refresh_customer_payments_table()
+
+    def _refresh_customer_payments_table(self) -> None:
+        if not hasattr(self, "tbl_customer_payments"):
+            return
+        self.tbl_customer_payments.setRowCount(len(self._customer_payments))
+        for row, payment in enumerate(self._customer_payments):
+            items = (
+                QTableWidgetItem(str(payment.get("stage", "") or "Inne")),
+                QTableWidgetItem(f'{float(payment.get("amount", 0.0) or 0.0):.2f} zl'),
+                QTableWidgetItem("Tak" if bool(payment.get("paid", False)) else "Nie"),
+                QTableWidgetItem(str(payment.get("note", "") or "")),
+            )
+            for col, item in enumerate(items):
+                item.setData(Qt.ItemDataRole.UserRole, row)
+                self.tbl_customer_payments.setItem(row, col, item)
+        self.tbl_customer_payments.resizeColumnsToContents()
+        self._on_customer_payment_selection_changed()
+
+    def _selected_customer_payment_index(self) -> int:
+        selection = (
+            self.tbl_customer_payments.selectionModel().selectedRows()
+            if self.tbl_customer_payments.selectionModel() is not None
+            else []
+        )
+        if not selection:
+            return -1
+        return int(selection[0].row())
+
+    def _clear_customer_payment_form(self) -> None:
+        if hasattr(self, "cb_customer_payment_stage"):
+            self.cb_customer_payment_stage.setCurrentIndex(0)
+        if hasattr(self, "sp_customer_payment_amount"):
+            self.sp_customer_payment_amount.setValue(0.0)
+        if hasattr(self, "chk_customer_payment_paid"):
+            self.chk_customer_payment_paid.setChecked(False)
+        if hasattr(self, "ed_customer_payment_note"):
+            self.ed_customer_payment_note.clear()
+        if hasattr(self, "btn_add_customer_payment"):
+            self.btn_add_customer_payment.setText("Dodaj / zapisz")
+
+    def _on_customer_payment_selection_changed(self) -> None:
+        index = self._selected_customer_payment_index()
+        if hasattr(self, "btn_remove_customer_payment"):
+            self.btn_remove_customer_payment.setEnabled(index >= 0)
+        if index < 0 or index >= len(self._customer_payments):
+            self._clear_customer_payment_form()
+            return
+        payment = self._customer_payments[index]
+        stage = str(payment.get("stage", "") or "Inne")
+        stage_index = self.cb_customer_payment_stage.findText(stage)
+        self.cb_customer_payment_stage.setCurrentIndex(stage_index if stage_index >= 0 else 0)
+        self.sp_customer_payment_amount.setValue(float(payment.get("amount", 0.0) or 0.0))
+        self.chk_customer_payment_paid.setChecked(bool(payment.get("paid", False)))
+        self.ed_customer_payment_note.setText(str(payment.get("note", "") or ""))
+        self.btn_add_customer_payment.setText("Zapisz wiersz")
+
+    def _on_prefill_customer_payments(self) -> None:
+        self._set_customer_payments(
+            [
+                {"stage": "Rezerwacja terminu", "amount": 0.0, "paid": False, "note": "Pierwszy zadatek klienta"},
+                {"stage": "Start pracy / 60%", "amount": 0.0, "paid": False, "note": "Po starcie realizacji"},
+                {"stage": "Przed montazem / 20%", "amount": 0.0, "paid": False, "note": "Przed wyjazdem na montaz"},
+                {"stage": "Koniec / 10%", "amount": 0.0, "paid": False, "note": "Rozliczenie koncowe"},
+            ]
+        )
+        self._refresh_summary()
+        self._set_status("Wstawiono standardowy harmonogram wpłat klienta.", ok=True)
+
+    def _on_add_customer_payment(self) -> None:
+        entry = self._normalize_customer_payment(
+            {
+                "stage": self.cb_customer_payment_stage.currentText().strip(),
+                "amount": float(self.sp_customer_payment_amount.value()),
+                "paid": bool(self.chk_customer_payment_paid.isChecked()),
+                "note": self.ed_customer_payment_note.text().strip(),
+            }
+        )
+        if entry is None:
+            self._set_status("Wpisz etap albo kwote wplaty klienta.", ok=False)
+            return
+        index = self._selected_customer_payment_index()
+        if 0 <= index < len(self._customer_payments):
+            self._customer_payments[index] = entry
+            message = "Zaktualizowano wplate klienta."
+        else:
+            self._customer_payments.append(entry)
+            message = "Dodano wplate klienta."
+        self._refresh_customer_payments_table()
+        self._clear_customer_payment_form()
+        self._refresh_summary()
+        self._set_status(message, ok=True)
+
+    def _on_remove_customer_payment(self) -> None:
+        index = self._selected_customer_payment_index()
+        if index < 0 or index >= len(self._customer_payments):
+            self._set_status("Wybierz wplate klienta do usuniecia.", ok=False)
+            return
+        self._customer_payments.pop(index)
+        self._refresh_customer_payments_table()
+        self._clear_customer_payment_form()
+        self._refresh_summary()
+        self._set_status("Usunieto wpis harmonogramu wplat klienta.", ok=True)
 
     def _normalize_attachment(self, item: dict | None) -> dict[str, str] | None:
         if not isinstance(item, dict):
@@ -1596,6 +1810,17 @@ class TabNoweZamowienie(QWidget):
         self.lab_cost_summary.setStyleSheet("color:#1f1f1f; font-weight:600; background:#f7fbff; border:1px solid #dbeafe; border-radius:6px; padding:8px;")
         layout.addWidget(self.lab_cost_summary)
 
+        cash_title = QLabel("Kasa klienta")
+        cash_title.setStyleSheet("font-weight:600; color:#333333;")
+        layout.addWidget(cash_title)
+
+        self.lab_customer_cash_summary = QLabel("")
+        self.lab_customer_cash_summary.setWordWrap(True)
+        self.lab_customer_cash_summary.setStyleSheet(
+            "color:#1f2937; background:#fffaf3; border:1px solid #eadfcb; border-radius:6px; padding:8px;"
+        )
+        layout.addWidget(self.lab_customer_cash_summary)
+
         assemblies_title = QLabel("Komplety w zamowieniu")
         assemblies_title.setStyleSheet("font-weight:600; color:#333333;")
         layout.addWidget(assemblies_title)
@@ -1752,6 +1977,8 @@ class TabNoweZamowienie(QWidget):
         self.ed_material_choice_code.clear()
         self.ed_material_choice_notes.clear()
         self._set_material_choices([])
+        self._set_customer_payments([])
+        self._clear_customer_payment_form()
 
         self.lab_status.clear()
         self._refresh_summary()
@@ -1808,6 +2035,7 @@ class TabNoweZamowienie(QWidget):
             self._set_architect_attachments(list(getattr(order, "attachments", []) or []))
             self._set_quote_items(list(getattr(order, "quote_items", []) or []))
             self._set_material_choices(list(getattr(order, "material_choices", []) or []))
+            self._set_customer_payments(list(getattr(order, "customer_payments", []) or []))
         finally:
             self._is_restoring_draft = False
 
@@ -1829,6 +2057,7 @@ class TabNoweZamowienie(QWidget):
         attachment_count = len(self._architect_attachments)
         quote_item_count = len(self._quote_items)
         material_choice_count = len(self._material_choices)
+        customer_payment_count = len(self._customer_payments)
         final_material_choices = [
             entry
             for entry in self._material_choices
@@ -1846,6 +2075,13 @@ class TabNoweZamowienie(QWidget):
             self.lab_metric_walls.setText(str(wall_count))
         if hasattr(self, "lab_metric_assemblies"):
             self.lab_metric_assemblies.setText(str(assembly_count))
+        payments_total = sum(float(item.get("amount", 0.0) or 0.0) for item in self._customer_payments)
+        payments_paid_total = sum(
+            float(item.get("amount", 0.0) or 0.0)
+            for item in self._customer_payments
+            if bool(item.get("paid", False))
+        )
+        payments_remaining_total = max(0.0, payments_total - payments_paid_total)
         self.lab_summary.setText(
             f"Klient: {client_name}\n"
             f"Zamowienie: {order_code}\n"
@@ -1855,7 +2091,8 @@ class TabNoweZamowienie(QWidget):
             f"Zalaczniki od architekta: {attachment_count}\n"
             f"Pozycje do wyceny: {quote_item_count}\n"
             f"Probki / materialy: {material_choice_count}\n"
-            f"Finalne wybory: {len(final_material_choices)}"
+            f"Finalne wybory: {len(final_material_choices)}\n"
+            f"Wplaty klienta: {customer_payment_count} | Oplacone: {payments_paid_total:.2f} zl | Pozostalo: {payments_remaining_total:.2f} zl"
         )
         if final_material_parts:
             self.lab_summary.setText(self.lab_summary.text() + "\nWybrane: " + "; ".join(final_material_parts))
@@ -1878,6 +2115,13 @@ class TabNoweZamowienie(QWidget):
         if final_material_parts:
             offer_lines.append("Wybrane materialy: " + "; ".join(final_material_parts[:3]))
         self.lab_offer_summary.setText("\n".join(offer_lines))
+        if hasattr(self, "lab_customer_cash_summary"):
+            self.lab_customer_cash_summary.setText(
+                f"Harmonogram wplat: {customer_payment_count}\n"
+                f"Planowana kwota: {payments_total:.2f} zl\n"
+                f"Oplacone: {payments_paid_total:.2f} zl\n"
+                f"Pozostalo: {payments_remaining_total:.2f} zl"
+            )
         self._refresh_order_walls_table()
         self._refresh_order_cost_summary()
         self._refresh_offer_references()
@@ -2153,6 +2397,7 @@ class TabNoweZamowienie(QWidget):
             "grand_total": material_total + edgeband_total + hardware_total,
             "commercial_total": commercial_total,
             "margin_total": margin_total,
+            "customer_payments": [dict(item) for item in self._customer_payments],
         }
 
     def _build_offer_html(self) -> str:
@@ -2242,6 +2487,24 @@ class TabNoweZamowienie(QWidget):
             for entry in list(export_data["materials"])
         ) or '<tr><td colspan="4">Brak materialow w zapisanych kompletach.</td></tr>'
 
+        customer_payments = list(export_data.get("customer_payments", []))
+        customer_payment_rows = "".join(
+            _row(
+                [
+                    escape(str(entry.get("stage", "") or "-")),
+                    f'{float(entry.get("amount", 0.0) or 0.0):.2f} zl',
+                    "Tak" if bool(entry.get("paid", False)) else "Nie",
+                    escape(str(entry.get("note", "") or "-")),
+                ]
+            )
+            for entry in customer_payments
+        ) or '<tr><td colspan="4">Brak wpisanego harmonogramu wplat klienta.</td></tr>'
+        customer_payment_total = sum(float(entry.get("amount", 0.0) or 0.0) for entry in customer_payments)
+        customer_payment_paid = sum(
+            float(entry.get("amount", 0.0) or 0.0) for entry in customer_payments if bool(entry.get("paid", False))
+        )
+        customer_payment_remaining = max(0.0, customer_payment_total - customer_payment_paid)
+
         ref_cards: list[str] = []
         for entry in offer_refs:
             ref_cards.append(
@@ -2330,7 +2593,10 @@ class TabNoweZamowienie(QWidget):
     Okucia: {float(export_data["hardware_total"]):.2f} zl<br>
     <strong>Koszt techniczny orientacyjnie: {float(export_data["grand_total"]):.2f} zl</strong><br>
     <strong>Cena handlowa orientacyjna: {float(export_data["commercial_total"]):.2f} zl</strong><br>
-    <strong>Marza kwotowo: {float(export_data["margin_total"]):.2f} zl</strong>
+    <strong>Marza kwotowo: {float(export_data["margin_total"]):.2f} zl</strong><br>
+    Harmonogram wplat: {len(customer_payments)}<br>
+    Oplacone: {customer_payment_paid:.2f} zl<br>
+    Pozostalo: {customer_payment_remaining:.2f} zl
   </div>
   {notes_html}
   <h2>Pozycje do oferty</h2>
@@ -2352,6 +2618,16 @@ class TabNoweZamowienie(QWidget):
   <table>
     <thead><tr><th>Material</th><th>Szt</th><th>m2</th><th>Koszt</th></tr></thead>
     <tbody>{aggregate_material_rows}</tbody>
+  </table>
+  <h2>Harmonogram wplat klienta</h2>
+  <div class="summary">
+    Planowana kwota: {customer_payment_total:.2f} zl<br>
+    Oplacone: {customer_payment_paid:.2f} zl<br>
+    Pozostalo: {customer_payment_remaining:.2f} zl
+  </div>
+  <table>
+    <thead><tr><th>Etap</th><th>Kwota</th><th>Oplacone</th><th>Uwagi</th></tr></thead>
+    <tbody>{customer_payment_rows}</tbody>
   </table>
   <h2>Referencje wizualne</h2>
   <div class="refs">{refs_html}</div>
@@ -2654,6 +2930,7 @@ class TabNoweZamowienie(QWidget):
             "architect_attachments": [dict(item) for item in self._architect_attachments],
             "quote_items": [dict(item) for item in self._quote_items],
             "material_choices": [dict(item) for item in self._material_choices],
+            "customer_payments": [dict(item) for item in self._customer_payments],
         }
 
     def _has_meaningful_draft(self, payload: dict[str, object]) -> bool:
@@ -2708,6 +2985,7 @@ class TabNoweZamowienie(QWidget):
             self._set_architect_attachments(list(payload.get("architect_attachments", []) or []))
             self._set_quote_items(list(payload.get("quote_items", []) or []))
             self._set_material_choices(list(payload.get("material_choices", []) or []))
+            self._set_customer_payments(list(payload.get("customer_payments", []) or []))
         finally:
             self._is_restoring_draft = False
 
@@ -2800,6 +3078,7 @@ class TabNoweZamowienie(QWidget):
             attachments=[dict(item) for item in self._architect_attachments],
             quote_items=[dict(item) for item in self._quote_items],
             material_choices=[dict(item) for item in self._material_choices],
+            customer_payments=[dict(item) for item in self._customer_payments],
         )
 
     def current_order_context(self) -> dict[str, object]:
@@ -2952,6 +3231,7 @@ class TabNoweZamowienie(QWidget):
         self._set_architect_attachments(list(getattr(order, "attachments", []) or []))
         self._set_quote_items(list(getattr(order, "quote_items", []) or []))
         self._set_material_choices(list(getattr(order, "material_choices", []) or []))
+        self._set_customer_payments(list(getattr(order, "customer_payments", []) or []))
         self._set_status(f'Wczytano zamowienie "{order.code}".', ok=True)
 
     def _ensure_context_saved_for_next_step(self) -> tuple[bool, str]:

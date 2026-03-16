@@ -106,6 +106,29 @@ def _normalize_status_history(raw: Any) -> List[Dict[str, str]]:
     return result
 
 
+def _normalize_customer_payments(raw: Any) -> List[Dict[str, Any]]:
+    items = raw if isinstance(raw, list) else []
+    result: List[Dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        stage = str(item.get("stage", "") or "").strip()
+        amount = float(item.get("amount", 0.0) or 0.0)
+        paid = bool(item.get("paid", False))
+        note = str(item.get("note", "") or "").strip()
+        if not stage and abs(amount) <= 0.0001 and not note:
+            continue
+        result.append(
+            {
+                "stage": stage or "Inne",
+                "amount": amount,
+                "paid": paid,
+                "note": note,
+            }
+        )
+    return result
+
+
 @dataclass
 class OrderDef:
     code: str = ""
@@ -122,6 +145,7 @@ class OrderDef:
     quote_items: List[Dict[str, str]] = field(default_factory=list)
     material_choices: List[Dict[str, str]] = field(default_factory=list)
     status_history: List[Dict[str, str]] = field(default_factory=list)
+    customer_payments: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -139,6 +163,7 @@ class OrderDef:
             "quote_items": _normalize_quote_items(self.quote_items),
             "material_choices": _normalize_material_choices(self.material_choices),
             "status_history": _normalize_status_history(self.status_history),
+            "customer_payments": _normalize_customer_payments(self.customer_payments),
         }
 
     @classmethod
@@ -159,4 +184,5 @@ class OrderDef:
             quote_items=_normalize_quote_items(data.get("quote_items", [])),
             material_choices=_normalize_material_choices(data.get("material_choices", [])),
             status_history=_normalize_status_history(data.get("status_history", [])),
+            customer_payments=_normalize_customer_payments(data.get("customer_payments", [])),
         )

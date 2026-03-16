@@ -707,6 +707,24 @@ ETAP 5 - RENTOWNOSC I FINANSE
 Status: [TODO]
 
 Do wdrozenia:
+[DONE] pierwszy krok "Kasa klienta" w Nowe zamowienie:
+- osobny blok harmonogramu wplat klienta
+- etapy typu:
+  - rezerwacja terminu
+  - start pracy / 60%
+  - przed montazem / 20%
+  - koniec / 10%
+- kwota
+- status oplacone / nieoplacone
+- uwagi
+- zapis i odczyt w zamowieniu
+- zapis i odczyt w drafcie
+- podsumowanie:
+  - planowana kwota
+  - oplacone
+  - pozostalo
+- widoczne tez w eksporcie oferty HTML / PDF
+
 - koszt materialow
 - koszt okleiny
 - koszt okuc
@@ -719,6 +737,20 @@ Do wdrozenia:
 - zysk
 - wynik po komplecie
 - wynik po zamowieniu
+- kasa klienta:
+  - pelniejszy harmonogram wplat i terminow
+  - powiazanie wplat z etapami pracy
+  - rejestr rzeczywistych wplat i dat
+- pracownicy i pieniadze:
+  - zaliczki dla pracownikow
+  - wyplata koncowa
+  - doplaty, premie, delegacje
+- stale koszty firmy:
+  - czynsz
+  - samochody
+  - paliwo
+  - serwis / utrzymanie
+  - inne stale wydatki
 
 
 --------------------------------------------------
