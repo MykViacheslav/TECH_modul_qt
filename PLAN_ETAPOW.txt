@@ -355,7 +355,8 @@ Do wdrozenia:
 - skladanie ukladu z biblioteki modulow
 - szybki widok przod / gora
 - prosty i przewidywalny drag
-- szybka zmiana szerokosci / wysokosci / glebokosci tylko tam, gdzie to potrzebne
+- [DONE] szybka zmiana szerokosci / wysokosci / glebokosci konkretnego modulu juz w komplecie
+- [DONE] szybka zmiana materialow konkretnego modulu juz w komplecie
 
 [TODO] Rozszerzone szybkie zmiany handlowe:
 - podpiecie dekorow pod realne warianty katalogu materialow, gdy baza bedzie bogatsza

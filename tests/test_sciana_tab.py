@@ -1942,6 +1942,77 @@ def test_sciana_tab_company_collection_applies_material_hardware_and_decor(tmp_p
     assert "Kolekcja firmowa: Premium cashmere" in w.lab_summary.text()
 
 
+def test_sciana_tab_can_edit_selected_module_dimensions_and_materials_in_assembly(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    catalog = CatalogStoreJson()
+    store = ModuleStoreJson()
+
+    module = ModuleDef(
+        name="EDIT_IN_ASSEMBLY",
+        width_mm=600.0,
+        depth_mm=500.0,
+        height_mm=720.0,
+        visible_parts={"side_left", "side_right", "top", "bottom", "front"},
+        materials={"carcass": "PB18", "front": "MDF19", "back": "HDF2.5"},
+    )
+    module.parts = build_module_parts(module, catalog)
+    store.save_new(module)
+
+    w = TabSciana(module_store=store)
+    w.show()
+    app.processEvents()
+
+    assert _select_saved_module(w.tree_saved_modules, "EDIT_IN_ASSEMBLY")
+    w.btn_add_saved.click()
+    app.processEvents()
+
+    w.tbl_items.selectRow(0)
+    app.processEvents()
+
+    w.sp_selected_width.setValue(780.0)
+    w.sp_selected_height.setValue(760.0)
+    w.sp_selected_depth.setValue(540.0)
+    app.processEvents()
+
+    idx_carcass = w.cb_selected_material_carcass.findData("PB16")
+    idx_front = w.cb_selected_material_front.findData("MDF19_LAK")
+    idx_back = w.cb_selected_material_back.findData("HDF3")
+    assert idx_carcass >= 0
+    assert idx_front >= 0
+    assert idx_back >= 0
+
+    w.cb_selected_material_carcass.setCurrentIndex(idx_carcass)
+    w.cb_selected_material_front.setCurrentIndex(idx_front)
+    w.cb_selected_material_back.setCurrentIndex(idx_back)
+    app.processEvents()
+
+    edited = w._assembly.items[0].module
+    assert float(edited.width_mm) == 780.0
+    assert float(edited.height_mm) == 760.0
+    assert float(edited.depth_mm) == 540.0
+    assert dict(edited.materials or {})["carcass"] == "PB16"
+    assert dict(edited.materials or {})["front"] == "MDF19_LAK"
+    assert dict(edited.materials or {})["back"] == "HDF3"
+
+    resolved = w._resolved_items[0]
+    assert float(resolved.width_mm) == 780.0
+    assert float(resolved.height_mm) == 760.0
+    assert float(resolved.depth_mm) == 540.0
+    assert dict(resolved.module.materials or {})["carcass"] == "PB16"
+    assert dict(resolved.module.materials or {})["front"] == "MDF19_LAK"
+    assert dict(resolved.module.materials or {})["back"] == "HDF3"
+
+
 def test_sciana_tab_can_bind_assembly_to_saved_wall_and_metadata(tmp_path, monkeypatch):
     monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TECH_MODUL_TESTING", "1")

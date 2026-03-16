@@ -2067,6 +2067,7 @@ class TabSciana(QWidget):
         self._reload_profiles()
         self._reload_quick_material_presets()
         self._reload_material_choices()
+        self._reload_selected_module_material_choices()
         self._reload_hardware_vendor_presets()
         self._reload_decor_presets()
         self._reload_company_collections()
@@ -2084,6 +2085,7 @@ class TabSciana(QWidget):
         self._reload_profiles()
         self._reload_quick_material_presets()
         self._reload_material_choices()
+        self._reload_selected_module_material_choices()
         self._reload_hardware_vendor_presets()
         self._reload_decor_presets()
         self._reload_company_collections()
@@ -2739,6 +2741,21 @@ class TabSciana(QWidget):
         self.sp_selected_y.setRange(0.0, 20000.0)
         self.sp_selected_y.setDecimals(1)
         self.sp_selected_y.setSuffix(" mm")
+        self.sp_selected_width = QDoubleSpinBox(box_offset)
+        self.sp_selected_width.setRange(100.0, 3000.0)
+        self.sp_selected_width.setDecimals(1)
+        self.sp_selected_width.setSuffix(" mm")
+        self.sp_selected_height = QDoubleSpinBox(box_offset)
+        self.sp_selected_height.setRange(100.0, 5000.0)
+        self.sp_selected_height.setDecimals(1)
+        self.sp_selected_height.setSuffix(" mm")
+        self.sp_selected_depth = QDoubleSpinBox(box_offset)
+        self.sp_selected_depth.setRange(50.0, 2000.0)
+        self.sp_selected_depth.setDecimals(1)
+        self.sp_selected_depth.setSuffix(" mm")
+        self.cb_selected_material_carcass = QComboBox(box_offset)
+        self.cb_selected_material_front = QComboBox(box_offset)
+        self.cb_selected_material_back = QComboBox(box_offset)
         self.lab_selected_offset = QLabel("Offset", box_offset)
         self.lab_selected_y = QLabel("Od gory", box_offset)
         self.offset_form.addRow("Pozioma baza", self.cb_selected_x_ref)
@@ -2746,6 +2763,12 @@ class TabSciana(QWidget):
         self.offset_form.addRow("Pionowa baza", self.cb_selected_y_ref)
         self.offset_form.addRow(self.lab_selected_offset, self.sp_selected_offset)
         self.offset_form.addRow(self.lab_selected_y, self.sp_selected_y)
+        self.offset_form.addRow("Szerokosc", self.sp_selected_width)
+        self.offset_form.addRow("Wysokosc", self.sp_selected_height)
+        self.offset_form.addRow("Glebokosc", self.sp_selected_depth)
+        self.offset_form.addRow("Mat. korpusu", self.cb_selected_material_carcass)
+        self.offset_form.addRow("Mat. frontu", self.cb_selected_material_front)
+        self.offset_form.addRow("Mat. plecow", self.cb_selected_material_back)
         box_offset_layout.addLayout(self.offset_form)
         self.block_offset = CollapsibleBlock("Aktywny modul", scroll_content)
         self.block_offset.content_layout().addWidget(box_offset)
@@ -2809,6 +2832,12 @@ class TabSciana(QWidget):
         self.cb_selected_y_ref.currentIndexChanged.connect(self._on_selected_y_reference_changed)
         self.sp_selected_offset.valueChanged.connect(self._on_selected_offset_changed)
         self.sp_selected_y.valueChanged.connect(self._on_selected_y_changed)
+        self.sp_selected_width.valueChanged.connect(self._on_selected_dimensions_changed)
+        self.sp_selected_height.valueChanged.connect(self._on_selected_dimensions_changed)
+        self.sp_selected_depth.valueChanged.connect(self._on_selected_dimensions_changed)
+        self.cb_selected_material_carcass.currentIndexChanged.connect(self._on_selected_module_materials_changed)
+        self.cb_selected_material_front.currentIndexChanged.connect(self._on_selected_module_materials_changed)
+        self.cb_selected_material_back.currentIndexChanged.connect(self._on_selected_module_materials_changed)
         self.tbl_project_refs.itemSelectionChanged.connect(self._on_project_reference_selection_changed)
 
         return panel
@@ -3085,6 +3114,30 @@ class TabSciana(QWidget):
         if not description:
             description = f"Gotowy wariant handlowy: {preset_key}."
         self.lab_material_preset_hint.setText(description)
+
+    def _reload_selected_module_material_choices(self) -> None:
+        current_values = {
+            "carcass": str(self.cb_selected_material_carcass.currentData() or ""),
+            "front": str(self.cb_selected_material_front.currentData() or ""),
+            "back": str(self.cb_selected_material_back.currentData() or ""),
+        }
+        materials = self._catalog.list_materials() or []
+
+        def fill(cb: QComboBox, current_value: str) -> None:
+            cb.blockSignals(True)
+            cb.clear()
+            for material in materials:
+                cb.addItem(self._material_label(material), material.key)
+            idx = cb.findData(current_value)
+            if idx < 0 and current_value:
+                cb.addItem(current_value, current_value)
+                idx = cb.findData(current_value)
+            cb.setCurrentIndex(idx if idx >= 0 else 0)
+            cb.blockSignals(False)
+
+        fill(self.cb_selected_material_carcass, current_values["carcass"])
+        fill(self.cb_selected_material_front, current_values["front"])
+        fill(self.cb_selected_material_back, current_values["back"])
 
     def _set_material_combo_to_key(self, cb: QComboBox, material_key: str) -> None:
         normalized_key = str(material_key or "").strip()
@@ -4003,6 +4056,12 @@ class TabSciana(QWidget):
         self.cb_selected_y_ref.setEnabled(enabled and not self._is_top_view_active())
         self.sp_selected_offset.setEnabled(enabled)
         self.sp_selected_y.setEnabled(enabled)
+        self.sp_selected_width.setEnabled(enabled)
+        self.sp_selected_height.setEnabled(enabled)
+        self.sp_selected_depth.setEnabled(enabled)
+        self.cb_selected_material_carcass.setEnabled(enabled)
+        self.cb_selected_material_front.setEnabled(enabled)
+        self.cb_selected_material_back.setEnabled(enabled)
 
         self._is_syncing_offset_ui = True
         try:
@@ -4015,12 +4074,19 @@ class TabSciana(QWidget):
                 self.sp_selected_offset.setValue(0.0)
                 self.sp_selected_y.setRange(0.0, 0.0)
                 self.sp_selected_y.setValue(0.0)
+                self.sp_selected_width.setRange(0.0, 0.0)
+                self.sp_selected_width.setValue(0.0)
+                self.sp_selected_height.setRange(0.0, 0.0)
+                self.sp_selected_height.setValue(0.0)
+                self.sp_selected_depth.setRange(0.0, 0.0)
+                self.sp_selected_depth.setValue(0.0)
                 self._refresh_selected_offset_label()
                 self._refresh_selected_y_label()
                 return
 
+            current_item = self._assembly.items[index]
             effective_mode = self._effective_horizontal_reference_mode_for_index(index)
-            self._assembly.items[index].offset_ref_mode = effective_mode
+            current_item.offset_ref_mode = effective_mode
             x_ref_idx = self.cb_selected_x_ref.findData(effective_mode)
             if x_ref_idx >= 0:
                 self.cb_selected_x_ref.setCurrentIndex(x_ref_idx)
@@ -4042,9 +4108,28 @@ class TabSciana(QWidget):
             else:
                 self.lab_selected_module_meta.setText("Wybierz modul z listy albo kliknij go w podgladzie.")
 
+            module_def = current_item.module
+            self.sp_selected_width.setRange(100.0, 3000.0)
+            self.sp_selected_width.setValue(float(getattr(module_def, "width_mm", 0.0) or 0.0))
+            self.sp_selected_height.setRange(100.0, 5000.0)
+            self.sp_selected_height.setValue(float(getattr(module_def, "height_mm", 0.0) or 0.0))
+            self.sp_selected_depth.setRange(50.0, 2000.0)
+            self.sp_selected_depth.setValue(float(getattr(module_def, "depth_mm", 0.0) or 0.0))
+
+            material_map = dict(getattr(module_def, "materials", {}) or {})
+
+            def set_selected_material(cb: QComboBox, group_key: str) -> None:
+                value = str(material_map.get(group_key, "") or "").strip()
+                idx_local = cb.findData(value)
+                cb.setCurrentIndex(idx_local if idx_local >= 0 else 0)
+
+            set_selected_material(self.cb_selected_material_carcass, "carcass")
+            set_selected_material(self.cb_selected_material_front, "front")
+            set_selected_material(self.cb_selected_material_back, "back")
+
             min_offset = self.preview._min_offset_for_module_index(index)
             max_offset = self.preview._max_offset_for_module_index(index)
-            offset_mm = float(getattr(self._assembly.items[index], "offset_mm", 0.0) or 0.0)
+            offset_mm = float(getattr(current_item, "offset_mm", 0.0) or 0.0)
             clamped_offset = max(min_offset, min(offset_mm, max_offset))
             self.sp_selected_offset.setRange(float(min_offset), max(float(min_offset), float(max_offset)))
             self.sp_selected_offset.setValue(clamped_offset)
@@ -4120,6 +4205,32 @@ class TabSciana(QWidget):
         else:
             self._assembly.items[index].position_y_mm = self._y_from_vertical_offset_ui_value(index, float(value or 0.0))
         self._rebuild_assembly(select_index=index)
+
+    def _on_selected_dimensions_changed(self, _value: float) -> None:
+        if self._is_syncing_offset_ui:
+            return
+        index = self._selected_index()
+        if index < 0 or index >= len(self._assembly.items):
+            return
+        module = self._assembly.items[index].module
+        module.width_mm = float(self.sp_selected_width.value())
+        module.height_mm = float(self.sp_selected_height.value())
+        module.depth_mm = float(self.sp_selected_depth.value())
+        self._rebuild_assembly(select_index=index)
+
+    def _on_selected_module_materials_changed(self, _index: int) -> None:
+        if self._is_syncing_offset_ui:
+            return
+        selected_index = self._selected_index()
+        if selected_index < 0 or selected_index >= len(self._assembly.items):
+            return
+        module = self._assembly.items[selected_index].module
+        material_map = dict(getattr(module, "materials", {}) or {})
+        material_map["carcass"] = str(self.cb_selected_material_carcass.currentData() or material_map.get("carcass", "") or "")
+        material_map["front"] = str(self.cb_selected_material_front.currentData() or material_map.get("front", "") or "")
+        material_map["back"] = str(self.cb_selected_material_back.currentData() or material_map.get("back", "") or "")
+        module.materials = material_map
+        self._rebuild_assembly(select_index=selected_index)
 
     def _on_remove_selected_item(self) -> None:
         index = self._selected_index()
