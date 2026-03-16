@@ -1,7 +1,28 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Dict
+from dataclasses import dataclass, field
+from typing import Any, Dict, List
+
+
+def _normalize_attachments(raw: Any) -> List[Dict[str, str]]:
+    items = raw if isinstance(raw, list) else []
+    result: List[Dict[str, str]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get("path", "") or "").strip()
+        kind = str(item.get("kind", "") or "").strip()
+        description = str(item.get("description", "") or "").strip()
+        if not path:
+            continue
+        result.append(
+            {
+                "path": path,
+                "kind": kind or "PDF",
+                "description": description,
+            }
+        )
+    return result
 
 
 @dataclass
@@ -12,6 +33,7 @@ class OrderDef:
     status: str = "Nowe"
     site_address: str = ""
     notes: str = ""
+    attachments: List[Dict[str, str]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -21,6 +43,7 @@ class OrderDef:
             "status": self.status,
             "site_address": self.site_address,
             "notes": self.notes,
+            "attachments": _normalize_attachments(self.attachments),
         }
 
     @classmethod
@@ -33,4 +56,5 @@ class OrderDef:
             status=str(data.get("status", "Nowe") or "Nowe"),
             site_address=str(data.get("site_address", "") or ""),
             notes=str(data.get("notes", "") or ""),
+            attachments=_normalize_attachments(data.get("attachments", [])),
         )

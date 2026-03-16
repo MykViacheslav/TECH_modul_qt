@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from pathlib import Path
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
+    QFileDialog,
     QFrame,
     QFormLayout,
     QHeaderView,
@@ -112,6 +114,7 @@ class TabNoweZamowienie(QWidget):
         self.grp_order = CollapsibleBlock("Zamowienie", self)
         self.grp_worker = CollapsibleBlock("Pracownik", self)
         self.grp_actions = CollapsibleBlock("Akcje", self)
+        self.grp_architect = CollapsibleBlock("Zalaczniki od architekta", self)
         self.grp_walls = CollapsibleBlock("Sciany zamowienia", self)
         self.grp_summary = CollapsibleBlock("Podsumowanie zamowienia", self)
 
@@ -119,6 +122,7 @@ class TabNoweZamowienie(QWidget):
         body.addWidget(self.grp_order)
         body.addWidget(self.grp_worker)
         body.addWidget(self.grp_actions)
+        body.addWidget(self.grp_architect)
         body.addWidget(self.grp_walls)
         body.addWidget(self.grp_summary)
         body.addStretch(1)
@@ -128,6 +132,7 @@ class TabNoweZamowienie(QWidget):
             self.grp_order,
             self.grp_worker,
             self.grp_actions,
+            self.grp_architect,
             self.grp_walls,
             self.grp_summary,
         ):
@@ -137,6 +142,7 @@ class TabNoweZamowienie(QWidget):
         self._build_order_group()
         self._build_worker_group()
         self._build_actions_group()
+        self._build_architect_group()
         self._build_walls_group()
         self._build_summary_group()
 
@@ -175,6 +181,12 @@ class TabNoweZamowienie(QWidget):
         self.btn_overwrite_all.clicked.connect(self._on_overwrite_all)
         self.btn_save_draft.clicked.connect(lambda: self._save_draft(show_status=True))
         self.btn_clear.clicked.connect(lambda: self.start_new_order(force_blank=True))
+        self.btn_pick_architect_file.clicked.connect(self._on_pick_architect_file)
+        self.btn_add_architect_attachment.clicked.connect(self._on_add_architect_attachment)
+        self.btn_remove_architect_attachment.clicked.connect(self._on_remove_architect_attachment)
+        self.tbl_architect_attachments.itemSelectionChanged.connect(
+            self._on_architect_attachment_selection_changed
+        )
         self.btn_new_wall.clicked.connect(self._on_go_to_sciana)
         self.btn_open_wall.clicked.connect(self._on_open_selected_wall)
         self.btn_refresh_walls.clicked.connect(self._refresh_order_walls_table)
@@ -349,6 +361,160 @@ class TabNoweZamowienie(QWidget):
         self.tbl_walls.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         layout.addWidget(self.tbl_walls)
 
+    def _build_architect_group(self) -> None:
+        layout = self.grp_architect.content_layout()
+
+        note = QLabel(
+            "Tutaj przypinasz PDF-y, zrzuty i referencje od architekta, z ktorych robimy szybka wycene i pozniejsza oferte."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color:#555555;")
+        layout.addWidget(note)
+
+        path_row = QHBoxLayout()
+        self.ed_architect_file = QLineEdit(self.grp_architect)
+        self.ed_architect_file.setPlaceholderText("Sciezka do PDF albo obrazu od architekta...")
+        self.btn_pick_architect_file = QPushButton("Wybierz plik", self.grp_architect)
+        self._make_compact_button(self.btn_pick_architect_file, min_width=110, max_width=130)
+        path_row.addWidget(self.ed_architect_file, 1)
+        path_row.addWidget(self.btn_pick_architect_file, 0)
+        layout.addLayout(path_row)
+
+        meta_row = QHBoxLayout()
+        self.cb_architect_kind = QComboBox(self.grp_architect)
+        self.cb_architect_kind.addItems(["PDF", "Obraz", "Referencja"])
+        self.cb_architect_kind.setMaximumWidth(140)
+        self.ed_architect_description = QLineEdit(self.grp_architect)
+        self.ed_architect_description.setPlaceholderText("Opis, np. Lazienka master / widok front / wizualizacja...")
+        meta_row.addWidget(self.cb_architect_kind, 0)
+        meta_row.addWidget(self.ed_architect_description, 1)
+        layout.addLayout(meta_row)
+
+        btns = QHBoxLayout()
+        self.btn_add_architect_attachment = QPushButton("Dodaj zalacznik", self.grp_architect)
+        self.btn_remove_architect_attachment = QPushButton("Usun zaznaczony", self.grp_architect)
+        self._make_compact_button(self.btn_add_architect_attachment, min_width=130, max_width=160)
+        self._make_compact_button(self.btn_remove_architect_attachment, min_width=130, max_width=160)
+        btns.addWidget(self.btn_add_architect_attachment, 0)
+        btns.addWidget(self.btn_remove_architect_attachment, 0)
+        btns.addStretch(1)
+        layout.addLayout(btns)
+
+        self.tbl_architect_attachments = QTableWidget(0, 3, self.grp_architect)
+        self.tbl_architect_attachments.setHorizontalHeaderLabels(["Plik", "Typ", "Opis"])
+        self.tbl_architect_attachments.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tbl_architect_attachments.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.tbl_architect_attachments.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl_architect_attachments.verticalHeader().setVisible(False)
+        self.tbl_architect_attachments.horizontalHeader().setStretchLastSection(True)
+        self.tbl_architect_attachments.setAlternatingRowColors(True)
+        self.tbl_architect_attachments.setMinimumHeight(150)
+        self.tbl_architect_attachments.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_architect_attachments.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        layout.addWidget(self.tbl_architect_attachments)
+        self._set_architect_attachments([])
+
+    def _normalize_attachment(self, item: dict | None) -> dict[str, str] | None:
+        if not isinstance(item, dict):
+            return None
+        path = str(item.get("path", "") or "").strip()
+        kind = str(item.get("kind", "") or "").strip() or "PDF"
+        description = str(item.get("description", "") or "").strip()
+        if not path:
+            return None
+        return {
+            "path": path,
+            "kind": kind,
+            "description": description,
+        }
+
+    def _set_architect_attachments(self, items: list[dict] | None) -> None:
+        normalized: list[dict[str, str]] = []
+        for item in items or []:
+            entry = self._normalize_attachment(item)
+            if entry is not None:
+                normalized.append(entry)
+        self._architect_attachments = normalized
+        self._refresh_architect_attachments_table()
+
+    def _refresh_architect_attachments_table(self) -> None:
+        if not hasattr(self, "tbl_architect_attachments"):
+            return
+        self.tbl_architect_attachments.setRowCount(len(self._architect_attachments))
+        for row, attachment in enumerate(self._architect_attachments):
+            file_name = Path(str(attachment.get("path", "") or "")).name or str(attachment.get("path", "") or "")
+            items = (
+                QTableWidgetItem(file_name),
+                QTableWidgetItem(str(attachment.get("kind", "") or "PDF")),
+                QTableWidgetItem(str(attachment.get("description", "") or "")),
+            )
+            for col, item in enumerate(items):
+                item.setData(Qt.ItemDataRole.UserRole, str(attachment.get("path", "") or ""))
+                item.setToolTip(str(attachment.get("path", "") or ""))
+                self.tbl_architect_attachments.setItem(row, col, item)
+        self.tbl_architect_attachments.resizeColumnsToContents()
+        self._on_architect_attachment_selection_changed()
+
+    def _selected_architect_attachment_index(self) -> int:
+        selection = (
+            self.tbl_architect_attachments.selectionModel().selectedRows()
+            if self.tbl_architect_attachments.selectionModel() is not None
+            else []
+        )
+        if not selection:
+            return -1
+        return int(selection[0].row())
+
+    def _on_architect_attachment_selection_changed(self) -> None:
+        if hasattr(self, "btn_remove_architect_attachment"):
+            self.btn_remove_architect_attachment.setEnabled(self._selected_architect_attachment_index() >= 0)
+
+    def _on_pick_architect_file(self) -> None:
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Wybierz zalacznik od architekta",
+            "",
+            "Pliki PDF i obrazy (*.pdf *.png *.jpg *.jpeg *.bmp);;Wszystkie pliki (*.*)",
+        )
+        if not file_path:
+            return
+        self.ed_architect_file.setText(str(file_path))
+
+    def _on_add_architect_attachment(self) -> None:
+        path = str(self.ed_architect_file.text().strip())
+        if not path:
+            self._set_status("Wybierz plik albo wpisz sciezke do zalacznika od architekta.", ok=False)
+            return
+        entry = self._normalize_attachment(
+            {
+                "path": path,
+                "kind": self.cb_architect_kind.currentText().strip() or "PDF",
+                "description": self.ed_architect_description.text().strip(),
+            }
+        )
+        if entry is None:
+            self._set_status("Nie udalo sie dodac zalacznika.", ok=False)
+            return
+        if any(str(item.get("path", "") or "") == entry["path"] for item in self._architect_attachments):
+            self._set_status("Ten zalacznik jest juz przypiety do zamowienia.", ok=False)
+            return
+        self._architect_attachments.append(entry)
+        self.ed_architect_file.clear()
+        self.ed_architect_description.clear()
+        self._refresh_architect_attachments_table()
+        self._refresh_summary()
+        self._set_status("Dodano zalacznik od architekta.", ok=True)
+
+    def _on_remove_architect_attachment(self) -> None:
+        index = self._selected_architect_attachment_index()
+        if index < 0 or index >= len(self._architect_attachments):
+            self._set_status("Wybierz zalacznik do usuniecia.", ok=False)
+            return
+        self._architect_attachments.pop(index)
+        self._refresh_architect_attachments_table()
+        self._refresh_summary()
+        self._set_status("Usunieto zalacznik od architekta.", ok=True)
+
     def _build_summary_group(self) -> None:
         layout = self.grp_summary.content_layout()
 
@@ -474,6 +640,11 @@ class TabNoweZamowienie(QWidget):
         self.ed_worker_email.clear()
         self.ed_worker_notes.clear()
 
+        self.ed_architect_file.clear()
+        self.cb_architect_kind.setCurrentIndex(0)
+        self.ed_architect_description.clear()
+        self._set_architect_attachments([])
+
         self.lab_status.clear()
         self._refresh_summary()
         self.ed_order_code.setFocus()
@@ -518,6 +689,7 @@ class TabNoweZamowienie(QWidget):
             self.ed_worker_phone.setText(str(getattr(worker, "phone", "") or ""))
             self.ed_worker_email.setText(str(getattr(worker, "email", "") or ""))
             self.ed_worker_notes.setPlainText(str(getattr(worker, "notes", "") or ""))
+            self._set_architect_attachments(list(getattr(order, "attachments", []) or []))
         finally:
             self._is_restoring_draft = False
 
@@ -533,6 +705,7 @@ class TabNoweZamowienie(QWidget):
         status_name = self.cb_order_status.currentText().strip() or "-"
         wall_count = len(self._current_order_wall_names())
         assembly_count = len(self._current_order_assemblies())
+        attachment_count = len(self._architect_attachments)
         if hasattr(self, "lab_metric_walls"):
             self.lab_metric_walls.setText(str(wall_count))
         if hasattr(self, "lab_metric_assemblies"):
@@ -541,7 +714,8 @@ class TabNoweZamowienie(QWidget):
             f"Klient: {client_name}\n"
             f"Zamowienie: {order_code}\n"
             f"Status: {status_name}\n"
-            f"Pracownik: {worker_name}"
+            f"Pracownik: {worker_name}\n"
+            f"Zalaczniki od architekta: {attachment_count}"
         )
         self._refresh_order_walls_table()
         self._refresh_order_cost_summary()
@@ -776,7 +950,7 @@ class TabNoweZamowienie(QWidget):
     def _on_walls_selection_changed(self) -> None:
         self.btn_open_wall.setEnabled(bool(self._selected_wall_name()))
 
-    def _draft_payload(self) -> dict[str, str]:
+    def _draft_payload(self) -> dict[str, object]:
         return {
             "client_name": str(self.cb_client_name.currentText().strip()),
             "client_phone": str(self.ed_client_phone.text().strip()),
@@ -792,11 +966,16 @@ class TabNoweZamowienie(QWidget):
             "worker_phone": str(self.ed_worker_phone.text().strip()),
             "worker_email": str(self.ed_worker_email.text().strip()),
             "worker_notes": str(self.ed_worker_notes.toPlainText().strip()),
+            "architect_attachments": [dict(item) for item in self._architect_attachments],
         }
 
-    def _has_meaningful_draft(self, payload: dict[str, str]) -> bool:
-        values = [str(value or "").strip() for value in payload.values()]
-        return any(values)
+    def _has_meaningful_draft(self, payload: dict[str, object]) -> bool:
+        for value in payload.values():
+            if isinstance(value, str) and value.strip():
+                return True
+            if isinstance(value, list) and value:
+                return True
+        return False
 
     def _save_draft(self, show_status: bool) -> bool:
         if self._is_restoring_draft:
@@ -834,6 +1013,7 @@ class TabNoweZamowienie(QWidget):
             self.ed_worker_phone.setText(str(payload.get("worker_phone", "") or ""))
             self.ed_worker_email.setText(str(payload.get("worker_email", "") or ""))
             self.ed_worker_notes.setPlainText(str(payload.get("worker_notes", "") or ""))
+            self._set_architect_attachments(list(payload.get("architect_attachments", []) or []))
         finally:
             self._is_restoring_draft = False
 
@@ -919,6 +1099,7 @@ class TabNoweZamowienie(QWidget):
             status=str(self.cb_order_status.currentText().strip() or "Nowe"),
             site_address=str(self.ed_order_address.text().strip()),
             notes=str(self.ed_order_notes.toPlainText().strip()),
+            attachments=[dict(item) for item in self._architect_attachments],
         )
 
     def current_order_context(self) -> dict[str, str]:
@@ -1061,6 +1242,7 @@ class TabNoweZamowienie(QWidget):
         self.cb_order_status.setCurrentIndex(idx if idx >= 0 else 0)
         self.ed_order_address.setText(order.site_address)
         self.ed_order_notes.setPlainText(order.notes)
+        self._set_architect_attachments(list(getattr(order, "attachments", []) or []))
         self._set_status(f'Wczytano zamowienie "{order.code}".', ok=True)
 
     def _ensure_context_saved_for_next_step(self) -> tuple[bool, str]:

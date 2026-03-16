@@ -216,6 +216,13 @@ Do wdrozenia:
 - wyszukiwarka po nazwie modulu
 - lepsze odnajdywanie gotowych modulow w karcie Komplet
 
+[DONE] Materialy od architekta w zamowieniu:
+- blok "Zalaczniki od architekta" w karcie Nowe zamowienie
+- mozliwosc przypiecia PDF / obrazu / referencji do zamowienia
+- zapis i odczyt zalacznikow w zamowieniu
+- zapis roboczy draftu obejmuje tez zalaczniki
+- summary pokazuje liczbe zalacznikow od architekta
+
 [TODO] Rozszerzenie biblioteki gotowych modulow:
 - dolne
 - gorne
@@ -250,6 +257,11 @@ Do wdrozenia:
 - cena orientacyjna
 - opis wariantu
 - przygotowanie pod PDF oferty
+
+[TODO] Praca z PDF od architekta:
+- podglad miniatur stron
+- reczne wycinanie fragmentu z PDF
+- przypiecie fragmentu do Sciana / Komplet / oferty
 
 
 --------------------------------------------------

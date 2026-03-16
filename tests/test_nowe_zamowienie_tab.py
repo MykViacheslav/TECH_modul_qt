@@ -151,6 +151,11 @@ def test_nowe_zamowienie_tab_restores_saved_draft_on_next_open(tmp_path, monkeyp
     w1.ed_order_address.setText("Gdansk, Draft 5")
     w1.cb_worker_name.setCurrentText("Pracownik Draft")
     w1.ed_worker_role.setText("Kosztorys")
+    attachment = tmp_path / "architekt.pdf"
+    attachment.write_text("pdf", encoding="utf-8")
+    w1.ed_architect_file.setText(str(attachment))
+    w1.ed_architect_description.setText("Rzut lazienki")
+    QTest.mouseClick(w1.btn_add_architect_attachment, Qt.MouseButton.LeftButton)
 
     w2 = TabNoweZamowienie(draft_store=draft_store)
 
@@ -160,6 +165,8 @@ def test_nowe_zamowienie_tab_restores_saved_draft_on_next_open(tmp_path, monkeyp
     assert w2.ed_order_address.text() == "Gdansk, Draft 5"
     assert w2.cb_worker_name.currentText() == "Pracownik Draft"
     assert w2.ed_worker_role.text() == "Kosztorys"
+    assert w2.tbl_architect_attachments.rowCount() == 1
+    assert w2.tbl_architect_attachments.item(0, 0).text() == "architekt.pdf"
 
 
 def test_nowe_zamowienie_tab_clear_removes_saved_draft(tmp_path, monkeypatch):
@@ -251,6 +258,7 @@ def test_nowe_zamowienie_tab_uses_collapsible_blocks(tmp_path, monkeypatch):
     assert isinstance(w.grp_order, CollapsibleBlock)
     assert isinstance(w.grp_worker, CollapsibleBlock)
     assert isinstance(w.grp_actions, CollapsibleBlock)
+    assert isinstance(w.grp_architect, CollapsibleBlock)
     assert isinstance(w.grp_walls, CollapsibleBlock)
     assert isinstance(w.grp_summary, CollapsibleBlock)
     assert not w.grp_worker.is_expanded()
@@ -278,6 +286,7 @@ def test_nowe_zamowienie_tab_places_order_and_actions_in_left_column(tmp_path, m
         w.grp_order,
         w.grp_worker,
         w.grp_actions,
+        w.grp_architect,
         w.grp_walls,
         w.grp_summary,
     ]
@@ -444,3 +453,41 @@ def test_nowe_zamowienie_tab_shows_each_assembly_cost_separately(tmp_path, monke
         if w.tbl_order_assemblies.item(row, 5) is not None
     ]
     assert all("zl" in total for total in totals)
+
+
+def test_nowe_zamowienie_tab_saves_and_loads_architect_attachments_with_order(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.tabs.zamowienie import tab_nowe_zamowienie as order_tab_module
+    from src.storage.order_store_json import OrderStoreJson
+    from src.tabs.zamowienie.tab_nowe_zamowienie import TabNoweZamowienie
+
+    order_store = OrderStoreJson(path=tmp_path / "orders.json")
+    attachment = tmp_path / "wizka.pdf"
+    attachment.write_text("pdf", encoding="utf-8")
+
+    w = TabNoweZamowienie(order_store=order_store)
+    w.cb_client_name.setCurrentText("Klient PDF")
+    w.ed_order_code.setText("ORDER-PDF-1")
+    w.ed_architect_file.setText(str(attachment))
+    w.cb_architect_kind.setCurrentText("PDF")
+    w.ed_architect_description.setText("Wizualizacja lazienki")
+    QTest.mouseClick(w.btn_add_architect_attachment, Qt.MouseButton.LeftButton)
+    QTest.mouseClick(w.btn_save_order, Qt.MouseButton.LeftButton)
+
+    monkeypatch.setattr(
+        order_tab_module.QInputDialog,
+        "getItem",
+        lambda *args, **kwargs: ("ORDER-PDF-1", True),
+    )
+
+    w2 = TabNoweZamowienie(order_store=order_store)
+    QTest.mouseClick(w2.btn_pick_order, Qt.MouseButton.LeftButton)
+
+    assert w2.tbl_architect_attachments.rowCount() == 1
+    assert w2.tbl_architect_attachments.item(0, 0).text() == "wizka.pdf"
+    assert w2.tbl_architect_attachments.item(0, 1).text() == "PDF"
+    assert w2.tbl_architect_attachments.item(0, 2).text() == "Wizualizacja lazienki"

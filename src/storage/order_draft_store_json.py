@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Dict
+from typing import Any, Dict
 
 
 def _default_data_dir() -> Path:
@@ -25,7 +25,7 @@ class OrderDraftStoreJson:
         if not self._path.exists():
             self._path.write_text("{}", encoding="utf-8")
 
-    def load(self) -> Dict[str, str]:
+    def load(self) -> Dict[str, Any]:
         try:
             raw = self._path.read_text(encoding="utf-8")
             data = json.loads(raw) if raw.strip() else {}
@@ -33,7 +33,7 @@ class OrderDraftStoreJson:
         except Exception:
             return {}
 
-    def save(self, payload: Dict[str, str]) -> None:
+    def save(self, payload: Dict[str, Any]) -> None:
         data = payload if isinstance(payload, dict) else {}
         self._path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
