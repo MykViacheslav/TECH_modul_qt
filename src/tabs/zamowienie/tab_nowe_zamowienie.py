@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
     QListWidgetItem,
     QPushButton,
     QScrollArea,
+    QSpinBox,
     QSizePolicy,
     QTextEdit,
     QTableWidget,
@@ -52,8 +53,13 @@ from src.ui.collapsible_block import CollapsibleBlock
 ORDER_STATUS_ITEMS: tuple[str, ...] = (
     "Nowe",
     "Wycena",
+    "Wycena gotowa",
+    "Zaakceptowane",
+    "Zakup materialow",
     "W produkcji",
-    "Gotowe",
+    "Lakiernia",
+    "Montaz",
+    "Poprawki",
     "Zakonczone",
 )
 
@@ -338,6 +344,7 @@ class TabNoweZamowienie(QWidget):
         self.cb_worker_name.currentTextChanged.connect(self._on_worker_name_changed)
         self.ed_order_code.textChanged.connect(self._refresh_summary)
         self.cb_order_status.currentTextChanged.connect(self._refresh_summary)
+        self.sp_order_progress.valueChanged.connect(self._refresh_summary)
         self.ed_order_address.textChanged.connect(self._refresh_summary)
         self.ed_client_phone.textChanged.connect(self._refresh_summary)
         self.ed_client_email.textChanged.connect(self._refresh_summary)
@@ -445,11 +452,15 @@ class TabNoweZamowienie(QWidget):
         self.cb_order_status = QComboBox(self.grp_order)
         for item in ORDER_STATUS_ITEMS:
             self.cb_order_status.addItem(item)
+        self.sp_order_progress = QSpinBox(self.grp_order)
+        self.sp_order_progress.setRange(0, 100)
+        self.sp_order_progress.setSuffix(" %")
         self.ed_order_address = QLineEdit(self.grp_order)
         self.ed_order_notes = QTextEdit(self.grp_order)
         self.ed_order_notes.setMaximumHeight(110)
         form.addRow("Kod", self.ed_order_code)
         form.addRow("Status", self.cb_order_status)
+        form.addRow("Zaawansowanie", self.sp_order_progress)
         form.addRow("Adres realizacji", self.ed_order_address)
         form.addRow("Notatki", self.ed_order_notes)
         layout.addLayout(form)
@@ -1707,6 +1718,7 @@ class TabNoweZamowienie(QWidget):
 
         self.ed_order_code.clear()
         self.cb_order_status.setCurrentIndex(0)
+        self.sp_order_progress.setValue(0)
         self.ed_order_address.clear()
         self.ed_order_notes.clear()
 
@@ -1750,6 +1762,7 @@ class TabNoweZamowienie(QWidget):
         order_name = str(payload.get("order_name", "") or "").strip()
         worker_name = str(payload.get("worker_name", "") or "").strip()
         order_status = str(payload.get("order_status", "") or "").strip()
+        order_progress_percent = int(float(payload.get("order_progress_percent", 0.0) or 0.0))
         site_address = str(payload.get("site_address", "") or "").strip()
 
         self._reload_client_choices()
@@ -1771,6 +1784,8 @@ class TabNoweZamowienie(QWidget):
             effective_status = str(getattr(order, "status", "") or order_status or ORDER_STATUS_ITEMS[0])
             idx = self.cb_order_status.findText(effective_status)
             self.cb_order_status.setCurrentIndex(idx if idx >= 0 else 0)
+            effective_progress = int(round(float(getattr(order, "progress_percent", 0.0) or order_progress_percent or 0.0)))
+            self.sp_order_progress.setValue(max(0, min(100, effective_progress)))
             self.ed_order_address.setText(str(getattr(order, "site_address", "") or site_address))
             self.ed_order_notes.setPlainText(str(getattr(order, "notes", "") or ""))
 
@@ -1795,6 +1810,7 @@ class TabNoweZamowienie(QWidget):
         order_code = self.ed_order_code.text().strip() or "-"
         worker_name = self.cb_worker_name.currentText().strip() or "-"
         status_name = self.cb_order_status.currentText().strip() or "-"
+        progress_percent = int(self.sp_order_progress.value())
         wall_count = len(self._current_order_wall_names())
         assembly_count = len(self._current_order_assemblies())
         attachment_count = len(self._architect_attachments)
@@ -1821,6 +1837,7 @@ class TabNoweZamowienie(QWidget):
             f"Klient: {client_name}\n"
             f"Zamowienie: {order_code}\n"
             f"Status: {status_name}\n"
+            f"Zaawansowanie: {progress_percent}%\n"
             f"Pracownik: {worker_name}\n"
             f"Zalaczniki od architekta: {attachment_count}\n"
             f"Pozycje do wyceny: {quote_item_count}\n"
@@ -2124,6 +2141,7 @@ class TabNoweZamowienie(QWidget):
         client_name = str(self.cb_client_name.currentText().strip() or "-")
         worker_name = str(self.cb_worker_name.currentText().strip() or "-")
         status_name = str(self.cb_order_status.currentText().strip() or "-")
+        progress_percent = int(self.sp_order_progress.value())
         site_address = str(self.ed_order_address.text().strip() or "-")
         order_notes = str(self.ed_order_notes.toPlainText().strip())
         quote_items = [dict(item) for item in self._quote_items]
@@ -2270,14 +2288,15 @@ class TabNoweZamowienie(QWidget):
 </head>
 <body>
   <h1>Oferta klienta</h1>
-  <div class="meta">
-    <div><strong>Klient:</strong> {escape(client_name)}</div>
-    <div><strong>Zamowienie:</strong> {escape(order_code)}</div>
-    <div><strong>Pracownik:</strong> {escape(worker_name)}</div>
-    <div><strong>Status:</strong> {escape(status_name)}</div>
-    <div><strong>Adres realizacji:</strong> {escape(site_address)}</div>
-    <div><strong>Data eksportu:</strong> {escape(datetime.now().strftime("%Y-%m-%d %H:%M"))}</div>
-  </div>
+    <div class="meta">
+      <div><strong>Klient:</strong> {escape(client_name)}</div>
+      <div><strong>Zamowienie:</strong> {escape(order_code)}</div>
+      <div><strong>Pracownik:</strong> {escape(worker_name)}</div>
+      <div><strong>Status:</strong> {escape(status_name)}</div>
+      <div><strong>Zaawansowanie:</strong> {progress_percent}%</div>
+      <div><strong>Adres realizacji:</strong> {escape(site_address)}</div>
+      <div><strong>Data eksportu:</strong> {escape(datetime.now().strftime("%Y-%m-%d %H:%M"))}</div>
+    </div>
   <div class="summary">
     <strong>Podsumowanie orientacyjne</strong><br>
     Sciany: {int(export_data["wall_count"])}<br>
@@ -2598,6 +2617,7 @@ class TabNoweZamowienie(QWidget):
             "client_notes": str(self.ed_client_notes.toPlainText().strip()),
             "order_code": str(self.ed_order_code.text().strip()),
             "order_status": str(self.cb_order_status.currentText().strip()),
+            "order_progress_percent": int(self.sp_order_progress.value()),
             "order_address": str(self.ed_order_address.text().strip()),
             "order_notes": str(self.ed_order_notes.toPlainText().strip()),
             "worker_name": str(self.cb_worker_name.currentText().strip()),
@@ -2646,6 +2666,8 @@ class TabNoweZamowienie(QWidget):
             order_status = str(payload.get("order_status", "") or "")
             idx = self.cb_order_status.findText(order_status)
             self.cb_order_status.setCurrentIndex(idx if idx >= 0 else 0)
+            order_progress_percent = int(float(payload.get("order_progress_percent", 0.0) or 0.0))
+            self.sp_order_progress.setValue(max(0, min(100, order_progress_percent)))
             self.ed_order_address.setText(str(payload.get("order_address", "") or ""))
             self.ed_order_notes.setPlainText(str(payload.get("order_notes", "") or ""))
 
@@ -2740,6 +2762,7 @@ class TabNoweZamowienie(QWidget):
             client_name=str(self.cb_client_name.currentText().strip()),
             worker_name=str(self.cb_worker_name.currentText().strip()),
             status=str(self.cb_order_status.currentText().strip() or "Nowe"),
+            progress_percent=float(self.sp_order_progress.value()),
             site_address=str(self.ed_order_address.text().strip()),
             notes=str(self.ed_order_notes.toPlainText().strip()),
             attachments=[dict(item) for item in self._architect_attachments],
@@ -2747,13 +2770,14 @@ class TabNoweZamowienie(QWidget):
             material_choices=[dict(item) for item in self._material_choices],
         )
 
-    def current_order_context(self) -> dict[str, str]:
+    def current_order_context(self) -> dict[str, object]:
         order = self._order_from_form()
         return {
             "client_name": str(order.client_name or "").strip(),
             "order_name": str(order.code or "").strip(),
             "worker_name": str(order.worker_name or "").strip(),
             "order_status": str(order.status or "").strip(),
+            "order_progress_percent": float(order.progress_percent or 0.0),
             "site_address": str(order.site_address or "").strip(),
         }
 
@@ -2885,6 +2909,7 @@ class TabNoweZamowienie(QWidget):
         self.cb_worker_name.setCurrentText(order.worker_name)
         idx = self.cb_order_status.findText(order.status)
         self.cb_order_status.setCurrentIndex(idx if idx >= 0 else 0)
+        self.sp_order_progress.setValue(max(0, min(100, int(round(float(getattr(order, "progress_percent", 0.0) or 0.0))))))
         self.ed_order_address.setText(order.site_address)
         self.ed_order_notes.setPlainText(order.notes)
         self._set_architect_attachments(list(getattr(order, "attachments", []) or []))

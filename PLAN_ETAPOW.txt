@@ -518,11 +518,17 @@ Do wdrozenia:
 ETAP 3 - STATUSY I KALENDARZ PRAC
 --------------------------------------------------
 
-Status: [TODO]
+Status: [IN PROGRESS]
 
 Do wdrozenia:
-- statusy zamowienia:
-  - wycena
+[DONE] pierwszy status workflow i procent zaawansowania:
+  - rozbudowane statusy zamowienia w "Nowe zamowienie"
+  - procent zaawansowania 0-100%
+  - zapis i odczyt w zamowieniu
+  - zapis i odczyt w drafcie
+  - pokazanie w summary i eksporcie oferty
+
+[TODO] dalsze statusy zamowienia:
   - wycena w toku
   - wycena gotowa
   - zaakceptowane

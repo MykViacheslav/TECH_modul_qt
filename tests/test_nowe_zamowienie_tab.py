@@ -34,6 +34,7 @@ def test_nowe_zamowienie_tab_saves_client_worker_and_order(tmp_path, monkeypatch
 
     w.ed_order_code.setText("ORD-NEW-1")
     w.cb_order_status.setCurrentText("Nowe")
+    w.sp_order_progress.setValue(15)
     w.ed_order_address.setText("Krakow, Testowa 1")
 
     w.cb_worker_name.setCurrentText("Jan Pomiar")
@@ -60,6 +61,7 @@ def test_nowe_zamowienie_tab_saves_client_worker_and_order(tmp_path, monkeypatch
     assert saved_order is not None
     assert saved_order.client_name == "Klient Test"
     assert saved_order.worker_name == "Jan Pomiar"
+    assert saved_order.progress_percent == 15.0
     assert len(saved_order.material_choices) == 1
     assert saved_order.material_choices[0]["scope"] == "Front"
     assert saved_order.material_choices[0]["status"] == "Wybrane finalnie"
@@ -161,6 +163,7 @@ def test_nowe_zamowienie_tab_restores_saved_draft_on_next_open(tmp_path, monkeyp
     w1.cb_client_name.setCurrentText("Klient Draft")
     w1.ed_client_phone.setText("123-123-123")
     w1.ed_order_code.setText("ORD-DRAFT-1")
+    w1.sp_order_progress.setValue(35)
     w1.ed_order_address.setText("Gdansk, Draft 5")
     w1.cb_worker_name.setCurrentText("Pracownik Draft")
     w1.ed_worker_role.setText("Kosztorys")
@@ -186,6 +189,7 @@ def test_nowe_zamowienie_tab_restores_saved_draft_on_next_open(tmp_path, monkeyp
     assert w2.cb_client_name.currentText() == "Klient Draft"
     assert w2.ed_client_phone.text() == "123-123-123"
     assert w2.ed_order_code.text() == "ORD-DRAFT-1"
+    assert w2.sp_order_progress.value() == 35
     assert w2.ed_order_address.text() == "Gdansk, Draft 5"
     assert w2.cb_worker_name.currentText() == "Pracownik Draft"
     assert w2.ed_worker_role.text() == "Kosztorys"
@@ -409,6 +413,7 @@ def test_nowe_zamowienie_tab_exports_offer_html(tmp_path, monkeypatch):
     w.cb_client_name.setCurrentText("Klient Export")
     w.ed_order_code.setText("ORDER-EXPORT-1")
     w.cb_order_status.setCurrentText("Wycena")
+    w.sp_order_progress.setValue(45)
     w.ed_order_address.setText("Warszawa, Testowa 5")
     w.cb_worker_name.setCurrentText("Jan Handlowiec")
     w._set_quote_items(
@@ -459,6 +464,8 @@ def test_nowe_zamowienie_tab_exports_offer_html(tmp_path, monkeypatch):
     assert "Oferta klienta" in html
     assert "Klient Export" in html
     assert "ORDER-EXPORT-1" in html
+    assert "Zaawansowanie:" in html
+    assert "45%" in html
     assert "RTV salon" in html
     assert "RAL 7044" in html
     assert "Koszt techniczny orientacyjnie" in html
