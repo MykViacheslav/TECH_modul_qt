@@ -177,6 +177,36 @@ def test_sciana_tab_saved_module_library_supports_quick_filters_and_search(tmp_p
     assert set(_visible_saved_module_names(w.tree_saved_modules)) == {"LOWER_FAST", "UPPER_FAST", "SLUPEK_FAST"}
 
 
+def test_sciana_tab_wall_selector_uses_short_readable_labels(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.domain.wall_models import WallLayoutDef
+    from src.storage.wall_store_json import WallStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    wall_store = WallStoreJson(path=tmp_path / "walls_labels.json")
+    wall_store.save_new(
+        WallLayoutDef(
+            name="KUCHNIA_A",
+            client_name="Klient Alfa",
+            order_name="ORD-ALFA-01",
+            wall_a_width_mm=3600.0,
+        )
+    )
+
+    w = TabSciana(wall_store=wall_store)
+    app.processEvents()
+
+    wall_idx = w.cb_wall.findData("KUCHNIA_A")
+    assert wall_idx >= 0
+    assert w.cb_wall.itemText(wall_idx) == "KUCHNIA_A - Klient Alfa (ORD-ALFA-01)"
+    assert "Sciana: KUCHNIA_A" in str(w.cb_wall.itemData(wall_idx, Qt.ItemDataRole.ToolTipRole) or "")
+    assert "Klient: Klient Alfa" in str(w.cb_wall.itemData(wall_idx, Qt.ItemDataRole.ToolTipRole) or "")
+
+
 def test_sciana_tab_preview_draws_module_parts_not_only_outer_block(tmp_path, monkeypatch):
     monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TECH_MODUL_TESTING", "1")

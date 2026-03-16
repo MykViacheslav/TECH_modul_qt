@@ -1293,7 +1293,7 @@ class TabScianaLayout(QWidget):
         grp_top_layout = QVBoxLayout(grp_top)
         grp_top_layout.setContentsMargins(8, 12, 8, 8)
         self.preview_top = WallPreviewView(grp_top, view_mode="top")
-        self.preview_top.setMinimumHeight(180)
+        self.preview_top.setMinimumHeight(220)
         self.preview_top.sig_obstacle_selected.connect(self._on_preview_obstacle_selected)
         self.preview_top.sig_obstacle_dragged.connect(self._on_preview_obstacle_dragged)
         self.preview_top.sig_obstacle_dimension_changed.connect(self._on_preview_obstacle_dimension_changed)
@@ -1301,7 +1301,7 @@ class TabScianaLayout(QWidget):
         grp_top_layout.addWidget(self.preview_top, 1)
 
         grp_front.setMinimumHeight(360)
-        grp_top.setMinimumHeight(180)
+        grp_top.setMinimumHeight(220)
 
         self.center_views_splitter = QSplitter(Qt.Orientation.Vertical, panel)
         self.center_views_splitter.setChildrenCollapsible(False)
@@ -1309,7 +1309,7 @@ class TabScianaLayout(QWidget):
         self.center_views_splitter.addWidget(grp_top)
         self.center_views_splitter.setStretchFactor(0, 4)
         self.center_views_splitter.setStretchFactor(1, 2)
-        self.center_views_splitter.setSizes([560, 220])
+        self.center_views_splitter.setSizes([620, 280])
 
         layout.addWidget(self.center_views_splitter, 1)
         return panel
@@ -1368,9 +1368,28 @@ class TabScianaLayout(QWidget):
             self._startup_visibility_applied_once = True
         self._push_wall_to_ui()
         self._refresh_all()
+        self._ensure_center_views_splitter_visibility()
 
     def _selected_client_name(self) -> str:
         return str(self.cb_client.currentData() or "").strip()
+
+    def _ensure_center_views_splitter_visibility(self) -> None:
+        if not hasattr(self, "center_views_splitter"):
+            return
+
+        available_height = int(self.center_views_splitter.height() or self.center_views_splitter.size().height() or 0)
+        if available_height <= 0:
+            self.center_views_splitter.setSizes([620, 280])
+            return
+
+        top_height = max(220, int(available_height * 0.28))
+        front_height = max(360, available_height - top_height)
+
+        if front_height + top_height > available_height:
+            overflow = (front_height + top_height) - available_height
+            front_height = max(300, front_height - overflow)
+
+        self.center_views_splitter.setSizes([front_height, top_height])
 
     def _selected_order_name(self) -> str:
         return str(self.cb_order.currentData() or "").strip()

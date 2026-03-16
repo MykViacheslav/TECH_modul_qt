@@ -118,6 +118,10 @@ Zrobione w Etapie 1:
   - nieaktywne przeszkody sa lzejsze wizualnie
   - male techniczne elementy bez zaznaczenia nie zasypuja preview podpisami
   - dodatkowe symbole techniczne sa pokazywane glownie dla wybranej przeszkody
+- stabilniejszy widok z gory:
+  - wieksza minimalna wysokosc
+  - pewny podzial splittera po otwarciu karty
+  - top view nie powinien juz znikac pod dolna krawedzia
 
 [DONE] Komplet:
 - osobne widoki przod / gora
@@ -144,6 +148,10 @@ Zrobione w Etapie 1:
   - krotsza lista modulow
   - blok "Aktywny modul" zamiast czysto technicznej pozycji
   - prawa kolumna ma przewijanie, wiec dolne bloki sa zawsze dostepne
+- czytelniejszy wybor powiazanej sciany:
+  - krotsze etykiety w liscie
+  - pelne dane w tooltipie
+  - lepsza szerokosc pola wyboru
 - spokojniejszy preview:
   - lzejsze tlo sciany i stref
   - spokojniejsze przeszkody

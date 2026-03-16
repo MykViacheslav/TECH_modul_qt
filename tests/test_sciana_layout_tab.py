@@ -236,7 +236,24 @@ def test_sciana_layout_tab_uses_separate_front_and_top_previews(tmp_path, monkey
     assert str(getattr(w.preview, "_view_mode", "")) == "front"
     assert str(getattr(w.preview_top, "_view_mode", "")) == "top"
     assert int(w.preview.minimumHeight()) >= 360
-    assert int(w.preview_top.minimumHeight()) >= 180
+    assert int(w.preview_top.minimumHeight()) >= 220
+
+
+def test_sciana_layout_tab_keeps_top_view_visible_after_show(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.tabs.sciana.tab_sciana_layout import TabScianaLayout
+
+    w = TabScianaLayout()
+    w.show()
+    app.processEvents()
+
+    sizes = w.center_views_splitter.sizes()
+    assert len(sizes) == 2
+    assert sizes[1] >= 180
 
 
 def test_sciana_layout_tab_front_and_top_previews_share_scale_for_simple_wall(tmp_path, monkeypatch):

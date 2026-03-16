@@ -1955,6 +1955,8 @@ class TabSciana(QWidget):
 
         self.cb_profile = QComboBox()
         self.cb_wall = QComboBox()
+        self.cb_wall.setMinimumContentsLength(26)
+        self.cb_wall.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContentsOnFirstShow)
         self.btn_refresh_walls = QPushButton("Odswiez sciany")
         self.chk_force_hardware = QCheckBox("Narzuc okucia z profilu zestawu")
         self.chk_force_hardware.setChecked(True)
@@ -2654,7 +2656,19 @@ class TabSciana(QWidget):
             wall_name = str(getattr(wall, "name", "") or "")
             client = str(getattr(wall, "client_name", "") or "-")
             order = str(getattr(wall, "order_name", "") or "-")
-            self.cb_wall.addItem(f"{wall_name} | {client} | {order}", wall_name)
+            display_parts = [wall_name]
+            if client and client != "-":
+                display_parts.append(client)
+            display_text = " - ".join(display_parts[:2])
+            if order and order != "-":
+                display_text = f"{display_text} ({order})"
+            self.cb_wall.addItem(display_text, wall_name)
+            item_index = self.cb_wall.count() - 1
+            self.cb_wall.setItemData(
+                item_index,
+                f"Sciana: {wall_name}\nKlient: {client}\nZamowienie: {order}",
+                Qt.ItemDataRole.ToolTipRole,
+            )
 
         idx = self.cb_wall.findData(current_name)
         if idx < 0:
