@@ -4,7 +4,7 @@ import html
 import json
 from pathlib import Path
 
-from PyQt6.QtCore import QMimeData, QPointF, Qt, QRectF, pyqtSignal
+from PyQt6.QtCore import QItemSelectionModel, QMimeData, QPointF, Qt, QRectF, pyqtSignal
 from PyQt6.QtGui import QColor, QBrush, QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent, QFont, QMouseEvent, QPen, QPixmap
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -199,6 +199,12 @@ COMPANY_COLLECTION_VALUES = {
         "decor_preset": "black",
     },
 }
+
+
+class AssemblyItemsTable(QTableWidget):
+    def selectRow(self, row: int) -> None:  # type: ignore[override]
+        self.clearSelection()
+        super().selectRow(int(row))
 
 _IMAGE_ATTACHMENT_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
 
@@ -2068,6 +2074,7 @@ class TabSciana(QWidget):
         self._reload_quick_material_presets()
         self._reload_material_choices()
         self._reload_selected_module_material_choices()
+        self._reload_bulk_module_material_choices()
         self._reload_hardware_vendor_presets()
         self._reload_decor_presets()
         self._reload_company_collections()
@@ -2086,6 +2093,7 @@ class TabSciana(QWidget):
         self._reload_quick_material_presets()
         self._reload_material_choices()
         self._reload_selected_module_material_choices()
+        self._reload_bulk_module_material_choices()
         self._reload_hardware_vendor_presets()
         self._reload_decor_presets()
         self._reload_company_collections()
@@ -2531,6 +2539,13 @@ class TabSciana(QWidget):
             preview_text = f"Komplet roboczy | {mode_label} | Zajete: {used_width:.0f} mm"
         self.lab_preview_context.setText(preview_text)
 
+        selected_indexes = self._selected_indexes()
+        if len(selected_indexes) > 1:
+            self.lab_active_module_info.setText(
+                f"Zaznaczono {len(selected_indexes)} modulow. Uzyj bloku 'Zaznaczone moduly', aby zmienic je grupowo."
+            )
+            return
+
         selected_index = self._selected_index()
         if 0 <= selected_index < len(self._resolved_items):
             item = self._resolved_items[selected_index]
@@ -2694,10 +2709,10 @@ class TabSciana(QWidget):
         box_items = QGroupBox("Lista modulow", scroll_content)
         items_layout = QVBoxLayout(box_items)
 
-        self.tbl_items = QTableWidget(0, 3, box_items)
+        self.tbl_items = AssemblyItemsTable(0, 3, box_items)
         self.tbl_items.setHorizontalHeaderLabels(["Modul", "Typ", "Koszt"])
         self.tbl_items.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.tbl_items.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.tbl_items.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.tbl_items.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tbl_items.verticalHeader().setVisible(False)
         self.tbl_items.horizontalHeader().setStretchLastSection(False)
@@ -2775,6 +2790,35 @@ class TabSciana(QWidget):
         self.block_offset.set_expanded(True)
         scroll_layout.addWidget(self.block_offset, 0)
 
+        box_bulk = QGroupBox("", scroll_content)
+        box_bulk_layout = QVBoxLayout(box_bulk)
+        box_bulk_layout.setContentsMargins(0, 0, 0, 0)
+        box_bulk_layout.setSpacing(6)
+        self.lab_bulk_modules_meta = QLabel("Zaznacz kilka modulow z listy, aby zmienic je grupowo.")
+        self.lab_bulk_modules_meta.setWordWrap(True)
+        self.lab_bulk_modules_meta.setStyleSheet("color:#4b5563;")
+        box_bulk_layout.addWidget(self.lab_bulk_modules_meta)
+        self.bulk_form = QFormLayout()
+        self.sp_bulk_height = QDoubleSpinBox(box_bulk)
+        self.sp_bulk_height.setRange(0.0, 5000.0)
+        self.sp_bulk_height.setDecimals(1)
+        self.sp_bulk_height.setSuffix(" mm")
+        self.sp_bulk_height.setSpecialValueText("[bez zmiany]")
+        self.cb_bulk_material_carcass = QComboBox(box_bulk)
+        self.cb_bulk_material_front = QComboBox(box_bulk)
+        self.cb_bulk_material_back = QComboBox(box_bulk)
+        self.bulk_form.addRow("Wysokosc", self.sp_bulk_height)
+        self.bulk_form.addRow("Mat. korpusu", self.cb_bulk_material_carcass)
+        self.bulk_form.addRow("Mat. frontu", self.cb_bulk_material_front)
+        self.bulk_form.addRow("Mat. plecow", self.cb_bulk_material_back)
+        box_bulk_layout.addLayout(self.bulk_form)
+        self.btn_apply_bulk_modules = QPushButton("Zastosuj do zaznaczonych", box_bulk)
+        box_bulk_layout.addWidget(self.btn_apply_bulk_modules)
+        self.block_bulk_modules = CollapsibleBlock("Zaznaczone moduly", scroll_content)
+        self.block_bulk_modules.content_layout().addWidget(box_bulk)
+        self.block_bulk_modules.set_expanded(False)
+        scroll_layout.addWidget(self.block_bulk_modules, 0)
+
         box_references = QGroupBox("", scroll_content)
         references_layout = QVBoxLayout(box_references)
         references_layout.setContentsMargins(0, 0, 0, 0)
@@ -2824,7 +2868,7 @@ class TabSciana(QWidget):
         scroll_layout.addStretch(1)
         self.right_scroll_area.setWidget(scroll_content)
 
-        self.tbl_items.itemSelectionChanged.connect(self._refresh_preview_only)
+        self.tbl_items.itemSelectionChanged.connect(self._on_items_selection_changed)
         self.btn_remove.clicked.connect(self._on_remove_selected_item)
         self.btn_move_up.clicked.connect(lambda: self._move_selected_item(-1))
         self.btn_move_down.clicked.connect(lambda: self._move_selected_item(1))
@@ -2838,6 +2882,7 @@ class TabSciana(QWidget):
         self.cb_selected_material_carcass.currentIndexChanged.connect(self._on_selected_module_materials_changed)
         self.cb_selected_material_front.currentIndexChanged.connect(self._on_selected_module_materials_changed)
         self.cb_selected_material_back.currentIndexChanged.connect(self._on_selected_module_materials_changed)
+        self.btn_apply_bulk_modules.clicked.connect(self._apply_bulk_changes_to_selected)
         self.tbl_project_refs.itemSelectionChanged.connect(self._on_project_reference_selection_changed)
 
         return panel
@@ -3138,6 +3183,31 @@ class TabSciana(QWidget):
         fill(self.cb_selected_material_carcass, current_values["carcass"])
         fill(self.cb_selected_material_front, current_values["front"])
         fill(self.cb_selected_material_back, current_values["back"])
+
+    def _reload_bulk_module_material_choices(self) -> None:
+        current_values = {
+            "carcass": str(self.cb_bulk_material_carcass.currentData() or ""),
+            "front": str(self.cb_bulk_material_front.currentData() or ""),
+            "back": str(self.cb_bulk_material_back.currentData() or ""),
+        }
+        materials = self._catalog.list_materials() or []
+
+        def fill(cb: QComboBox, current_value: str) -> None:
+            cb.blockSignals(True)
+            cb.clear()
+            cb.addItem("[bez zmiany]", "")
+            for material in materials:
+                cb.addItem(self._material_label(material), material.key)
+            idx = cb.findData(current_value)
+            if idx < 0 and current_value:
+                cb.addItem(current_value, current_value)
+                idx = cb.findData(current_value)
+            cb.setCurrentIndex(idx if idx >= 0 else 0)
+            cb.blockSignals(False)
+
+        fill(self.cb_bulk_material_carcass, current_values["carcass"])
+        fill(self.cb_bulk_material_front, current_values["front"])
+        fill(self.cb_bulk_material_back, current_values["back"])
 
     def _set_material_combo_to_key(self, cb: QComboBox, material_key: str) -> None:
         normalized_key = str(material_key or "").strip()
@@ -3993,6 +4063,7 @@ class TabSciana(QWidget):
 
     def _on_preview_module_selected(self, index: int) -> None:
         if 0 <= int(index) < self.tbl_items.rowCount():
+            self.tbl_items.clearSelection()
             self.tbl_items.selectRow(int(index))
             self._sync_selected_offset_editor()
             self._refresh_preview_only()
@@ -4042,14 +4113,25 @@ class TabSciana(QWidget):
         self._rebuild_assembly(select_index=index)
 
     def _selected_index(self) -> int:
-        rows = self.tbl_items.selectionModel().selectedRows() if self.tbl_items.selectionModel() is not None else []
+        rows = self._selected_indexes()
         if not rows:
             return -1
-        return int(rows[0].row())
+        return int(rows[0])
+
+    def _selected_indexes(self) -> list[int]:
+        rows = self.tbl_items.selectionModel().selectedRows() if self.tbl_items.selectionModel() is not None else []
+        return sorted({int(row.row()) for row in rows})
+
+    def _on_items_selection_changed(self) -> None:
+        self._refresh_preview_only()
+        self._sync_selected_offset_editor()
+        self._sync_bulk_module_editor()
 
     def _sync_selected_offset_editor(self) -> None:
-        index = self._selected_index()
-        enabled = 0 <= index < len(self._assembly.items)
+        selected_indexes = self._selected_indexes()
+        single_selected = len(selected_indexes) == 1
+        index = int(selected_indexes[0]) if single_selected else -1
+        enabled = single_selected and 0 <= index < len(self._assembly.items)
         self.lab_selected_module_meta.setEnabled(enabled)
         self.cb_selected_x_ref.setEnabled(enabled)
         self.lab_offset_ref.setEnabled(enabled)
@@ -4066,7 +4148,12 @@ class TabSciana(QWidget):
         self._is_syncing_offset_ui = True
         try:
             if not enabled:
-                self.lab_selected_module_meta.setText("Wybierz modul z listy albo kliknij go w podgladzie.")
+                if len(selected_indexes) > 1:
+                    self.lab_selected_module_meta.setText(
+                        f"Zaznaczono {len(selected_indexes)} modulow. Uzyj bloku 'Zaznaczone moduly', aby zmienic je grupowo."
+                    )
+                else:
+                    self.lab_selected_module_meta.setText("Wybierz modul z listy albo kliknij go w podgladzie.")
                 self.cb_selected_x_ref.setCurrentIndex(0)
                 self.lab_offset_ref.setText("-")
                 self.cb_selected_y_ref.setCurrentIndex(0)
@@ -4152,6 +4239,66 @@ class TabSciana(QWidget):
         finally:
             self._is_syncing_offset_ui = False
 
+    def _sync_bulk_module_editor(self) -> None:
+        if not hasattr(self, "btn_apply_bulk_modules"):
+            return
+        selected_indexes = [index for index in self._selected_indexes() if 0 <= index < len(self._assembly.items)]
+        enabled = bool(selected_indexes)
+        self.lab_bulk_modules_meta.setEnabled(enabled)
+        self.sp_bulk_height.setEnabled(enabled)
+        self.cb_bulk_material_carcass.setEnabled(enabled)
+        self.cb_bulk_material_front.setEnabled(enabled)
+        self.cb_bulk_material_back.setEnabled(enabled)
+        self.btn_apply_bulk_modules.setEnabled(enabled)
+        self.block_bulk_modules.set_expanded(enabled and len(selected_indexes) > 1)
+
+        if not enabled:
+            self.lab_bulk_modules_meta.setText("Zaznacz kilka modulow z listy, aby zmienic je grupowo.")
+            self.sp_bulk_height.blockSignals(True)
+            self.sp_bulk_height.setValue(0.0)
+            self.sp_bulk_height.blockSignals(False)
+            for cb in (
+                self.cb_bulk_material_carcass,
+                self.cb_bulk_material_front,
+                self.cb_bulk_material_back,
+            ):
+                cb.blockSignals(True)
+                cb.setCurrentIndex(0)
+                cb.blockSignals(False)
+            return
+
+        if len(selected_indexes) == 1:
+            self.lab_bulk_modules_meta.setText("Zaznacz wiecej modulow, aby zastosowac te same zmiany grupowo.")
+        else:
+            self.lab_bulk_modules_meta.setText(
+                f"Zaznaczono {len(selected_indexes)} modulow. Ustaw tylko te pola, ktore chcesz nadpisac dla calej grupy."
+            )
+
+    def _apply_bulk_changes_to_selected(self) -> None:
+        selected_indexes = [index for index in self._selected_indexes() if 0 <= index < len(self._assembly.items)]
+        if not selected_indexes:
+            return
+
+        apply_height = float(self.sp_bulk_height.value()) > 0.0
+        carcass_key = str(self.cb_bulk_material_carcass.currentData() or "").strip()
+        front_key = str(self.cb_bulk_material_front.currentData() or "").strip()
+        back_key = str(self.cb_bulk_material_back.currentData() or "").strip()
+
+        for index in selected_indexes:
+            module = self._assembly.items[index].module
+            if apply_height:
+                module.height_mm = float(self.sp_bulk_height.value())
+            material_map = dict(getattr(module, "materials", {}) or {})
+            if carcass_key:
+                material_map["carcass"] = carcass_key
+            if front_key:
+                material_map["front"] = front_key
+            if back_key:
+                material_map["back"] = back_key
+            module.materials = material_map
+
+        self._rebuild_assembly(select_indexes=selected_indexes)
+
     def _on_selected_y_reference_changed(self) -> None:
         if self._is_syncing_offset_ui:
             return
@@ -4233,14 +4380,19 @@ class TabSciana(QWidget):
         self._rebuild_assembly(select_index=selected_index)
 
     def _on_remove_selected_item(self) -> None:
-        index = self._selected_index()
-        if index < 0 or index >= len(self._assembly.items):
+        selected_indexes = [index for index in self._selected_indexes() if 0 <= index < len(self._assembly.items)]
+        if not selected_indexes:
             return
-        self._assembly.items.pop(index)
-        self._rebuild_assembly(select_index=min(index, len(self._assembly.items) - 1))
+        for index in sorted(selected_indexes, reverse=True):
+            self._assembly.items.pop(index)
+        next_index = min(selected_indexes[0], len(self._assembly.items) - 1)
+        self._rebuild_assembly(select_index=next_index)
 
     def _move_selected_item(self, direction: int) -> None:
-        index = self._selected_index()
+        selected_indexes = self._selected_indexes()
+        if len(selected_indexes) != 1:
+            return
+        index = int(selected_indexes[0])
         if index < 0 or index >= len(self._assembly.items):
             return
         new_index = index + int(direction)
@@ -4250,7 +4402,7 @@ class TabSciana(QWidget):
         items[index], items[new_index] = items[new_index], items[index]
         self._rebuild_assembly(select_index=new_index)
 
-    def _rebuild_assembly(self, select_index: int | None = None) -> None:
+    def _rebuild_assembly(self, select_index: int | None = None, select_indexes: list[int] | None = None) -> None:
         self._pull_ui_to_assembly()
         auto_double_width = float(load_drawing_settings().auto_double_front_width_mm or 600.0)
         linked_wall = None
@@ -4265,39 +4417,61 @@ class TabSciana(QWidget):
         )
         self.preview.clear_hover_preview()
         self.preview_top.clear_hover_preview()
-        self._refresh_items_table(select_index=select_index)
+        if select_indexes is None:
+            if select_index is not None:
+                select_indexes = [int(select_index)]
+            else:
+                select_indexes = self._selected_indexes()
+        self._refresh_items_table(select_index=select_index, selected_indexes=select_indexes)
         self._refresh_project_references()
         self._refresh_summary()
         self._refresh_preview_only()
 
-    def _refresh_items_table(self, select_index: int | None = None) -> None:
-        self.tbl_items.setRowCount(len(self._resolved_items))
-        for row, item in enumerate(self._resolved_items):
-            family = str(getattr(item.module, "module_family", "") or "-")
-            total = f"{item.cost_breakdown.grand_total_pln:.2f} zl"
-            family_label = self._format_module_family_label(family)
+    def _refresh_items_table(self, select_index: int | None = None, selected_indexes: list[int] | None = None) -> None:
+        self.tbl_items.blockSignals(True)
+        try:
+            self.tbl_items.setRowCount(len(self._resolved_items))
+            for row, item in enumerate(self._resolved_items):
+                family = str(getattr(item.module, "module_family", "") or "-")
+                total = f"{item.cost_breakdown.grand_total_pln:.2f} zl"
+                family_label = self._format_module_family_label(family)
 
-            name_item = QTableWidgetItem(item.display_name)
-            family_item = QTableWidgetItem(family_label)
-            cost_item = QTableWidgetItem(total)
-            cost_item.setTextAlignment(int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter))
-            self.tbl_items.setItem(row, 0, name_item)
-            self.tbl_items.setItem(row, 1, family_item)
-            self.tbl_items.setItem(row, 2, cost_item)
+                name_item = QTableWidgetItem(item.display_name)
+                family_item = QTableWidgetItem(family_label)
+                cost_item = QTableWidgetItem(total)
+                cost_item.setTextAlignment(int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter))
+                self.tbl_items.setItem(row, 0, name_item)
+                self.tbl_items.setItem(row, 1, family_item)
+                self.tbl_items.setItem(row, 2, cost_item)
 
-        if select_index is None:
-            select_index = self._selected_index()
+            if selected_indexes is None:
+                if select_index is None:
+                    selected_indexes = self._selected_indexes()
+                else:
+                    selected_indexes = [int(select_index)]
 
-        if 0 <= select_index < self.tbl_items.rowCount():
-            self.tbl_items.selectRow(select_index)
-        elif self.tbl_items.rowCount() > 0:
-            self.tbl_items.selectRow(0)
+            valid_indexes = [index for index in selected_indexes if 0 <= int(index) < self.tbl_items.rowCount()]
+            selection_model = self.tbl_items.selectionModel()
+            if selection_model is not None:
+                selection_model.clearSelection()
+                for index in valid_indexes:
+                    model_index = self.tbl_items.model().index(int(index), 0)
+                    selection_model.select(
+                        model_index,
+                        QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows,
+                    )
+            if not valid_indexes and self.tbl_items.rowCount() > 0:
+                self.tbl_items.selectRow(0)
+        finally:
+            self.tbl_items.blockSignals(False)
 
-        has_selection = self.tbl_items.rowCount() > 0 and self._selected_index() >= 0
+        selected_count = len(self._selected_indexes())
+        has_selection = self.tbl_items.rowCount() > 0 and selected_count > 0
         self.btn_remove.setEnabled(has_selection)
-        self.btn_move_up.setEnabled(has_selection)
-        self.btn_move_down.setEnabled(has_selection)
+        self.btn_move_up.setEnabled(selected_count == 1)
+        self.btn_move_down.setEnabled(selected_count == 1)
         self._sync_selected_offset_editor()
+        self._sync_bulk_module_editor()
 
     def _refresh_preview_only(self) -> None:
         vertical_mode = self._selected_vertical_reference_mode()

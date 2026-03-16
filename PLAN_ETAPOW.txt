@@ -357,6 +357,7 @@ Do wdrozenia:
 - prosty i przewidywalny drag
 - [DONE] szybka zmiana szerokosci / wysokosci / glebokosci konkretnego modulu juz w komplecie
 - [DONE] szybka zmiana materialow konkretnego modulu juz w komplecie
+- [DONE] grupowa zmiana wysokosci i materialow zaznaczonych modulow w komplecie
 
 [TODO] Rozszerzone szybkie zmiany handlowe:
 - podpiecie dekorow pod realne warianty katalogu materialow, gdy baza bedzie bogatsza

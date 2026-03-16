@@ -1,6 +1,6 @@
 import json
 
-from PyQt6.QtCore import QPointF, Qt
+from PyQt6.QtCore import QItemSelectionModel, QPointF, Qt
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QDialog
@@ -2011,6 +2011,77 @@ def test_sciana_tab_can_edit_selected_module_dimensions_and_materials_in_assembl
     assert dict(resolved.module.materials or {})["carcass"] == "PB16"
     assert dict(resolved.module.materials or {})["front"] == "MDF19_LAK"
     assert dict(resolved.module.materials or {})["back"] == "HDF3"
+
+
+def test_sciana_tab_can_apply_bulk_height_and_front_material_to_selected_modules(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    catalog = CatalogStoreJson()
+    store = ModuleStoreJson()
+
+    module_a = ModuleDef(
+        name="BULK_A",
+        width_mm=600.0,
+        depth_mm=500.0,
+        height_mm=720.0,
+        visible_parts={"side_left", "side_right", "top", "bottom", "front"},
+        materials={"carcass": "PB18", "front": "MDF19", "back": "HDF2.5"},
+    )
+    module_b = ModuleDef(
+        name="BULK_B",
+        width_mm=800.0,
+        depth_mm=500.0,
+        height_mm=720.0,
+        visible_parts={"side_left", "side_right", "top", "bottom", "front"},
+        materials={"carcass": "PB18", "front": "MDF19", "back": "HDF2.5"},
+    )
+    module_a.parts = build_module_parts(module_a, catalog)
+    module_b.parts = build_module_parts(module_b, catalog)
+    store.save_new(module_a)
+    store.save_new(module_b)
+
+    w = TabSciana(module_store=store)
+    w.show()
+    app.processEvents()
+
+    assert _select_saved_module(w.tree_saved_modules, "BULK_A")
+    w.btn_add_saved.click()
+    assert _select_saved_module(w.tree_saved_modules, "BULK_B")
+    w.btn_add_saved.click()
+    app.processEvents()
+
+    selection_model = w.tbl_items.selectionModel()
+    assert selection_model is not None
+    selection_model.clearSelection()
+    flags = QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows
+    selection_model.select(w.tbl_items.model().index(0, 0), flags)
+    selection_model.select(w.tbl_items.model().index(1, 0), flags)
+    app.processEvents()
+
+    assert not w.sp_selected_height.isEnabled()
+    assert w.sp_bulk_height.isEnabled()
+    assert "Zaznaczono 2 modulow" in w.lab_bulk_modules_meta.text()
+
+    w.sp_bulk_height.setValue(900.0)
+    idx_front = w.cb_bulk_material_front.findData("MDF19_LAK")
+    assert idx_front >= 0
+    w.cb_bulk_material_front.setCurrentIndex(idx_front)
+    w.btn_apply_bulk_modules.click()
+    app.processEvents()
+
+    assert [float(item.module.height_mm) for item in w._assembly.items] == [900.0, 900.0]
+    assert [dict(item.module.materials or {}).get("front") for item in w._assembly.items] == ["MDF19_LAK", "MDF19_LAK"]
+    assert [float(item.height_mm) for item in w._resolved_items] == [900.0, 900.0]
+    assert [dict(item.module.materials or {}).get("front") for item in w._resolved_items] == ["MDF19_LAK", "MDF19_LAK"]
 
 
 def test_sciana_tab_can_bind_assembly_to_saved_wall_and_metadata(tmp_path, monkeypatch):
