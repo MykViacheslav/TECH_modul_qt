@@ -1,6 +1,7 @@
 import json
 
 from PyQt6.QtCore import QPointF, Qt
+from PyQt6.QtGui import QPixmap
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QDialog
 
@@ -1723,6 +1724,56 @@ def test_sciana_tab_preview_draws_linked_wall_context_from_saved_wall(tmp_path, 
     assert _scene_has_key(w.preview, "assembly_wall_obstacle__0") is True
     assert float(w.preview.scene.sceneRect().left()) <= -29.0
     assert float(w.preview.scene.sceneRect().top()) <= -40.0
+
+
+def test_sciana_tab_shows_architect_references_for_selected_order_context(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.domain.order_models import OrderDef
+    from src.storage.order_store_json import OrderStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    image_path = tmp_path / "komplet_ref.png"
+    pixmap = QPixmap(120, 80)
+    pixmap.fill(Qt.GlobalColor.white)
+    assert pixmap.save(str(image_path))
+
+    order_store = OrderStoreJson(path=tmp_path / "orders.json")
+    order_store.save_new(
+        OrderDef(
+            code="ORDER-REF-01",
+            attachments=[
+                {
+                    "path": str(image_path),
+                    "kind": "Obraz",
+                    "description": "Wizualizacja szafy",
+                    "target_kind": "Komplet",
+                    "target_name": "Szafa wejscie",
+                    "source_page": "Strona 2",
+                }
+            ],
+        )
+    )
+
+    w = TabSciana(order_store=order_store)
+    w.start_new_assembly_from_wall_context(
+        {
+            "order_name": "ORDER-REF-01",
+            "quote_item_name": "Szafa wejscie",
+            "quote_item_kind": "Szafa",
+        }
+    )
+
+    assert w.tbl_project_refs.rowCount() == 1
+    assert w.tbl_project_refs.item(0, 0).text() == "komplet_ref.png"
+    assert "Komplet / Szafa wejscie" in w.tbl_project_refs.item(0, 1).text()
+    assert "Wizualizacja szafy" in w.tbl_project_refs.item(0, 2).text()
+    assert w.lab_project_reference_info.text()
+    assert w.lab_project_reference_preview.pixmap() is not None
+    assert not w.lab_project_reference_preview.pixmap().isNull()
 
 
 def test_sciana_tab_places_lower_and_hanging_modules_in_wall_zones(tmp_path, monkeypatch):

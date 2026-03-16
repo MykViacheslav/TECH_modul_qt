@@ -377,6 +377,53 @@ def test_sciana_layout_tab_has_collapsible_blocks_with_compact_start(tmp_path, m
     assert w._get_collapsible_block_body(w.blk_suggestions).isHidden()  # type: ignore[union-attr]
 
 
+def test_sciana_layout_tab_loads_architect_reference_images_into_wall_photos(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.domain.order_models import OrderDef
+    from src.storage.order_store_json import OrderStoreJson
+    from src.tabs.sciana.tab_sciana_layout import TabScianaLayout
+
+    image_path = tmp_path / "wizualizacja_sciany.png"
+    image_path.write_bytes(b"fake")
+
+    order_store = OrderStoreJson(path=tmp_path / "orders.json")
+    order_store.save_new(
+        OrderDef(
+            code="ORDER-ARCH-01",
+            attachments=[
+                {
+                    "path": str(image_path),
+                    "kind": "Obraz",
+                    "description": "Widok szafy",
+                    "target_kind": "Sciana",
+                    "target_name": "Szafa wejsciowa",
+                    "source_page": "Strona 3",
+                }
+            ],
+        )
+    )
+
+    w = TabScianaLayout(order_store=order_store)
+    w.start_new_wall_from_order_context(
+        {
+            "order_name": "ORDER-ARCH-01",
+            "quote_item_name": "Szafa wejsciowa",
+            "quote_item_kind": "Szafa",
+        }
+    )
+
+    assert len(w._wall.photos) == 1
+    assert w.tbl_photos.rowCount() == 1
+    assert w.tbl_photos.item(0, 0).text() == str(image_path)
+    assert "Widok szafy" in w.tbl_photos.item(0, 1).text()
+    assert "Strona 3" in w.tbl_photos.item(0, 1).text()
+    assert w.blk_photos.is_expanded()
+
+
 def test_sciana_layout_tab_preview_uses_simple_obstacle_labels(tmp_path, monkeypatch):
     monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TECH_MODUL_TESTING", "1")

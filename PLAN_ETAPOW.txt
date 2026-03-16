@@ -285,6 +285,15 @@ Do wdrozenia:
 - kolor / dekor
 - okucia
 
+[TODO] Glosowe uzupelnianie prostych pol:
+- klient
+- adres
+- miasto
+- kolory / dekory
+- materialy
+- kody i krotkie notatki
+- jako prosty mikrofon do rutynowych danych, bez sterowania konstruktorem
+
 [TODO] Praca z PDF od architekta:
 - miniatury stron PDF w zamowieniu
 - reczne wycinanie fragmentu
@@ -321,11 +330,20 @@ Do wdrozenia:
 - zapisany fragment wraca od razu na liste zalacznikow architekta
 - przy fragmencie zapisuje sie tez informacja o celu oraz o stronie zrodlowej
 
+[DONE] Wykorzystanie przypietych fragmentow z PDF:
+- Sciana automatycznie laduje obrazowe referencje z zamowienia do bloku "Zdjecia miejsca"
+- Komplet pokazuje obrazowe referencje z projektu w osobnym bloku:
+  - lista referencji
+  - cel referencji
+  - opis / strona zrodlowa
+  - podglad wybranego obrazu
+- referencje sa filtrowane po celu:
+  - Zamowienie
+  - Sciana
+  - Komplet
+
 [TODO] Dalsza praca z PDF od architekta:
-- realne wykorzystanie przypietego celu:
-  - otwieranie fragmentu przy Sciana
-  - otwieranie fragmentu przy Komplet
-  - wykorzystanie fragmentu w ofercie
+- wykorzystanie fragmentu w ofercie
 - lepsze powiazanie zalacznikow z pozycjami do wyceny
 
 

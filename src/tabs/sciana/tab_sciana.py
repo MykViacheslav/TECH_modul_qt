@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import html
 import json
+from pathlib import Path
 
 from PyQt6.QtCore import QMimeData, QPointF, Qt, QRectF, pyqtSignal
-from PyQt6.QtGui import QColor, QBrush, QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent, QFont, QMouseEvent, QPen
+from PyQt6.QtGui import QColor, QBrush, QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent, QFont, QMouseEvent, QPen, QPixmap
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QAbstractSpinBox,
@@ -67,6 +68,8 @@ QUICK_LIBRARY_LABELS = {
     "corner": "Narozne",
     "other": "Inne",
 }
+
+_IMAGE_ATTACHMENT_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
 
 
 def _saved_module_quick_group_key(module: ModuleDef | None) -> str:
@@ -1805,6 +1808,8 @@ class TabSciana(QWidget):
         self._is_syncing_view_ui = False
         self._order_status_context = ""
         self._site_address_context = ""
+        self._project_references: list[dict[str, str]] = []
+        self._project_reference_pixmap = QPixmap()
 
         root = QHBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
@@ -2420,6 +2425,38 @@ class TabSciana(QWidget):
         self.block_offset.set_expanded(True)
         scroll_layout.addWidget(self.block_offset, 0)
 
+        box_references = QGroupBox("", scroll_content)
+        references_layout = QVBoxLayout(box_references)
+        references_layout.setContentsMargins(0, 0, 0, 0)
+        references_layout.setSpacing(6)
+        self.tbl_project_refs = QTableWidget(0, 3, box_references)
+        self.tbl_project_refs.setHorizontalHeaderLabels(["Plik", "Cel", "Opis"])
+        self.tbl_project_refs.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tbl_project_refs.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.tbl_project_refs.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl_project_refs.verticalHeader().setVisible(False)
+        self.tbl_project_refs.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_project_refs.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_project_refs.horizontalHeader().setStretchLastSection(True)
+        self.tbl_project_refs.setAlternatingRowColors(True)
+        self.tbl_project_refs.setMinimumHeight(120)
+        references_layout.addWidget(self.tbl_project_refs)
+        self.lab_project_reference_info = QLabel("Brak referencji z projektu.")
+        self.lab_project_reference_info.setWordWrap(True)
+        self.lab_project_reference_info.setStyleSheet("color:#4b5563;")
+        references_layout.addWidget(self.lab_project_reference_info)
+        self.lab_project_reference_preview = QLabel("Brak podgladu referencji.")
+        self.lab_project_reference_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lab_project_reference_preview.setMinimumHeight(170)
+        self.lab_project_reference_preview.setStyleSheet(
+            "border:1px solid #d8d4ce; background:#fbfaf8; color:#6b7280; padding:6px;"
+        )
+        references_layout.addWidget(self.lab_project_reference_preview)
+        self.block_project_refs = CollapsibleBlock("Referencje z projektu", scroll_content)
+        self.block_project_refs.content_layout().addWidget(box_references)
+        self.block_project_refs.set_expanded(True)
+        scroll_layout.addWidget(self.block_project_refs, 0)
+
         self.lab_layout_alert = QLabel("", scroll_content)
         self.lab_layout_alert.setWordWrap(True)
         self.lab_layout_alert.hide()
@@ -2445,6 +2482,7 @@ class TabSciana(QWidget):
         self.cb_selected_y_ref.currentIndexChanged.connect(self._on_selected_y_reference_changed)
         self.sp_selected_offset.valueChanged.connect(self._on_selected_offset_changed)
         self.sp_selected_y.valueChanged.connect(self._on_selected_y_changed)
+        self.tbl_project_refs.itemSelectionChanged.connect(self._on_project_reference_selection_changed)
 
         return panel
 
@@ -2548,6 +2586,152 @@ class TabSciana(QWidget):
             idx = 0
         self.cb_wall.setCurrentIndex(idx)
         self.cb_wall.blockSignals(False)
+
+    def _is_visual_attachment_entry(self, entry: dict | None) -> bool:
+        if not isinstance(entry, dict):
+            return False
+        path = str(entry.get("path", "") or "").strip()
+        if not path:
+            return False
+        kind = str(entry.get("kind", "") or "").strip().lower()
+        suffix = Path(path).suffix.strip().lower()
+        return kind in {"obraz", "referencja"} or suffix in _IMAGE_ATTACHMENT_EXTENSIONS
+
+    def _attachment_target_matches(self, entry: dict | None, allowed_kinds: set[str], candidate_names: set[str]) -> bool:
+        if not isinstance(entry, dict):
+            return False
+        raw_target_kind = str(entry.get("target_kind", "") or "").strip().lower()
+        raw_target_name = str(entry.get("target_name", "") or "").strip().lower()
+        if raw_target_kind in {"", "zamowienie"}:
+            return True
+        if raw_target_kind not in allowed_kinds:
+            return False
+        if not raw_target_name:
+            return True
+        return raw_target_name in candidate_names
+
+    def _collect_project_references(self) -> list[dict[str, str]]:
+        order_name = str(getattr(self._assembly, "order_name", "") or "").strip()
+        if not order_name:
+            return []
+        order_def = self._order_store.get(order_name)
+        if order_def is None:
+            return []
+
+        candidate_names = {
+            str(name or "").strip().lower()
+            for name in (
+                getattr(self._assembly, "name", ""),
+                getattr(self._assembly, "wall_name", ""),
+            )
+            if str(name or "").strip()
+        }
+        references: list[dict[str, str]] = []
+        seen_paths: set[str] = set()
+        for attachment in list(getattr(order_def, "attachments", []) or []):
+            if not self._is_visual_attachment_entry(attachment):
+                continue
+            if not self._attachment_target_matches(attachment, {"komplet", "sciana"}, candidate_names):
+                continue
+            path = str(attachment.get("path", "") or "").strip()
+            if not path or path in seen_paths:
+                continue
+            seen_paths.add(path)
+            target_kind = str(attachment.get("target_kind", "") or "").strip()
+            target_name = str(attachment.get("target_name", "") or "").strip()
+            description = str(attachment.get("description", "") or "").strip()
+            source_page = str(attachment.get("source_page", "") or "").strip()
+            info_chunks = [chunk for chunk in (description, source_page) if chunk]
+            references.append(
+                {
+                    "path": path,
+                    "target": f"{target_kind} / {target_name}".strip(" /") or "Zamowienie",
+                    "description": " | ".join(info_chunks) if info_chunks else target_kind or "Referencja",
+                }
+            )
+        return references
+
+    def _refresh_project_references(self) -> None:
+        if not hasattr(self, "tbl_project_refs"):
+            return
+        selected_path = self._selected_project_reference_path()
+        self._project_references = self._collect_project_references()
+        self.tbl_project_refs.setRowCount(len(self._project_references))
+        for row, entry in enumerate(self._project_references):
+            path_item = QTableWidgetItem(Path(str(entry.get("path", "") or "")).name)
+            path_item.setData(Qt.ItemDataRole.UserRole, str(entry.get("path", "") or ""))
+            target_item = QTableWidgetItem(str(entry.get("target", "") or "-"))
+            description_item = QTableWidgetItem(str(entry.get("description", "") or "-"))
+            self.tbl_project_refs.setItem(row, 0, path_item)
+            self.tbl_project_refs.setItem(row, 1, target_item)
+            self.tbl_project_refs.setItem(row, 2, description_item)
+        self.tbl_project_refs.resizeColumnsToContents()
+
+        if self._project_references:
+            target_row = 0
+            if selected_path:
+                for row in range(self.tbl_project_refs.rowCount()):
+                    item = self.tbl_project_refs.item(row, 0)
+                    if item is not None and str(item.data(Qt.ItemDataRole.UserRole) or "") == selected_path:
+                        target_row = row
+                        break
+            self.tbl_project_refs.selectRow(target_row)
+            self.block_project_refs.set_expanded(True)
+        else:
+            self.tbl_project_refs.clearSelection()
+            self._project_reference_pixmap = QPixmap()
+            self.lab_project_reference_info.setText("Brak referencji z projektu.")
+            self.lab_project_reference_preview.setPixmap(QPixmap())
+            self.lab_project_reference_preview.setText("Brak podgladu referencji.")
+
+    def _selected_project_reference_path(self) -> str:
+        rows = self.tbl_project_refs.selectionModel().selectedRows() if self.tbl_project_refs.selectionModel() is not None else []
+        if not rows:
+            return ""
+        item = self.tbl_project_refs.item(int(rows[0].row()), 0)
+        if item is None:
+            return ""
+        return str(item.data(Qt.ItemDataRole.UserRole) or "").strip()
+
+    def _update_project_reference_preview(self) -> None:
+        if self._project_reference_pixmap.isNull():
+            self.lab_project_reference_preview.setPixmap(QPixmap())
+            return
+        target_size = self.lab_project_reference_preview.size()
+        scaled = self._project_reference_pixmap.scaled(
+            max(40, target_size.width() - 12),
+            max(40, target_size.height() - 12),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.lab_project_reference_preview.setPixmap(scaled)
+
+    def _on_project_reference_selection_changed(self) -> None:
+        rows = self.tbl_project_refs.selectionModel().selectedRows() if self.tbl_project_refs.selectionModel() is not None else []
+        if not rows:
+            self._project_reference_pixmap = QPixmap()
+            self.lab_project_reference_info.setText("Brak referencji z projektu.")
+            self.lab_project_reference_preview.setPixmap(QPixmap())
+            self.lab_project_reference_preview.setText("Brak podgladu referencji.")
+            return
+        row = int(rows[0].row())
+        if row < 0 or row >= len(self._project_references):
+            return
+        entry = self._project_references[row]
+        path = str(entry.get("path", "") or "").strip()
+        target = str(entry.get("target", "") or "").strip()
+        description = str(entry.get("description", "") or "").strip()
+        info_parts = [chunk for chunk in (Path(path).name, target, description) if chunk]
+        self.lab_project_reference_info.setText(" | ".join(info_parts))
+        pixmap = QPixmap(path)
+        if pixmap.isNull():
+            self._project_reference_pixmap = QPixmap()
+            self.lab_project_reference_preview.setPixmap(QPixmap())
+            self.lab_project_reference_preview.setText("Nie udalo sie odczytac obrazu referencyjnego.")
+            return
+        self._project_reference_pixmap = pixmap
+        self.lab_project_reference_preview.setText("")
+        self._update_project_reference_preview()
 
     def _selected_wall_name(self) -> str:
         return str(self.cb_wall.currentData() or "").strip()
@@ -3255,6 +3439,7 @@ class TabSciana(QWidget):
         self.preview.clear_hover_preview()
         self.preview_top.clear_hover_preview()
         self._refresh_items_table(select_index=select_index)
+        self._refresh_project_references()
         self._refresh_summary()
         self._refresh_preview_only()
 
@@ -3302,6 +3487,7 @@ class TabSciana(QWidget):
             selected_index=self._selected_index(),
         )
         self._refresh_preview_info_bar()
+        self._update_project_reference_preview()
 
     def _selected_order_details(self) -> tuple[str, str]:
         order_name = str(getattr(self._assembly, "order_name", "") or "").strip()

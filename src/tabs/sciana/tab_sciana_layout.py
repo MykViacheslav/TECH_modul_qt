@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from PyQt6.QtCore import QEvent, QPointF, Qt, QRectF, pyqtSignal
 from PyQt6.QtGui import QColor, QBrush, QPen, QTransform
 from PyQt6.QtWidgets import (
@@ -71,6 +73,8 @@ TECHNICAL_OBSTACLE_KINDS = frozenset(("socket", "plumbing", "radiator", "sill"))
 SCIANA_MM_MAX = 20000.0
 SCIANA_DEPTH_MM_MAX = 10000.0
 SCIANA_HEIGHT_MM_MAX = 10000.0
+
+_IMAGE_ATTACHMENT_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
 
 
 def _wall_side_label(side: str) -> str:
@@ -2017,6 +2021,82 @@ class TabScianaLayout(QWidget):
             self.tbl_photos.setItem(row, 0, QTableWidgetItem(photo.path))
             self.tbl_photos.setItem(row, 1, QTableWidgetItem(photo.caption))
 
+    def _is_visual_attachment_entry(self, entry: dict | None) -> bool:
+        if not isinstance(entry, dict):
+            return False
+        path = str(entry.get("path", "") or "").strip()
+        if not path:
+            return False
+        kind = str(entry.get("kind", "") or "").strip().lower()
+        suffix = Path(path).suffix.strip().lower()
+        return kind in {"obraz", "referencja"} or suffix in _IMAGE_ATTACHMENT_EXTENSIONS
+
+    def _attachment_target_matches(self, entry: dict | None, target_kind: str, candidate_names: set[str]) -> bool:
+        if not isinstance(entry, dict):
+            return False
+        raw_target_kind = str(entry.get("target_kind", "") or "").strip().lower()
+        raw_target_name = str(entry.get("target_name", "") or "").strip().lower()
+        if raw_target_kind in {"", "zamowienie"}:
+            return True
+        if raw_target_kind != str(target_kind or "").strip().lower():
+            return False
+        if not raw_target_name:
+            return True
+        return raw_target_name in candidate_names
+
+    def _architect_reference_caption(self, entry: dict | None) -> str:
+        if not isinstance(entry, dict):
+            return ""
+        description = str(entry.get("description", "") or "").strip()
+        source_page = str(entry.get("source_page", "") or "").strip()
+        parts = [chunk for chunk in (description, source_page) if chunk]
+        if parts:
+            return " | ".join(parts)
+        target_name = str(entry.get("target_name", "") or "").strip()
+        target_kind = str(entry.get("target_kind", "") or "").strip()
+        if target_kind and target_name:
+            return f"{target_kind}: {target_name}"
+        if target_kind:
+            return target_kind
+        return ""
+
+    def _load_architect_reference_photos(
+        self,
+        order_name: str,
+        candidate_names: list[str] | tuple[str, ...] = (),
+    ) -> list[WallPhotoDef]:
+        order_code = str(order_name or "").strip()
+        if not order_code:
+            return []
+        order_def = self._order_store.get(order_code)
+        if order_def is None:
+            return []
+
+        normalized_candidates = {
+            str(name or "").strip().lower()
+            for name in candidate_names
+            if str(name or "").strip()
+        }
+
+        photos: list[WallPhotoDef] = []
+        seen_paths: set[str] = set()
+        for attachment in list(getattr(order_def, "attachments", []) or []):
+            if not self._is_visual_attachment_entry(attachment):
+                continue
+            if not self._attachment_target_matches(attachment, "sciana", normalized_candidates):
+                continue
+            path = str(attachment.get("path", "") or "").strip()
+            if not path or path in seen_paths:
+                continue
+            seen_paths.add(path)
+            photos.append(
+                WallPhotoDef(
+                    path=path,
+                    caption=self._architect_reference_caption(attachment),
+                )
+            )
+        return photos
+
     def _refresh_summary(self) -> None:
         layout_label = self.cb_layout_type.currentText()
         island_txt = "tak" if bool(getattr(self._wall, "has_island", False)) else "nie"
@@ -2159,23 +2239,35 @@ class TabScianaLayout(QWidget):
         quote_item_name = str(payload.get("quote_item_name", "") or "").strip()
         quote_item_description = str(payload.get("quote_item_description", "") or "").strip()
         quote_item_kind = str(payload.get("quote_item_kind", "") or "").strip()
+        order_name = str(payload.get("order_name", "") or "").strip()
         self._wall = WallLayoutDef(
             name=quote_item_name or "Sciana 1",
             client_name=str(payload.get("client_name", "") or "").strip(),
-            order_name=str(payload.get("order_name", "") or "").strip(),
+            order_name=order_name,
             worker_name=str(payload.get("worker_name", "") or "").strip(),
             notes=quote_item_description,
+        )
+        self._wall.photos = self._load_architect_reference_photos(
+            order_name=order_name,
+            candidate_names=(self._wall.name, quote_item_name),
         )
         self._selected_obstacle_index = -1
         self._set_selected_obstacle_index_on_previews(-1)
         self._loaded_wall_name = ""
         self._push_wall_to_ui()
         self._refresh_all()
+        if self._wall.photos:
+            self.blk_photos.set_expanded(True)
         if quote_item_name:
             kind_suffix = f" ({quote_item_kind})" if quote_item_kind else ""
-            self._set_store_status(f'Gotowa nowa sciana dla pozycji "{quote_item_name}"{kind_suffix}.', ok=True)
+            ref_suffix = f" Zaladowano {len(self._wall.photos)} referencje." if self._wall.photos else ""
+            self._set_store_status(
+                f'Gotowa nowa sciana dla pozycji "{quote_item_name}"{kind_suffix}.{ref_suffix}',
+                ok=True,
+            )
         elif self._wall.client_name or self._wall.order_name or self._wall.worker_name:
-            self._set_store_status("Gotowa nowa sciana z danymi zamowienia.", ok=True)
+            ref_suffix = f" Zaladowano {len(self._wall.photos)} referencje." if self._wall.photos else ""
+            self._set_store_status(f"Gotowa nowa sciana z danymi zamowienia.{ref_suffix}", ok=True)
         else:
             self._set_store_status("Gotowa nowa sciana.", ok=True)
 
