@@ -393,6 +393,11 @@ def test_nowe_zamowienie_tab_exports_offer_html(tmp_path, monkeypatch):
     image.fill(QColor("#efe4d3"))
     assert image.save(str(image_path))
 
+    quote_image_path = tmp_path / "offer_quote_export.png"
+    quote_image = QImage(220, 150, QImage.Format.Format_RGB32)
+    quote_image.fill(QColor("#e3d6c2"))
+    assert quote_image.save(str(quote_image_path))
+
     export_path = tmp_path / "oferta_test.html"
     monkeypatch.setattr(
         order_tab_module.QFileDialog,
@@ -435,6 +440,13 @@ def test_nowe_zamowienie_tab_exports_offer_html(tmp_path, monkeypatch):
                 "description": "Wizualizacja RTV",
                 "target_kind": "Oferta",
                 "target_name": "Oferta klienta",
+            },
+            {
+                "path": str(quote_image_path),
+                "kind": "Obraz",
+                "description": "Fronty ryflowane",
+                "target_kind": "Pozycja do wyceny",
+                "target_name": "RTV salon",
             }
         ]
     )
@@ -451,6 +463,8 @@ def test_nowe_zamowienie_tab_exports_offer_html(tmp_path, monkeypatch):
     assert "RAL 7044" in html
     assert "RAZEM orientacyjnie" in html
     assert "data:image/png;base64," in html
+    assert "Referencje pozycji do wyceny" in html
+    assert "Fronty ryflowane" in html
     assert "Wyeksportowano oferte" in w.lab_status.text()
 
 

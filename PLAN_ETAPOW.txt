@@ -350,6 +350,11 @@ Do wdrozenia:
   - opis
   - podglad wybranego obrazu
 
+[DONE] Wykorzystanie referencji pozycji w eksporcie oferty:
+- HTML / PDF oferty pokazuje juz nie tylko ogolne referencje "Oferta"
+- kazda pozycja do wyceny moze miec w ofercie swoja sekcje z obrazami i opisami
+- klient widzi referencje przypiete do konkretnej pozycji handlowej
+
 [DONE] Podstawowy podglad oferty klienta:
 - blok "Oferta klienta" w karcie Nowe zamowienie
 - pokazuje:

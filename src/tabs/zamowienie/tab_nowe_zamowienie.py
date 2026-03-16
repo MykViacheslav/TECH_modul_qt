@@ -2097,6 +2097,20 @@ class TabNoweZamowienie(QWidget):
         def _row(cells: list[str]) -> str:
             return "<tr>" + "".join(f"<td>{cell}</td>" for cell in cells) + "</tr>"
 
+        def _build_ref_card(title: str, description: str, path_str: str) -> str:
+            data_uri = self._image_file_to_data_uri(path_str)
+            image_html = (
+                f'<img src="{data_uri}" alt="{escape(description)}" />'
+                if data_uri
+                else '<div class="image-missing">Brak podgladu obrazu</div>'
+            )
+            return (
+                "<div class=\"ref-card\">"
+                f"{image_html}"
+                f"<div class=\"ref-meta\"><strong>{escape(title)}</strong><br>{escape(description)}</div>"
+                "</div>"
+            )
+
         quote_rows = "".join(
             _row(
                 [
@@ -2150,21 +2164,41 @@ class TabNoweZamowienie(QWidget):
 
         ref_cards: list[str] = []
         for entry in offer_refs:
-            data_uri = self._image_file_to_data_uri(str(entry.get("path", "") or ""))
-            title = escape(str(entry.get("target", "") or "Oferta"))
-            description = escape(str(entry.get("description", "") or "") or "Referencja wizualna")
-            image_html = (
-                f'<img src="{data_uri}" alt="{description}" />'
-                if data_uri
-                else '<div class="image-missing">Brak podgladu obrazu</div>'
-            )
             ref_cards.append(
-                "<div class=\"ref-card\">"
-                f"{image_html}"
-                f"<div class=\"ref-meta\"><strong>{title}</strong><br>{description}</div>"
-                "</div>"
+                _build_ref_card(
+                    str(entry.get("target", "") or "Oferta"),
+                    str(entry.get("description", "") or "") or "Referencja wizualna",
+                    str(entry.get("path", "") or ""),
+                )
             )
         refs_html = "".join(ref_cards) or "<p>Brak obrazow przypietych do oferty.</p>"
+
+        quote_item_ref_sections: list[str] = []
+        for entry in quote_items:
+            quote_name = str(entry.get("name", "") or "").strip()
+            if not quote_name:
+                continue
+            refs_for_item = self._collect_quote_item_reference_attachments(quote_name)
+            if not refs_for_item:
+                continue
+            cards_html = "".join(
+                _build_ref_card(
+                    str(ref.get("target", "") or quote_name),
+                    str(ref.get("description", "") or "") or "Referencja pozycji",
+                    str(ref.get("path", "") or ""),
+                )
+                for ref in refs_for_item
+            )
+            quote_item_ref_sections.append(
+                "<div class=\"quote-ref-group\">"
+                f"<h3>{escape(quote_name)}</h3>"
+                f"<p class=\"quote-ref-subtitle\">{escape(str(entry.get('kind', '') or '-'))} | {escape(str(entry.get('description', '') or '-'))}</p>"
+                f"<div class=\"refs\">{cards_html}</div>"
+                "</div>"
+            )
+        quote_item_refs_html = (
+            "".join(quote_item_ref_sections) if quote_item_ref_sections else "<p>Brak referencji przypietych do pozycji do wyceny.</p>"
+        )
 
         notes_html = f"<p><strong>Notatki:</strong> {escape(order_notes)}</p>" if order_notes else ""
 
@@ -2187,6 +2221,9 @@ class TabNoweZamowienie(QWidget):
     .ref-card {{ border: 1px solid #e5dccd; border-radius: 8px; padding: 10px; background: #fcfaf6; }}
     .ref-card img {{ width: 100%; max-height: 260px; object-fit: contain; display: block; background: white; border: 1px solid #e5e7eb; }}
     .ref-meta {{ margin-top: 8px; color: #475569; }}
+    .quote-ref-group {{ margin-top: 14px; padding-top: 8px; border-top: 1px dashed #d6d3d1; }}
+    .quote-ref-group h3 {{ margin: 0 0 4px; font-size: 16px; }}
+    .quote-ref-subtitle {{ margin: 0 0 8px; color: #64748b; }}
     .image-missing {{ min-height: 140px; display:flex; align-items:center; justify-content:center; color:#6b7280; border:1px dashed #cbd5e1; background:white; }}
   </style>
 </head>
@@ -2233,6 +2270,8 @@ class TabNoweZamowienie(QWidget):
   </table>
   <h2>Referencje wizualne</h2>
   <div class="refs">{refs_html}</div>
+  <h2>Referencje pozycji do wyceny</h2>
+  {quote_item_refs_html}
 </body>
 </html>
 """
