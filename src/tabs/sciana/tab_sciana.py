@@ -12,11 +12,13 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,
+    QFrame,
     QGraphicsItem,
     QGraphicsScene,
     QGraphicsTextItem,
     QGraphicsView,
     QGroupBox,
+    QGridLayout,
     QHeaderView,
     QHBoxLayout,
     QLabel,
@@ -3031,6 +3033,44 @@ class TabSciana(QWidget):
 
         box_summary = QGroupBox("", scroll_content)
         summary_layout = QVBoxLayout(box_summary)
+        quick_costs = QWidget(box_summary)
+        quick_costs_layout = QGridLayout(quick_costs)
+        quick_costs_layout.setContentsMargins(0, 0, 0, 0)
+        quick_costs_layout.setHorizontalSpacing(8)
+        quick_costs_layout.setVerticalSpacing(8)
+
+        def build_cost_card(title: str) -> tuple[QWidget, QLabel]:
+            card = QFrame(quick_costs)
+            card.setFrameShape(QFrame.Shape.StyledPanel)
+            card.setStyleSheet(
+                "QFrame {"
+                " border:1px solid #d8d4ce;"
+                " border-radius:8px;"
+                " background:#fbfaf8;"
+                " padding:4px;"
+                "}"
+            )
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(10, 8, 10, 8)
+            card_layout.setSpacing(2)
+            label_title = QLabel(title, card)
+            label_title.setStyleSheet("color:#6b5d4d; font-weight:600;")
+            label_value = QLabel("0.00 zl", card)
+            label_value.setStyleSheet("color:#2f241b; font-weight:700; font-size:15px;")
+            card_layout.addWidget(label_title)
+            card_layout.addWidget(label_value)
+            return card, label_value
+
+        card_materials, self.lab_summary_material_total = build_cost_card("Materialy")
+        card_edgeband, self.lab_summary_edgeband_total = build_cost_card("Okleina")
+        card_hardware, self.lab_summary_hardware_total = build_cost_card("Okucia")
+        card_total, self.lab_summary_grand_total = build_cost_card("Razem")
+        quick_costs_layout.addWidget(card_materials, 0, 0)
+        quick_costs_layout.addWidget(card_edgeband, 0, 1)
+        quick_costs_layout.addWidget(card_hardware, 1, 0)
+        quick_costs_layout.addWidget(card_total, 1, 1)
+        summary_layout.addWidget(quick_costs)
+
         self.lab_summary = QLabel("-")
         self.lab_summary.setWordWrap(True)
         summary_layout.addWidget(self.lab_summary)
@@ -4828,6 +4868,11 @@ class TabSciana(QWidget):
         hardware_total = sum(item.cost_breakdown.hardware_total_pln for item in self._resolved_items)
         grand_total = sum(item.cost_breakdown.grand_total_pln for item in self._resolved_items)
         collision_count = sum(1 for item in self._resolved_items if bool(getattr(item, "has_collision", False)))
+
+        self.lab_summary_material_total.setText(f"{material_total:.2f} zl")
+        self.lab_summary_edgeband_total.setText(f"{edgeband_total:.2f} zl")
+        self.lab_summary_hardware_total.setText(f"{hardware_total:.2f} zl")
+        self.lab_summary_grand_total.setText(f"{grand_total:.2f} zl")
 
         profile_key = str(getattr(self._assembly, "material_profile_key", "STD_WHITE") or "STD_WHITE")
         force_hw_txt = "tak" if bool(getattr(self._assembly, "force_hardware_from_profile", True)) else "nie"

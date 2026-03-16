@@ -403,6 +403,11 @@ Do wdrozenia:
 - orientacyjna robocizna
 - cena po komplecie
 - cena po zamowieniu
+- [DONE] szybkie kwoty w komplecie:
+  - Materialy
+  - Okleina
+  - Okucia
+  - Razem
 
 [TODO] Szybka oferta:
 - prosty widok dla klienta
@@ -543,12 +548,26 @@ ETAP 4 - ZAKUPY I MAGAZYN
 Status: [TODO]
 
 Do wdrozenia:
+- import materialow z:
+  - faktur
+  - paragonow
+  - rachunkow
+  - dokumentow zakupu
+- odczyt i zapis do bazy:
+  - nazwy materialu
+  - kodu
+  - dekoru / koloru
+  - ceny
+  - ilosci
+  - dostawcy
+  - numeru dokumentu
 - lista zakupow z projektow i kompletow
 - mozliwosc wygenerowania "listy na zakupy" z zamowienia
 - widok stanu magazynowego:
   - co jest na stanie
   - czego brakuje
   - ile trzeba dokupic
+- automatyczne zejscie materialu ze stanu przy wykorzystaniu go w zamowieniu / komplecie
 - zapis partii i referencji materialow:
   - z jakiej hurtowni
   - jaka faktura / dokument

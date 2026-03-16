@@ -84,6 +84,10 @@ def test_sciana_tab_adds_saved_modules_and_aggregates_costs(tmp_path, monkeypatc
     assert w.tbl_items.rowCount() == 1
     assert "Liczba modulow: 1" in w.lab_summary.text()
     assert "RAZEM:" in w.lab_summary.text()
+    assert w.lab_summary_material_total.text().endswith("zl")
+    assert w.lab_summary_edgeband_total.text().endswith("zl")
+    assert w.lab_summary_hardware_total.text().endswith("zl")
+    assert w.lab_summary_grand_total.text().endswith("zl")
 
 
 def test_sciana_tab_saved_module_library_supports_quick_filters_and_search(tmp_path, monkeypatch):
