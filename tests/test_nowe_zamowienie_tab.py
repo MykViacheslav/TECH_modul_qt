@@ -1,4 +1,6 @@
-from PyQt6.QtCore import Qt
+from pathlib import Path
+
+from PyQt6.QtCore import QRect, Qt
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QColor, QImage, QPixmap
@@ -220,8 +222,7 @@ def test_nowe_zamowienie_tab_shows_image_preview_for_selected_architect_attachme
 
     assert w.lst_architect_pages.count() == 1
     assert "wizualizacja.png | Obraz" in w.lab_architect_preview_info.text()
-    assert w.lab_architect_page_preview.pixmap() is not None
-    assert not w.lab_architect_page_preview.pixmap().isNull()
+    assert not w.architect_crop_preview._pixmap.isNull()
 
 
 def test_nowe_zamowienie_tab_builds_pdf_page_previews_for_selected_attachment(tmp_path, monkeypatch):
@@ -273,8 +274,51 @@ def test_nowe_zamowienie_tab_builds_pdf_page_previews_for_selected_attachment(tm
     app.processEvents()
 
     assert "Strona 2" in w.lab_architect_preview_info.text()
-    assert w.lab_architect_page_preview.pixmap() is not None
-    assert not w.lab_architect_page_preview.pixmap().isNull()
+    assert not w.architect_crop_preview._pixmap.isNull()
+
+
+def test_nowe_zamowienie_tab_can_save_selected_architect_fragment(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.tabs.zamowienie.tab_nowe_zamowienie import TabNoweZamowienie
+
+    pdf_path = tmp_path / "architekt.pdf"
+    pdf_path.write_text("pdf", encoding="utf-8")
+
+    def _fake_pdf_pages(self, path):
+        img = QImage(320, 240, QImage.Format.Format_RGB32)
+        img.fill(QColor("#e7dcc9"))
+        pix = QPixmap.fromImage(img)
+        return [{"index": 0, "label": "Strona 1", "thumb": pix, "full": pix}]
+
+    monkeypatch.setattr(TabNoweZamowienie, "_build_pdf_page_previews", _fake_pdf_pages)
+
+    w = TabNoweZamowienie()
+    w.ed_order_code.setText("ORDER-FRAGMENT-1")
+    w.ed_architect_file.setText(str(pdf_path))
+    w.cb_architect_kind.setCurrentText("PDF")
+    w.ed_architect_description.setText("Rzut kuchni")
+    QTest.mouseClick(w.btn_add_architect_attachment, Qt.MouseButton.LeftButton)
+    w.tbl_architect_attachments.selectRow(0)
+    app.processEvents()
+
+    w.architect_crop_preview._recalculate_display_rect()
+    display = w.architect_crop_preview._display_rect
+    w.architect_crop_preview.set_selection_rect(QRect(display.left() + 20, display.top() + 20, 120, 90))
+    w.cb_architect_fragment_target_kind.setCurrentText("Komplet")
+    w.ed_architect_fragment_target_name.setText("Kuchnia salon")
+    w.ed_architect_fragment_description.setText("Wizualizacja wyspy")
+    QTest.mouseClick(w.btn_save_architect_fragment, Qt.MouseButton.LeftButton)
+
+    assert w.tbl_architect_attachments.rowCount() == 2
+    fragment_path = w.tbl_architect_attachments.item(1, 0).data(Qt.ItemDataRole.UserRole)
+    assert fragment_path
+    assert Path(str(fragment_path)).exists()
+    assert w.tbl_architect_attachments.item(1, 1).text() == "Obraz"
+    assert "Komplet / Kuchnia salon" in w.tbl_architect_attachments.item(1, 2).text()
 
 
 def test_nowe_zamowienie_tab_clear_removes_saved_draft(tmp_path, monkeypatch):

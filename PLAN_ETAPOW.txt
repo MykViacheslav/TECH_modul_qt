@@ -310,9 +310,22 @@ Do wdrozenia:
 - mozna wybrac strone i zobaczyc wiekszy podglad
 - obrazy od architekta tez maja podglad w tym samym bloku
 
+[DONE] Reczne wycinanie fragmentu z PDF:
+- mozna zaznaczyc fragment strony myszka bezposrednio na podgladzie
+- zaznaczony fragment zapisuje sie jako osobny obraz PNG
+- fragment mozna przypiac do:
+  - zamowienia
+  - sciany
+  - kompletu
+  - oferty
+- zapisany fragment wraca od razu na liste zalacznikow architekta
+- przy fragmencie zapisuje sie tez informacja o celu oraz o stronie zrodlowej
+
 [TODO] Dalsza praca z PDF od architekta:
-- reczne wycinanie fragmentu z PDF
-- przypiecie fragmentu do Sciana / Komplet / oferty
+- realne wykorzystanie przypietego celu:
+  - otwieranie fragmentu przy Sciana
+  - otwieranie fragmentu przy Komplet
+  - wykorzystanie fragmentu w ofercie
 - lepsze powiazanie zalacznikow z pozycjami do wyceny
 
 

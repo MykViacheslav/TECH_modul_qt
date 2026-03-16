@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import os
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 
-from PyQt6.QtCore import QSize, Qt, pyqtSignal
-from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtCore import QPoint, QRect, QSize, Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
 from PyQt6.QtPdf import QPdfDocument
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -79,6 +81,132 @@ MATERIAL_CHOICE_STATUS_ITEMS: tuple[str, ...] = (
     "Wybrane finalnie",
     "Odrzucone",
 )
+
+ATTACHMENT_TARGET_ITEMS: tuple[str, ...] = (
+    "Zamowienie",
+    "Sciana",
+    "Komplet",
+    "Oferta",
+)
+
+
+class ArchitectCropPreview(QWidget):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setMinimumSize(420, 280)
+        self._pixmap = QPixmap()
+        self._display_rect = QRect()
+        self._selection_rect = QRect()
+        self._drag_start: QPoint | None = None
+        self._message = "Brak podgladu strony."
+        self.setMouseTracking(True)
+
+    def set_source_pixmap(self, pixmap: QPixmap | None, message: str = "") -> None:
+        self._pixmap = pixmap if isinstance(pixmap, QPixmap) else QPixmap()
+        self._selection_rect = QRect()
+        self._drag_start = None
+        self._message = message or ("Brak podgladu strony." if self._pixmap.isNull() else "")
+        self.update()
+
+    def clear_selection(self) -> None:
+        self._selection_rect = QRect()
+        self.update()
+
+    def has_selection(self) -> bool:
+        return not self._selection_rect.isNull() and self._selection_rect.width() > 6 and self._selection_rect.height() > 6
+
+    def set_selection_rect(self, rect: QRect) -> None:
+        if rect.isNull():
+            self._selection_rect = QRect()
+        else:
+            self._selection_rect = rect.normalized().intersected(self._display_rect)
+        self.update()
+
+    def selected_source_rect(self) -> QRect:
+        if self._pixmap.isNull() or self._display_rect.isNull() or not self.has_selection():
+            return QRect()
+        scale_x = self._pixmap.width() / max(1, self._display_rect.width())
+        scale_y = self._pixmap.height() / max(1, self._display_rect.height())
+        left = int((self._selection_rect.left() - self._display_rect.left()) * scale_x)
+        top = int((self._selection_rect.top() - self._display_rect.top()) * scale_y)
+        width = int(self._selection_rect.width() * scale_x)
+        height = int(self._selection_rect.height() * scale_y)
+        return QRect(left, top, width, height).intersected(self._pixmap.rect())
+
+    def selected_source_pixmap(self) -> QPixmap:
+        rect = self.selected_source_rect()
+        if rect.isNull():
+            return QPixmap()
+        return self._pixmap.copy(rect)
+
+    def _recalculate_display_rect(self) -> None:
+        if self._pixmap.isNull():
+            self._display_rect = QRect()
+            return
+        margin = 10
+        available = self.rect().adjusted(margin, margin, -margin, -margin)
+        scaled = self._pixmap.scaled(
+            available.size(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        x = available.left() + max(0, (available.width() - scaled.width()) // 2)
+        y = available.top() + max(0, (available.height() - scaled.height()) // 2)
+        self._display_rect = QRect(x, y, scaled.width(), scaled.height())
+
+    def paintEvent(self, _event) -> None:
+        self._recalculate_display_rect()
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor("#fafbfc"))
+        painter.setPen(QPen(QColor("#d7dbe2"), 1))
+        painter.drawRect(self.rect().adjusted(0, 0, -1, -1))
+
+        if self._pixmap.isNull():
+            painter.setPen(QPen(QColor("#666666")))
+            painter.drawText(self.rect().adjusted(12, 12, -12, -12), Qt.AlignmentFlag.AlignCenter, self._message)
+            return
+
+        painter.drawPixmap(self._display_rect, self._pixmap)
+        painter.setPen(QPen(QColor("#94a3b8"), 1, Qt.PenStyle.DashLine))
+        painter.drawRect(self._display_rect)
+
+        if not self._selection_rect.isNull():
+            painter.fillRect(self._selection_rect, QColor(59, 130, 246, 40))
+            painter.setPen(QPen(QColor("#2563eb"), 2))
+            painter.drawRect(self._selection_rect)
+
+        if not self.has_selection():
+            info_rect = QRect(self._display_rect.left() + 8, self._display_rect.top() + 8, min(260, self._display_rect.width() - 16), 44)
+            painter.fillRect(info_rect, QColor(255, 255, 255, 220))
+            painter.setPen(QPen(QColor("#334155")))
+            painter.drawText(info_rect.adjusted(8, 6, -8, -6), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "Przeciagnij myszka, aby zaznaczyc fragment strony.")
+
+    def mousePressEvent(self, event) -> None:
+        if self._pixmap.isNull() or event.button() != Qt.MouseButton.LeftButton:
+            return
+        pos = event.position().toPoint()
+        if not self._display_rect.contains(pos):
+            return
+        self._drag_start = pos
+        self._selection_rect = QRect(pos, pos)
+        self.update()
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._drag_start is None:
+            return
+        pos = event.position().toPoint()
+        pos.setX(max(self._display_rect.left(), min(self._display_rect.right(), pos.x())))
+        pos.setY(max(self._display_rect.top(), min(self._display_rect.bottom(), pos.y())))
+        self._selection_rect = QRect(self._drag_start, pos).normalized().intersected(self._display_rect)
+        self.update()
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() != Qt.MouseButton.LeftButton:
+            return
+        self._drag_start = None
+        if self._selection_rect.width() <= 6 or self._selection_rect.height() <= 6:
+            self._selection_rect = QRect()
+        self.update()
 
 
 class TabNoweZamowienie(QWidget):
@@ -230,6 +358,8 @@ class TabNoweZamowienie(QWidget):
         self.tbl_architect_attachments.itemSelectionChanged.connect(
             self._on_architect_attachment_selection_changed
         )
+        self.btn_save_architect_fragment.clicked.connect(self._on_save_architect_fragment)
+        self.btn_clear_architect_fragment.clicked.connect(self.architect_crop_preview.clear_selection)
         self.btn_add_quote_item.clicked.connect(self._on_add_quote_item)
         self.btn_remove_quote_item.clicked.connect(self._on_remove_quote_item)
         self.btn_quote_to_sciana.clicked.connect(self._on_open_quote_item_as_sciana)
@@ -490,16 +620,42 @@ class TabNoweZamowienie(QWidget):
         self.lst_architect_pages.setUniformItemSizes(True)
         preview_row.addWidget(self.lst_architect_pages, 1)
 
-        self.lab_architect_page_preview = QLabel("Brak podgladu strony.")
-        self.lab_architect_page_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lab_architect_page_preview.setMinimumSize(420, 280)
-        self.lab_architect_page_preview.setStyleSheet(
-            "border:1px solid #d7dbe2; background:#fafbfc; color:#666666; padding:8px;"
-        )
-        preview_row.addWidget(self.lab_architect_page_preview, 2)
+        self.architect_crop_preview = ArchitectCropPreview(self.grp_architect)
+        preview_row.addWidget(self.architect_crop_preview, 2)
 
         layout.addLayout(preview_row)
         self.lst_architect_pages.currentRowChanged.connect(self._on_architect_preview_page_changed)
+
+        fragment_note = QLabel(
+            "Zaznacz fragment strony i zapisz go jako osobny obraz przypiety do zamowienia, Sciana, Kompletu albo oferty."
+        )
+        fragment_note.setWordWrap(True)
+        fragment_note.setStyleSheet("color:#555555;")
+        layout.addWidget(fragment_note)
+
+        fragment_row = QHBoxLayout()
+        self.cb_architect_fragment_target_kind = QComboBox(self.grp_architect)
+        self.cb_architect_fragment_target_kind.addItems(list(ATTACHMENT_TARGET_ITEMS))
+        self.cb_architect_fragment_target_kind.setMaximumWidth(150)
+        self.ed_architect_fragment_target_name = QLineEdit(self.grp_architect)
+        self.ed_architect_fragment_target_name.setPlaceholderText("Nazwa celu, np. Kuchnia salon / Sciana A / Oferta klienta")
+        fragment_row.addWidget(self.cb_architect_fragment_target_kind, 0)
+        fragment_row.addWidget(self.ed_architect_fragment_target_name, 1)
+        layout.addLayout(fragment_row)
+
+        self.ed_architect_fragment_description = QLineEdit(self.grp_architect)
+        self.ed_architect_fragment_description.setPlaceholderText("Opis fragmentu, np. wizualizacja wyspy albo front szafy")
+        layout.addWidget(self.ed_architect_fragment_description)
+
+        fragment_btns = QHBoxLayout()
+        self.btn_save_architect_fragment = QPushButton("Zapisz zaznaczony fragment", self.grp_architect)
+        self.btn_clear_architect_fragment = QPushButton("Wyczysc zaznaczenie", self.grp_architect)
+        self._make_compact_button(self.btn_save_architect_fragment, min_width=180, max_width=220)
+        self._make_compact_button(self.btn_clear_architect_fragment, min_width=150, max_width=180)
+        fragment_btns.addWidget(self.btn_save_architect_fragment, 0)
+        fragment_btns.addWidget(self.btn_clear_architect_fragment, 0)
+        fragment_btns.addStretch(1)
+        layout.addLayout(fragment_btns)
         self._set_architect_attachments([])
 
     def _build_quote_items_group(self) -> None:
@@ -631,12 +787,20 @@ class TabNoweZamowienie(QWidget):
         path = str(item.get("path", "") or "").strip()
         kind = str(item.get("kind", "") or "").strip() or "PDF"
         description = str(item.get("description", "") or "").strip()
+        target_kind = str(item.get("target_kind", "") or "").strip()
+        target_name = str(item.get("target_name", "") or "").strip()
+        source_path = str(item.get("source_path", "") or "").strip()
+        source_page = str(item.get("source_page", "") or "").strip()
         if not path:
             return None
         return {
             "path": path,
             "kind": kind,
             "description": description,
+            "target_kind": target_kind,
+            "target_name": target_name,
+            "source_path": source_path,
+            "source_page": source_page,
         }
 
     def _set_architect_attachments(self, items: list[dict] | None) -> None:
@@ -654,10 +818,17 @@ class TabNoweZamowienie(QWidget):
         self.tbl_architect_attachments.setRowCount(len(self._architect_attachments))
         for row, attachment in enumerate(self._architect_attachments):
             file_name = Path(str(attachment.get("path", "") or "")).name or str(attachment.get("path", "") or "")
+            target_kind = str(attachment.get("target_kind", "") or "").strip()
+            target_name = str(attachment.get("target_name", "") or "").strip()
+            description = str(attachment.get("description", "") or "")
+            if target_kind and target_name:
+                description = f"{description}\nCel: {target_kind} / {target_name}".strip()
+            elif target_kind:
+                description = f"{description}\nCel: {target_kind}".strip()
             items = (
                 QTableWidgetItem(file_name),
                 QTableWidgetItem(str(attachment.get("kind", "") or "PDF")),
-                QTableWidgetItem(str(attachment.get("description", "") or "")),
+                QTableWidgetItem(description),
             )
             for col, item in enumerate(items):
                 item.setData(Qt.ItemDataRole.UserRole, str(attachment.get("path", "") or ""))
@@ -735,9 +906,8 @@ class TabNoweZamowienie(QWidget):
             self.lst_architect_pages.clear()
         if hasattr(self, "lab_architect_preview_info"):
             self.lab_architect_preview_info.setText(message)
-        if hasattr(self, "lab_architect_page_preview"):
-            self.lab_architect_page_preview.clear()
-            self.lab_architect_page_preview.setText(message)
+        if hasattr(self, "architect_crop_preview"):
+            self.architect_crop_preview.set_source_pixmap(None, message)
 
     def _selected_architect_attachment(self) -> dict[str, str] | None:
         index = self._selected_architect_attachment_index()
@@ -836,21 +1006,91 @@ class TabNoweZamowienie(QWidget):
 
     def _on_architect_preview_page_changed(self, current_row: int) -> None:
         if current_row < 0 or current_row >= len(self._architect_preview_pages):
-            if hasattr(self, "lab_architect_page_preview") and not self._architect_preview_pages:
-                self.lab_architect_page_preview.setText("Brak podgladu strony.")
+            if hasattr(self, "architect_crop_preview") and not self._architect_preview_pages:
+                self.architect_crop_preview.set_source_pixmap(None, "Brak podgladu strony.")
             return
 
         page = self._architect_preview_pages[current_row]
         pixmap = page.get("full")
         label = str(page.get("label", "") or "")
         if isinstance(pixmap, QPixmap) and not pixmap.isNull():
-            self.lab_architect_page_preview.setPixmap(pixmap)
-            self.lab_architect_page_preview.setText("")
+            self.architect_crop_preview.set_source_pixmap(pixmap, "")
         else:
-            self.lab_architect_page_preview.clear()
-            self.lab_architect_page_preview.setText("Brak podgladu strony.")
+            self.architect_crop_preview.set_source_pixmap(None, "Brak podgladu strony.")
         if self._architect_preview_header:
             self.lab_architect_preview_info.setText(f"{self._architect_preview_header} | {label}")
+
+    def _current_preview_page(self) -> dict[str, object] | None:
+        row = int(self.lst_architect_pages.currentRow()) if hasattr(self, "lst_architect_pages") else -1
+        if row < 0 or row >= len(self._architect_preview_pages):
+            return None
+        return self._architect_preview_pages[row]
+
+    def _attachments_output_dir(self) -> Path:
+        env = os.environ.get("TECH_MODUL_DATA_DIR", "").strip()
+        root = Path(env) if env else Path(__file__).resolve().parents[3] / "data"
+        output = root / "architect_fragments"
+        output.mkdir(parents=True, exist_ok=True)
+        return output
+
+    def _append_architect_attachment(self, entry: dict[str, str]) -> None:
+        normalized = self._normalize_attachment(entry)
+        if normalized is None:
+            return
+        self._architect_attachments.append(normalized)
+        self._refresh_architect_attachments_table()
+        self._refresh_summary()
+
+    def _on_save_architect_fragment(self) -> None:
+        attachment = self._selected_architect_attachment()
+        if attachment is None:
+            self._set_status("Wybierz zalacznik, z ktorego chcesz wyciac fragment.", ok=False)
+            return
+        page = self._current_preview_page()
+        if page is None:
+            self._set_status("Wybierz strone albo obraz do wyciecia fragmentu.", ok=False)
+            return
+        if not self.architect_crop_preview.has_selection():
+            self._set_status("Zaznacz myszka fragment na podgladzie.", ok=False)
+            return
+
+        cropped = self.architect_crop_preview.selected_source_pixmap()
+        if cropped.isNull():
+            self._set_status("Nie udalo sie wyciac zaznaczonego fragmentu.", ok=False)
+            return
+
+        order_code = str(self.ed_order_code.text().strip() or "draft")
+        target_kind = str(self.cb_architect_fragment_target_kind.currentText().strip() or "Zamowienie")
+        target_name = str(self.ed_architect_fragment_target_name.text().strip())
+        description = str(self.ed_architect_fragment_description.text().strip())
+        source_path = str(attachment.get("path", "") or "").strip()
+        source_page = str(page.get("label", "") or "")
+        safe_order = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in order_code) or "draft"
+        safe_target = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in (target_name or target_kind)) or "fragment"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        output_path = self._attachments_output_dir() / f"{safe_order}_{safe_target}_{timestamp}.png"
+
+        if not cropped.save(str(output_path), "PNG"):
+            self._set_status("Nie udalo sie zapisac fragmentu jako obrazu.", ok=False)
+            return
+
+        description_parts = [description or "Fragment z PDF"]
+        if source_page:
+            description_parts.append(source_page)
+        self._append_architect_attachment(
+            {
+                "path": str(output_path),
+                "kind": "Obraz",
+                "description": " | ".join(part for part in description_parts if part),
+                "target_kind": target_kind,
+                "target_name": target_name,
+                "source_path": source_path,
+                "source_page": source_page,
+            }
+        )
+        self.ed_architect_fragment_description.clear()
+        self.architect_crop_preview.clear_selection()
+        self._set_status("Zapisano zaznaczony fragment z PDF.", ok=True)
 
     def _normalize_quote_item(self, item: dict | None) -> dict[str, str] | None:
         if not isinstance(item, dict):
@@ -1208,6 +1448,9 @@ class TabNoweZamowienie(QWidget):
         self.ed_architect_file.clear()
         self.cb_architect_kind.setCurrentIndex(0)
         self.ed_architect_description.clear()
+        self.cb_architect_fragment_target_kind.setCurrentIndex(0)
+        self.ed_architect_fragment_target_name.clear()
+        self.ed_architect_fragment_description.clear()
         self._set_architect_attachments([])
         self.ed_quote_item_name.clear()
         self.cb_quote_item_kind.setCurrentIndex(0)

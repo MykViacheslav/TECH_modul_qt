@@ -13,6 +13,10 @@ def _normalize_attachments(raw: Any) -> List[Dict[str, str]]:
         path = str(item.get("path", "") or "").strip()
         kind = str(item.get("kind", "") or "").strip()
         description = str(item.get("description", "") or "").strip()
+        target_kind = str(item.get("target_kind", "") or "").strip()
+        target_name = str(item.get("target_name", "") or "").strip()
+        source_path = str(item.get("source_path", "") or "").strip()
+        source_page = str(item.get("source_page", "") or "").strip()
         if not path:
             continue
         result.append(
@@ -20,6 +24,10 @@ def _normalize_attachments(raw: Any) -> List[Dict[str, str]]:
                 "path": path,
                 "kind": kind or "PDF",
                 "description": description,
+                "target_kind": target_kind,
+                "target_name": target_name,
+                "source_path": source_path,
+                "source_page": source_page,
             }
         )
     return result
