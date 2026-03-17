@@ -19,9 +19,8 @@ class _FlowBox(QFrame):
         self.setStyleSheet(
             f"""
             QFrame {{
-                background: #ffffff;
-                border: 1px solid #d7dee8;
-                border-top: 4px solid {accent};
+                background: {accent}12;
+                border: none;
                 border-radius: 16px;
             }}
             """
@@ -44,10 +43,10 @@ class _FlowBox(QFrame):
 
 
 class _Arrow(QLabel):
-    def __init__(self, text: str = "->", parent: QWidget | None = None) -> None:
+    def __init__(self, text: str = ">", parent: QWidget | None = None) -> None:
         super().__init__(text, parent)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setStyleSheet("font-size: 22px; font-weight: 800; color: #8b5e2b;")
+        self.setStyleSheet("font-size: 18px; font-weight: 700; color: #b0895a;")
 
 
 class _Section(QFrame):
@@ -56,8 +55,8 @@ class _Section(QFrame):
         self.setStyleSheet(
             """
             QFrame {
-                background: #fcfdff;
-                border: 1px solid #d7dee8;
+                background: #ffffff;
+                border: none;
                 border-radius: 18px;
             }
             """
