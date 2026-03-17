@@ -18,7 +18,19 @@ def test_main_window_has_start_order_quote_calendar_worktime_modul_komplet_scian
 
     titles = [tabs.tabText(i) for i in range(tabs.count())]
 
-    assert titles == ["Start", "Nowe zamowienie", "Wycena", "Kalendarz", "Czas pracy", "Modul", "Komplet", "Sciana", "Bazy", "Ustawienia"]
+    assert titles == [
+        "Start",
+        "Nowe zamowienie",
+        "Wycena",
+        "Analiza",
+        "Kalendarz",
+        "Czas pracy",
+        "Modul",
+        "Komplet",
+        "Sciana",
+        "Bazy",
+        "Ustawienia",
+    ]
     assert tabs.currentWidget() is w._tabs_by_title["Start"]
     assert w.btn_nav_back.isEnabled() is False
     assert w.btn_nav_forward.isEnabled() is False
