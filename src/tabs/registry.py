@@ -10,6 +10,7 @@ from src.tabs.czas_pracy.tab_czas_pracy import TabCzasPracy
 from src.tabs.insights.tab_insights import TabInsights
 from src.tabs.modul.tab_modul import TabModul
 from src.tabs.rysunek.tab_rysunek import TabRysunek
+from src.tabs.schemat.tab_schemat import TabSchemat
 from src.tabs.sciana.tab_sciana import TabSciana
 from src.tabs.sciana.tab_sciana_layout import TabScianaLayout
 from src.tabs.start.tab_start import TabStart
@@ -23,6 +24,7 @@ def build_tabs() -> List[Tuple[str, QWidget]]:
         ("Nowe zamowienie", TabNoweZamowienie()),
         ("Wycena", TabWycena()),
         ("Plan", TabInsights()),
+        ("Schemat", TabSchemat()),
         ("Kalendarz", TabKalendarz()),
         ("Czas pracy", TabCzasPracy()),
         ("Modul", TabModul()),

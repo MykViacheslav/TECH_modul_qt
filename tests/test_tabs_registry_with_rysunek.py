@@ -5,6 +5,7 @@ from src.tabs.kalendarz.tab_kalendarz import TabKalendarz
 from src.tabs.czas_pracy.tab_czas_pracy import TabCzasPracy
 from src.tabs.modul.tab_modul import TabModul
 from src.tabs.rysunek.tab_rysunek import TabRysunek
+from src.tabs.schemat.tab_schemat import TabSchemat
 from src.tabs.registry import build_tabs
 from src.tabs.sciana.tab_sciana import TabSciana
 from src.tabs.sciana.tab_sciana_layout import TabScianaLayout
@@ -30,6 +31,7 @@ def test_build_tabs_contains_start_order_quote_calendar_worktime_modul_komplet_s
         "Nowe zamowienie",
         "Wycena",
         "Plan",
+        "Schemat",
         "Kalendarz",
         "Czas pracy",
         "Modul",
@@ -44,6 +46,7 @@ def test_build_tabs_contains_start_order_quote_calendar_worktime_modul_komplet_s
     assert isinstance(by_title["Start"], TabStart)
     assert isinstance(by_title["Nowe zamowienie"], TabNoweZamowienie)
     assert isinstance(by_title["Wycena"], TabWycena)
+    assert isinstance(by_title["Schemat"], TabSchemat)
     assert isinstance(by_title["Kalendarz"], TabKalendarz)
     assert isinstance(by_title["Czas pracy"], TabCzasPracy)
     assert isinstance(by_title["Modul"], TabModul)

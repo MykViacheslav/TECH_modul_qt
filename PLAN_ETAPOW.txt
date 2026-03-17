@@ -835,3 +835,7 @@ NAJBLIZSZY PRAKTYCZNY KROK
   - do zrobienia
   - przeplyw pracy firmy
   - wnioski po analizie screenow BAZA i 3D Constructor
+- w aplikacji jest osobna karta "Schemat":
+  - boxy i strzalki pokazujace jak dziala program
+  - skad bierze dane
+  - gdzie trafiaja zamowienia, wycena, magazyn, czas pracy i finanse
