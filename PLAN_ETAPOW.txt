@@ -851,3 +851,5 @@ NAJBLIZSZY PRAKTYCZNY KROK
   - najpierw glowne akcje
   - potem prosty przeplyw
   - na koncu pomocnicze narzedzia
+- Start ma tez subtelne ikonki przy najwazniejszych akcjach,
+  zeby szybciej prowadzic wzrok bez dociążania ekranu

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PyQt6.QtCore import QSize, Qt, pyqtSignal
+from PyQt6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QStyle, QVBoxLayout, QWidget
 
 
 class TabStart(QWidget):
@@ -102,6 +102,17 @@ class TabStart(QWidget):
         self.btn_bazy = self._make_secondary_button("Bazy", "Materialy, pracownicy i dane.")
         self.btn_settings = self._make_secondary_button("Ustawienia", "Rysunek i program.")
 
+        self._set_button_icon(self.btn_new_order, QStyle.StandardPixmap.SP_FileIcon)
+        self._set_button_icon(self.btn_quote, QStyle.StandardPixmap.SP_DialogApplyButton)
+        self._set_button_icon(self.btn_calendar, QStyle.StandardPixmap.SP_FileDialogDetailedView)
+        self._set_button_icon(self.btn_work_time, QStyle.StandardPixmap.SP_BrowserReload)
+        self._set_button_icon(self.btn_clients, QStyle.StandardPixmap.SP_DirHomeIcon)
+        self._set_button_icon(self.btn_sciana, QStyle.StandardPixmap.SP_FileDialogContentsView)
+        self._set_button_icon(self.btn_komplet, QStyle.StandardPixmap.SP_DirOpenIcon)
+        self._set_button_icon(self.btn_modul, QStyle.StandardPixmap.SP_FileDialogListView)
+        self._set_button_icon(self.btn_bazy, QStyle.StandardPixmap.SP_DriveHDIcon)
+        self._set_button_icon(self.btn_settings, QStyle.StandardPixmap.SP_FileDialogInfoView)
+
         tools_layout.addWidget(self.btn_clients, 0, 0)
         tools_layout.addWidget(self.btn_sciana, 0, 1)
         tools_layout.addWidget(self.btn_komplet, 0, 2)
@@ -172,6 +183,7 @@ class TabStart(QWidget):
             "background: #eef3f9;"
             "}"
         )
+        btn.setIconSize(QSize(18, 18))
         return btn
 
     def _make_secondary_button(self, title: str, description: str) -> QPushButton:
@@ -194,7 +206,11 @@ class TabStart(QWidget):
             "background: #f7f9fc;"
             "}"
         )
+        btn.setIconSize(QSize(18, 18))
         return btn
+
+    def _set_button_icon(self, button: QPushButton, icon_kind: QStyle.StandardPixmap) -> None:
+        button.setIcon(self.style().standardIcon(icon_kind))
 
     def _make_step_card(self, number: str, title: str, description: str) -> QFrame:
         card = QFrame(self)
