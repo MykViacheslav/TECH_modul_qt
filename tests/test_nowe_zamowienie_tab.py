@@ -774,8 +774,12 @@ def test_nowe_zamowienie_tab_uses_collapsible_blocks(tmp_path, monkeypatch):
     assert isinstance(w.grp_customer_cash, CollapsibleBlock)
     assert isinstance(w.grp_walls, CollapsibleBlock)
     assert isinstance(w.grp_summary, CollapsibleBlock)
-    assert not w.grp_worker.is_expanded()
-    assert w.grp_summary.is_expanded()
+    assert w.grp_worker.is_expanded()
+    assert not w.grp_architect.is_expanded()
+    assert not w.grp_material_choices.is_expanded()
+    assert not w.grp_customer_cash.is_expanded()
+    assert not w.grp_walls.is_expanded()
+    assert not w.grp_summary.is_expanded()
 
 
 def test_nowe_zamowienie_tab_places_order_and_actions_in_left_column(tmp_path, monkeypatch):
@@ -798,9 +802,9 @@ def test_nowe_zamowienie_tab_places_order_and_actions_in_left_column(tmp_path, m
         w.grp_client,
         w.grp_order,
         w.grp_worker,
+        w.grp_quote_items,
         w.grp_actions,
         w.grp_architect,
-        w.grp_quote_items,
         w.grp_material_choices,
         w.grp_customer_cash,
         w.grp_walls,

@@ -278,9 +278,7 @@ class TabNoweZamowienie(QWidget):
         title.setStyleSheet("font-size: 22px; font-weight: 800; letter-spacing: 0.5px;")
         root.addWidget(title, 0, Qt.AlignmentFlag.AlignLeft)
 
-        subtitle = QLabel(
-            "Karta robocza dla calego projektu: klient, zamowienie, pracownik, sciany i koszty kompletow w jednym miejscu."
-        )
+        subtitle = QLabel("Start projektu: klient, zamowienie, pracownik i pozycje do wyceny.")
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet("color:#555555;")
         root.addWidget(subtitle, 0, Qt.AlignmentFlag.AlignLeft)
@@ -298,7 +296,7 @@ class TabNoweZamowienie(QWidget):
         page_root.setSpacing(14)
 
         body = QVBoxLayout()
-        body.setSpacing(12)
+        body.setSpacing(10)
         page_root.addLayout(body, 1)
         self.body_layout = body
 
@@ -316,9 +314,9 @@ class TabNoweZamowienie(QWidget):
         body.addWidget(self.grp_client)
         body.addWidget(self.grp_order)
         body.addWidget(self.grp_worker)
+        body.addWidget(self.grp_quote_items)
         body.addWidget(self.grp_actions)
         body.addWidget(self.grp_architect)
-        body.addWidget(self.grp_quote_items)
         body.addWidget(self.grp_material_choices)
         body.addWidget(self.grp_customer_cash)
         body.addWidget(self.grp_walls)
@@ -329,9 +327,9 @@ class TabNoweZamowienie(QWidget):
             self.grp_client,
             self.grp_order,
             self.grp_worker,
+            self.grp_quote_items,
             self.grp_actions,
             self.grp_architect,
-            self.grp_quote_items,
             self.grp_material_choices,
             self.grp_customer_cash,
             self.grp_walls,
@@ -350,11 +348,11 @@ class TabNoweZamowienie(QWidget):
         self._build_walls_group()
         self._build_summary_group()
 
-        self.grp_worker.set_expanded(False)
         self.grp_architect.set_expanded(False)
-        self.grp_quote_items.set_expanded(False)
         self.grp_material_choices.set_expanded(False)
         self.grp_customer_cash.set_expanded(False)
+        self.grp_walls.set_expanded(False)
+        self.grp_summary.set_expanded(False)
 
         self.lab_status = QLabel("")
         self.lab_status.setWordWrap(True)
@@ -451,9 +449,7 @@ class TabNoweZamowienie(QWidget):
         form.addRow("Notatki", self.ed_client_notes)
         layout.addLayout(form)
 
-        note = QLabel(
-            "Wybierz klienta z bazy albo wpisz nowego i zapisz go od razu tutaj."
-        )
+        note = QLabel("Wybierz klienta z bazy albo wpisz nowego.")
         note.setWordWrap(True)
         note.setStyleSheet("color:#666666;")
         layout.addWidget(note)
@@ -522,9 +518,7 @@ class TabNoweZamowienie(QWidget):
         form.addRow("Notatki", self.ed_worker_notes)
         layout.addLayout(form)
 
-        note = QLabel(
-            "Wybierz pracownika z bazy albo dopisz go tutaj i zapisz od razu."
-        )
+        note = QLabel("Wybierz pracownika z bazy albo dopisz nowego.")
         note.setWordWrap(True)
         note.setStyleSheet("color:#666666;")
         layout.addWidget(note)
@@ -532,11 +526,9 @@ class TabNoweZamowienie(QWidget):
     def _build_actions_group(self) -> None:
         layout = self.grp_actions.content_layout()
 
-        info = QLabel(
-            "Zapisz nowe tworzy brakujace wpisy. Nadpisz wszystko aktualizuje dane wedlug biezacej karty."
-        )
+        info = QLabel("Najpierw zapisz projekt, potem przejdz dalej do Sciana albo eksportu oferty.")
         info.setWordWrap(True)
-        info.setStyleSheet("color:#444444;")
+        info.setStyleSheet("color:#666666;")
         layout.addWidget(info)
 
         self.btn_save_draft = QPushButton("Zapisz roboczo", self.grp_actions)
@@ -557,52 +549,27 @@ class TabNoweZamowienie(QWidget):
         self._make_compact_button(self.btn_export_offer, min_width=140, max_width=170)
         self._make_compact_button(self.btn_export_offer_pdf, min_width=130, max_width=160)
 
-        panels_row = QHBoxLayout()
-        panels_row.setSpacing(12)
+        row_top = QHBoxLayout()
+        row_top.setSpacing(8)
+        row_top.addWidget(self.btn_save_draft, 0)
+        row_top.addWidget(self.btn_save_new, 0)
+        row_top.addWidget(self.btn_overwrite_all, 0)
+        row_top.addWidget(self.btn_clear, 0)
+        row_top.addWidget(self.btn_go_to_sciana, 0)
+        row_top.addStretch(1)
+        layout.addLayout(row_top)
 
-        save_box, save_layout = self._make_work_panel(
-            "Zapis",
-            "Roboczy zapis, nowy wpis i nadpisanie tego, co juz istnieje.",
-        )
-        save_buttons = QHBoxLayout()
-        save_buttons.setSpacing(8)
-        save_buttons.addWidget(self.btn_save_draft, 0)
-        save_buttons.addWidget(self.btn_save_new, 0)
-        save_buttons.addWidget(self.btn_overwrite_all, 0)
-        save_buttons.addWidget(self.btn_clear, 0)
-        save_buttons.addStretch(1)
-        save_layout.addLayout(save_buttons)
-        panels_row.addWidget(save_box, 2)
-
-        next_box, next_layout = self._make_work_panel(
-            "Przejscie",
-            "Po zapisaniu przechodzisz dalej do sciany i kompletu.",
-        )
-        next_layout.addWidget(self.btn_go_to_sciana, 0, Qt.AlignmentFlag.AlignLeft)
-        next_layout.addStretch(1)
-        panels_row.addWidget(next_box, 1)
-
-        offer_box, offer_layout = self._make_work_panel(
-            "Oferta",
-            "Eksport gotowej propozycji dla klienta do HTML lub PDF.",
-        )
-        offer_buttons = QHBoxLayout()
-        offer_buttons.setSpacing(8)
-        offer_buttons.addWidget(self.btn_export_offer, 0)
-        offer_buttons.addWidget(self.btn_export_offer_pdf, 0)
-        offer_buttons.addStretch(1)
-        offer_layout.addLayout(offer_buttons)
-        offer_layout.addStretch(1)
-        panels_row.addWidget(offer_box, 1)
-
-        layout.addLayout(panels_row)
+        row_bottom = QHBoxLayout()
+        row_bottom.setSpacing(8)
+        row_bottom.addWidget(self.btn_export_offer, 0)
+        row_bottom.addWidget(self.btn_export_offer_pdf, 0)
+        row_bottom.addStretch(1)
+        layout.addLayout(row_bottom)
 
     def _build_walls_group(self) -> None:
         layout = self.grp_walls.content_layout()
 
-        note = QLabel(
-            "Jedno zamowienie moze miec wiele scian. Tutaj widzisz wszystkie sciany powiazane z biezacym kodem."
-        )
+        note = QLabel("Lista scian przypietych do tego zamowienia.")
         note.setWordWrap(True)
         note.setStyleSheet("color:#555555;")
         layout.addWidget(note)
@@ -634,9 +601,7 @@ class TabNoweZamowienie(QWidget):
     def _build_architect_group(self) -> None:
         layout = self.grp_architect.content_layout()
 
-        note = QLabel(
-            "Tutaj przypinasz PDF-y, zrzuty i referencje od architekta, z ktorych robimy szybka wycene i pozniejsza oferte."
-        )
+        note = QLabel("PDF-y, zrzuty i referencje od architekta do wyceny i oferty.")
         note.setWordWrap(True)
         note.setStyleSheet("color:#555555;")
         layout.addWidget(note)
@@ -666,38 +631,26 @@ class TabNoweZamowienie(QWidget):
         self.tbl_architect_attachments.setMinimumHeight(150)
         self.tbl_architect_attachments.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.tbl_architect_attachments.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        top_row = QHBoxLayout()
-        top_row.setSpacing(12)
-
-        add_box, add_layout = self._make_work_panel(
-            "Dodaj plik",
-            "PDF, zrzut albo obraz referencyjny, z ktorego pozniej wycinasz potrzebny fragment.",
-        )
         path_row = QHBoxLayout()
+        path_row.setSpacing(8)
         path_row.addWidget(self.ed_architect_file, 1)
         path_row.addWidget(self.btn_pick_architect_file, 0)
-        add_layout.addLayout(path_row)
+        layout.addLayout(path_row)
+
         meta_row = QHBoxLayout()
+        meta_row.setSpacing(8)
         meta_row.addWidget(self.cb_architect_kind, 0)
         meta_row.addWidget(self.ed_architect_description, 1)
-        add_layout.addLayout(meta_row)
+        layout.addLayout(meta_row)
+
         add_buttons = QHBoxLayout()
         add_buttons.setSpacing(8)
         add_buttons.addWidget(self.btn_add_architect_attachment, 0)
         add_buttons.addWidget(self.btn_remove_architect_attachment, 0)
         add_buttons.addStretch(1)
-        add_layout.addLayout(add_buttons)
-        add_layout.addStretch(1)
-        top_row.addWidget(add_box, 2)
+        layout.addLayout(add_buttons)
 
-        list_box, list_layout = self._make_work_panel(
-            "Lista zalacznikow",
-            "Szybki podglad wszystkiego, co przyszlo od architekta do tej wyceny.",
-        )
-        list_layout.addWidget(self.tbl_architect_attachments, 1)
-        top_row.addWidget(list_box, 3)
-
-        layout.addLayout(top_row)
+        layout.addWidget(self.tbl_architect_attachments)
 
         preview_note = QLabel(
             "Po zaznaczeniu zalacznika PDF zobaczysz miniatury stron. To bedzie baza pod pozniejsze wycinanie fragmentow do Sciana, Komplet i oferty."

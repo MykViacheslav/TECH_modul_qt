@@ -89,6 +89,15 @@ NOWY KIERUNEK PRODUKTU
 - nie kopiujemy ich 1:1 wizualnie, tylko przenosimy ich spokoj i prostote
 - kierunek jest opisany w pliku KIERUNEK_UPROSZCZENIA_UX.txt
 
+[DONE] Reset UX zaczety od ekranow glownych:
+- Start zostal uproszczony do spokojniejszego dashboardu
+- Nowe zamowienie dostalo lzejszy pierwszy widok:
+  - krotszy opis
+  - prostsze Akcje
+  - mniej ciezkich paneli
+  - wazniejsze sekcje sa wyzej
+  - sekcje pomocnicze sa domyslnie bardziej schowane
+
 [DONE] Wniosek po analizie arkusza "Szablon zmiany_27.06.xlsx":
 - arkusz jest wartosciowym zrodlem logiki wyceny i kategorii kosztowych
 - nie powinien byc wzorem calej aplikacji ani glownym silnikiem interfejsu
