@@ -1,5 +1,5 @@
 PLAN ETAPOW - TECH_modul
-Aktualizacja: 2026-03-16
+Aktualizacja: 2026-03-17
 
 Legenda:
 - [DONE] zrobione
@@ -839,3 +839,15 @@ NAJBLIZSZY PRAKTYCZNY KROK
   - boxy i strzalki pokazujace jak dziala program
   - skad bierze dane
   - gdzie trafiaja zamowienia, wycena, magazyn, czas pracy i finanse
+
+[DONE] Rozpoczety reset UX od glownego dashboardu:
+- karta Start zostala uproszczona i odchudzona
+- mniej opisow marketingowych, mniej ozdobnikow i mniej ciezkich blokow
+- wyrazny podzial na:
+  - Szybki start
+  - Przeplyw pracy
+  - Pozostale narzedzia
+- Start ma teraz bardziej ERP-owy spokojny uklad:
+  - najpierw glowne akcje
+  - potem prosty przeplyw
+  - na koncu pomocnicze narzedzia

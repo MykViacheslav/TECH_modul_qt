@@ -1,0 +1,283 @@
+KIERUNEK UPROSZCZENIA UX I DALSZEJ PRACY
+Aktualizacja: 2026-03-17
+
+1. OGLAD I WNIOSEK
+
+Po obejrzeniu pokazanych ekranow z systemow tworzonych w Excelu i podobnych
+dashboardow moj wniosek jest prosty:
+
+- one sa lzejsze nie dlatego, ze maja mniej logiki
+- one sa lzejsze dlatego, ze sa lepiej poukladane
+- jeden ekran robi jedna glowna rzecz
+- dane sa podane spokojnie: lista, filtry, szczegoly, akcje
+- mniej rzeczy walczy o uwage uzytkownika naraz
+
+Nasza aplikacja ma juz duzo logiki, ale jest za ciezka wizualnie i za bardzo
+przeciazona funkcjami na pojedynczych kartach.
+
+To nie znaczy, ze projekt jest zly.
+To znaczy, ze trzeba zmienic sposob budowania.
+
+
+2. CO JEST LEPSZE W TYCH PROSTSZYCH SYSTEMACH
+
+Najwazniejsze przewagi, ktore widac:
+
+- spokojny uklad
+  - mniej ramek
+  - mniej mocnych linii
+  - mniej tekstu pomocniczego
+  - wiecej pustego miejsca
+
+- jedna logika na ekran
+  - dashboard jest dashboardem
+  - lista klientow jest lista klientow
+  - harmonogram jest harmonogramem
+  - nie ma chaosu typu: projekt + finanse + magazyn + technika na jednym ekranie
+
+- przewidywalna nawigacja
+  - menu po lewej lub jeden prosty pasek
+  - bez mieszania glownej pracy z narzedziami pomocniczymi
+
+- najpierw lista, potem szczegoly
+  - uzytkownik najpierw wybiera rekord
+  - potem widzi szczegoly
+  - potem wykonuje akcje
+
+- dobra czytelnosc
+  - duze tytuly
+  - wyrazne sekcje
+  - malo "szumu"
+
+
+3. CZEGO NIE WARTO KOPIOWAC 1:1
+
+Nie wszystko z Excela jest idealne.
+
+Nie warto kopiowac:
+
+- sztucznie ozdobnych dashboardow bez funkcji
+- nadmiaru gradientow i ikon tylko dla wygladu
+- zbyt wielu arkuszy / zakladek na jednym poziomie
+- logiki, w ktorej wszystko zalezy od jednego wielkiego formularza
+
+Warto wziac z tych systemow glownie:
+
+- porzadek
+- hierarchie
+- spokoj
+- podzial zadan po ekranach
+
+
+4. UCZCIWA OCENA NASZEJ APLIKACJI DZIS
+
+Mocne strony:
+
+- logika projektu juz istnieje
+- jest klient, zamowienie, pracownik, komplet, sciana, modul
+- jest wycena, kalendarz, czas pracy, baza materialow
+- sa zalaczniki od architekta i oferta PDF
+- jest fundament pod magazyn i finanse
+
+Slabe strony:
+
+- za duzo kart na gorze
+- za duzo rzeczy na ekranie naraz
+- za duzo blokow, ramek i opisow
+- za malo prostych tabel i prostych widokow listy
+- Komplet i Nowe zamowienie nadal mecza wzrok
+- Bazy nie sa jeszcze prawdziwym centrum danych
+
+Ocena dzis:
+
+- logika biznesowa: 8/10
+- funkcjonalnosc: 7/10
+- czytelnosc: 4/10
+- przyjemnosc pracy: 3/10
+
+
+5. NAJWAZNIEJSZA ZMIANA MYSLENIA
+
+Nie rozwijamy dalej aplikacji przez:
+- dodawanie kolejnych kart
+- dodawanie kolejnych sekcji
+- dopisywanie kolejnych pol
+
+Rozwijamy ja teraz przez:
+- odejmowanie
+- chowanie
+- porzadkowanie
+- upraszczanie
+
+Zasada:
+
+JEDEN EKRAN = JEDNO GLOWNE ZADANIE
+
+
+6. NOWY PORZADEK APLIKACJI
+
+Glowne karty robocze:
+
+- Start
+- Nowe zamowienie
+- Wycena
+- Komplet
+- Sciana
+- Kalendarz
+
+Karty pomocnicze:
+
+- Czas pracy
+- Bazy
+- Ustawienia
+
+Karty pomocniczo-analityczne nie powinny dominowac:
+
+- Plan
+- Schemat
+
+Moga istniec, ale nie powinny byc "sercem" codziennej pracy.
+
+
+7. CO ZOSTAWIC NA POSZCZEGOLNYCH KARTACH
+
+Start:
+- tylko szybki punkt wejscia
+- 4-6 glownych akcji
+- zadnych dlugich opisow
+
+Nowe zamowienie:
+- klient
+- zamowienie
+- pracownik
+- pozycje do wyceny
+- akcje
+
+Ukryc domyslnie:
+- zalaczniki od architekta
+- probki i finalne materialy
+- kasa klienta
+- dodatkowe podsumowania
+
+Wycena:
+- to ma byc glowny ekran handlowy
+- koszt techniczny
+- robocizna
+- transport
+- montaz
+- marza
+- zaliczki klienta
+- oferta PDF
+
+Komplet:
+- ma zostac ekranem ukladu modulow i materialow
+- nie wrzucac tam rzeczy, ktore sa handlowe albo firmowe
+
+Sciana:
+- tylko miejsce, uklad, przeszkody, wymiary
+- bez smieci pobocznych
+
+Bazy:
+- zaczac od Materialy
+- prawdziwa tabela:
+  - kod
+  - nazwa
+  - jednostka
+  - cena
+  - stan
+  - minimum
+  - dostawca
+
+Czas pracy:
+- osobna karta
+- nie mieszac jej z kalendarzem i wycena na jednym ekranie
+
+
+8. CO MOZEMY REALNIE ZROBIC PODOBNEGO
+
+Tak, mozemy zrobic system prostszy i bardziej przyjazny.
+
+Nie przez kopiowanie Excela 1:1, tylko przez przeniesienie jego zalet:
+
+- prosty dashboard
+- lista + szczegoly
+- spokojna paleta
+- wyrazne sekcje
+- mniej elementow naraz
+- bardziej ERP-owy porzadek danych
+
+Czy dam rade pomoc?
+
+Tak.
+
+Ale tylko pod warunkiem, ze przez kilka krokow:
+
+- nie dodajemy nowych funkcji
+- tylko porzadkujemy i upraszczamy
+
+Inaczej aplikacja bedzie rosla, ale dalej bedzie meczyc.
+
+
+9. NAJLEPSZA KOLEJNOSC DALSZEJ PRACY
+
+ETAP A - RESET UX
+
+1. Odchudzic Nowe zamowienie.
+2. Odchudzic Komplet.
+3. Uspokoic Sciana.
+4. Ograniczyc ciezkie linie, ramki i opisy.
+
+ETAP B - ERP-OWY PORZADEK
+
+5. Przerobic Bazy -> Materialy na prawdziwa baze.
+6. Dodac Magazyn.
+7. Dopiac dokumenty zakupu: faktury, WZ, paragony.
+
+ETAP C - PIENIADZE I PROWADZENIE FIRMY
+
+8. Dopracowac Wycena.
+9. Dopracowac Kasa klienta.
+10. Dopracowac Czas pracy i kase pracownikow.
+
+
+10. NAJBLIZSZE 3 KROKI
+
+To jest najlepszy, praktyczny plan na teraz:
+
+KROK 1
+- przebudowac Nowe zamowienie na prosty ekran startu projektu
+
+KROK 2
+- przebudowac Komplet tak, zeby byl lzejszy i bardziej roboczy
+
+KROK 3
+- zrobic Bazy -> Materialy jako prawdziwa tabele ERP
+
+
+11. GLOWNA ZASADA DALSZEJ PRACY
+
+Ta aplikacja ma:
+- pomagac
+- uspokajac
+- przyspieszac
+
+Nie ma:
+- przytlaczac
+- walczyc o uwage
+- meczyc wzroku
+
+Jesli jakis ekran meczy, to znaczy, ze trzeba z niego usunac rzeczy,
+a nie dodac kolejne.
+
+
+12. WNIOSEK KONCOWY
+
+Projekt ma sens.
+Nie trzeba go porzucac.
+
+Ale trzeba przestac go teraz rozwijac "wszerz".
+Trzeba go przez chwile rozwijac "w glab porzadku".
+
+Najpierw lekki, czytelny szkielet.
+Potem kolejne funkcje.
+

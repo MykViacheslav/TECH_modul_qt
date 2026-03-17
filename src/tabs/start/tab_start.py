@@ -20,134 +20,109 @@ class TabStart(QWidget):
         super().__init__(parent)
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 24, 24, 24)
-        root.setSpacing(20)
+        root.setContentsMargins(28, 28, 28, 28)
+        root.setSpacing(18)
 
-        hero = QFrame(self)
-        hero.setStyleSheet(
-            "QFrame {"
-            "border: 1px solid #ddd2bf;"
-            "border-radius: 22px;"
-            "background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #fffdf9, stop:1 #f4ecdf);"
-            "}"
-        )
-        hero_layout = QHBoxLayout(hero)
-        hero_layout.setContentsMargins(24, 22, 24, 22)
-        hero_layout.setSpacing(18)
-
-        hero_copy = QVBoxLayout()
-        hero_copy.setSpacing(10)
-
-        title = QLabel("START")
-        title.setStyleSheet("font-size: 28px; font-weight: 900; letter-spacing: 0.8px; color:#10233f;")
-        hero_copy.addWidget(title, 0, Qt.AlignmentFlag.AlignLeft)
+        title = QLabel("PANEL STARTOWY")
+        title.setStyleSheet("font-size: 26px; font-weight: 900; color:#14263d;")
+        root.addWidget(title, 0, Qt.AlignmentFlag.AlignLeft)
 
         subtitle = QLabel(
-            "Zacznij od nowego zamowienia, a potem przechodz krok po kroku przez klienta, sciane, komplet i modul."
+            "Tu zaczynasz prace. Najpierw zakladasz zamowienie, potem przechodzisz do wyceny, projektu i realizacji."
         )
         subtitle.setWordWrap(True)
-        subtitle.setStyleSheet("color: #556172; font-size: 14px;")
-        hero_copy.addWidget(subtitle, 0, Qt.AlignmentFlag.AlignLeft)
+        subtitle.setStyleSheet("color:#5f6c7c; font-size:14px;")
+        root.addWidget(subtitle, 0, Qt.AlignmentFlag.AlignLeft)
 
-        pitch = QLabel(
-            "Ta aplikacja ma prowadzic firme od szkicu i wyceny, przez komplet i sciane, az do planu pracy, czasu ludzi i finalnej oferty dla klienta."
-        )
-        pitch.setWordWrap(True)
-        pitch.setStyleSheet("color:#324153; font-size:14px; line-height:1.35;")
-        hero_copy.addWidget(pitch, 0, Qt.AlignmentFlag.AlignLeft)
+        main_row = QHBoxLayout()
+        main_row.setSpacing(18)
 
-        self.btn_new_order = self._make_card(
-            "Nowe zamowienie",
-            "Pierwszy krok pracy. Otwiera zamowienie z klientem, pracownikiem, oferta i podpieciem do dalszych etapow.",
-            primary=True,
-        )
-        self.btn_new_order.setMinimumWidth(360)
-        hero_copy.addWidget(self.btn_new_order, 0, Qt.AlignmentFlag.AlignLeft)
-        hero_copy.addStretch(1)
-        hero_layout.addLayout(hero_copy, 3)
+        start_panel = self._make_panel()
+        start_layout = QVBoxLayout(start_panel)
+        start_layout.setContentsMargins(18, 18, 18, 18)
+        start_layout.setSpacing(12)
+        start_layout.addWidget(self._make_panel_title("Szybki start"))
 
-        hero_side = QGridLayout()
-        hero_side.setHorizontalSpacing(12)
-        hero_side.setVerticalSpacing(12)
-        hero_side.addWidget(
-            self._make_focus_card("Klient", "Szybkie zamowienie, zalaczniki architekta, pozycje do wyceny."),
-            0,
-            0,
+        start_note = QLabel(
+            "Zostawiamy tu tylko najwazniejsze kroki. Reszta kart jest pomocnicza i nie powinna przeszkadzac na starcie."
         )
-        hero_side.addWidget(
-            self._make_focus_card("Finanse", "Wycena, rata klienta, koszt techniczny i cena handlowa."),
-            0,
-            1,
-        )
-        hero_side.addWidget(
-            self._make_focus_card("Pracownicy", "Kalendarz, czas pracy, etapy, obciazenie i statusy."),
-            1,
-            0,
-        )
-        hero_side.addWidget(
-            self._make_focus_card("Projekt", "Sciana, Komplet i Modul jako szybki konfigurator do pracy."),
-            1,
-            1,
-        )
-        hero_layout.addLayout(hero_side, 2)
-        root.addWidget(hero)
+        start_note.setWordWrap(True)
+        start_note.setStyleSheet("color:#617082;")
+        start_layout.addWidget(start_note)
 
-        section = QLabel("Obszary pracy")
-        section.setStyleSheet("font-weight: 800; color: #243243; font-size:15px;")
+        self.btn_new_order = self._make_primary_button("Nowe zamowienie", "Klient, pozycje do wyceny i start projektu.")
+        self.btn_quote = self._make_primary_button("Wycena", "Koszt techniczny, cena handlowa i oferta.")
+        self.btn_calendar = self._make_primary_button("Kalendarz", "Statusy, terminy i prowadzenie pracy.")
+        self.btn_work_time = self._make_secondary_button("Czas pracy", "Godziny, dniowki i koszt ludzi.")
+
+        start_layout.addWidget(self.btn_new_order)
+        start_layout.addWidget(self.btn_quote)
+        start_layout.addWidget(self.btn_calendar)
+        start_layout.addWidget(self.btn_work_time)
+        start_layout.addStretch(1)
+        main_row.addWidget(start_panel, 2)
+
+        flow_panel = self._make_panel()
+        flow_layout = QVBoxLayout(flow_panel)
+        flow_layout.setContentsMargins(18, 18, 18, 18)
+        flow_layout.setSpacing(14)
+        flow_layout.addWidget(self._make_panel_title("Przeplyw pracy"))
+
+        steps = QGridLayout()
+        steps.setHorizontalSpacing(12)
+        steps.setVerticalSpacing(12)
+        steps.addWidget(self._make_step_card("1", "Nowe zamowienie", "Zakladasz projekt i klienta."), 0, 0)
+        steps.addWidget(self._make_step_card("2", "Wycena", "Liczysz wariant i przygotowujesz oferte."), 0, 1)
+        steps.addWidget(self._make_step_card("3", "Sciana / Komplet", "Ukladasz projekt roboczy."), 1, 0)
+        steps.addWidget(self._make_step_card("4", "Kalendarz", "Planujesz etapy i ludzi."), 1, 1)
+        flow_layout.addLayout(steps)
+
+        flow_footer = QLabel("Program ma prowadzic przez kolejne etapy, a nie pokazywac wszystko naraz.")
+        flow_footer.setWordWrap(True)
+        flow_footer.setStyleSheet("color:#617082;")
+        flow_layout.addWidget(flow_footer)
+        main_row.addWidget(flow_panel, 3)
+
+        root.addLayout(main_row)
+
+        section = QLabel("Pozostale narzedzia")
+        section.setStyleSheet("font-size: 15px; font-weight: 800; color:#203047;")
         root.addWidget(section, 0, Qt.AlignmentFlag.AlignLeft)
 
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(14)
-        grid.setVerticalSpacing(14)
+        tools_panel = self._make_panel()
+        tools_layout = QGridLayout(tools_panel)
+        tools_layout.setContentsMargins(18, 18, 18, 18)
+        tools_layout.setHorizontalSpacing(12)
+        tools_layout.setVerticalSpacing(12)
 
-        self.btn_quote = self._make_card("Wycena", "Policz cene, koszty i oferte klienta.", primary=False)
-        self.btn_clients = self._make_card("Klienci", "Przejdz do bazy klientow.", primary=False)
-        self.btn_calendar = self._make_card("Kalendarz", "Sprawdz statusy i terminy projektow.", primary=False)
-        self.btn_work_time = self._make_card("Czas pracy", "Godziny, dniowki, dodatki i koszt pracy.", primary=False)
-        self.btn_sciana = self._make_card("Sciana", "Zacznij nowa sciane lub pomiar.", primary=False)
-        self.btn_komplet = self._make_card("Komplet", "Zbuduj komplet modulow.", primary=False)
-        self.btn_modul = self._make_card("Modul", "Edytuj lub zbuduj pojedynczy modul.", primary=False)
-        self.btn_bazy = self._make_card("Bazy i magazyn", "Moduly, materialy, pracownicy i przyszly magazyn.", primary=False)
-        self.btn_settings = self._make_card("Ustawienia", "Przejdz do ustawien rysunku i programu.", primary=False)
+        self.btn_clients = self._make_secondary_button("Klienci", "Baza klientow.")
+        self.btn_sciana = self._make_secondary_button("Sciana", "Nowa sciana lub pomiar.")
+        self.btn_komplet = self._make_secondary_button("Komplet", "Uklad modulow.")
+        self.btn_modul = self._make_secondary_button("Modul", "Pojedynczy modul.")
+        self.btn_bazy = self._make_secondary_button("Bazy", "Materialy, pracownicy i dane.")
+        self.btn_settings = self._make_secondary_button("Ustawienia", "Rysunek i program.")
 
-        grid.addWidget(self.btn_quote, 0, 0)
-        grid.addWidget(self.btn_calendar, 0, 1)
-        grid.addWidget(self.btn_work_time, 1, 0)
-        grid.addWidget(self.btn_clients, 1, 1)
-        grid.addWidget(self.btn_sciana, 2, 0)
-        grid.addWidget(self.btn_komplet, 2, 1)
-        grid.addWidget(self.btn_modul, 3, 0)
-        grid.addWidget(self.btn_bazy, 3, 1)
-        grid.addWidget(self.btn_settings, 4, 0)
+        tools_layout.addWidget(self.btn_clients, 0, 0)
+        tools_layout.addWidget(self.btn_sciana, 0, 1)
+        tools_layout.addWidget(self.btn_komplet, 0, 2)
+        tools_layout.addWidget(self.btn_modul, 1, 0)
+        tools_layout.addWidget(self.btn_bazy, 1, 1)
+        tools_layout.addWidget(self.btn_settings, 1, 2)
+        root.addWidget(tools_panel)
 
-        root.addLayout(grid)
-
-        footer = QFrame(self)
-        footer.setStyleSheet(
-            "QFrame {"
-            "border: 1px solid #e2d8c9;"
-            "border-radius: 18px;"
-            "background: #fffdfa;"
-            "}"
-        )
-        footer_layout = QHBoxLayout(footer)
-        footer_layout.setContentsMargins(18, 14, 18, 14)
-        footer_layout.setSpacing(18)
-        footer_layout.addWidget(
-            self._make_plain_note(
-                "Przeplyw",
-                "Szkic od architekta -> szybka wycena -> komplet/sciana -> oferta -> kalendarz i praca.",
-            ),
+        info_panel = self._make_panel()
+        info_layout = QHBoxLayout(info_panel)
+        info_layout.setContentsMargins(18, 14, 18, 14)
+        info_layout.setSpacing(18)
+        info_layout.addWidget(
+            self._make_info_card("Zasada", "Jeden ekran ma miec jedno glowne zadanie. Reszta ma byc schowana albo pomocnicza."),
             1,
         )
-        footer_layout.addWidget(
-            self._make_plain_note(
-                "Cel",
-                "Nie kolejny surowy panel techniczny, tylko narzedzie do prowadzenia projektu i firmy.",
-            ),
+        info_layout.addWidget(
+            self._make_info_card("Cel", "Program ma przyspieszac wycene i prowadzenie firmy, a nie meczyc nadmiarem pol."),
             1,
         )
-        root.addWidget(footer)
+        root.addWidget(info_panel)
         root.addStretch(1)
 
         self.btn_new_order.clicked.connect(self.sig_new_order_requested.emit)
@@ -161,70 +136,99 @@ class TabStart(QWidget):
         self.btn_bazy.clicked.connect(self.sig_open_bazy_requested.emit)
         self.btn_settings.clicked.connect(self.sig_open_settings_requested.emit)
 
-    def _make_card(self, title: str, description: str, primary: bool) -> QPushButton:
+    def _make_panel(self) -> QFrame:
+        panel = QFrame(self)
+        panel.setStyleSheet(
+            "QFrame {"
+            "border: 1px solid #e6ebf1;"
+            "border-radius: 18px;"
+            "background: #ffffff;"
+            "}"
+        )
+        return panel
+
+    def _make_panel_title(self, text: str) -> QLabel:
+        label = QLabel(text, self)
+        label.setStyleSheet("font-size: 15px; font-weight: 800; color:#203047;")
+        return label
+
+    def _make_primary_button(self, title: str, description: str) -> QPushButton:
         btn = QPushButton(f"{title}\n{description}", self)
-        btn.setMinimumSize(280, 112 if primary else 98)
+        btn.setMinimumHeight(92)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setStyleSheet(
-            (
-                "QPushButton {"
-                "text-align: left;"
-                "padding: 16px 18px;"
-                "border-radius: 18px;"
-                "border: 1px solid #ddd2bf;"
-                "background: #fffdfa;"
-                "color: #1f2d3d;"
-                "font-size: 14px;"
-                "font-weight: 700;"
-                "}"
-                "QPushButton:hover {"
-                "border-color: #bda583;"
-                "background: #f7efe3;"
-                "}"
-            )
-            if not primary
-            else (
-                "QPushButton {"
-                "text-align: left;"
-                "padding: 18px 20px;"
-                "border-radius: 20px;"
-                "border: 1px solid #c6ac86;"
-                "background: #fff5e6;"
-                "color: #10233f;"
-                "font-size: 15px;"
-                "font-weight: 800;"
-                "}"
-                "QPushButton:hover {"
-                "background: #fbe7c6;"
-                "border-color: #af8a53;"
-                "}"
-            )
+            "QPushButton {"
+            "text-align: left;"
+            "padding: 16px 18px;"
+            "border-radius: 16px;"
+            "border: 1px solid #d7dfeb;"
+            "background: #f7f9fc;"
+            "color: #132640;"
+            "font-size: 14px;"
+            "font-weight: 800;"
+            "}"
+            "QPushButton:hover {"
+            "border-color: #aebfd9;"
+            "background: #eef3f9;"
+            "}"
         )
         return btn
 
-    def _make_focus_card(self, title: str, description: str) -> QFrame:
+    def _make_secondary_button(self, title: str, description: str) -> QPushButton:
+        btn = QPushButton(f"{title}\n{description}", self)
+        btn.setMinimumHeight(84)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setStyleSheet(
+            "QPushButton {"
+            "text-align: left;"
+            "padding: 14px 16px;"
+            "border-radius: 14px;"
+            "border: 1px solid #e1e7ef;"
+            "background: #ffffff;"
+            "color: #203047;"
+            "font-size: 13px;"
+            "font-weight: 700;"
+            "}"
+            "QPushButton:hover {"
+            "border-color: #b7c5d8;"
+            "background: #f7f9fc;"
+            "}"
+        )
+        return btn
+
+    def _make_step_card(self, number: str, title: str, description: str) -> QFrame:
         card = QFrame(self)
-        card.setMinimumWidth(220)
         card.setStyleSheet(
             "QFrame {"
-            "border: 1px solid rgba(168, 143, 106, 0.28);"
+            "border: 1px solid #e3e9f1;"
             "border-radius: 16px;"
-            "background: rgba(255, 255, 255, 0.78);"
+            "background: #fbfcfe;"
             "}"
         )
         layout = QVBoxLayout(card)
         layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(6)
+        badge = QLabel(number, card)
+        badge.setFixedWidth(28)
+        badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        badge.setStyleSheet(
+            "background:#dce8f6;"
+            "color:#173355;"
+            "border-radius: 14px;"
+            "font-weight: 800;"
+            "padding: 4px 0;"
+        )
+        layout.addWidget(badge, 0, Qt.AlignmentFlag.AlignLeft)
         label = QLabel(title, card)
-        label.setStyleSheet("font-size: 15px; font-weight: 800; color:#10233f;")
+        label.setStyleSheet("font-size: 15px; font-weight: 800; color:#173355;")
         layout.addWidget(label)
         text = QLabel(description, card)
         text.setWordWrap(True)
-        text.setStyleSheet("color:#556172; line-height:1.35;")
+        text.setStyleSheet("color:#667484;")
         layout.addWidget(text)
         return card
 
-    def _make_plain_note(self, title: str, description: str) -> QFrame:
+    def _make_info_card(self, title: str, description: str) -> QFrame:
         card = QFrame(self)
         card.setStyleSheet("QFrame { background: transparent; border: none; }")
         layout = QVBoxLayout(card)
