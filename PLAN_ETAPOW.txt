@@ -83,6 +83,12 @@ NOWY KIERUNEK PRODUKTU
 - nie kazda wycena przechodzi dalej do produkcji
 - dlatego szybki handlowy konfigurator jest wazniejszy niz natychmiastowy import techniczny
 
+[DONE] Ustalony kierunek uproszczenia UX:
+- wzorujemy sie na spokojniejszych systemach ERP i systemach robionych w Excelu
+- bierzemy z nich porzadek, przewidywalnosc i podzial: lista -> szczegoly -> akcja
+- nie kopiujemy ich 1:1 wizualnie, tylko przenosimy ich spokoj i prostote
+- kierunek jest opisany w pliku KIERUNEK_UPROSZCZENIA_UX.txt
+
 [DONE] Wniosek po analizie arkusza "Szablon zmiany_27.06.xlsx":
 - arkusz jest wartosciowym zrodlem logiki wyceny i kategorii kosztowych
 - nie powinien byc wzorem calej aplikacji ani glownym silnikiem interfejsu

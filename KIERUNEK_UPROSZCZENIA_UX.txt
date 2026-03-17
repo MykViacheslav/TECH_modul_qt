@@ -1,92 +1,93 @@
 KIERUNEK UPROSZCZENIA UX I DALSZEJ PRACY
 Aktualizacja: 2026-03-17
 
-1. OGLAD I WNIOSEK
+1. PO OBEJRZENIU SPOKOJNIEJSZYCH SYSTEMOW
 
-Po obejrzeniu pokazanych ekranow z systemow tworzonych w Excelu i podobnych
-dashboardow moj wniosek jest prosty:
+Po obejrzeniu tych spokojniejszych ekranow ERP i systemow robionych w Excelu
+wniosek jest jasny:
 
-- one sa lzejsze nie dlatego, ze maja mniej logiki
-- one sa lzejsze dlatego, ze sa lepiej poukladane
-- jeden ekran robi jedna glowna rzecz
-- dane sa podane spokojnie: lista, filtry, szczegoly, akcje
-- mniej rzeczy walczy o uwage uzytkownika naraz
+- one nie sa lepsze dlatego, ze sa bardziej "ladne"
+- one sa lepsze dlatego, ze sa spokojniej poukladane
+- kazdy ekran ma jedna glowna role
+- oko od razu wie, gdzie patrzec
+- uzytkownik nie musi walczyc z programem
 
-Nasza aplikacja ma juz duzo logiki, ale jest za ciezka wizualnie i za bardzo
-przeciazona funkcjami na pojedynczych kartach.
+Najwazniejsze: te systemy nie mecza. One prowadza.
 
-To nie znaczy, ze projekt jest zly.
-To znaczy, ze trzeba zmienic sposob budowania.
+To jest dla nas najwazniejsza lekcja.
 
 
-2. CO JEST LEPSZE W TYCH PROSTSZYCH SYSTEMACH
+2. CO TAM DZIALA LEPIEJ
 
-Najwazniejsze przewagi, ktore widac:
+Na tych spokojniejszych ekranach najlepiej dziala:
 
-- spokojny uklad
+- prosta nawigacja
+  - malo glownych sekcji
+  - brak chaosu w zakladkach
+
+- dashboard jako prawdziwy dashboard
+  - kilka blokow
+  - stan firmy
+  - szybkie wejscie dalej
+  - bez wielkiej sciany tekstu
+
+- lista + szczegoly + akcje
+  - najpierw wybierasz rekord z tabeli lub kalendarza
+  - potem widzisz szczegoly
+  - na koncu wykonujesz akcje
+
+- spokoj wizualny
+  - malo ostrych linii
   - mniej ramek
-  - mniej mocnych linii
-  - mniej tekstu pomocniczego
-  - wiecej pustego miejsca
+  - wiecej oddechu
+  - mniej opisow pomocniczych
 
-- jedna logika na ekran
-  - dashboard jest dashboardem
-  - lista klientow jest lista klientow
-  - harmonogram jest harmonogramem
-  - nie ma chaosu typu: projekt + finanse + magazyn + technika na jednym ekranie
-
-- przewidywalna nawigacja
-  - menu po lewej lub jeden prosty pasek
-  - bez mieszania glownej pracy z narzedziami pomocniczymi
-
-- najpierw lista, potem szczegoly
-  - uzytkownik najpierw wybiera rekord
-  - potem widzi szczegoly
-  - potem wykonuje akcje
-
-- dobra czytelnosc
-  - duze tytuly
-  - wyrazne sekcje
-  - malo "szumu"
+- jedna rola na ekran
+  - dashboard to dashboard
+  - kalendarz to kalendarz
+  - klienci to klienci
+  - magazyn to magazyn
 
 
-3. CZEGO NIE WARTO KOPIOWAC 1:1
+3. CZEGO NIE KOPIOWAC 1:1
 
-Nie wszystko z Excela jest idealne.
+Nie wszystko z tych systemow trzeba kopiowac.
 
-Nie warto kopiowac:
+Nie kopiujemy:
 
-- sztucznie ozdobnych dashboardow bez funkcji
-- nadmiaru gradientow i ikon tylko dla wygladu
-- zbyt wielu arkuszy / zakladek na jednym poziomie
-- logiki, w ktorej wszystko zalezy od jednego wielkiego formularza
+- dekoracyjnych gradientow tylko dla efektu
+- przesadnej "excelowej" ozdobnosci
+- bardzo twardego niebieskiego motywu wszedzie
+- dziesiatek zakladek i podzakladek jednoczesnie
+- wielkich paneli administracyjnych bez potrzeby
 
-Warto wziac z tych systemow glownie:
+Kopiujemy:
 
 - porzadek
-- hierarchie
+- rytm ekranu
+- prostote
 - spokoj
-- podzial zadan po ekranach
+- hierarchie informacji
 
 
 4. UCZCIWA OCENA NASZEJ APLIKACJI DZIS
 
 Mocne strony:
 
-- logika projektu juz istnieje
-- jest klient, zamowienie, pracownik, komplet, sciana, modul
-- jest wycena, kalendarz, czas pracy, baza materialow
-- sa zalaczniki od architekta i oferta PDF
-- jest fundament pod magazyn i finanse
+- mamy juz realna logike biznesowa
+- mamy klienta, zamowienie, pracownika, sciane, komplet, modul
+- mamy wycene, kalendarz, czas pracy, baze danych
+- mamy zalaczniki, PDF oferty i podstawy finansow
+- mamy fundament pod magazyn i zakupy
 
 Slabe strony:
 
-- za duzo kart na gorze
-- za duzo rzeczy na ekranie naraz
-- za duzo blokow, ramek i opisow
-- za malo prostych tabel i prostych widokow listy
-- Komplet i Nowe zamowienie nadal mecza wzrok
-- Bazy nie sa jeszcze prawdziwym centrum danych
+- za duzo rzeczy jest widocznych naraz
+- zbyt duzo ekranow probuje robic wszystko jednoczesnie
+- za duzo opisow, ramek i pomocniczych blokow
+- za malo prostych tabel i prostych ekranow szczegolow
+- niektore karty nadal mecza wzrok
+- program nie daje jeszcze poczucia lekkosci i kontroli
 
 Ocena dzis:
 
@@ -95,28 +96,50 @@ Ocena dzis:
 - czytelnosc: 4/10
 - przyjemnosc pracy: 3/10
 
+To znaczy:
+- projekt ma sens
+- interfejs jest obecnie glownym problemem
 
-5. NAJWAZNIEJSZA ZMIANA MYSLENIA
 
-Nie rozwijamy dalej aplikacji przez:
-- dodawanie kolejnych kart
-- dodawanie kolejnych sekcji
-- dopisywanie kolejnych pol
+5. NOWA ZASADA PRACY NAD PROGRAMEM
 
-Rozwijamy ja teraz przez:
+Przez kilka krokow nie rozwijamy programu "wszerz".
+
+Nie dokladamy teraz wielu nowych funkcji.
+
+Rozwijamy go przez:
+
 - odejmowanie
 - chowanie
 - porzadkowanie
-- upraszczanie
+- uproszczenie
+- lepszy podzial ról ekranow
 
-Zasada:
+Zasada glowna:
 
 JEDEN EKRAN = JEDNO GLOWNE ZADANIE
 
 
-6. NOWY PORZADEK APLIKACJI
+6. JAK MA WYGLADAC NASZ PROGRAM PO UPROSZCZENIU
 
-Glowne karty robocze:
+Program ma pomagac:
+
+- szybciej wyceniac
+- szybciej odnajdywac informacje
+- szybciej przejsc od klienta do pracy
+- latwiej widziec stan projektu i pieniedzy
+
+Program nie moze:
+
+- przytlaczac
+- meczyc wzroku
+- wrzucac wszystkiego na jeden ekran
+- zmuszac do czytania dlugich blokow, zeby wykonac prosta akcje
+
+
+7. NOWY PORZADEK ZAKLADEK
+
+Glowne zakladki codziennej pracy:
 
 - Start
 - Nowe zamowienie
@@ -125,42 +148,46 @@ Glowne karty robocze:
 - Sciana
 - Kalendarz
 
-Karty pomocnicze:
+Zakladki pomocnicze:
 
 - Czas pracy
 - Bazy
 - Ustawienia
 
-Karty pomocniczo-analityczne nie powinny dominowac:
+Zakladki pomocniczo-analityczne:
 
 - Plan
 - Schemat
 
-Moga istniec, ale nie powinny byc "sercem" codziennej pracy.
+One moga istniec, ale nie powinny dominowac codziennej pracy.
 
 
-7. CO ZOSTAWIC NA POSZCZEGOLNYCH KARTACH
+8. CO ZOSTAWIC NA GLOWNYCH EKRANACH
 
 Start:
-- tylko szybki punkt wejscia
-- 4-6 glownych akcji
-- zadnych dlugich opisow
+
+- 4-6 glownych wejsc
+- krotki stan firmy
+- bez dlugich opisow
 
 Nowe zamowienie:
+
 - klient
 - zamowienie
 - pracownik
 - pozycje do wyceny
-- akcje
+- najwazniejsze akcje
 
 Ukryc domyslnie:
+
 - zalaczniki od architekta
 - probki i finalne materialy
 - kasa klienta
 - dodatkowe podsumowania
 
 Wycena:
-- to ma byc glowny ekran handlowy
+
+- glowny ekran handlowy
 - koszt techniczny
 - robocizna
 - transport
@@ -170,114 +197,119 @@ Wycena:
 - oferta PDF
 
 Komplet:
-- ma zostac ekranem ukladu modulow i materialow
-- nie wrzucac tam rzeczy, ktore sa handlowe albo firmowe
+
+- tylko uklad modułów
+- materialy
+- lista modulow
+- aktywny modul
+
+Nie wrzucac tam:
+
+- zarzadzania firma
+- rozbudowanej logiki handlowej
+- zbyt wielu blokow pomocniczych
 
 Sciana:
-- tylko miejsce, uklad, przeszkody, wymiary
-- bez smieci pobocznych
+
+- miejsce
+- uklad
+- przeszkody
+- wymiary
 
 Bazy:
-- zaczac od Materialy
-- prawdziwa tabela:
-  - kod
-  - nazwa
-  - jednostka
-  - cena
-  - stan
-  - minimum
-  - dostawca
+
+- prawdziwe centrum danych
+- glownie tabela, filtry i szczegoly
+- nie puste przestrzenie
 
 Czas pracy:
-- osobna karta
-- nie mieszac jej z kalendarzem i wycena na jednym ekranie
+
+- osobny ekran
+- pracownik, miesiac, tabela godzin
+- bez mieszania tego z wycena i kalendarzem na jednym widoku
 
 
-8. CO MOZEMY REALNIE ZROBIC PODOBNEGO
+9. CO MOZEMY ZROBIC PODOBNEGO DO TYCH SPOKOJNIEJSZYCH ERP
 
-Tak, mozemy zrobic system prostszy i bardziej przyjazny.
+Tak, mozemy dojsc do podobnego efektu.
 
-Nie przez kopiowanie Excela 1:1, tylko przez przeniesienie jego zalet:
+Nie przez kopiowanie Excela 1:1.
 
-- prosty dashboard
-- lista + szczegoly
-- spokojna paleta
-- wyrazne sekcje
-- mniej elementow naraz
-- bardziej ERP-owy porzadek danych
+Tylko przez przeniesienie tego, co najlepsze:
 
-Czy dam rade pomoc?
+- prostego dashboardu
+- przewidywalnej nawigacji
+- spokojnych paneli
+- tabel jako glownych widokow danych
+- kalendarza jako prawdziwego kalendarza
+- magazynu jako prawdziwej bazy stanów
+- logiki: lista -> szczegoly -> akcja
+
+Czy da sie to zrobic?
 
 Tak.
 
-Ale tylko pod warunkiem, ze przez kilka krokow:
+Ale tylko wtedy, kiedy:
 
-- nie dodajemy nowych funkcji
-- tylko porzadkujemy i upraszczamy
-
-Inaczej aplikacja bedzie rosla, ale dalej bedzie meczyc.
+- nie bedziemy teraz wszystkiego rozbudowywac naraz
+- tylko uporzadkujemy szkielet programu
 
 
-9. NAJLEPSZA KOLEJNOSC DALSZEJ PRACY
+10. REALNY PLAN NAPRAWCZY
 
 ETAP A - RESET UX
 
-1. Odchudzic Nowe zamowienie.
-2. Odchudzic Komplet.
-3. Uspokoic Sciana.
-4. Ograniczyc ciezkie linie, ramki i opisy.
+1. Uspokoic Start.
+2. Odchudzic Nowe zamowienie.
+3. Odchudzic Komplet.
+4. Uspokoic Sciana.
+5. Ograniczyc ciezkie linie, opisy i ramki.
 
-ETAP B - ERP-OWY PORZADEK
+ETAP B - ERP-OWY SZKIELET
 
-5. Przerobic Bazy -> Materialy na prawdziwa baze.
-6. Dodac Magazyn.
-7. Dopiac dokumenty zakupu: faktury, WZ, paragony.
+6. Przerobic Bazy -> Materialy na prawdziwa tabele.
+7. Dodac Magazyn jako prosty ekran stanów.
+8. Dodac dokumenty zakupu: faktury, WZ, paragony.
 
-ETAP C - PIENIADZE I PROWADZENIE FIRMY
+ETAP C - PIENIADZE I FIRMA
 
-8. Dopracowac Wycena.
-9. Dopracowac Kasa klienta.
-10. Dopracowac Czas pracy i kase pracownikow.
+9. Dopracowac Wycena.
+10. Dopracowac kase klienta.
+11. Dopracowac kase pracownikow i stale koszty firmy.
 
 
-10. NAJBLIZSZE 3 KROKI
-
-To jest najlepszy, praktyczny plan na teraz:
+11. NAJBLIZSZE KROKI
 
 KROK 1
-- przebudowac Nowe zamowienie na prosty ekran startu projektu
+- odchudzic Nowe zamowienie
 
 KROK 2
-- przebudowac Komplet tak, zeby byl lzejszy i bardziej roboczy
+- odchudzic Komplet
 
 KROK 3
 - zrobic Bazy -> Materialy jako prawdziwa tabele ERP
 
-
-11. GLOWNA ZASADA DALSZEJ PRACY
-
-Ta aplikacja ma:
-- pomagac
-- uspokajac
-- przyspieszac
-
-Nie ma:
-- przytlaczac
-- walczyc o uwage
-- meczyc wzroku
-
-Jesli jakis ekran meczy, to znaczy, ze trzeba z niego usunac rzeczy,
-a nie dodac kolejne.
+KROK 4
+- zrobic prosty Magazyn
 
 
 12. WNIOSEK KONCOWY
 
-Projekt ma sens.
-Nie trzeba go porzucac.
+Program nie jest bez sensu.
 
-Ale trzeba przestac go teraz rozwijac "wszerz".
-Trzeba go przez chwile rozwijac "w glab porzadku".
+Program jest obecnie za ciezki.
 
-Najpierw lekki, czytelny szkielet.
-Potem kolejne funkcje.
+To da sie naprawic.
 
+Nie przez wieksza ilosc funkcji.
+Tylko przez lepszy porzadek.
+
+Naszym celem nie jest "bardziej rozbudowany program".
+Naszym celem jest:
+
+- spokojniejszy program
+- czytelniejszy program
+- szybszy program
+- program, ktory ulatwia zycie
+
+I wlasnie w tym kierunku mamy teraz isc krok po kroku.
