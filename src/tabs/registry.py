@@ -22,7 +22,7 @@ def build_tabs() -> List[Tuple[str, QWidget]]:
         ("Start", TabStart()),
         ("Nowe zamowienie", TabNoweZamowienie()),
         ("Wycena", TabWycena()),
-        ("Analiza", TabInsights()),
+        ("Plan", TabInsights()),
         ("Kalendarz", TabKalendarz()),
         ("Czas pracy", TabCzasPracy()),
         ("Modul", TabModul()),

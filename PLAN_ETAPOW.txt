@@ -829,3 +829,9 @@ NAJBLIZSZY PRAKTYCZNY KROK
 - Kalendarz ma filtry po pracowniku i czasie oraz spokojniejszy podzial na panele
 - Czas pracy ma czytelniejsze sekcje planu miesiaca i rozliczenia
 - Bazy dostaly bardziej robocze widoki dla Materialow i Pracownikow
+- w aplikacji jest osobna karta "Plan":
+  - zrobione
+  - w toku
+  - do zrobienia
+  - przeplyw pracy firmy
+  - wnioski po analizie screenow BAZA i 3D Constructor

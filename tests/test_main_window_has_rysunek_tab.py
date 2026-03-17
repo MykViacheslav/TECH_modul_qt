@@ -22,7 +22,7 @@ def test_main_window_has_start_order_quote_calendar_worktime_modul_komplet_scian
         "Start",
         "Nowe zamowienie",
         "Wycena",
-        "Analiza",
+        "Plan",
         "Kalendarz",
         "Czas pracy",
         "Modul",

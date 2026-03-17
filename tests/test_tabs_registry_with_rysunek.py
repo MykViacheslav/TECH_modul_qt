@@ -29,7 +29,7 @@ def test_build_tabs_contains_start_order_quote_calendar_worktime_modul_komplet_s
         "Start",
         "Nowe zamowienie",
         "Wycena",
-        "Analiza",
+        "Plan",
         "Kalendarz",
         "Czas pracy",
         "Modul",
