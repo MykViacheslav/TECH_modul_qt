@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PyQt6.QtCore import QEvent, QPointF, Qt, QRectF, pyqtSignal
-from PyQt6.QtGui import QColor, QBrush, QPen, QTransform
+from PyQt6.QtGui import QColor, QBrush, QPen, QTransform, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QAbstractSpinBox,
@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QFormLayout,
+    QFrame,
     QGraphicsItem,
     QGraphicsRectItem,
     QGraphicsScene,
@@ -27,9 +28,12 @@ from PyQt6.QtWidgets import (
     QTextEdit,
     QVBoxLayout,
     QWidget,
+    QDialog,
+    QDialogButtonBox,
 )
 
-from src.domain.wall_models import WallLayoutDef, WallObstacleDef, WallPhotoDef
+from src.app.app_settings import load_ui_string_list, save_ui_string_list
+from src.domain.wall_models import WallLayoutDef, WallObstacleDef, WallPhotoDef, new_wall_id
 from src.storage.client_store_json import ClientStoreJson
 from src.storage.order_store_json import OrderStoreJson
 from src.storage.wall_store_json import WallStoreJson
@@ -202,7 +206,7 @@ class WallPreviewView(QGraphicsView):
         self.viewport().installEventFilter(self)
         self._view_mode = str(view_mode or "both").strip().lower()
 
-        self._wall = WallLayoutDef()
+        self._wall = WallLayoutDef(wall_id=new_wall_id())
         self._selected_obstacle_index = -1
         self._front_view_rect = QRectF()
         self._top_view_bounds = QRectF()
@@ -888,7 +892,7 @@ class TabScianaLayout(QWidget):
     ) -> None:
         super().__init__(parent)
 
-        self._wall = WallLayoutDef()
+        self._wall = WallLayoutDef(wall_id=new_wall_id())
         self._store = store if store is not None else WallStoreJson()
         self._client_store = client_store if client_store is not None else ClientStoreJson()
         self._order_store = order_store if order_store is not None else OrderStoreJson()
@@ -899,10 +903,18 @@ class TabScianaLayout(QWidget):
         self._selected_obstacle_index = -1
         self._loaded_wall_name = ""
         self._startup_visibility_applied_once = False
+        self._order_id_context = ""
+        self._right_zone_visible = True
+        self._right_zone_last_width = 380
 
         root = QHBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(8)
+
+        self.right_zone_toggle = QPushButton("▶ Panel informacyjny", self)
+        self.right_zone_toggle.setStyleSheet("QPushButton { border: none; background: transparent; color: #555; font-weight: 600; padding: 4px; text-align: left; }")
+        self.right_zone_toggle.clicked.connect(self._toggle_right_zone)
+        root.addWidget(self.right_zone_toggle, 0)
 
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
         root.addWidget(splitter, 1)
@@ -926,6 +938,16 @@ class TabScianaLayout(QWidget):
         self._push_wall_to_ui()
         self._refresh_all()
 
+        self._shortcut_actions = {
+            "save": ("Ctrl+S", self._shortcut_save_wall),
+            "overwrite": ("Ctrl+Shift+S", self._on_overwrite),
+            "load": ("Ctrl+L", self._on_load),
+            "new": ("Ctrl+N", self.start_new_wall),
+            "next": ("Ctrl+Return", self._on_go_to_komplet),
+            "focus_name": ("Ctrl+F", self._shortcut_focus_wall_name),
+        }
+        self._setup_shortcuts_from_settings()
+
     def _build_left_zone(self) -> QWidget:
         panel = QWidget(self)
         layout = QVBoxLayout(panel)
@@ -944,6 +966,9 @@ class TabScianaLayout(QWidget):
         self.ed_name = QLineEdit()
         self.cb_client = QComboBox()
         self.cb_order = QComboBox()
+        self.ed_order_id = QLineEdit()
+        self.ed_order_id.setReadOnly(True)
+        self.ed_order_id.setPlaceholderText("ID zamowienia")
         self.cb_worker = QComboBox()
 
         self.cb_layout_type = QComboBox()
@@ -1044,6 +1069,7 @@ class TabScianaLayout(QWidget):
         form.addRow("Nazwa", self.ed_name)
         form.addRow("Klient", self.cb_client)
         form.addRow("Zamowienie", self.cb_order)
+        form.addRow("ID zamowienia", self.ed_order_id)
         form.addRow("Pracownik", self.cb_worker)
         form.addRow("Typ ukladu", self.cb_layout_type)
         form.addRow("Widok z przodu", self.cb_front_wall)
@@ -1277,6 +1303,50 @@ class TabScianaLayout(QWidget):
         title.setStyleSheet("font-weight:700;")
         layout.addWidget(title)
 
+        self.quick_actions_bar = QFrame(panel)
+        self.quick_actions_bar.setObjectName("sciana_layout_quick_bar")
+        self.quick_actions_bar.setStyleSheet(
+            "QFrame#sciana_layout_quick_bar {"
+            "border: 1px solid #d8d8d8;"
+            "border-radius: 6px;"
+            "background: #fafafa;"
+            "}"
+        )
+        quick_layout = QHBoxLayout(self.quick_actions_bar)
+        quick_layout.setContentsMargins(8, 6, 8, 6)
+        quick_layout.setSpacing(6)
+
+        self.btn_q_save = QPushButton("Zapisz")
+        self.btn_q_save.clicked.connect(self._shortcut_save_wall)
+        quick_layout.addWidget(self.btn_q_save)
+
+        self.btn_q_overwrite = QPushButton("Nadpisz")
+        self.btn_q_overwrite.clicked.connect(self._on_overwrite)
+        quick_layout.addWidget(self.btn_q_overwrite)
+
+        self.btn_q_load = QPushButton("Wczytaj")
+        self.btn_q_load.clicked.connect(self._on_load)
+        quick_layout.addWidget(self.btn_q_load)
+
+        self.btn_q_new = QPushButton("Nowa")
+        self.btn_q_new.clicked.connect(self.start_new_wall)
+        quick_layout.addWidget(self.btn_q_new)
+
+        self.btn_q_focus_name = QPushButton("Nazwa")
+        self.btn_q_focus_name.clicked.connect(self._shortcut_focus_wall_name)
+        quick_layout.addWidget(self.btn_q_focus_name)
+
+        self.btn_q_next = QPushButton("Dalej")
+        self.btn_q_next.clicked.connect(self._on_go_to_komplet)
+        quick_layout.addWidget(self.btn_q_next)
+
+        self.btn_q_shortcuts = QPushButton("Skroty")
+        self.btn_q_shortcuts.clicked.connect(self._open_shortcuts_dialog)
+        quick_layout.addWidget(self.btn_q_shortcuts)
+
+        quick_layout.addStretch(1)
+        layout.addWidget(self.quick_actions_bar, 0)
+
         grp_front = QGroupBox("Widok z przodu", panel)
         grp_front_layout = QVBoxLayout(grp_front)
         grp_front_layout.setContentsMargins(8, 12, 8, 8)
@@ -1449,6 +1519,17 @@ class TabScianaLayout(QWidget):
             idx = 0
         self.cb_order.setCurrentIndex(idx)
         self.cb_order.blockSignals(False)
+        self._refresh_order_id_field()
+
+    def _refresh_order_id_field(self) -> None:
+        order_name = self._selected_order_name()
+        order_id = ""
+        if order_name:
+            order_def = self._order_store.get(order_name)
+            order_id = str(getattr(order_def, "order_id", "") or "").strip() if order_def is not None else ""
+        if not order_id:
+            order_id = str(self._order_id_context or "").strip()
+        self.ed_order_id.setText(order_id)
 
     def _reload_worker_choices(self, current_worker: str = "") -> None:
         current_worker = str(current_worker or "").strip()
@@ -1490,6 +1571,7 @@ class TabScianaLayout(QWidget):
             if order_def is not None:
                 worker_name = str(getattr(order_def, "worker_name", "") or "").strip()
         self._reload_worker_choices(current_worker=worker_name or self._selected_worker_name())
+        self._refresh_order_id_field()
         self._on_any_change()
 
     def _selected_order_details(self) -> tuple[str, str]:
@@ -1513,6 +1595,7 @@ class TabScianaLayout(QWidget):
             self._reload_client_choices(current_client=wall_client)
             self._reload_order_choices(selected_client=wall_client, current_order=wall_order)
             self._reload_worker_choices(current_worker=wall_worker)
+            self._refresh_order_id_field()
 
             idx = self.cb_layout_type.findData(str(getattr(self._wall, "layout_type", "line") or "line"))
             if idx < 0:
@@ -1635,6 +1718,124 @@ class TabScianaLayout(QWidget):
             return
         self.lab_store_status.setText(str(message_pl or ""))
         self.lab_store_status.setStyleSheet("color:#0f6a2f;" if ok else "color:#a61b1b;")
+
+    def _shortcut_save_wall(self) -> None:
+        name = str(self.ed_name.text().strip() or "")
+        existing = self._store.get(name) if name else None
+        if existing is not None:
+            self._on_overwrite()
+        else:
+            self._on_save_new()
+
+    def _shortcut_focus_wall_name(self) -> None:
+        self.ed_name.setFocus()
+        self.ed_name.selectAll()
+
+    def _shortcut_settings_key(self) -> str:
+        return "sciana_layout_shortcuts_v2"
+
+    def _default_shortcut_strings(self) -> list[str]:
+        out: list[str] = []
+        for action_key, (seq, _handler) in dict(getattr(self, "_shortcut_actions", {}) or {}).items():
+            out.append(f"{action_key}={seq}")
+        return out
+
+    def _load_shortcut_map(self) -> dict[str, str]:
+        raw = load_ui_string_list(self._shortcut_settings_key(), self._default_shortcut_strings())
+        parsed: dict[str, str] = {}
+        for row in raw:
+            text = str(row or "").strip()
+            if not text or "=" not in text:
+                continue
+            key, seq = text.split("=", 1)
+            action = str(key or "").strip()
+            value = str(seq or "").strip()
+            if action:
+                parsed[action] = value
+        return parsed
+
+    def _save_shortcut_map(self, mapping: dict[str, str]) -> None:
+        rows: list[str] = []
+        for action_key in dict(getattr(self, "_shortcut_actions", {}) or {}).keys():
+            seq = str(mapping.get(action_key, "") or "").strip()
+            if not seq:
+                seq = str(self._shortcut_actions[action_key][0] or "").strip()
+            rows.append(f"{action_key}={seq}")
+        save_ui_string_list(self._shortcut_settings_key(), rows)
+
+    def _setup_shortcuts_from_settings(self) -> None:
+        if not hasattr(self, "_shortcut_actions"):
+            return
+
+        if hasattr(self, "_shortcuts_runtime"):
+            for shortcut in list(getattr(self, "_shortcuts_runtime", []) or []):
+                try:
+                    shortcut.setParent(None)
+                    shortcut.deleteLater()
+                except Exception:
+                    pass
+
+        shortcut_map = self._load_shortcut_map()
+        self._shortcuts_runtime = []
+
+        for action_key, (default_seq, handler) in self._shortcut_actions.items():
+            seq_text = str(shortcut_map.get(action_key, default_seq) or "").strip()
+            if not seq_text:
+                continue
+            shortcut = QShortcut(QKeySequence(seq_text), self)
+            shortcut.activated.connect(handler)
+            self._shortcuts_runtime.append(shortcut)
+            setattr(self, f"_shortcut_{action_key}", shortcut)
+
+    def _open_shortcuts_dialog(self) -> None:
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Konfiguracja skrotow - Sciana")
+        lay = QVBoxLayout(dlg)
+        form = QFormLayout()
+        lay.addLayout(form)
+
+        labels = {
+            "save": "Zapisz",
+            "overwrite": "Nadpisz",
+            "load": "Wczytaj",
+            "new": "Nowa",
+            "next": "Dalej do kompletu",
+            "focus_name": "Fokus nazwy",
+        }
+
+        current_map = self._load_shortcut_map()
+        edits: dict[str, QLineEdit] = {}
+
+        for action_key, (default_seq, _handler) in self._shortcut_actions.items():
+            edit = QLineEdit(str(current_map.get(action_key, default_seq) or default_seq))
+            edit.setPlaceholderText(default_seq)
+            edits[action_key] = edit
+            form.addRow(labels.get(action_key, action_key), edit)
+
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        btn_reset = btns.addButton("Domyslne", QDialogButtonBox.ButtonRole.ResetRole)
+        btn_reset.clicked.connect(
+            lambda: [
+                edits[k].setText(str(self._shortcut_actions[k][0] or ""))
+                for k in self._shortcut_actions.keys()
+            ]
+        )
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        lay.addWidget(btns)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        new_map: dict[str, str] = {}
+        for action_key, edit in edits.items():
+            value = str(edit.text() or "").strip()
+            if not value:
+                value = str(self._shortcut_actions[action_key][0] or "")
+            new_map[action_key] = value
+
+        self._save_shortcut_map(new_map)
+        self._setup_shortcuts_from_settings()
 
     def _wall_snapshot_for_store(self) -> WallLayoutDef:
         self._pull_ui_to_wall()
@@ -2253,18 +2454,56 @@ class TabScianaLayout(QWidget):
         self._set_store_status(f'Wczytano sciane: "{self._wall.name}".', ok=True)
         return True
 
+    def _build_wall_notes_from_order_context(self, payload: dict[str, object], order_def: object | None) -> str:
+        sections: list[str] = []
+
+        quote_item_description = str(payload.get("quote_item_description", "") or "").strip()
+        if quote_item_description:
+            sections.append(quote_item_description)
+
+        order_notes = str(getattr(order_def, "notes", "") or payload.get("order_notes", "") or "").strip()
+        if order_notes:
+            sections.append(f"Notatki zamowienia: {order_notes}")
+
+        calendar_note = str(getattr(order_def, "calendar_note", "") or payload.get("order_calendar_note", "") or "").strip()
+        if calendar_note:
+            sections.append(f"Uwagi kalendarza: {calendar_note}")
+
+        if order_def is None:
+            fallback_lines: list[str] = []
+            order_status = str(payload.get("order_status", "") or "").strip()
+            calendar_stage = str(payload.get("order_calendar_stage", "") or "").strip()
+            calendar_date = str(payload.get("order_calendar_date", "") or "").strip()
+            site_address = str(payload.get("site_address", "") or "").strip()
+            if order_status:
+                fallback_lines.append(f"Status zamowienia: {order_status}")
+            if calendar_stage or calendar_date:
+                label = " / ".join(part for part in (calendar_stage, calendar_date) if part)
+                fallback_lines.append(f"Kalendarz: {label}")
+            if site_address:
+                fallback_lines.append(f"Adres realizacji: {site_address}")
+            if fallback_lines:
+                sections.append("\n".join(fallback_lines))
+
+        return "\n\n".join(section for section in sections if section)
+
     def start_new_wall_from_order_context(self, context: dict | None = None) -> None:
         payload = context if isinstance(context, dict) else {}
         quote_item_name = str(payload.get("quote_item_name", "") or "").strip()
-        quote_item_description = str(payload.get("quote_item_description", "") or "").strip()
         quote_item_kind = str(payload.get("quote_item_kind", "") or "").strip()
         order_name = str(payload.get("order_name", "") or "").strip()
+        order_def = self._order_store.get(order_name) if order_name else None
+        self._order_id_context = str(
+            payload.get("order_id", "") or getattr(order_def, "order_id", "") or ""
+        ).strip()
+        client_name = str(payload.get("client_name", "") or getattr(order_def, "client_name", "") or "").strip()
+        worker_name = str(payload.get("worker_name", "") or getattr(order_def, "worker_name", "") or "").strip()
         self._wall = WallLayoutDef(
             name=quote_item_name or "Sciana 1",
-            client_name=str(payload.get("client_name", "") or "").strip(),
+            client_name=client_name,
             order_name=order_name,
-            worker_name=str(payload.get("worker_name", "") or "").strip(),
-            notes=quote_item_description,
+            worker_name=worker_name,
+            notes=self._build_wall_notes_from_order_context(payload, order_def),
         )
         self._wall.photos = self._load_architect_reference_photos(
             order_name=order_name,
@@ -2290,8 +2529,30 @@ class TabScianaLayout(QWidget):
         else:
             self._set_store_status("Gotowa nowa sciana.", ok=True)
 
+    def _toggle_right_zone(self) -> None:
+        self._right_zone_visible = not self._right_zone_visible
+        splitter = self.right_zone.parent()
+        if splitter is None:
+            return
+        if self._right_zone_visible:
+            self.right_zone.setVisible(True)
+            self.right_zone_toggle.setText("▶ Panel informacyjny")
+            sizes = list(splitter.sizes())
+            if len(sizes) >= 3:
+                sizes[2] = self._right_zone_last_width
+                splitter.setSizes(sizes)
+        else:
+            sizes = list(splitter.sizes())
+            if len(sizes) >= 3:
+                self._right_zone_last_width = sizes[2]
+                sizes[2] = 0
+                splitter.setSizes(sizes)
+            self.right_zone.setVisible(False)
+            self.right_zone_toggle.setText("◀ Panel informacyjny")
+
     def start_new_wall(self) -> None:
-        self._wall = WallLayoutDef()
+        self._wall = WallLayoutDef(wall_id=new_wall_id())
+        self._order_id_context = ""
         self._selected_obstacle_index = -1
         self._set_selected_obstacle_index_on_previews(-1)
         self._loaded_wall_name = ""

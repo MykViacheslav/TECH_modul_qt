@@ -173,7 +173,22 @@ def build_module_parts(module: ModuleDef, catalog: CatalogStoreJson) -> Dict[str
         clear_width = max(0.0, inner_width - divider_count * thickness)
         segment_width = clear_width / (divider_count + 1) if (divider_count + 1) > 0 else clear_width
 
+    mount = str(getattr(module, "shelf_mount", "right") or "right").strip().lower()
+    mount_both = (mount == "both") and divider_count > 0
+
     for index in range(1, shelf_count + 1):
+        if mount_both:
+            for side_key, side_label in (("left", "L"), ("right", "P")):
+                key = f"shelf_{side_key}_{index}"
+                parts[key] = PartDef(
+                    key,
+                    f"Polka {side_label} {index}",
+                    carcass_key,
+                    {"w": segment_width, "h": depth_mm, "t": thickness},
+                    {},
+                )
+            continue
+
         key = f"shelf_{index}"
         parts[key] = PartDef(
             key,

@@ -1,0 +1,284 @@
+﻿[OK] C:\PythonProject\TECH_modul\data\catalog.json.py
+[OK] C:\PythonProject\TECH_modul\data\__init__.py
+[OK] C:\PythonProject\TECH_modul\src\__init__.py
+[OK] C:\PythonProject\TECH_modul\src\app\app_settings.py
+[ERR] C:\PythonProject\TECH_modul\src\app\main.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\src\app\main_window.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\src\app\__init__.py
+[ERR] C:\PythonProject\TECH_modul\src\core\drawing_settings.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\src\core\module_parts_service.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\src\core\__init__.py
+[ERR] C:\PythonProject\TECH_modul\src\core\costing\module_costs.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\src\core\costing\__init__.py
+[OK] C:\PythonProject\TECH_modul\src\core\rules\drawers.py
+[ERR] C:\PythonProject\TECH_modul\src\core\rules\hardware.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\src\core\rules\hinges.py
+[OK] C:\PythonProject\TECH_modul\src\core\rules\__init__.py
+[ERR] C:\PythonProject\TECH_modul\src\domain\assembly_models.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\src\domain\assembly_resolution_service.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\src\domain\client_models.py
+[OK] C:\PythonProject\TECH_modul\src\domain\material_profile_models.py
+[ERR] C:\PythonProject\TECH_modul\src\domain\material_profile_registry.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\src\domain\material_profile_service.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\src\domain\module_base_group.py
+[ERR] C:\PythonProject\TECH_modul\src\domain\module_family_registry.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\src\domain\module_family_resolver.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\src\domain\module_family_service.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\src\domain\module_models.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\src\domain\module_resolution_service.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\src\domain\order_models.py
+[OK] C:\PythonProject\TECH_modul\src\domain\resolved_module_models.py
+[OK] C:\PythonProject\TECH_modul\src\domain\wall_models.py
+[OK] C:\PythonProject\TECH_modul\src\domain\worker_models.py
+[ERR] C:\PythonProject\TECH_modul\src\domain\work_time_costing.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\src\domain\work_time_models.py
+[OK] C:\PythonProject\TECH_modul\src\domain\__init__.py
+[ERR] C:\PythonProject\TECH_modul\src\storage\assembly_store_json.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\src\storage\catalog_store_json.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\src\storage\client_store_json.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\src\storage\default_module_store_json.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\src\storage\module_store_json.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\src\storage\order_draft_store_json.py
+[ERR] C:\PythonProject\TECH_modul\src\storage\order_store_json.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\src\storage\resolved_preview_store_json.py
+[ERR] C:\PythonProject\TECH_modul\src\storage\session_store_json.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\src\storage\wall_store_json.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\src\storage\worker_store_json.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\src\storage\work_time_store_json.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\src\storage\__init__.py
+[ERR] C:\PythonProject\TECH_modul\src\tabs\registry.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\src\tabs\__init__.py
+[ERR] C:\PythonProject\TECH_modul\src\tabs\bazy\tab_bazy.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\src\tabs\bazy\__init__.py
+[ERR] C:\PythonProject\TECH_modul\src\tabs\czas_pracy\tab_czas_pracy.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\src\tabs\czas_pracy\__init__.py
+[OK] C:\PythonProject\TECH_modul\src\tabs\insights\tab_insights.py
+[ERR] C:\PythonProject\TECH_modul\src\tabs\kalendarz\tab_kalendarz.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\src\tabs\kalendarz\__init__.py
+[ERR] C:\PythonProject\TECH_modul\src\tabs\modul\dialog_catalog_editor.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\src\tabs\modul\dialog_load_module.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\src\tabs\modul\tab_modul.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\src\tabs\modul\__init__.py
+[OK] C:\PythonProject\TECH_modul\src\tabs\rysunek\drawing_settings_block.py
+[ERR] C:\PythonProject\TECH_modul\src\tabs\rysunek\tab_rysunek.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\src\tabs\rysunek\__init__.py
+[OK] C:\PythonProject\TECH_modul\src\tabs\schemat\tab_schemat.py
+[ERR] C:\PythonProject\TECH_modul\src\tabs\sciana\dialog_load_assembly.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\src\tabs\sciana\dialog_load_wall.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\src\tabs\sciana\tab_sciana.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\src\tabs\sciana\tab_sciana_layout.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\src\tabs\sciana\__init__.py
+[OK] C:\PythonProject\TECH_modul\src\tabs\start\tab_start.py
+[OK] C:\PythonProject\TECH_modul\src\tabs\start\__init__.py
+[ERR] C:\PythonProject\TECH_modul\src\tabs\wycena\tab_wycena.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\src\tabs\wycena\__init__.py
+[ERR] C:\PythonProject\TECH_modul\src\tabs\zamowienie\tab_nowe_zamowienie.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\src\tabs\zamowienie\__init__.py
+[OK] C:\PythonProject\TECH_modul\src\ui\collapsible_block.py
+[OK] C:\PythonProject\TECH_modul\src\ui\__init__.py
+[OK] C:\PythonProject\TECH_modul\tests\conftest.py
+[ERR] C:\PythonProject\TECH_modul\tests\module_resolution_service.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\tests\test_app_settings_modul_splitter_sizes.py
+[ERR] C:\PythonProject\TECH_modul\tests\test_assembly_store_json.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\tests\test_base_crud_save_overwrite_delete.py
+[OK] C:\PythonProject\TECH_modul\tests\test_bazy_tab.py
+[ERR] C:\PythonProject\TECH_modul\tests\test_blocks_all_contract.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\tests\test_blocks_materials.py
+[OK] C:\PythonProject\TECH_modul\tests\test_blocks_reference_point.py
+[OK] C:\PythonProject\TECH_modul\tests\test_blocks_visible_parts.py
+[OK] C:\PythonProject\TECH_modul\tests\test_bom_hardware_cost.py
+[OK] C:\PythonProject\TECH_modul\tests\test_bom_total_cost.py
+[ERR] C:\PythonProject\TECH_modul\tests\test_canvas_front_clickable.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_canvas_front_layout_top_position.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_canvas_front_top_view.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\tests\test_canvas_shelf_segment_mount.py
+[OK] C:\PythonProject\TECH_modul\tests\test_catalog_hardware_foundation.py
+[OK] C:\PythonProject\TECH_modul\tests\test_catalog_material_profiles_editor.py
+[OK] C:\PythonProject\TECH_modul\tests\test_catalog_pricing_foundation.py
+[ERR] C:\PythonProject\TECH_modul\tests\test_client_and_order_store_json.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\tests\test_czas_pracy_tab.py
+[ERR] C:\PythonProject\TECH_modul\tests\test_default_module_store.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_dimensions_block_hides_drawing_fields_in_modul.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\tests\test_dividers_change_rebuilds_parts.py
+[OK] C:\PythonProject\TECH_modul\tests\test_dividers_not_lost_when_front_inset.py
+[OK] C:\PythonProject\TECH_modul\tests\test_divider_can_be_removed_by_uncheck.py
+[ERR] C:\PythonProject\TECH_modul\tests\test_drawing_settings_block_extracted.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\tests\test_edgebanding_integration.py
+[OK] C:\PythonProject\TECH_modul\tests\test_front_auto_double_threshold.py
+[OK] C:\PythonProject\TECH_modul\tests\test_front_drawers_render_lines.py
+[OK] C:\PythonProject\TECH_modul\tests\test_front_gaps_render.py
+[ERR] C:\PythonProject\TECH_modul\tests\test_front_hardware_front_zone.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\tests\test_front_inset_between_sides.py
+[OK] C:\PythonProject\TECH_modul\tests\test_front_references_and_gaps.py
+[OK] C:\PythonProject\TECH_modul\tests\test_front_reference_modes_render.py
+[OK] C:\PythonProject\TECH_modul\tests\test_front_zone_drawers_layout.py
+[OK] C:\PythonProject\TECH_modul\tests\test_group_edgeband_defaults.py
+[OK] C:\PythonProject\TECH_modul\tests\test_kalendarz_tab.py
+[OK] C:\PythonProject\TECH_modul\tests\test_load_assembly_dialog.py
+[OK] C:\PythonProject\TECH_modul\tests\test_load_module_dialog_preview.py
+[OK] C:\PythonProject\TECH_modul\tests\test_load_wall_dialog.py
+[ERR] C:\PythonProject\TECH_modul\tests\test_main_window_has_rysunek_tab.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_main_window_syncs_hidden_dimensions_fields_from_rysunek.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_main_window_syncs_rysunek_to_modul.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_material_profile_def_domain.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_material_profile_edgebands_service.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_material_profile_registry.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_material_profile_service.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\tests\test_material_profile_ui_integration.py
+[OK] C:\PythonProject\TECH_modul\tests\test_module_cost_breakdown_service.py
+[ERR] C:\PythonProject\TECH_modul\tests\test_module_def_domain_fields.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_module_edgebands_domain.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_module_family_def_domain.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_module_family_registry.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_module_family_resolver.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_module_family_service.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_module_resolution_service.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_module_resolution_state_builder.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\tests\test_module_store_base_groups.py
+[OK] C:\PythonProject\TECH_modul\tests\test_nowe_zamowienie_tab.py
+[OK] C:\PythonProject\TECH_modul\tests\test_part_material_override.py
+[OK] C:\PythonProject\TECH_modul\tests\test_project_tree_block_height_limits.py
+[ERR] C:\PythonProject\TECH_modul\tests\test_resolved_module_domain_state.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_resolved_module_edgebands_builder.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_resolved_preview_store_json.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_rules_drawers.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_rules_hinges.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\tests\test_sciana_layout_tab.py
+[OK] C:\PythonProject\TECH_modul\tests\test_sciana_tab.py
+[OK] C:\PythonProject\TECH_modul\tests\test_session_view_block_hides_drawing_checkbox_in_modul.py
+[OK] C:\PythonProject\TECH_modul\tests\test_session_view_block_hides_hint_in_modul.py
+[OK] C:\PythonProject\TECH_modul\tests\test_shelves_change_rebuilds_parts.py
+[OK] C:\PythonProject\TECH_modul\tests\test_shelves_enabled_when_dividers_present.py
+[ERR] C:\PythonProject\TECH_modul\tests\test_smoke.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_tabs_registry_with_rysunek.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_tab_modul_apply_loaded_module.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_tab_modul_blocks_push_pull.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\tests\test_tab_modul_dimensions_and_front_settings.py
+[ERR] C:\PythonProject\TECH_modul\tests\test_tab_modul_domain_debug_snapshot.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_tab_modul_draw_settings_hidden_in_modul.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_tab_modul_effective_drawing_settings_helpers.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\tests\test_tab_modul_front_hardware_roundtrip.py
+[ERR] C:\PythonProject\TECH_modul\tests\test_tab_modul_hidden_dimensions_fields_sync_from_storage.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\tests\test_tab_modul_left_blocks_order.py
+[OK] C:\PythonProject\TECH_modul\tests\test_tab_modul_left_secondary_blocks_height_limits.py
+[ERR] C:\PythonProject\TECH_modul\tests\test_tab_modul_reload_drawing_settings_from_storage.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_tab_modul_resolved_domain_state.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_tab_modul_resolved_domain_state_accessor.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_tab_modul_resolved_preview_debug_autosave_on_change.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_tab_modul_resolved_preview_debug_autosave_on_load.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_tab_modul_resolved_preview_debug_file.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_tab_modul_resolved_preview_payload.py
+Traceback (most recent call last):
+[ERR] C:\PythonProject\TECH_modul\tests\test_tab_modul_resolved_preview_payload_json.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\tests\test_tab_modul_secondary_left_blocks_collapsed_on_start.py
+[ERR] C:\PythonProject\TECH_modul\tests\test_tab_modul_set_default.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\tests\test_tab_modul_startup_canvas_fit.py
+[ERR] C:\PythonProject\TECH_modul\tests\test_tab_modul_startup_selected_part.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\tests\test_tab_modul_temp_front_hide_preview.py
+[OK] C:\PythonProject\TECH_modul\tests\test_tab_modul_tree_block_height_limit.py
+[ERR] C:\PythonProject\TECH_modul\tests\test_tab_modul_uses_extracted_drawing_settings_block.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\tests\test_tab_modul_zone_splitter_persistence.py
+[ERR] C:\PythonProject\TECH_modul\tests\test_tab_rysunek_standalone.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\tests\test_top_bottom_rail_offsets.py
+[OK] C:\PythonProject\TECH_modul\tests\test_views_canvas_front_zone_drag.py
+[OK] C:\PythonProject\TECH_modul\tests\test_views_canvas_front_zone_handles.py
+[OK] C:\PythonProject\TECH_modul\tests\test_views_canvas_front_zone_render.py
+[ERR] C:\PythonProject\TECH_modul\tests\test_views_canvas_preview_mode.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\tests\test_views_canvas_rail_offset_drag.py
+[OK] C:\PythonProject\TECH_modul\tests\test_views_canvas_rail_offset_handles.py
+[OK] C:\PythonProject\TECH_modul\tests\test_visible_parts_block_height_limits.py
+[ERR] C:\PythonProject\TECH_modul\tests\test_wall_store_json.py
+Traceback (most recent call last):
+[OK] C:\PythonProject\TECH_modul\tests\test_wycena_tab.py
+[OK] C:\PythonProject\TECH_modul\tests\__init__.py

@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 
 from src.domain.material_profile_models import MaterialProfileDef
 from src.domain.material_profile_registry import build_default_material_profiles, get_default_material_profile
+from src.storage.data_paths import data_dir
 
 
 @dataclass(frozen=True)
@@ -58,9 +59,7 @@ class CatalogStoreJson:
 
     def __init__(self, path: Path | None = None) -> None:
         if path is None:
-            root = Path(__file__).resolve().parents[2]
-            proj = root.parent
-            path = proj / "data" / "catalog.json"
+            path = data_dir() / "catalog.json"
         self._path = path
         self._path.parent.mkdir(parents=True, exist_ok=True)
 

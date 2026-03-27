@@ -64,6 +64,8 @@ def test_front_settings_are_saved_into_draft(tmp_path, monkeypatch):
     _set_combo_by_data(w.fhw.cb_front_layout, "inset")
     _set_combo_by_data(w.fhw.cb_facade_mode, "drawers")
     w.fhw.sp_drawer_count.setValue(4)
+    _set_combo_by_data(w.fhw.cb_drawer_layout_mode, "small_top")
+    w.fhw.sp_drawer_small_front_h.setValue(160.0)
 
     _set_combo_by_data(w.fhw.cb_hinge_vendor, "generic")
     _set_combo_by_data(w.fhw.cb_drawer_vendor, "generic")
@@ -77,6 +79,8 @@ def test_front_settings_are_saved_into_draft(tmp_path, monkeypatch):
     assert w._draft.front_layout == "inset"
     assert w._draft.facade_mode == "drawers"
     assert w._draft.drawer_count == 4
+    assert w._draft.drawer_layout_mode == "small_top"
+    assert w._draft.drawer_small_front_height_mm == 160.0
     assert w._draft.hinge_vendor == "generic"
     assert w._draft.drawer_vendor == "generic"
     assert w._draft.drawer_tip_on is True

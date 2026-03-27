@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from PyQt6.QtCore import QRect, Qt
+from PyQt6.QtCore import QDate, QRect, Qt
 from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QDateEdit
 from PyQt6.QtGui import QColor, QImage, QPixmap
 
 
@@ -146,6 +146,78 @@ def test_nowe_zamowienie_tab_can_pick_client_from_base_dialog(tmp_path, monkeypa
 
     assert w.cb_client_name.currentText() == "Klient Dialog"
     assert w.ed_client_city.text() == "Poznan"
+
+
+def test_nowe_zamowienie_tab_loads_existing_worker_details_from_base(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.domain.worker_models import WorkerDef
+    from src.storage.worker_store_json import WorkerStoreJson
+    from src.tabs.zamowienie.tab_nowe_zamowienie import TabNoweZamowienie
+
+    worker_store = WorkerStoreJson(path=tmp_path / "workers.json")
+    worker_store.save_new(
+        WorkerDef(
+            name="Jan Testowy",
+            first_name="Jan",
+            last_name="Testowy",
+            worker_id="P0001",
+            role="Monter",
+            phone="700-800-900",
+            email="jan@test.pl",
+            notes="Zmiana A",
+        )
+    )
+
+    w = TabNoweZamowienie(worker_store=worker_store)
+    w.cb_worker_name.setCurrentText("Jan Testowy")
+
+    assert w.ed_worker_id.text() == "P0001"
+    assert w.ed_worker_first_name.text() == "Jan"
+    assert w.ed_worker_last_name.text() == "Testowy"
+    assert w.ed_worker_role.text() == "Monter"
+    assert w.ed_worker_phone.text() == "700-800-900"
+    assert w.ed_worker_email.text() == "jan@test.pl"
+
+
+def test_nowe_zamowienie_tab_clears_worker_base_details_for_custom_name(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.domain.worker_models import WorkerDef
+    from src.storage.worker_store_json import WorkerStoreJson
+    from src.tabs.zamowienie.tab_nowe_zamowienie import TabNoweZamowienie
+
+    worker_store = WorkerStoreJson(path=tmp_path / "workers.json")
+    worker_store.save_new(
+        WorkerDef(
+            name="Jan Testowy",
+            first_name="Jan",
+            last_name="Testowy",
+            worker_id="P0001",
+            role="Monter",
+            phone="700-800-900",
+            email="jan@test.pl",
+            notes="Zmiana A",
+        )
+    )
+
+    w = TabNoweZamowienie(worker_store=worker_store)
+    w.cb_worker_name.setCurrentText("Jan Testowy")
+    w.cb_worker_name.setCurrentText("Nowy Pracownik")
+
+    assert w.ed_worker_id.text() == ""
+    assert w.ed_worker_first_name.text() == "Nowy"
+    assert w.ed_worker_last_name.text() == "Pracownik"
+    assert w.ed_worker_role.text() == ""
+    assert w.ed_worker_phone.text() == ""
+    assert w.ed_worker_email.text() == ""
+    assert w.ed_worker_notes.toPlainText() == ""
 
 
 def test_nowe_zamowienie_tab_restores_saved_draft_on_next_open(tmp_path, monkeypatch):
@@ -1068,6 +1140,67 @@ def test_nowe_zamowienie_tab_saves_and_loads_architect_attachments_with_order(tm
     assert w2.tbl_architect_attachments.item(0, 2).text() == "Wizualizacja lazienki"
 
 
+def test_nowe_zamowienie_tab_imports_imagemeter_paths_with_dedup_and_skip(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.tabs.zamowienie.tab_nowe_zamowienie import TabNoweZamowienie
+
+    image_path = tmp_path / "pomiar_1.png"
+    image = QImage(120, 80, QImage.Format.Format_ARGB32)
+    image.fill(QColor("#22c55e"))
+    assert image.save(str(image_path), "PNG")
+
+    pdf_path = tmp_path / "pomiar_2.pdf"
+    pdf_path.write_text("pdf", encoding="utf-8")
+
+    bad_path = tmp_path / "pomiar_3.txt"
+    bad_path.write_text("x", encoding="utf-8")
+
+    w = TabNoweZamowienie()
+    imported, skipped, duplicates = w._import_imagemeter_paths(
+        [str(image_path), str(pdf_path), str(bad_path), str(image_path)]
+    )
+
+    assert imported == 2
+    assert skipped == 1
+    assert duplicates == 1
+    assert w.tbl_architect_attachments.rowCount() == 2
+    assert w.tbl_architect_attachments.item(0, 1).text() == "ImageMeter Pro"
+    assert w.tbl_architect_attachments.item(1, 1).text() == "ImageMeter Pro"
+    assert str(w._architect_attachments[0].get("source_app", "")) == "ImageMeter Pro"
+
+
+def test_nowe_zamowienie_tab_button_import_imagemeter_files(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.tabs.zamowienie import tab_nowe_zamowienie as order_tab_module
+    from src.tabs.zamowienie.tab_nowe_zamowienie import TabNoweZamowienie
+
+    image_path = tmp_path / "imet_1.jpg"
+    image = QImage(100, 60, QImage.Format.Format_ARGB32)
+    image.fill(QColor("#0ea5e9"))
+    assert image.save(str(image_path), "JPG")
+
+    monkeypatch.setattr(
+        order_tab_module.QFileDialog,
+        "getOpenFileNames",
+        lambda *args, **kwargs: ([str(image_path)], "Pliki ImageMeter"),
+    )
+
+    w = TabNoweZamowienie()
+    QTest.mouseClick(w.btn_import_imagemeter_files, Qt.MouseButton.LeftButton)
+
+    assert w.tbl_architect_attachments.rowCount() == 1
+    assert w.tbl_architect_attachments.item(0, 0).text() == "imet_1.jpg"
+    assert "Import ImageMeter Pro" in w.lab_status.text()
+
+
 def test_nowe_zamowienie_tab_saves_and_loads_quote_items_with_order(tmp_path, monkeypatch):
     monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TECH_MODUL_TESTING", "1")
@@ -1102,3 +1235,175 @@ def test_nowe_zamowienie_tab_saves_and_loads_quote_items_with_order(tmp_path, mo
     assert w2.tbl_quote_items.item(0, 0).text() == "Szafa wneka"
     assert w2.tbl_quote_items.item(0, 1).text() == "Szafa"
     assert w2.tbl_quote_items.item(0, 2).text() == "Przedpokoj, lustro i siedzisko"
+
+
+def test_nowe_zamowienie_tab_autofills_order_id_and_saves_calendar_date(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.storage.order_store_json import OrderStoreJson
+    from src.tabs.zamowienie.tab_nowe_zamowienie import TabNoweZamowienie
+
+    order_store = OrderStoreJson(path=tmp_path / "orders.json")
+    w = TabNoweZamowienie(order_store=order_store)
+
+    assert w.ed_order_id.text().startswith("ORD-")
+    assert isinstance(w.ed_date_wycena, QDateEdit)
+    assert w.ed_date_wycena.calendarPopup() is True
+
+    w.cb_client_name.setCurrentText("Klient Daty")
+    w.ed_order_code.setText("ORDER-DATY-1")
+    w.ed_date_wycena.setDate(QDate(2026, 4, 3))
+    QTest.mouseClick(w.btn_save_order, Qt.MouseButton.LeftButton)
+
+    saved = order_store.get("ORDER-DATY-1")
+    assert saved is not None
+    assert saved.date_wycena == "2026-04-03"
+
+
+def test_nowe_zamowienie_tab_syncs_order_schedule_dates_to_calendar_events(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.storage.calendar_event_store_json import CalendarEventStoreJson
+    from src.storage.order_store_json import OrderStoreJson
+    from src.tabs.zamowienie.tab_nowe_zamowienie import TabNoweZamowienie
+
+    order_store = OrderStoreJson(path=tmp_path / "orders.json")
+    calendar_store = CalendarEventStoreJson(path=tmp_path / "calendar_events.json")
+
+    w = TabNoweZamowienie(order_store=order_store, calendar_store=calendar_store)
+    w.cb_client_name.setCurrentText("Klient Harmonogram")
+    w.cb_worker_name.setCurrentText("Jan Kalendarz")
+    w.ed_order_code.setText("ORDER-KAL-SYNC-1")
+    w.ed_date_wycena.setDate(QDate(2026, 4, 3))
+    w.ed_date_montaz.setDate(QDate(2026, 5, 7))
+
+    QTest.mouseClick(w.btn_save_order, Qt.MouseButton.LeftButton)
+
+    events = [ev for ev in calendar_store.list_events() if str(ev.order_code or "") == "ORDER-KAL-SYNC-1"]
+    assert len(events) >= 2
+    assert any(ev.date == "2026-04-03" and "Wycena" in ev.title for ev in events)
+    assert any(ev.date == "2026-05-07" and "Montaz" in ev.title for ev in events)
+
+    w.ed_date_wycena.setDate(w.ed_date_wycena.minimumDate())
+    QTest.mouseClick(w.btn_overwrite_all, Qt.MouseButton.LeftButton)
+
+    events_after = [ev for ev in calendar_store.list_events() if str(ev.order_code or "") == "ORDER-KAL-SYNC-1"]
+    assert any(ev.date == "2026-05-07" and "Montaz" in ev.title for ev in events_after)
+
+
+def test_nowe_zamowienie_tab_starts_with_launcher_in_app_mode(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("TECH_MODUL_TESTING", raising=False)
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.tabs.zamowienie.tab_nowe_zamowienie import TabNoweZamowienie
+
+    w = TabNoweZamowienie()
+    w.show()
+    app.processEvents()
+
+    assert w.start_entry_bar.isVisible()
+    assert not w.scroll_area.isVisible()
+
+    QTest.mouseClick(w.btn_start_new_order, Qt.MouseButton.LeftButton)
+
+    assert w.scroll_area.isVisible()
+    assert not w.start_entry_bar.isVisible()
+    assert w.ed_order_id.text().startswith("ORD-")
+
+
+def test_nowe_zamowienie_tab_generates_unique_order_ids_between_new_cards(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.tabs.zamowienie.tab_nowe_zamowienie import TabNoweZamowienie
+
+    w = TabNoweZamowienie()
+    first_id = w.ed_order_id.text()
+
+    w.start_new_order(force_blank=True)
+    second_id = w.ed_order_id.text()
+
+    assert first_id.startswith("ORD-")
+    assert second_id.startswith("ORD-")
+    assert first_id != second_id
+
+
+def test_nowe_zamowienie_tab_saves_and_loads_quote_item_quantity(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.tabs.zamowienie import tab_nowe_zamowienie as order_tab_module
+    from src.storage.order_store_json import OrderStoreJson
+    from src.tabs.zamowienie.tab_nowe_zamowienie import TabNoweZamowienie
+
+    order_store = OrderStoreJson(path=tmp_path / "orders.json")
+
+    w = TabNoweZamowienie(order_store=order_store)
+    w.cb_client_name.setCurrentText("Klient Ilosc")
+    w.ed_order_code.setText("ORDER-QTY-1")
+    w.ed_quote_item_name.setText("Kuchnia salon")
+    w.cb_quote_item_kind.setCurrentText("Kuchnia")
+    w.sp_quote_item_quantity.setValue(3)
+    w.ed_quote_item_description.setText("Wyspa i slupki")
+    QTest.mouseClick(w.btn_add_quote_item, Qt.MouseButton.LeftButton)
+    QTest.mouseClick(w.btn_save_order, Qt.MouseButton.LeftButton)
+
+    saved = order_store.get("ORDER-QTY-1")
+    assert saved is not None
+    assert saved.quote_items[0]["quantity"] == "3"
+
+    monkeypatch.setattr(
+        order_tab_module.QInputDialog,
+        "getItem",
+        lambda *args, **kwargs: ("ORDER-QTY-1", True),
+    )
+
+    w2 = TabNoweZamowienie(order_store=order_store)
+    QTest.mouseClick(w2.btn_pick_order, Qt.MouseButton.LeftButton)
+
+    assert w2.tbl_quote_items.rowCount() == 1
+    assert w2.tbl_quote_items.item(0, 3).text() == "3"
+
+
+def test_nowe_zamowienie_tab_appends_status_history_on_status_change(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.storage.order_store_json import OrderStoreJson
+    from src.tabs.zamowienie.tab_nowe_zamowienie import TabNoweZamowienie
+
+    order_store = OrderStoreJson(path=tmp_path / "orders.json")
+
+    w = TabNoweZamowienie(order_store=order_store)
+    w.cb_client_name.setCurrentText("Klient Historia")
+    w.cb_worker_name.setCurrentText("Jan Status")
+    w.ed_order_code.setText("ORDER-HIST-1")
+    w.cb_order_status.setCurrentText("Nowe")
+    w.sp_order_progress.setValue(10)
+    QTest.mouseClick(w.btn_save_new, Qt.MouseButton.LeftButton)
+
+    w.cb_order_status.setCurrentText("Wycena")
+    w.sp_order_progress.setValue(35)
+    QTest.mouseClick(w.btn_overwrite_all, Qt.MouseButton.LeftButton)
+
+    saved = order_store.get("ORDER-HIST-1")
+    assert saved is not None
+    assert len(saved.status_history) >= 1
+    last = saved.status_history[-1]
+    assert last["from_status"] == "Nowe"
+    assert last["to_status"] == "Wycena"
+    assert "35" in str(last.get("note", ""))

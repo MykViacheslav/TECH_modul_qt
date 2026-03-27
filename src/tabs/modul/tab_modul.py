@@ -3,11 +3,11 @@ import json
 from dataclasses import replace
 from typing import Dict, Optional, Tuple
 from PyQt6.QtCore import Qt, pyqtSignal, QRectF, QPointF, QTimer, QEvent
-from PyQt6.QtGui import QBrush, QPen, QPainter, QColor, QPolygonF
+from PyQt6.QtGui import QBrush, QPen, QPainter, QColor, QPolygonF, QKeySequence, QShortcut
 from PyQt6.QtWidgets import *
 from src.ui.collapsible_block import CollapsibleBlock
 from src.domain.module_base_group import BASE_GROUP_LABELS_PL, BASE_GROUP_ORDER, module_base_group_label_pl
-from src.domain.module_models import ModuleDef, PartDef, module_type_to_cabinet_kind, normalize_module_type
+from src.domain.module_models import ModuleDef, PartDef, module_type_to_cabinet_kind, new_module_id
 from src.domain.module_resolution_service import build_resolved_module_domain_state
 from src.storage.module_store_json import ModuleStoreJson
 from src.storage.resolved_preview_store_json import save_resolved_preview_payload
@@ -19,15 +19,40 @@ from src.app.app_settings import (
     save_drawing_settings,
     load_modul_splitter_sizes,
     save_modul_splitter_sizes,
+    load_ui_string_list,
+    save_ui_string_list,
     DrawingSettings,
 )
 from src.storage.session_store_json import load_last_session, save_last_session, clear_last_session
-from src.storage.default_module_store_json import load_default_module, save_default_module
 from src.tabs.modul.dialog_load_module import LoadModuleDialog
-from src.tabs.modul.dialog_catalog_editor import CatalogEditorDialog
 from src.storage.default_module_store_json import load_default_module, save_default_module, clear_default_module
 import os
 from src.tabs.rysunek.drawing_settings_block import DrawingSettingsBlock as ExtractedDrawingSettingsBlock
+from src.tabs.modul.material_grouping import (
+    collapse_profile_map_to_groups,
+    expand_group_edgebands_to_module_map,
+    get_material_edge_group_for_part_key,
+    get_material_group_for_part_key,
+    normalize_part_key_for_model,
+    resolve_group_edgeband_defaults,
+)
+from src.tabs.modul.carcass_joints_block import CarcassJointsBlock
+from src.tabs.modul.dimensions_block import DimensionsBlock
+from src.tabs.modul.dividers_block import DividersBlock
+from src.tabs.modul.edge_banding_block import EDGE_SIDES_PL, EdgeBandingBlock
+from src.tabs.modul.front_hardware_block import FrontHardwareBlock
+from src.tabs.modul.materials_block import MaterialsBlock
+from src.tabs.modul.module_defaults import (
+    _is_startup_module_state_valid,
+    build_default_module,
+    build_factory_default_module,
+    normalize_rail_offsets_mm,
+)
+from src.tabs.modul.project_tree_block import ProjectTreeBlock
+from src.tabs.modul.reference_point_block import ReferencePointBlock
+from src.tabs.modul.session_view_block import SessionAndViewBlock
+from src.tabs.modul.shelves_block import ShelvesBlock
+from src.tabs.modul.visible_parts_block import VisiblePartsBlock
 # ==========================================================
 # KOMPATYBILNOSC WSTECZNA
 # ----------------------------------------------------------
@@ -76,255 +101,10 @@ class ZoneFrame(QFrame):
             QFrame#zone_left, QFrame#zone_center, QFrame#zone_right {
                 border: 2px solid #cc0000;
                 border-radius: 8px;
+                background: #ffffff;
             }
         """)
 # endregion
-
-
-# ==========================================================
-# region TEMP_MEMORY (pamiec tymczasowa w RAM)
-# ==========================================================
-PARTS_PL: Dict[str, str] = {
-    "side_left": "Bok lewy",
-    "side_right": "Bok prawy",
-    "top": "Wieniec gorny",
-    "bottom": "Wieniec dolny",
-    "shelf": "Polka",
-    "back": "Plecy",
-    "front": "Front",
-    "divider": "Pion",
-}
-
-EDGE_SIDES_PL: Dict[str, str] = {
-    "left": "Lewa",
-    "right": "Prawa",
-    "top": "Gora",
-    "bottom": "Dol",
-}
-
-EDGE_SIDES_SHORT_PL: Dict[str, str] = {
-    "left": "L",
-    "right": "P",
-    "top": "G",
-    "bottom": "D",
-}
-
-MATERIAL_EDGE_GROUP_KEYS: Dict[str, tuple[str, ...]] = {
-    "carcass": ("carcass", "side", "top", "bottom", "shelf", "divider"),
-    "front": ("front",),
-    "back": ("back",),
-}
-
-PROFILE_GROUP_KEYS: Dict[str, tuple[str, ...]] = {
-    "carcass": ("carcass", "side", "top", "bottom", "shelf", "divider"),
-    "front": ("front",),
-    "back": ("back",),
-}
-
-
-def resolve_group_edgeband_defaults(
-    edgebands: Dict[str, str] | None,
-    fallback_key: str = "Brak",
-) -> Dict[str, str]:
-    source = dict(edgebands or {})
-    fallback = str(fallback_key or "Brak").strip() or "Brak"
-    out: Dict[str, str] = {}
-
-    for group_key, logical_keys in MATERIAL_EDGE_GROUP_KEYS.items():
-        selected = ""
-        for logical_key in logical_keys:
-            raw = str(source.get(logical_key, "") or "").strip()
-            if raw:
-                selected = raw
-                break
-        out[group_key] = selected or fallback
-
-    return out
-
-
-def expand_group_edgebands_to_module_map(
-    group_defaults: Dict[str, str] | None,
-    base_map: Dict[str, str] | None = None,
-) -> Dict[str, str]:
-    source = dict(group_defaults or {})
-    out = dict(base_map or {})
-
-    for group_key, logical_keys in MATERIAL_EDGE_GROUP_KEYS.items():
-        selected = str(source.get(group_key, out.get(group_key, "Brak")) or "Brak").strip() or "Brak"
-        out[group_key] = selected
-        for logical_key in logical_keys:
-            out[logical_key] = selected
-
-    return out
-
-
-def normalize_part_key_for_model(part_key: str) -> str:
-    base_key = str(part_key or "").strip()
-    if "__" in base_key:
-        base_key = base_key.split("__", 1)[0]
-    if "@" in base_key:
-        base_key = base_key.split("@", 1)[0]
-    return base_key
-
-
-def get_material_edge_group_for_part_key(part_key: str) -> str:
-    base_key = normalize_part_key_for_model(part_key)
-
-    if base_key == "front":
-        return "front"
-    if base_key == "back":
-        return "back"
-    if base_key.startswith("shelf_") or base_key == "shelf":
-        return "carcass"
-    if base_key.startswith("divider_") or base_key == "divider":
-        return "carcass"
-    if base_key in ("side_left", "side_right", "top", "bottom"):
-        return "carcass"
-
-    return "carcass"
-
-
-def get_material_group_for_part_key(part_key: str) -> str:
-    return get_material_edge_group_for_part_key(part_key)
-
-
-def collapse_profile_map_to_groups(
-    source_map: Dict[str, str] | None,
-    fallback_map: Dict[str, str] | None = None,
-) -> Dict[str, str]:
-    source = dict(source_map or {})
-    fallback = dict(fallback_map or {})
-    out: Dict[str, str] = {}
-
-    for group_key, logical_keys in PROFILE_GROUP_KEYS.items():
-        selected = ""
-        for logical_key in logical_keys:
-            raw = str(source.get(logical_key, "") or "").strip()
-            if raw:
-                selected = raw
-                break
-        if not selected:
-            selected = str(fallback.get(group_key, "") or "").strip()
-        if selected:
-            out[group_key] = selected
-
-    return out
-
-
-JOINT_TYPES_PL: Dict[str, str] = {
-    "type1": "Typ 1: wience miedzy bokami",
-    "type2": "Typ 2: boki miedzy wiencami",
-}
-
-CABINET_KIND_PL = {
-    "lower": "Dolna (punkt od dolu)",
-    "upper": "Gorna (punkt od gory)",
-}
-
-REF_POINTS_BY_KIND_PL = {
-    "lower": {
-        "LBB": "Lewy-TYL-DOL (0,0,0)",
-        "CBB": "Srodek-TYL-DOL",
-        "RBB": "Prawy-TYL-DOL",
-    },
-    "upper": {
-        "LBT": "Lewy-TYL-GORA (0,0,0)",
-        "CBT": "Srodek-TYL-GORA",
-        "RBT": "Prawy-TYL-GORA",
-    }
-}
-SHELF_MOUNT_PL = {
-    "left": "Polki po LEWEJ stronie pionu",
-    "right": "Polki po PRAWEJ stronie pionu",
-}
-
-MODULE_TYPE_PL = {
-    "legacy": "Standard",
-    "hanging": "Wiszacy",
-    "legs": "Na nozkach",
-    "legs_plinth": "Na nozkach z cokolem",
-    "corner": "Szafka narozna",
-}
-
-def build_default_module() -> ModuleDef:
-    m = load_default_module()
-    if _is_startup_module_state_valid(m):
-        return m
-
-    return build_factory_default_module()
-
-
-
-def build_factory_default_module() -> ModuleDef:
-    # FABRYCZNY START (gdy nie ustawiono "startowego")
-    return ModuleDef(
-        name="",
-        base_group="kitchen",
-        width_mm=800.0,
-        depth_mm=500.0,
-        height_mm=500.0,
-        carcass_joint_type="type1",
-        shelf_count=1,
-        divider_count=0,
-        shelf_mount="right",
-        module_type="legacy",
-        cabinet_kind="lower",
-        ref_point="LBB",
-        material_profile_key="STD_WHITE",
-        visible_parts=set(["side_left", "side_right", "top", "bottom", "shelf", "back", "front"]),
-        materials={"carcass": "PB18", "front": "MDF19", "back": "HDF2.5"},
-        parts={},
-    )
-
-
-
-def _is_startup_module_state_valid(m: ModuleDef | None) -> bool:
-    if m is None:
-        return False
-
-    try:
-        width_mm = float(getattr(m, "width_mm", 0.0) or 0.0)
-        depth_mm = float(getattr(m, "depth_mm", 0.0) or 0.0)
-        height_mm = float(getattr(m, "height_mm", 0.0) or 0.0)
-    except Exception:
-        return False
-
-    if width_mm < 100.0 or depth_mm < 100.0 or height_mm < 100.0:
-        return False
-
-    visible_parts = set(getattr(m, "visible_parts", set()) or set())
-    if not visible_parts:
-        return False
-
-    return True
-# endregion
-
-def normalize_rail_offsets_mm(
-    height_mm: float,
-    rail_thickness_mm: float,
-    top_offset_mm: float,
-    bottom_offset_mm: float,
-) -> tuple[float, float]:
-    H = max(0.0, float(height_mm))
-    t = max(0.0, float(rail_thickness_mm))
-
-    try:
-        top = max(0.0, float(top_offset_mm))
-    except Exception:
-        top = 0.0
-
-    try:
-        bottom = max(0.0, float(bottom_offset_mm))
-    except Exception:
-        bottom = 0.0
-
-    max_top = max(0.0, H - 2.0 * t)
-    top = min(top, max_top)
-
-    max_bottom = max(0.0, H - 2.0 * t - top)
-    bottom = min(bottom, max_bottom)
-
-    return top, bottom
 
 
 # ==========================================================
@@ -338,1598 +118,9 @@ class NoWheelDoubleSpinBox(QDoubleSpinBox):
             return
         super().wheelEvent(e)
 # endregion
-
-
-# ==========================================================
-# region BLOCK: ProjectTree (drzewo projektu)
-# ==========================================================
-class ProjectTreeBlock(QWidget):
-    sig_selected_part = pyqtSignal(str)
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.setMinimumHeight(240)
-
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(6)
-
-        self.tree = QTreeWidget(self)
-        self.tree.setHeaderHidden(True)
-
-        # UX:
-        # drzewo projektu nie powinno dominowac lewej kolumny po starcie
-        self.tree.setMinimumHeight(120)
-        self.tree.setMaximumHeight(180)
-
-        # Multi-select (Ctrl/Shift)
-        self.tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-
-        lay.addWidget(self.tree, 0)
-        lay.addStretch(1)
-
-        self.tree.itemSelectionChanged.connect(self._emit_selection)
-
-        self._root = QTreeWidgetItem(["Modul"])
-        self.tree.addTopLevelItem(self._root)
-
-        self._items: Dict[str, QTreeWidgetItem] = {}
-
-    def rebuild_from_module(self, m: ModuleDef) -> None:
-        self.tree.blockSignals(True)
-        self._root.takeChildren()
-        self._items.clear()
-
-        base = ["side_left", "side_right", "top", "bottom", "back", "front", "divider"]
-        shelf_keys = sorted(
-            [k for k in (m.parts or {}).keys() if k.startswith("shelf_")],
-            key=lambda x: int(x.split("_")[1]) if x.split("_")[1].isdigit() else 999
-        )
-
-        keys = [k for k in base if k in (m.parts or {})] + shelf_keys
-        rest = [k for k in (m.parts or {}).keys() if k not in keys]
-        keys += sorted(rest)
-
-        for k in keys:
-            p = m.parts.get(k)
-            if not p:
-                continue
-            it = QTreeWidgetItem([p.name_pl])
-            it.setData(0, Qt.ItemDataRole.UserRole, k)
-            self._root.addChild(it)
-            self._items[k] = it
-
-        self.tree.expandAll()
-        self.tree.blockSignals(False)
-
-    def selected_part_keys(self) -> list[str]:
-        out: list[str] = []
-        for it in self.tree.selectedItems():
-            k = it.data(0, Qt.ItemDataRole.UserRole)
-            if isinstance(k, str) and k:
-                out.append(k)
-        # unikalne z zachowaniem kolejnosci
-        seen = set()
-        uniq: list[str] = []
-        for k in out:
-            if k not in seen:
-                uniq.append(k)
-                seen.add(k)
-        return uniq
-
-    def select_part(self, part_key: str) -> None:
-        it = self._items.get(part_key)
-        if it is None:
-            return
-        self.tree.blockSignals(True)
-        self.tree.clearSelection()
-        it.setSelected(True)
-        self.tree.setCurrentItem(it)
-        self.tree.blockSignals(False)
-
-    def toggle_part(self, part_key: str) -> None:
-        it = self._items.get(part_key)
-        if it is None:
-            return
-
-        self.tree.blockSignals(True)
-
-        # nie pozwol zejsc do 0 zaznaczen (zeby prawa strona nie robi'a "(brak)")
-        selected_before = self.tree.selectedItems()
-        is_sel = it.isSelected()
-        if is_sel and len(selected_before) <= 1:
-            # zostaw 1 zaznaczony
-            self.tree.setCurrentItem(it)
-            self.tree.blockSignals(False)
-            return
-
-        it.setSelected(not is_sel)
-        self.tree.setCurrentItem(it)
-
-        self.tree.blockSignals(False)
-
-    def _emit_selection(self) -> None:
-        cur = self.tree.currentItem()
-        if cur is None:
-            items = self.tree.selectedItems()
-            cur = items[0] if items else None
-        if cur is None:
-            return
-
-        key = cur.data(0, Qt.ItemDataRole.UserRole)
-        if isinstance(key, str) and key:
-            self.sig_selected_part.emit(key)
-# endregion
-
-
-# ==========================================================
-# region BLOCK: Dimensions (L/W/H) + baza modu'ow (CRUD)
-# ==========================================================
-class DimensionsBlock(QWidget):
-    sig_save = pyqtSignal()
-    sig_load = pyqtSignal()
-    sig_overwrite = pyqtSignal()
-    sig_delete = pyqtSignal()
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(8)
-
-        form = QFormLayout()
-        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-
-        self.ed_name = QLineEdit()
-        self.ed_name.setPlaceholderText("np. MOD_800x500x720")
-
-        self.cb_base_group = QComboBox()
-        for key in BASE_GROUP_ORDER:
-            self.cb_base_group.addItem(BASE_GROUP_LABELS_PL.get(key, key), key)
-
-        self.sp_w = QDoubleSpinBox()
-        self.sp_w.setRange(1, 10000)
-        self.sp_w.setDecimals(1)
-        self.sp_w.setSuffix(" mm")
-
-        self.sp_d = QDoubleSpinBox()
-        self.sp_d.setRange(1, 10000)
-        self.sp_d.setDecimals(1)
-        self.sp_d.setSuffix(" mm")
-
-        self.sp_h = QDoubleSpinBox()
-        self.sp_h.setRange(1, 10000)
-        self.sp_h.setDecimals(1)
-        self.sp_h.setSuffix(" mm")
-
-        self.sp_top_rail_offset = QDoubleSpinBox()
-        self.sp_top_rail_offset.setRange(0.0, 10000.0)
-        self.sp_top_rail_offset.setDecimals(1)
-        self.sp_top_rail_offset.setSuffix(" mm")
-        self.sp_top_rail_offset.setValue(0.0)
-
-        self.sp_bottom_rail_offset = QDoubleSpinBox()
-        self.sp_bottom_rail_offset.setRange(0.0, 10000.0)
-        self.sp_bottom_rail_offset.setDecimals(1)
-        self.sp_bottom_rail_offset.setSuffix(" mm")
-        self.sp_bottom_rail_offset.setValue(0.0)
-
-        self.sp_hinge_edge_offset = QDoubleSpinBox()
-        self.sp_hinge_edge_offset.setRange(0.0, 100.0)
-        self.sp_hinge_edge_offset.setDecimals(1)
-        self.sp_hinge_edge_offset.setSuffix(" mm")
-        self.sp_hinge_edge_offset.setValue(12.0)
-
-        self.sp_auto_double_front_width = QDoubleSpinBox()
-        self.sp_auto_double_front_width.setRange(200.0, 2000.0)
-        self.sp_auto_double_front_width.setDecimals(1)
-        self.sp_auto_double_front_width.setSuffix(" mm")
-        self.sp_auto_double_front_width.setValue(600.0)
-
-        form.addRow("Nazwa modulu", self.ed_name)
-        form.addRow("Grupa bazy", self.cb_base_group)
-        form.addRow("Szerokosc (L)", self.sp_w)
-        form.addRow("Glebokosc (W)", self.sp_d)
-        form.addRow("Wysokosc (H)", self.sp_h)
-        form.addRow("Offset wienca gornego", self.sp_top_rail_offset)
-        form.addRow("Offset wienca dolnego", self.sp_bottom_rail_offset)
-
-        # TECH:
-        # Te 2 pola sa juz logicznie przenoszone do zak'adki "Rysunek".
-        # Zostawiamy widgety dla zgodnosci wstecznej,
-        # ale ukrywamy je w zakladce "Modul".
-        form.addRow("Offset zawiasu od brzegu", self.sp_hinge_edge_offset)
-        form.addRow("Auto 2 drzwi od szerokosci", self.sp_auto_double_front_width)
-
-        _lab_hinge = form.labelForField(self.sp_hinge_edge_offset)
-        if _lab_hinge is not None:
-            _lab_hinge.hide()
-        self.sp_hinge_edge_offset.hide()
-
-        _lab_auto = form.labelForField(self.sp_auto_double_front_width)
-        if _lab_auto is not None:
-            _lab_auto.hide()
-        self.sp_auto_double_front_width.hide()
-
-        lay.addLayout(form)
-
-        btns = QHBoxLayout()
-        self.btn_save = QPushButton("Zapisz")
-        self.btn_load = QPushButton("Wczytaj")
-        self.btn_over = QPushButton("Nadpisz")
-        self.btn_del = QPushButton("Usun")
-
-        btns.addWidget(self.btn_save)
-        btns.addWidget(self.btn_load)
-        btns.addWidget(self.btn_over)
-        btns.addWidget(self.btn_del)
-        lay.addLayout(btns)
-
-        self.btn_save.clicked.connect(self.sig_save.emit)
-        self.btn_load.clicked.connect(self.sig_load.emit)
-        self.btn_over.clicked.connect(self.sig_overwrite.emit)
-        self.btn_del.clicked.connect(self.sig_delete.emit)
-# endregion
-
-
-# ==========================================================
-# region BLOCK: Visible parts (checkboxy)
-# ==========================================================
-class VisiblePartsBlock(QWidget):
-    sig_changed = pyqtSignal()
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-
-        self.setMinimumHeight(150)
-        self.setMaximumHeight(220)
-
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(6)
-
-        self.chk: Dict[str, QCheckBox] = {}
-
-        order = [
-            "side_left",
-            "side_right",
-            "top",
-            "bottom",
-            "shelf",
-            "back",
-            "front",
-            "divider",
-        ]
-
-        for key in order:
-            label = PARTS_PL.get(key, key)
-            cb = QCheckBox(label)
-            cb.stateChanged.connect(self.sig_changed.emit)
-            self.chk[key] = cb
-            lay.addWidget(cb)
-
-        lay.addStretch(1)
-
-    def set_checked(self, visible_parts: set[str]) -> None:
-        for key, cb in self.chk.items():
-            cb.blockSignals(True)
-            cb.setChecked(key in visible_parts)
-            cb.blockSignals(False)
-
-    def get_visible_parts(self) -> set[str]:
-        return {k for k, cb in self.chk.items() if cb.isChecked()}
-
-    def set_part_checked(self, key: str, checked: bool) -> None:
-        cb = self.chk.get(str(key))
-        if cb is None:
-            return
-        cb.blockSignals(True)
-        cb.setChecked(bool(checked))
-        cb.blockSignals(False)
-
-    def set_part_enabled(self, key: str, enabled: bool) -> None:
-        cb = self.chk.get(str(key))
-        if cb is None:
-            return
-        cb.setEnabled(bool(enabled))
-
-    def is_part_enabled(self, key: str) -> bool:
-        cb = self.chk.get(str(key))
-        if cb is None:
-            return False
-        return bool(cb.isEnabled())
-
-    def is_part_checked(self, key: str) -> bool:
-        cb = self.chk.get(str(key))
-        if cb is None:
-            return False
-        return bool(cb.isChecked())
-# endregion
-
-
-# ==========================================================
-# region BLOCK: Laczenia korpusu (Typ 1 / Typ 2)
-# ==========================================================
-class CarcassJointsBlock(QWidget):
-    sig_changed = pyqtSignal()
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(8)
-
-        form = QFormLayout()
-        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-
-        self.cb_joint = QComboBox()
-        for k, label in JOINT_TYPES_PL.items():
-            self.cb_joint.addItem(label, k)
-
-        self.cb_joint.currentIndexChanged.connect(self.sig_changed.emit)
-        form.addRow("Typ laczenia", self.cb_joint)
-        lay.addLayout(form)
-
-    def set_value(self, joint_key: str) -> None:
-        idx = self.cb_joint.findData(joint_key)
-        self.cb_joint.blockSignals(True)
-        self.cb_joint.setCurrentIndex(idx if idx >= 0 else 0)
-        self.cb_joint.blockSignals(False)
-
-    def get_value(self) -> str:
-        return str(self.cb_joint.currentData() or "type1")
-
-class SessionAndViewBlock(QWidget):
-    sig_clear_last = pyqtSignal()
-    sig_hide_front_changed = pyqtSignal(bool)
-    sig_set_current_as_default = pyqtSignal()
-    sig_clear_default = pyqtSignal()
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(8)
-
-        s = load_drawing_settings()
-        self.chk_hide_front = QCheckBox("Ukryj front na rysunku")
-        self.chk_hide_front.setChecked(not bool(getattr(s, "show_front_part", True)))
-        lay.addWidget(self.chk_hide_front)
-
-        # TECH:
-        # To ustawienie nalezy juz do zakladki "Rysunek".
-        # Zostawiamy checkbox technicznie dla kompatybilnosci i synchronizacji,
-        # ale ukrywamy go w zakladce "Modul".
-        self.chk_hide_front.hide()
-
-        self.btn_set_default = QPushButton("Ustaw biezace jako startowe")
-        self.btn_set_default.setStyleSheet("padding:6px;")
-        lay.addWidget(self.btn_set_default)
-
-        self.btn_clear_default = QPushButton("Usun startowe (wroc do fabrycznych)")
-        self.btn_clear_default.setStyleSheet("padding:6px; background:#fff3cd; border:1px solid #d6b36a;")
-        lay.addWidget(self.btn_clear_default)
-
-        self.btn_clear = QPushButton("Wyczysc ostatni stan")
-        self.btn_clear.setStyleSheet("padding:6px; background:#ffeeee; border:1px solid #cc9999;")
-        lay.addWidget(self.btn_clear)
-
-        self.lab_hint = QLabel(
-            "- Startowe = uzyte po starcie, gdy nie ma sesji albo po Wyczysc ostatni stan.\n"
-            "- Usun startowe kasuje data/default_module.json.\n"
-            "- Wyczysc ostatni stan usuwa data/session_last.json (nie dotyka bazy)."
-        )
-        self.lab_hint.setWordWrap(True)
-        self.lab_hint.setStyleSheet("color:#666; font-size:11px;")
-        lay.addWidget(self.lab_hint)
-
-        # TECH:
-        # Ten opis zostawiamy w bloku dla zgodnosci i ewentualnego przyszlego uzycia,
-        # ale w zak'adce "Modul" chowamy go, zeby lewa kolumna by'a krotsza i czytelniejsza.
-        self.lab_hint.hide()
-
-        self.chk_hide_front.stateChanged.connect(
-            lambda _s2: self.sig_hide_front_changed.emit(self.chk_hide_front.isChecked())
-        )
-        self.btn_clear.clicked.connect(self.sig_clear_last.emit)
-        self.btn_set_default.clicked.connect(self.sig_set_current_as_default.emit)
-        self.btn_clear_default.clicked.connect(self.sig_clear_default.emit)
-
-class ReferencePointBlock(QWidget):
-    sig_changed = pyqtSignal()
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(8)
-
-        form = QFormLayout()
-        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-
-        self.cb_module_type = QComboBox()
-        for key, label in MODULE_TYPE_PL.items():
-            self.cb_module_type.addItem(label, key)
-
-        self.cb_kind = QComboBox()
-        self.cb_kind.addItem("Dolna (punkt od dolu)", "lower")
-        self.cb_kind.addItem("Gorna (punkt od gory)", "upper")
-
-        self.cb_ref = QComboBox()
-
-        self.cb_module_type.currentIndexChanged.connect(self._on_module_type_changed)
-        self.cb_kind.currentIndexChanged.connect(self._on_kind_changed)
-        self.cb_ref.currentIndexChanged.connect(lambda _i: self.sig_changed.emit())
-
-        form.addRow("Typ modulu", self.cb_module_type)
-        form.addRow("Typ szafki", self.cb_kind)
-        form.addRow("Punkt odniesienia", self.cb_ref)
-
-        hint = QLabel("Punkt odniesienia bedzie uzyty w zakladce Sciana do ukladania modulow w komplet.")
-        hint.setWordWrap(True)
-        hint.setStyleSheet("color:#666; font-size:11px;")
-
-        lay.addLayout(form)
-        lay.addWidget(hint)
-
-        self._fill_refs("lower")
-        self.cb_module_type.setCurrentIndex(self.cb_module_type.findData("legacy"))
-        self.cb_kind.setCurrentIndex(self.cb_kind.findData("lower"))
-
-    def _fill_refs(self, kind: str) -> None:
-        self.cb_ref.blockSignals(True)
-        self.cb_ref.clear()
-        if kind == "upper":
-            self.cb_ref.addItem("Lewy-TYL-GORA (0,0,0)", "LBT")
-            self.cb_ref.addItem("Srodek-TYL-GORA", "CBT")
-            self.cb_ref.addItem("Prawy-TYL-GORA", "RBT")
-        else:
-            self.cb_ref.addItem("Lewy-TYL-DOL (0,0,0)", "LBB")
-            self.cb_ref.addItem("Srodek-TYL-DOL", "CBB")
-            self.cb_ref.addItem("Prawy-TYL-DOL", "RBB")
-        self.cb_ref.blockSignals(False)
-
-    def _sync_module_type_to_kind(self) -> bool:
-        module_type = self.get_module_type()
-        if module_type == "legacy":
-            return False
-
-        target_kind = module_type_to_cabinet_kind(module_type, fallback_kind=self.get_kind())
-        idx = self.cb_kind.findData(target_kind)
-        if idx < 0 or self.cb_kind.currentIndex() == idx:
-            return False
-
-        self.cb_kind.setCurrentIndex(idx)
-        return True
-
-    def _on_module_type_changed(self, _i: int) -> None:
-        if self._sync_module_type_to_kind():
-            return
-        self.sig_changed.emit()
-
-    def _on_kind_changed(self, _i: int) -> None:
-        kind = self.get_kind()
-        prev = self.get_ref()
-        self._fill_refs(kind)
-
-        if kind == "upper":
-            mapping = {"LBB": "LBT", "CBB": "CBT", "RBB": "RBT"}
-            self.set_ref(mapping.get(prev, "LBT"))
-        else:
-            mapping = {"LBT": "LBB", "CBT": "CBB", "RBT": "RBB"}
-            self.set_ref(mapping.get(prev, "LBB"))
-
-        module_type = self.get_module_type()
-        if module_type != "legacy":
-            normalized_type = "hanging" if kind == "upper" else ("corner" if module_type == "corner" else "legs")
-            idx = self.cb_module_type.findData(normalized_type)
-            if idx >= 0 and self.cb_module_type.currentIndex() != idx:
-                self.cb_module_type.blockSignals(True)
-                self.cb_module_type.setCurrentIndex(idx)
-                self.cb_module_type.blockSignals(False)
-
-        self.sig_changed.emit()
-
-    def set_values(self, kind: str, ref: str, module_type: str | None = None) -> None:
-        normalized_type = normalize_module_type(module_type if module_type is not None else "legacy")
-        idx_type = self.cb_module_type.findData(normalized_type)
-        self.cb_module_type.blockSignals(True)
-        self.cb_module_type.setCurrentIndex(idx_type if idx_type >= 0 else 0)
-        self.cb_module_type.blockSignals(False)
-
-        if normalized_type != "legacy":
-            kind_to_apply = module_type_to_cabinet_kind(normalized_type, fallback_kind=kind)
-        else:
-            kind_to_apply = str(kind or "").strip().lower() or "lower"
-
-        fallback_kind = module_type_to_cabinet_kind(normalized_type, fallback_kind="lower")
-        idx = self.cb_kind.findData(kind_to_apply)
-        if idx < 0:
-            idx = self.cb_kind.findData(fallback_kind)
-        self.cb_kind.blockSignals(True)
-        self.cb_kind.setCurrentIndex(idx if idx >= 0 else 0)
-        self.cb_kind.blockSignals(False)
-
-        self._fill_refs(self.get_kind())
-        self.set_ref(ref)
-
-    def get_module_type(self) -> str:
-        return normalize_module_type(str(self.cb_module_type.currentData() or "legacy"))
-
-    def set_ref(self, ref: str) -> None:
-        idx = self.cb_ref.findData(ref)
-        self.cb_ref.blockSignals(True)
-        self.cb_ref.setCurrentIndex(idx if idx >= 0 else 0)
-        self.cb_ref.blockSignals(False)
-
-    def get_kind(self) -> str:
-        return str(self.cb_kind.currentData() or "lower")
-
-    def get_ref(self) -> str:
-        return str(self.cb_ref.currentData() or ("LBB" if self.get_kind() == "lower" else "LBT"))
-
-class ShelvesBlock(QWidget):
-    sig_changed = pyqtSignal()
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(8)
-
-        form = QFormLayout()
-        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-
-        self.sp_count = QSpinBox()
-        self.sp_count.setRange(0, 10)
-        self.sp_count.setValue(1)
-
-        form.addRow("Liczba polek", self.sp_count)
-        lay.addLayout(form)
-
-        self.sp_count.valueChanged.connect(lambda _v: self.sig_changed.emit())
-
-    def set_value(self, n: int) -> None:
-        self.sp_count.blockSignals(True)
-        self.sp_count.setValue(max(0, int(n)))
-        self.sp_count.blockSignals(False)
-
-    def get_value(self) -> int:
-        return int(self.sp_count.value())
-
-    def set_enabled(self, on: bool) -> None:
-        self.setEnabled(bool(on))
-
-# ==========================================================
-# region BLOCK: Piony (ilosc + montaz po'ek lewo/prawo)
-# ==========================================================
-class DividersBlock(QWidget):
-    sig_changed = pyqtSignal()
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-
-        lay = QFormLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-        self._form = lay
-
-        self.sp_count = QSpinBox()
-        self.sp_count.setRange(0, 4)  # 0 = brak pionow (to jest kluczowy fix)
-        self.sp_count.setValue(0)
-
-        self.cb_mount = QComboBox()
-        self.cb_mount.addItem("Polki po LEWEJ stronie pionu", "left")
-        self.cb_mount.addItem("Polki po PRAWEJ stronie pionu", "right")
-        self.cb_mount.setCurrentIndex(self.cb_mount.findData("right"))
-
-        lay.addRow("Ilosc pionow", self.sp_count)
-        lay.addRow("Polki", self.cb_mount)
-
-        self.sp_count.valueChanged.connect(lambda _v: self.sig_changed.emit())
-        self.cb_mount.currentIndexChanged.connect(lambda _i: self.sig_changed.emit())
-
-    def get_count(self) -> int:
-        # surowa wartosc 0..4 (bez clamp do 1)
-        return int(self.sp_count.value())
-
-    def get_mount(self) -> str:
-        return str(self.cb_mount.currentData() or "right")
-
-    def set_mount_enabled(self, enabled: bool) -> None:
-        # combobox od "Po'ki po LEWEJ/PRAWEJ stronie pionu"
-        if hasattr(self, "cb_mount"):
-            self.cb_mount.setEnabled(bool(enabled))
-
-
-    def set_values(self, count: int, mount: str) -> None:
-        self.blockSignals(True)
-        self.sp_count.setValue(int(count))
-        idx = self.cb_mount.findData(str(mount))
-        if idx < 0:
-            idx = self.cb_mount.findData("right")
-        self.cb_mount.setCurrentIndex(idx)
-        self.blockSignals(False)
-        self.sig_changed.emit()
-
-    def set_enabled(self, enabled: bool) -> None:
-        self.sp_count.setEnabled(bool(enabled))
-        self.cb_mount.setEnabled(bool(enabled))
-# endregion
-
-
-class FrontHardwareBlock(QWidget):
-    sig_changed = pyqtSignal()
-
-    def __init__(self, catalog: CatalogStoreJson | QWidget | None = None, parent: QWidget | None = None) -> None:
-        if isinstance(catalog, QWidget) and parent is None:
-            parent = catalog
-            catalog = None
-        super().__init__(parent)
-        self._catalog = catalog if isinstance(catalog, CatalogStoreJson) else CatalogStoreJson()
-
-        lay = QFormLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-
-        # ----------------------------------------------------------
-        # GLOWNE USTAWIENIA FRONTU
-        # ----------------------------------------------------------
-        self.cb_front_layout = QComboBox()
-        self.cb_front_layout.addItem("Nakladany", "overlay")
-        self.cb_front_layout.addItem("Wewnetrzny", "inset")
-
-        self.cb_front_height_mode = QComboBox()
-        self.cb_front_height_mode.addItem("Pelna wysokosc modulu", "full")
-        self.cb_front_height_mode.addItem("Do wienca", "to_top_rail")
-        self.cb_front_height_mode.addItem("Strefa z offsetami", "offsets")
-
-        self.cb_top_ref_mode = QComboBox()
-        self.cb_top_ref_mode.addItem("Do konca wienca", "rail_end")
-        self.cb_top_ref_mode.addItem("Do 1/2 wienca", "rail_center")
-        self.cb_top_ref_mode.addItem("Do poczatku wienca", "rail_start")
-        self.cb_top_ref_mode.addItem("Offset reczny", "custom")
-
-        self.cb_bottom_ref_mode = QComboBox()
-        self.cb_bottom_ref_mode.addItem("Do konca wienca", "rail_end")
-        self.cb_bottom_ref_mode.addItem("Do 1/2 wienca", "rail_center")
-        self.cb_bottom_ref_mode.addItem("Do poczatku wienca", "rail_start")
-        self.cb_bottom_ref_mode.addItem("Offset reczny", "custom")
-
-        self.sp_front_offset_top = QDoubleSpinBox()
-        self.sp_front_offset_top.setRange(0.0, 5000.0)
-        self.sp_front_offset_top.setDecimals(1)
-        self.sp_front_offset_top.setSuffix(" mm")
-        self.sp_front_offset_top.setValue(0.0)
-
-        self.sp_front_offset_bottom = QDoubleSpinBox()
-        self.sp_front_offset_bottom.setRange(0.0, 5000.0)
-        self.sp_front_offset_bottom.setDecimals(1)
-        self.sp_front_offset_bottom.setSuffix(" mm")
-        self.sp_front_offset_bottom.setValue(0.0)
-
-        # ----------------------------------------------------------
-        # LUZY FRONTOWE
-        # ----------------------------------------------------------
-        def _gap_spin(default_mm: float = 0.0) -> QDoubleSpinBox:
-            sp = QDoubleSpinBox()
-            sp.setRange(0.0, 20.0)
-            sp.setDecimals(1)
-            sp.setSuffix(" mm")
-            sp.setValue(default_mm)
-            return sp
-
-        self.sp_gap_left = _gap_spin(0.0)
-        self.sp_gap_right = _gap_spin(0.0)
-        self.sp_gap_top = _gap_spin(0.0)
-        self.sp_gap_bottom = _gap_spin(0.0)
-        self.sp_gap_between_vertical = _gap_spin(0.0)
-
-        self.box_front_gaps = QFrame()
-        self.box_front_gaps.setObjectName("front_gaps_box")
-        self.box_front_gaps.setFrameShape(QFrame.Shape.StyledPanel)
-        self.box_front_gaps.setStyleSheet(
-            "QFrame#front_gaps_box {"
-            "border: 1px solid #d8d8d8;"
-            "border-radius: 6px;"
-            "background: #fafafa;"
-            "}"
-        )
-
-        gaps_lay = QVBoxLayout(self.box_front_gaps)
-        gaps_lay.setContentsMargins(10, 8, 10, 8)
-        gaps_lay.setSpacing(6)
-
-        self.lab_front_gaps_title = QLabel("Luzy frontowe")
-        self.lab_front_gaps_title.setStyleSheet("font-weight: 700;")
-        gaps_lay.addWidget(self.lab_front_gaps_title)
-
-        form_gaps = QFormLayout()
-        form_gaps.setContentsMargins(0, 0, 0, 0)
-        form_gaps.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-        form_gaps.addRow("Luz lewy", self.sp_gap_left)
-        form_gaps.addRow("Luz prawy", self.sp_gap_right)
-        form_gaps.addRow("Luz gorny", self.sp_gap_top)
-        form_gaps.addRow("Luz dolny", self.sp_gap_bottom)
-        form_gaps.addRow("Luz miedzy frontami", self.sp_gap_between_vertical)
-
-        gaps_lay.addLayout(form_gaps)
-
-        lay.addRow("Luzy", self.box_front_gaps)
-
-        # ----------------------------------------------------------
-        # STREFA FRONTU - CZYTELNY PANEL
-        # ----------------------------------------------------------
-        self.zone_box = QFrame()
-        self.zone_box.setObjectName("front_zone_box")
-        self.zone_box.setFrameShape(QFrame.Shape.StyledPanel)
-        self.zone_box.setStyleSheet(
-            "QFrame#front_zone_box {"
-            "border: 1px solid #d8d8d8;"
-            "border-radius: 6px;"
-            "background: #fafafa;"
-            "}"
-        )
-
-        zone_lay = QVBoxLayout(self.zone_box)
-        zone_lay.setContentsMargins(10, 8, 10, 8)
-        zone_lay.setSpacing(6)
-
-        self.lab_zone_title = QLabel("Strefa frontu")
-        self.lab_zone_title.setStyleSheet("font-weight: 700;")
-
-        self.lab_zone_note = QLabel(
-            "To okresla robocza wysokosc frontu w preview i w obliczeniach front zone."
-        )
-        self.lab_zone_note.setWordWrap(True)
-        self.lab_zone_note.setStyleSheet("color:#666;")
-
-        self.lab_zone_summary = QLabel("")
-        self.lab_zone_summary.setWordWrap(True)
-        self.lab_zone_summary.setStyleSheet("color:#333;")
-
-        self.lab_zone_context = QLabel("")
-        self.lab_zone_context.setWordWrap(True)
-        self.lab_zone_context.setStyleSheet(
-            "color:#0f4c81; font-weight:600; background:#eef6ff; "
-            "border:1px solid #d6e8fb; border-radius:4px; padding:6px;"
-        )
-
-        self.btn_reset_front_zone = QPushButton("Resetuj strefe frontu")
-        self.btn_reset_front_zone.clicked.connect(self._on_reset_front_zone_clicked)
-
-        zone_lay.addWidget(self.lab_zone_title)
-        zone_lay.addWidget(self.lab_zone_note)
-        zone_lay.addWidget(self.lab_zone_summary)
-        zone_lay.addWidget(self.lab_zone_context)
-        zone_lay.addWidget(self.btn_reset_front_zone, 0, Qt.AlignmentFlag.AlignLeft)
-
-        # ----------------------------------------------------------
-        # UKLAD / OKUCIA
-        # ----------------------------------------------------------
-        self.cb_facade_mode = QComboBox()
-        self.cb_facade_mode.addItem("Drzwi", "doors")
-        self.cb_facade_mode.addItem("Szuflady", "drawers")
-        self.cb_facade_mode.addItem("Mieszany", "mixed")
-
-        self.sp_drawer_count = QSpinBox()
-        self.sp_drawer_count.setRange(1, 8)
-        self.sp_drawer_count.setValue(3)
-
-        self.cb_hinge_vendor = QComboBox()
-        self.cb_drawer_vendor = QComboBox()
-        self.reload_catalog(preserve_current=False)
-
-        self.chk_tipon = QCheckBox("TIP-ON / push-to-open")
-
-        self.sp_rear = QDoubleSpinBox()
-        self.sp_rear.setRange(0.0, 100.0)
-        self.sp_rear.setDecimals(1)
-        self.sp_rear.setSuffix(" mm")
-        self.sp_rear.setValue(10.0)
-
-        self.sp_tip = QDoubleSpinBox()
-        self.sp_tip.setRange(0.0, 100.0)
-        self.sp_tip.setDecimals(1)
-        self.sp_tip.setSuffix(" mm")
-        self.sp_tip.setValue(20.0)
-
-        # ----------------------------------------------------------
-        # PODSUMOWANIE FRONTU
-        # ----------------------------------------------------------
-        self.summary_box = QFrame()
-        self.summary_box.setObjectName("front_summary_box")
-        self.summary_box.setFrameShape(QFrame.Shape.StyledPanel)
-        self.summary_box.setStyleSheet(
-            "QFrame#front_summary_box {"
-            "border: 1px solid #d8d8d8;"
-            "border-radius: 6px;"
-            "background: #fafafa;"
-            "}"
-        )
-
-        summary_lay = QVBoxLayout(self.summary_box)
-        summary_lay.setContentsMargins(10, 8, 10, 8)
-        summary_lay.setSpacing(6)
-
-        self.lab_front_summary_title = QLabel("Podsumowanie frontu")
-        self.lab_front_summary_title.setStyleSheet("font-weight: 700;")
-
-        self.lab_front_summary = QLabel("")
-        self.lab_front_summary.setWordWrap(True)
-        self.lab_front_summary.setStyleSheet("color:#333;")
-
-        summary_lay.addWidget(self.lab_front_summary_title)
-        summary_lay.addWidget(self.lab_front_summary)
-
-        # ----------------------------------------------------------
-        # PODGL"D ROBOCZY (TYLKO TAB "MODUL")
-        # ----------------------------------------------------------
-        self.preview_box = QFrame()
-        self.preview_box.setObjectName("front_preview_box")
-        self.preview_box.setFrameShape(QFrame.Shape.StyledPanel)
-        self.preview_box.setStyleSheet(
-            "QFrame#front_preview_box {"
-            "border: 1px solid #d8d8d8;"
-            "border-radius: 6px;"
-            "background: #fafafa;"
-            "}"
-        )
-
-        preview_lay = QVBoxLayout(self.preview_box)
-        preview_lay.setContentsMargins(10, 8, 10, 8)
-        preview_lay.setSpacing(6)
-
-        self.lab_preview_title = QLabel("Podglad roboczy frontu")
-        self.lab_preview_title.setStyleSheet("font-weight: 700;")
-
-        self.lab_preview_note = QLabel(
-            "Dziala tylko w tej zakladce i tylko w tym podgladzie. "
-            "Nie zapisuje sie do modulu ani do ustawien rysunku."
-        )
-        self.lab_preview_note.setWordWrap(True)
-        self.lab_preview_note.setStyleSheet("color:#666;")
-
-        self.chk_temp_hide_front = QCheckBox("Ukryj front tylko w tym podgladzie")
-        self.chk_temp_hide_front.setChecked(False)
-        self.chk_temp_hide_front.setToolTip(
-            "To dziala tylko roboczo w zakladce \"Modul\".\n"
-            "Nie zapisuje sie do ustawien rysunku."
-        )
-
-        self.lab_temp_front_preview_state = QLabel("")
-        self.lab_temp_front_preview_state.setWordWrap(True)
-        self.lab_temp_front_preview_state.setStyleSheet("color:#444;")
-
-        self.btn_temp_show_front_again = QPushButton("Pokaz front z powrotem")
-        self.btn_temp_show_front_again.clicked.connect(
-            lambda: self.chk_temp_hide_front.setChecked(False)
-        )
-
-        preview_lay.addWidget(self.lab_preview_title)
-        preview_lay.addWidget(self.lab_preview_note)
-        preview_lay.addWidget(self.chk_temp_hide_front)
-        preview_lay.addWidget(self.lab_temp_front_preview_state)
-        preview_lay.addWidget(self.btn_temp_show_front_again, 0, Qt.AlignmentFlag.AlignLeft)
-
-        self.lab_hint = QLabel("")
-        self.lab_hint.setWordWrap(True)
-        self.lab_hint.setStyleSheet("color:#666;")
-
-        # ----------------------------------------------------------
-        # UI
-        # ----------------------------------------------------------
-        lay.addRow("Typ frontu", self.cb_front_layout)
-        lay.addRow("Wysokosc frontu", self.cb_front_height_mode)
-        lay.addRow("Gora wzgledem wienca", self.cb_top_ref_mode)
-        lay.addRow("Dol wzgledem wienca", self.cb_bottom_ref_mode)
-        lay.addRow("Offset od gory", self.sp_front_offset_top)
-        lay.addRow("Offset od dolu", self.sp_front_offset_bottom)
-        lay.addRow("Strefa", self.zone_box)
-
-        lay.addRow("Luz lewy", self.sp_gap_left)
-        lay.addRow("Luz prawy", self.sp_gap_right)
-        lay.addRow("Luz gorny", self.sp_gap_top)
-        lay.addRow("Luz dolny", self.sp_gap_bottom)
-        lay.addRow("Luz miedzy frontami", self.sp_gap_between_vertical)
-
-        lay.addRow("Uklad frontow", self.cb_facade_mode)
-        lay.addRow("Liczba szuflad", self.sp_drawer_count)
-        lay.addRow("Producent zawiasow", self.cb_hinge_vendor)
-        lay.addRow("Producent szuflad", self.cb_drawer_vendor)
-        lay.addRow("", self.chk_tipon)
-        lay.addRow("Luz za szuflada", self.sp_rear)
-        lay.addRow("Luz TIP-ON", self.sp_tip)
-        lay.addRow("Front", self.summary_box)
-        lay.addRow("Podglad", self.preview_box)
-        lay.addRow("Podpowiedz", self.lab_hint)
-
-        # ----------------------------------------------------------
-        # STAN POMOCNICZY
-        # ----------------------------------------------------------
-        self._sticky_zone_context = ""
-
-        # ----------------------------------------------------------
-        # SYGNALY
-        # ----------------------------------------------------------
-        self.cb_front_layout.currentIndexChanged.connect(self._emit_changed_with_front_overview_refresh)
-        self.cb_front_height_mode.currentIndexChanged.connect(self._on_front_height_mode_changed)
-        self.cb_top_ref_mode.currentIndexChanged.connect(self._emit_changed_with_front_overview_refresh)
-        self.cb_bottom_ref_mode.currentIndexChanged.connect(self._emit_changed_with_front_overview_refresh)
-
-        self.sp_front_offset_top.valueChanged.connect(self._on_front_zone_value_changed)
-        self.sp_front_offset_bottom.valueChanged.connect(self._on_front_zone_value_changed)
-
-        self.sp_gap_left.valueChanged.connect(self._emit_changed_with_front_overview_refresh)
-        self.sp_gap_right.valueChanged.connect(self._emit_changed_with_front_overview_refresh)
-        self.sp_gap_top.valueChanged.connect(self._emit_changed_with_front_overview_refresh)
-        self.sp_gap_bottom.valueChanged.connect(self._emit_changed_with_front_overview_refresh)
-        self.sp_gap_between_vertical.valueChanged.connect(self._emit_changed_with_front_overview_refresh)
-
-        self.cb_facade_mode.currentIndexChanged.connect(self._emit_changed_with_front_overview_refresh)
-        self.sp_drawer_count.valueChanged.connect(self._emit_changed_with_front_overview_refresh)
-        self.cb_hinge_vendor.currentIndexChanged.connect(self._emit_changed_with_front_overview_refresh)
-        self.cb_drawer_vendor.currentIndexChanged.connect(self._emit_changed_with_front_overview_refresh)
-        self.chk_tipon.toggled.connect(self._emit_changed_with_front_overview_refresh)
-        self.sp_rear.valueChanged.connect(self._emit_changed_with_front_overview_refresh)
-        self.sp_tip.valueChanged.connect(self._emit_changed_with_front_overview_refresh)
-        self.chk_temp_hide_front.toggled.connect(self._on_temp_hide_front_toggled)
-
-        self._refresh_front_zone_ui()
-        self._refresh_front_overview_ui()
-        self._refresh_temp_front_preview_ui()
-
-    def _set_form_row_visible(self, field: QWidget, visible: bool) -> None:
-        label = None
-        try:
-            label = self._form.labelForField(field)
-        except Exception:
-            label = None
-
-        if label is not None:
-            label.setVisible(visible)
-            label.setHidden(not visible)
-
-        field.setVisible(visible)
-        field.setHidden(not visible)
-
-    def _is_form_row_visible(self, field: QWidget) -> bool:
-        label = None
-        try:
-            label = self._form.labelForField(field)
-        except Exception:
-            label = None
-
-        if label is not None and label.isHidden():
-            return False
-        return not field.isHidden()
-
-    @staticmethod
-    def _vendor_label(vendor_key: str) -> str:
-        key = str(vendor_key or "").strip()
-        if not key:
-            return "-"
-        if key.lower() == "generic":
-            return "Ogolne"
-        return key[:1].upper() + key[1:]
-
-    def _fill_vendor_combo(
-        self,
-        combo: QComboBox,
-        category: str,
-        current_key: str = "",
-    ) -> None:
-        vendors = list(self._catalog.list_hardware_manufacturers(category=category) or [])
-        if not vendors:
-            vendors = ["generic", "blum", "hettich"]
-
-        normalized = []
-        seen = set()
-        for vendor in vendors:
-            raw = str(vendor or "").strip()
-            if not raw:
-                continue
-            key = raw.lower()
-            if key in seen:
-                continue
-            normalized.append((raw, key))
-            seen.add(key)
-
-        if "generic" not in seen:
-            normalized.insert(0, ("generic", "generic"))
-
-        combo.blockSignals(True)
-        combo.clear()
-        for raw, key in normalized:
-            combo.addItem(self._vendor_label(raw), key)
-
-        idx = combo.findData(str(current_key or "").strip().lower())
-        if idx < 0:
-            idx = combo.findData("generic")
-        combo.setCurrentIndex(idx if idx >= 0 else 0)
-        combo.blockSignals(False)
-
-    def reload_catalog(self, preserve_current: bool = True) -> None:
-        current_hinge = str(self.cb_hinge_vendor.currentData() or "generic") if preserve_current else "generic"
-        current_drawer = str(self.cb_drawer_vendor.currentData() or "generic") if preserve_current else "generic"
-
-        self._fill_vendor_combo(self.cb_hinge_vendor, "hinge", current_key=current_hinge)
-        self._fill_vendor_combo(self.cb_drawer_vendor, "drawer_system", current_key=current_drawer)
-        if hasattr(self, "lab_front_summary"):
-            self._refresh_front_overview_ui()
-
-    def _front_zone_min_face_height_mm(self) -> float:
-        return 2.0
-
-    def normalize_front_zone(
-        self,
-        module_height_mm: float,
-        top_rail_thickness_mm: float = 18.0,
-    ) -> bool:
-        changed = False
-        H = max(0.0, float(module_height_mm))
-        top_rail = max(0.0, float(top_rail_thickness_mm))
-        min_face_h = self._front_zone_min_face_height_mm()
-
-        mode = str(self.cb_front_height_mode.currentData() or "full").strip().lower()
-
-        top_val = max(0.0, float(self.sp_front_offset_top.value()))
-        bottom_val = max(0.0, float(self.sp_front_offset_bottom.value()))
-
-        if mode == "full":
-            new_top = max(0.0, top_val)
-            new_bottom = max(0.0, bottom_val)
-
-        elif mode == "to_top_rail":
-            max_bottom = max(0.0, H - top_rail - min_face_h)
-            new_top = max(0.0, top_val)
-            new_bottom = max(0.0, min(bottom_val, max_bottom))
-
-        else:
-            max_top = max(0.0, H - min_face_h)
-            new_top = max(0.0, min(top_val, max_top))
-
-            max_bottom = max(0.0, H - new_top - min_face_h)
-            new_bottom = max(0.0, min(bottom_val, max_bottom))
-
-            max_top_2 = max(0.0, H - new_bottom - min_face_h)
-            new_top = max(0.0, min(new_top, max_top_2))
-
-        if abs(new_top - self.sp_front_offset_top.value()) >= 0.1:
-            self.sp_front_offset_top.blockSignals(True)
-            self.sp_front_offset_top.setValue(new_top)
-            self.sp_front_offset_top.blockSignals(False)
-            changed = True
-
-        if abs(new_bottom - self.sp_front_offset_bottom.value()) >= 0.1:
-            self.sp_front_offset_bottom.blockSignals(True)
-            self.sp_front_offset_bottom.setValue(new_bottom)
-            self.sp_front_offset_bottom.blockSignals(False)
-            changed = True
-
-        self._refresh_front_zone_ui()
-        self._refresh_front_overview_ui()
-        return changed
-
-    def _emit_changed_with_front_overview_refresh(self, *_args) -> None:
-        self._refresh_front_overview_ui()
-        self.sig_changed.emit()
-
-    def _on_front_height_mode_changed(self, _i: int) -> None:
-        self._refresh_front_zone_ui()
-        self._refresh_front_overview_ui()
-        self.sig_changed.emit()
-
-    def _on_front_zone_value_changed(self, _v: float) -> None:
-        self._refresh_front_zone_ui()
-        self._refresh_front_overview_ui()
-        self.sig_changed.emit()
-
-    def _on_reset_front_zone_clicked(self) -> None:
-        mode = str(self.cb_front_height_mode.currentData() or "full")
-
-        if mode == "to_top_rail":
-            self.sp_front_offset_bottom.setValue(0.0)
-        else:
-            self.sp_front_offset_top.setValue(0.0)
-            self.sp_front_offset_bottom.setValue(0.0)
-
-        self._refresh_front_zone_ui()
-        self._refresh_front_overview_ui()
-        self.sig_changed.emit()
-
-    def _on_temp_hide_front_toggled(self, _checked: bool) -> None:
-        self._refresh_temp_front_preview_ui()
-        self.sig_changed.emit()
-
-    def _refresh_temp_front_preview_ui(self) -> None:
-        hidden = bool(self.chk_temp_hide_front.isChecked())
-        if hidden:
-            self.lab_temp_front_preview_state.setText(
-                "Stan podgladu: front jest chwilowo ukryty. "
-                "Latwiej klikniesz korpus i elementy wewnetrzne."
-            )
-        else:
-            self.lab_temp_front_preview_state.setText(
-                "Stan podgladu: front jest widoczny."
-            )
-        self.btn_temp_show_front_again.setEnabled(hidden)
-        self.btn_temp_show_front_again.setVisible(hidden)
-
-    def _refresh_front_zone_ui(self) -> None:
-
-        mode = str(self.cb_front_height_mode.currentData() or "full")
-        top_val = float(self.sp_front_offset_top.value())
-        bottom_val = float(self.sp_front_offset_bottom.value())
-
-        # Zasada UX:
-        # - full: oba offsety wy'aczone
-        # - offsets: oba offsety w'aczone
-        # - to_top_rail: gora wy'aczona, do' zawsze w'aczony
-        use_top_offset = (mode == "offsets")
-        use_bottom_offset = (mode in ("offsets", "to_top_rail"))
-
-        use_ref_modes = (mode == "to_top_rail")
-
-        self.cb_top_ref_mode.setEnabled(use_ref_modes)
-        self.cb_bottom_ref_mode.setEnabled(use_ref_modes)
-        self.sp_front_offset_top.setEnabled(use_top_offset)
-        self.sp_front_offset_bottom.setEnabled(use_bottom_offset)
-
-        show_ref_modes = (mode == "to_top_rail")
-        show_top_offset = (mode == "offsets")
-        show_bottom_offset = (mode in ("offsets", "to_top_rail"))
-
-        self._set_form_row_visible(self.cb_top_ref_mode, show_ref_modes)
-        self._set_form_row_visible(self.cb_bottom_ref_mode, show_ref_modes)
-        self._set_form_row_visible(self.sp_front_offset_top, show_top_offset)
-        self._set_form_row_visible(self.sp_front_offset_bottom, show_bottom_offset)
-
-        if mode == "full":
-            self.lab_zone_summary.setText(
-                "Tryb: pelna wysokosc modulu. "
-                "Offsety i referencje nie ograniczaja strefy frontu."
-            )
-            self.lab_hint.setText(
-                "Front idzie na pelna wysokosc wg wybranego typu frontu."
-            )
-
-        elif mode == "to_top_rail":
-            top_ref_txt = str(self.cb_top_ref_mode.currentText() or "").strip()
-            bottom_ref_txt = str(self.cb_bottom_ref_mode.currentText() or "").strip()
-
-            self.lab_zone_summary.setText(
-                f"Tryb: do wienca. "
-                f"Gora: {top_ref_txt}. "
-                f"Dol: {bottom_ref_txt}, offset dol = {bottom_val:.1f} mm."
-            )
-            self.lab_hint.setText(
-                "Gorna granica strefy wynika z referencji do wienca.\n"
-                "Dol strefy mozesz nadal regulowac offsetem."
-            )
-
-        else:
-            self.lab_zone_summary.setText(
-                f"Tryb: strefa z offsetami. "
-                f"Gora = {top_val:.1f} mm, dol = {bottom_val:.1f} mm."
-            )
-            self.lab_hint.setText(
-                "Front jest liczony jako strefa robocza z offsetem od gory i od dolu.\n"
-                "To przygotowuje uklad np. pod piekarnik lub specjalne fronty."
-            )
-
-        self._apply_zone_context()
-
-    def _refresh_front_overview_ui(self) -> None:
-        layout_map = {
-            "overlay": "nakladany",
-            "inset": "wewnetrzny",
-        }
-        mode_map = {
-            "full": "pelna wysokosc",
-            "to_top_rail": "referencje wzgledem wienca",
-            "offsets": "offsety",
-        }
-        facade_map = {
-            "doors": "drzwi",
-            "drawers": "szuflady",
-            "mixed": "mieszany",
-        }
-
-        layout = str(self.cb_front_layout.currentData() or "overlay")
-        mode = str(self.cb_front_height_mode.currentData() or "full")
-        facade = str(self.cb_facade_mode.currentData() or "doors")
-
-        layout_txt = layout_map.get(layout, layout)
-        mode_txt = mode_map.get(mode, mode)
-        facade_txt = facade_map.get(facade, facade)
-
-        top_val = float(self.sp_front_offset_top.value())
-        bottom_val = float(self.sp_front_offset_bottom.value())
-        drawer_count = int(self.sp_drawer_count.value())
-
-        if facade == "drawers":
-            facade_detail = f"szuflady x {drawer_count}"
-        elif facade == "mixed":
-            facade_detail = f"mieszany, szuflady: {drawer_count}"
-        else:
-            facade_detail = "drzwi"
-
-        if mode == "full":
-            zone_detail = "pelna wysokosc"
-        elif mode == "to_top_rail":
-            zone_detail = (
-                f"gora: {self.cb_top_ref_mode.currentText()}, "
-                f"dol: {self.cb_bottom_ref_mode.currentText()}, "
-                f"offset gora {top_val:.1f} mm, "
-                f"offset dol {bottom_val:.1f} mm"
-            )
-        else:
-            zone_detail = f"offsety: gora {top_val:.1f} mm, dol {bottom_val:.1f} mm"
-
-        hinge_vendor_txt = str(self.cb_hinge_vendor.currentText() or "").strip()
-        drawer_vendor_txt = str(self.cb_drawer_vendor.currentText() or "").strip()
-
-        tipon_txt = "TIP-ON: tak" if self.chk_tipon.isChecked() else "TIP-ON: nie"
-
-        gap_txt = (
-            f"Luzy: L {self.sp_gap_left.value():.1f}, "
-            f"P {self.sp_gap_right.value():.1f}, "
-            f"G {self.sp_gap_top.value():.1f}, "
-            f"D {self.sp_gap_bottom.value():.1f}, "
-            f"miedzy frontami {self.sp_gap_between_vertical.value():.1f} mm"
-        )
-
-        self.lab_front_summary.setText(
-            f"Typ: {layout_txt}\n"
-            f"Strefa: {mode_txt} ({zone_detail})\n"
-            f"Uklad: {facade_txt} ({facade_detail})\n"
-            f"{gap_txt}\n"
-            f"Okucia: zawiasy {hinge_vendor_txt}, szuflady {drawer_vendor_txt}\n"
-            f"{tipon_txt}"
-        )
-
-    def set_hint(self, txt: str) -> None:
-        self.lab_hint.setText(txt or "")
-
-    def set_zone_context(self, txt: str) -> None:
-        self._sticky_zone_context = str(txt or "").strip()
-        self._apply_zone_context()
-
-    def clear_zone_context(self) -> None:
-        self._sticky_zone_context = ""
-        self._apply_zone_context()
-
-    def _apply_zone_context(self) -> None:
-        txt = str(self._sticky_zone_context or "").strip()
-
-        if not txt:
-            mode = str(self.cb_front_height_mode.currentData() or "full")
-            if mode == "full":
-                txt = "Aktywna edycja: front jako pelna wysokosc modulu."
-            elif mode == "to_top_rail":
-                txt = "Aktywna edycja: referencje frontu wzgledem wienca."
-            else:
-                txt = "Aktywna edycja: strefa frontu z offsetami. Regulujesz gore i do' strefy."
-
-        self.lab_zone_context.setText(txt)
-
-    def set_from_module(self, m: ModuleDef) -> None:
-        idx = self.cb_front_layout.findData(str(getattr(m, "front_layout", "overlay") or "overlay"))
-        if idx >= 0:
-            self.cb_front_layout.setCurrentIndex(idx)
-
-        idx = self.cb_front_height_mode.findData(str(getattr(m, "front_height_mode", "full") or "full"))
-        if idx >= 0:
-            self.cb_front_height_mode.setCurrentIndex(idx)
-
-        idx = self.cb_top_ref_mode.findData(str(getattr(m, "front_top_ref_mode", "rail_end") or "rail_end"))
-        if idx >= 0:
-            self.cb_top_ref_mode.setCurrentIndex(idx)
-
-        idx = self.cb_bottom_ref_mode.findData(str(getattr(m, "front_bottom_ref_mode", "rail_end") or "rail_end"))
-        if idx >= 0:
-            self.cb_bottom_ref_mode.setCurrentIndex(idx)
-
-        self.sp_front_offset_top.setValue(float(getattr(m, "front_offset_top_mm", 0.0) or 0.0))
-        self.sp_front_offset_bottom.setValue(float(getattr(m, "front_offset_bottom_mm", 0.0) or 0.0))
-
-        self.sp_gap_left.setValue(float(getattr(m, "front_gap_left_mm", 2.0) or 0.0))
-        self.sp_gap_right.setValue(float(getattr(m, "front_gap_right_mm", 2.0) or 0.0))
-        self.sp_gap_top.setValue(float(getattr(m, "front_gap_top_mm", 2.0) or 0.0))
-        self.sp_gap_bottom.setValue(float(getattr(m, "front_gap_bottom_mm", 2.0) or 0.0))
-        self.sp_gap_between_vertical.setValue(float(getattr(m, "front_gap_between_vertical_mm", 2.0) or 0.0))
-
-        idx = self.cb_facade_mode.findData(str(getattr(m, "facade_mode", "doors") or "doors"))
-        if idx >= 0:
-            self.cb_facade_mode.setCurrentIndex(idx)
-
-        self.sp_drawer_count.setValue(int(getattr(m, "drawer_count", 3) or 3))
-
-        idx = self.cb_hinge_vendor.findData(str(getattr(m, "hinge_vendor", "generic") or "generic"))
-        if idx >= 0:
-            self.cb_hinge_vendor.setCurrentIndex(idx)
-
-        idx = self.cb_drawer_vendor.findData(str(getattr(m, "drawer_vendor", "generic") or "generic"))
-        if idx >= 0:
-            self.cb_drawer_vendor.setCurrentIndex(idx)
-
-        self.chk_tipon.setChecked(bool(getattr(m, "drawer_tip_on", False)))
-        self.sp_rear.setValue(float(getattr(m, "drawer_rear_clearance_mm", 10.0) or 10.0))
-        self.sp_tip.setValue(float(getattr(m, "drawer_tip_on_clearance_mm", 20.0) or 20.0))
-
-        self._refresh_front_zone_ui()
-        self._refresh_front_overview_ui()
-        self._refresh_temp_front_preview_ui()
-
-    def apply_to_module(self, m: ModuleDef) -> ModuleDef:
-        out = replace(
-            m,
-            front_layout=str(self.cb_front_layout.currentData() or "overlay"),
-            front_height_mode=str(self.cb_front_height_mode.currentData() or "full"),
-            front_offset_top_mm=float(self.sp_front_offset_top.value()),
-            front_offset_bottom_mm=float(self.sp_front_offset_bottom.value()),
-            facade_mode=str(self.cb_facade_mode.currentData() or "doors"),
-            drawer_count=int(self.sp_drawer_count.value()),
-            hinge_vendor=str(self.cb_hinge_vendor.currentData() or "generic"),
-            drawer_vendor=str(self.cb_drawer_vendor.currentData() or "generic"),
-            drawer_tip_on=bool(self.chk_tipon.isChecked()),
-            drawer_rear_clearance_mm=float(self.sp_rear.value()),
-            drawer_tip_on_clearance_mm=float(self.sp_tip.value()),
-        )
-
-        # nowe pola jako atrybuty dynamiczne - store i set_from_module je obs'uguja
-        setattr(out, "front_top_ref_mode", str(self.cb_top_ref_mode.currentData() or "rail_end"))
-        setattr(out, "front_bottom_ref_mode", str(self.cb_bottom_ref_mode.currentData() or "rail_end"))
-        setattr(out, "front_gap_left_mm", float(self.sp_gap_left.value()))
-        setattr(out, "front_gap_right_mm", float(self.sp_gap_right.value()))
-        setattr(out, "front_gap_top_mm", float(self.sp_gap_top.value()))
-        setattr(out, "front_gap_bottom_mm", float(self.sp_gap_bottom.value()))
-        setattr(out, "front_gap_between_vertical_mm", float(self.sp_gap_between_vertical.value()))
-        return out
 # ==========================================================
 # region BLOCK: Materials (z bazy catalog.json)
 # ==========================================================
-class MaterialsBlock(QWidget):
-    sig_changed = pyqtSignal()
-    sig_catalog_changed = pyqtSignal()
-    sig_profile_selected = pyqtSignal(str)
-
-    def __init__(self, catalog: CatalogStoreJson, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._preview_hide_front = False
-        self._catalog = catalog
-
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(8)
-
-        form = QFormLayout()
-        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-
-        self.cb_profile = QComboBox()
-        self.lab_profile_desc = QLabel("")
-        self.lab_profile_desc.setWordWrap(True)
-        self.lab_profile_desc.setStyleSheet("color:#666;")
-
-        self.cb_carcass = QComboBox()
-        self.cb_front = QComboBox()
-        self.cb_back = QComboBox()
-
-        self.cb_edge_carcass = QComboBox()
-        self.cb_edge_front = QComboBox()
-        self.cb_edge_back = QComboBox()
-
-        self._fill_profiles()
-        self._fill_materials()
-        self._fill_edgebands()
-
-        self.cb_profile.currentIndexChanged.connect(self._on_profile_changed)
-        self.cb_carcass.currentIndexChanged.connect(self.sig_changed.emit)
-        self.cb_front.currentIndexChanged.connect(self.sig_changed.emit)
-        self.cb_back.currentIndexChanged.connect(self.sig_changed.emit)
-        self.cb_edge_carcass.currentIndexChanged.connect(self.sig_changed.emit)
-        self.cb_edge_front.currentIndexChanged.connect(self.sig_changed.emit)
-        self.cb_edge_back.currentIndexChanged.connect(self.sig_changed.emit)
-
-        form.addRow("Profil", self.cb_profile)
-        form.addRow("", self.lab_profile_desc)
-        form.addRow("Korpus", self.cb_carcass)
-        form.addRow("Front", self.cb_front)
-        form.addRow("Plecy", self.cb_back)
-        form.addRow("Korpus - okleina", self.cb_edge_carcass)
-        form.addRow("Front - okleina", self.cb_edge_front)
-        form.addRow("Plecy - okleina", self.cb_edge_back)
-
-        lay.addLayout(form)
-
-        self.btn_edit_catalog = QPushButton("Edytuj baze cen")
-        self.btn_edit_catalog.clicked.connect(self._open_catalog_editor)
-        lay.addWidget(self.btn_edit_catalog, 0, Qt.AlignmentFlag.AlignLeft)
-
-    def _default_edgeband_key(self) -> str:
-        edgebands = self._catalog.list_edgebands() or []
-        for edgeband in edgebands:
-            key = str(getattr(edgeband, "key", "") or "").strip()
-            if key and key.lower() != "brak":
-                return key
-        return "Brak"
-
-    def _fill_profiles(self) -> None:
-        current_key = str(self.cb_profile.currentData() or "")
-        profiles = self._catalog.list_material_profiles()
-
-        self.cb_profile.blockSignals(True)
-        self.cb_profile.clear()
-        for profile in profiles:
-            self.cb_profile.addItem(f"{profile.name_pl} ({profile.key})", profile.key)
-
-        idx = self.cb_profile.findData(current_key)
-        if idx < 0:
-            idx = self.cb_profile.findData("STD_WHITE")
-        self.cb_profile.setCurrentIndex(idx if idx >= 0 else 0)
-        self.cb_profile.blockSignals(False)
-        self._update_profile_description()
-
-    def _update_profile_description(self) -> None:
-        profile_key = str(self.cb_profile.currentData() or "STD_WHITE")
-        profile = self._catalog.get_material_profile(profile_key)
-        self.lab_profile_desc.setText(str(profile.description or "").strip())
-
-    def _on_profile_changed(self, _index: int) -> None:
-        self._update_profile_description()
-        self.sig_profile_selected.emit(str(self.cb_profile.currentData() or "STD_WHITE"))
-
-    def _material_label(self, material) -> str:
-        label = f"{material.key} ({material.thickness_mm:g} mm) - {material.name_pl}"
-        extras: list[str] = []
-        manufacturer = str(getattr(material, "manufacturer", "") or "").strip()
-        material_type = str(getattr(material, "material_type", "") or "").strip()
-        if manufacturer:
-            extras.append(manufacturer)
-        if material_type:
-            extras.append(material_type)
-        if extras:
-            label += f" [{', '.join(extras)}]"
-        price = float(getattr(material, "price_pln_per_m2", 0.0) or 0.0)
-        if price > 0.0:
-            label += f" - {price:.2f} zl/m2"
-        return label
-
-    def _edgeband_label(self, edgeband) -> str:
-        label = f"{edgeband.name_pl}"
-        extras: list[str] = []
-        manufacturer = str(getattr(edgeband, "manufacturer", "") or "").strip()
-        band_type = str(getattr(edgeband, "edgeband_type", "") or "").strip()
-        if manufacturer:
-            extras.append(manufacturer)
-        if band_type:
-            extras.append(band_type)
-        if extras:
-            label += f" [{', '.join(extras)}]"
-        thickness = float(getattr(edgeband, "thickness_mm", 0.0) or 0.0)
-        price = float(getattr(edgeband, "price_pln_per_m", 0.0) or 0.0)
-        if thickness > 0.0:
-            label += f" ({thickness:g} mm)"
-        if price > 0.0:
-            label += f" - {price:.2f} zl/mb"
-        return label
-
-    def _fill_materials(self) -> None:
-        mats = self._catalog.list_materials()
-
-        def fill(cb: QComboBox) -> None:
-            cb.clear()
-            for material in mats:
-                cb.addItem(self._material_label(material), material.key)
-
-        fill(self.cb_carcass)
-        fill(self.cb_front)
-        fill(self.cb_back)
-
-    def _fill_edgebands(self) -> None:
-        edgebands = self._catalog.list_edgebands() or []
-
-        def fill(cb: QComboBox) -> None:
-            cb.clear()
-            for edgeband in edgebands:
-                cb.addItem(self._edgeband_label(edgeband), edgeband.key)
-
-            default_key = self._default_edgeband_key()
-            idx = cb.findData(default_key)
-            if idx < 0:
-                idx = cb.findData("Brak")
-            cb.setCurrentIndex(idx if idx >= 0 else 0)
-
-        fill(self.cb_edge_carcass)
-        fill(self.cb_edge_front)
-        fill(self.cb_edge_back)
-
-    def set_materials(self, materials: Dict[str, str]) -> None:
-        def set_cb(cb: QComboBox, key: str) -> None:
-            idx = cb.findData(key)
-            cb.setCurrentIndex(idx if idx >= 0 else 0)
-
-        self.cb_carcass.blockSignals(True)
-        self.cb_front.blockSignals(True)
-        self.cb_back.blockSignals(True)
-
-        set_cb(self.cb_carcass, materials.get("carcass", "PB18"))
-        set_cb(self.cb_front, materials.get("front", "MDF19"))
-        set_cb(self.cb_back, materials.get("back", "HDF2.5"))
-
-        self.cb_carcass.blockSignals(False)
-        self.cb_front.blockSignals(False)
-        self.cb_back.blockSignals(False)
-
-    def set_edgebands(self, edgebands: Dict[str, str]) -> None:
-        group_defaults = resolve_group_edgeband_defaults(
-            edgebands,
-            fallback_key=self._default_edgeband_key(),
-        )
-
-        def set_cb(cb: QComboBox, key: str) -> None:
-            idx = cb.findData(key)
-            cb.setCurrentIndex(idx if idx >= 0 else 0)
-
-        self.cb_edge_carcass.blockSignals(True)
-        self.cb_edge_front.blockSignals(True)
-        self.cb_edge_back.blockSignals(True)
-
-        set_cb(self.cb_edge_carcass, group_defaults.get("carcass", self._default_edgeband_key()))
-        set_cb(self.cb_edge_front, group_defaults.get("front", self._default_edgeband_key()))
-        set_cb(self.cb_edge_back, group_defaults.get("back", self._default_edgeband_key()))
-
-        self.cb_edge_carcass.blockSignals(False)
-        self.cb_edge_front.blockSignals(False)
-        self.cb_edge_back.blockSignals(False)
-
-    def get_materials(self) -> Dict[str, str]:
-        return {
-            "carcass": str(self.cb_carcass.currentData() or "PB18"),
-            "front": str(self.cb_front.currentData() or "MDF19"),
-            "back": str(self.cb_back.currentData() or "HDF2.5"),
-        }
-
-    def get_edgebands(self) -> Dict[str, str]:
-        return {
-            "carcass": str(self.cb_edge_carcass.currentData() or self._default_edgeband_key()),
-            "front": str(self.cb_edge_front.currentData() or self._default_edgeband_key()),
-            "back": str(self.cb_edge_back.currentData() or self._default_edgeband_key()),
-        }
-
-    def set_profile_key(self, profile_key: str) -> None:
-        normalized = str(profile_key or "STD_WHITE").strip() or "STD_WHITE"
-        idx = self.cb_profile.findData(normalized)
-        if idx < 0:
-            idx = self.cb_profile.findData("STD_WHITE")
-        self.cb_profile.blockSignals(True)
-        self.cb_profile.setCurrentIndex(idx if idx >= 0 else 0)
-        self.cb_profile.blockSignals(False)
-        self._update_profile_description()
-
-    def get_profile_key(self) -> str:
-        return str(self.cb_profile.currentData() or "STD_WHITE")
-
-    def reload_catalog(self) -> None:
-        current_profile = self.get_profile_key()
-        current_materials = self.get_materials()
-        current_edgebands = self.get_edgebands()
-
-        self._fill_profiles()
-        self._fill_materials()
-        self._fill_edgebands()
-        self.set_profile_key(current_profile)
-        self.set_materials(current_materials)
-        self.set_edgebands(current_edgebands)
-
-    def _open_catalog_editor(self) -> None:
-        dlg = CatalogEditorDialog(self, self._catalog)
-        if dlg.exec():
-            self.reload_catalog()
-            self.sig_catalog_changed.emit()
 # endregion
 
 
@@ -1948,542 +139,6 @@ class MaterialsBlock(QWidget):
 # - przygotowujemy bezpieczne przeniesienie tego bloku
 #   poza zakladke "Modul", bez zmiany obecnej logiki dzialania.
 # endregion
-# ==========================================================
-# region RIGHT: Edge preview (kolor/grubosc okleiny z ustawien)
-# ==========================================================
-class EdgePreviewWidget(QWidget):
-    sig_toggle_side = pyqtSignal(str)
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-
-        # jeszcze mniejsza miniatura
-        self.setMinimumHeight(60)
-        self.setMaximumHeight(70)
-        self.setMinimumWidth(120)
-
-        self._selected: set[str] = set()
-        self._active_part_name: str = ""
-
-    def set_selected_edges(self, edges: set[str]) -> None:
-        self._selected = set(edges)
-        self.update()
-
-    def set_part_name(self, name_pl: str) -> None:
-        self._active_part_name = name_pl
-        self.update()
-
-    def paintEvent(self, _e) -> None:
-        s = load_drawing_settings()
-
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-
-        margin = 10
-        rect = QRectF(
-            margin, margin,
-            max(10, self.width() - 2 * margin),
-            max(10, self.height() - 2 * margin)
-        )
-
-        p.fillRect(self.rect(), self.palette().window())
-
-        # obrys
-        pen_border = QPen(Qt.GlobalColor.black)
-        pen_border.setWidth(2)
-        p.setPen(pen_border)
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawRect(rect)
-
-        # krawedzie bazowe (cienkie)
-        pen_base = QPen(QColor("#777777"))
-        pen_base.setWidth(2)
-        p.setPen(pen_base)
-        p.drawLine(int(rect.left()), int(rect.top()), int(rect.right()), int(rect.top()))
-        p.drawLine(int(rect.left()), int(rect.bottom()), int(rect.right()), int(rect.bottom()))
-        p.drawLine(int(rect.left()), int(rect.top()), int(rect.left()), int(rect.bottom()))
-        p.drawLine(int(rect.right()), int(rect.top()), int(rect.right()), int(rect.bottom()))
-
-        # okleina (kolor/grubosc z ustawien)
-        pen_edge = QPen(QColor(getattr(s, "edgeband_color", "#cc0000")))
-        pen_edge.setWidth(int(getattr(s, "edgeband_width_px", 4)))
-        p.setPen(pen_edge)
-
-        def draw_edge(side: str) -> None:
-            if side == "top":
-                p.drawLine(int(rect.left()), int(rect.top()), int(rect.right()), int(rect.top()))
-            elif side == "bottom":
-                p.drawLine(int(rect.left()), int(rect.bottom()), int(rect.right()), int(rect.bottom()))
-            elif side == "left":
-                p.drawLine(int(rect.left()), int(rect.top()), int(rect.left()), int(rect.bottom()))
-            elif side == "right":
-                p.drawLine(int(rect.right()), int(rect.top()), int(rect.right()), int(rect.bottom()))
-
-        for s2 in ("top", "right", "bottom", "left"):
-            if s2 in self._selected:
-                draw_edge(s2)
-
-        # krotki podpis
-        p.setPen(QPen(Qt.GlobalColor.black))
-        txt = self._active_part_name[:18] if self._active_part_name else "-"
-        p.drawText(6, 12, txt)
-
-    def mousePressEvent(self, e) -> None:
-        pos = e.pos()
-
-        margin = 10
-        rect = QRectF(
-            margin, margin,
-            max(10, self.width() - 2 * margin),
-            max(10, self.height() - 2 * margin)
-        )
-
-        tol = 10
-        x = pos.x()
-        y = pos.y()
-
-        side: Optional[str] = None
-        if rect.contains(x, y):
-            d_top = abs(y - rect.top())
-            d_bottom = abs(y - rect.bottom())
-            d_left = abs(x - rect.left())
-            d_right = abs(x - rect.right())
-            dmin = min(d_top, d_bottom, d_left, d_right)
-            if dmin <= tol:
-                if dmin == d_top:
-                    side = "top"
-                elif dmin == d_bottom:
-                    side = "bottom"
-                elif dmin == d_left:
-                    side = "left"
-                else:
-                    side = "right"
-
-        if side:
-            self.sig_toggle_side.emit(side)
-# endregion
-
-
-# ==========================================================
-# region RIGHT: Edge preview (klik w krawedzie)
-# ==========================================================
-class EdgePreviewWidget(QWidget):
-    sig_toggle_side = pyqtSignal(str)  # side_key
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.setMinimumHeight(88)
-        self.setMaximumHeight(94)
-        self.setMinimumWidth(150)
-        self._selected: set[str] = set()
-        self._active_part_name: str = ""
-
-    def _preview_rect(self) -> QRectF:
-        outer_margin_x = 16.0
-        outer_margin_y = 24.0
-        bottom_margin = 12.0
-
-        available_w = max(10.0, float(self.width()) - 2.0 * outer_margin_x)
-        available_h = max(10.0, float(self.height()) - outer_margin_y - bottom_margin)
-
-        preview_h = min(available_h, max(28.0, available_h * 0.64))
-        preview_w = min(available_w, max(72.0, preview_h * 1.7))
-
-        x = (float(self.width()) - preview_w) / 2.0
-        y = outer_margin_y + (available_h - preview_h) / 2.0
-        return QRectF(x, y, preview_w, preview_h)
-
-    def set_selected_edges(self, edges: set[str]) -> None:
-        self._selected = set(edges)
-        self.update()
-
-    def set_part_name(self, name_pl: str) -> None:
-        self._active_part_name = name_pl
-        self.update()
-
-    def paintEvent(self, _e) -> None:
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-
-        rect = self._preview_rect()
-
-        p.fillRect(self.rect(), self.palette().window())
-
-        p.setPen(QPen(Qt.GlobalColor.black))
-        p.drawText(8, 16, f"Miniatura: {self._active_part_name or '-'}")
-
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor('#f7f7f7'))
-        p.drawRect(rect)
-
-        pen_border = QPen(QColor('#1f1f1f'))
-        pen_border.setWidth(2)
-        p.setPen(pen_border)
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawRect(rect)
-
-        pen_base = QPen(QColor('#9a9a9a'))
-        pen_base.setWidth(2)
-        p.setPen(pen_base)
-        p.drawLine(int(rect.left()), int(rect.top()), int(rect.right()), int(rect.top()))
-        p.drawLine(int(rect.left()), int(rect.bottom()), int(rect.right()), int(rect.bottom()))
-        p.drawLine(int(rect.left()), int(rect.top()), int(rect.left()), int(rect.bottom()))
-        p.drawLine(int(rect.right()), int(rect.top()), int(rect.right()), int(rect.bottom()))
-
-        pen_edge = QPen(QColor('#1f6feb'))
-        pen_edge.setWidth(7)
-        pen_edge.setCapStyle(Qt.PenCapStyle.RoundCap)
-        p.setPen(pen_edge)
-
-        inset = 2.5
-
-        def draw_edge(side: str) -> None:
-            if side == 'top':
-                p.drawLine(
-                    int(rect.left() + inset),
-                    int(rect.top() + inset),
-                    int(rect.right() - inset),
-                    int(rect.top() + inset),
-                )
-            elif side == 'bottom':
-                p.drawLine(
-                    int(rect.left() + inset),
-                    int(rect.bottom() - inset),
-                    int(rect.right() - inset),
-                    int(rect.bottom() - inset),
-                )
-            elif side == 'left':
-                p.drawLine(
-                    int(rect.left() + inset),
-                    int(rect.top() + inset),
-                    int(rect.left() + inset),
-                    int(rect.bottom() - inset),
-                )
-            elif side == 'right':
-                p.drawLine(
-                    int(rect.right() - inset),
-                    int(rect.top() + inset),
-                    int(rect.right() - inset),
-                    int(rect.bottom() - inset),
-                )
-
-        for side in ('top', 'right', 'bottom', 'left'):
-            if side in self._selected:
-                draw_edge(side)
-
-    def mousePressEvent(self, e) -> None:
-        pos = e.pos()
-        rect = self._preview_rect()
-
-        tol = 12
-        x = pos.x()
-        y = pos.y()
-
-        side: Optional[str] = None
-        if rect.contains(x, y):
-            d_top = abs(y - rect.top())
-            d_bottom = abs(y - rect.bottom())
-            d_left = abs(x - rect.left())
-            d_right = abs(x - rect.right())
-            dmin = min(d_top, d_bottom, d_left, d_right)
-            if dmin <= tol:
-                if dmin == d_top:
-                    side = 'top'
-                elif dmin == d_bottom:
-                    side = 'bottom'
-                elif dmin == d_left:
-                    side = 'left'
-                else:
-                    side = 'right'
-
-        if side:
-            self.sig_toggle_side.emit(side)
-# endregion
-
-
-# ==========================================================
-# region RIGHT: EdgeBanding + BOM
-# ==========================================================
-class EdgeBandingBlock(QWidget):
-    sig_changed = pyqtSignal()
-    sig_apply_to_selected = pyqtSignal()
-    sig_apply_to_all_shelves = pyqtSignal()
-
-    def __init__(self, catalog: CatalogStoreJson, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._catalog = catalog
-
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(8)
-
-        top_row = QHBoxLayout()
-        self.lab_part = QLabel("Formatka: (brak)")
-        self.lab_part.setStyleSheet("font-weight:700;")
-        top_row.addWidget(self.lab_part, 1)
-
-        self.lab_sel = QLabel("Zaznaczone: 1")
-        self.lab_sel.setStyleSheet("color:#444;")
-        top_row.addWidget(self.lab_sel, 0)
-        lay.addLayout(top_row)
-
-        self.preview = EdgePreviewWidget(self)
-        lay.addWidget(self.preview)
-
-        # ALL SIDES
-        self.chk_all = QCheckBox("Wszystkie strony")
-        self.chk_all.setTristate(True)
-        lay.addWidget(self.chk_all)
-
-        rows_box = QWidget(self)
-        rows_lay = QVBoxLayout(rows_box)
-        rows_lay.setContentsMargins(0, 0, 0, 0)
-        rows_lay.setSpacing(6)
-        lay.addWidget(rows_box)
-
-        edgebands = self._catalog.list_edgebands() or []
-        self._default_edgeband_key_cache = next(
-            (
-                str(eb.key)
-                for eb in edgebands
-                if str(getattr(eb, "key", "") or "").strip().lower() != "brak"
-            ),
-            "Brak",
-        )
-        self._rows: Dict[str, Tuple[QCheckBox, QComboBox]] = {}
-
-        for side_key, side_pl in EDGE_SIDES_PL.items():
-            side_short = EDGE_SIDES_SHORT_PL.get(side_key, side_pl[:1].upper())
-            row = QWidget(self)
-            row_lay = QHBoxLayout(row)
-            row_lay.setContentsMargins(0, 0, 0, 0)
-            row_lay.setSpacing(8)
-
-            cb = QCheckBox(side_short)
-            cb.setToolTip(side_pl)
-            combo = QComboBox()
-            for eb in edgebands:
-                combo.addItem(self._edgeband_label(eb), eb.key)
-
-            idx0 = combo.findData("Brak")
-            combo.setCurrentIndex(idx0 if idx0 >= 0 else 0)
-            combo.setEnabled(False)
-
-            def on_cb_changed(_state: int, _combo=combo, _cb=cb) -> None:
-                is_checked = _cb.isChecked()
-                _combo.setEnabled(is_checked)
-                if is_checked:
-                    self._ensure_default_edgeband_for_row(_combo)
-                self._sync_preview_from_rows()
-                self._sync_all_checkbox()
-                self.sig_changed.emit()
-
-            cb.stateChanged.connect(on_cb_changed)
-            combo.currentIndexChanged.connect(lambda _i: self.sig_changed.emit())
-
-            row_lay.addWidget(cb, 0)
-            row_lay.addWidget(combo, 1)
-
-            rows_lay.addWidget(row)
-            self._rows[side_key] = (cb, combo)
-
-        # PRESETY
-        preset_row = QHBoxLayout()
-        self.btn_p4 = QPushButton("4 strony")
-        self.btn_p_lp = QPushButton("L+P")
-        self.btn_p_gd = QPushButton("G+D")
-        self.btn_p_top = QPushButton("Tylko gora")
-        self.btn_p_clear = QPushButton("Reset")
-        for b in (self.btn_p4, self.btn_p_lp, self.btn_p_gd, self.btn_p_top, self.btn_p_clear):
-            preset_row.addWidget(b)
-        lay.addLayout(preset_row)
-
-        self.btn_p4.clicked.connect(lambda: self._preset(set(EDGE_SIDES_PL.keys())))
-        self.btn_p_lp.clicked.connect(lambda: self._preset({"left", "right"}))
-        self.btn_p_gd.clicked.connect(lambda: self._preset({"top", "bottom"}))
-        self.btn_p_top.clicked.connect(lambda: self._preset({"top"}))
-        self.btn_p_clear.clicked.connect(lambda: self._preset(set()))
-
-        rows_lay.addStretch(1)
-
-        btn_row = QHBoxLayout()
-        self.btn_apply_sel = QPushButton("Zastosuj do zaznaczonych")
-        self.btn_apply_shelves = QPushButton("Zastosuj do wszystkich polek")
-        btn_row.addWidget(self.btn_apply_sel, 1)
-        btn_row.addWidget(self.btn_apply_shelves, 1)
-        lay.addLayout(btn_row)
-
-        self.btn_apply_sel.clicked.connect(self.sig_apply_to_selected.emit)
-        self.btn_apply_shelves.clicked.connect(self.sig_apply_to_all_shelves.emit)
-
-        self.preview.sig_toggle_side.connect(self._toggle_side_from_preview)
-        self.chk_all.stateChanged.connect(self._on_all_changed)
-        self._sync_all_checkbox()
-
-    def _edgeband_label(self, edgeband) -> str:
-        label = str(getattr(edgeband, "name_pl", getattr(edgeband, "key", "")) or "")
-        extras: list[str] = []
-        manufacturer = str(getattr(edgeband, "manufacturer", "") or "").strip()
-        band_type = str(getattr(edgeband, "edgeband_type", "") or "").strip()
-        thickness = float(getattr(edgeband, "thickness_mm", 0.0) or 0.0)
-        price = float(getattr(edgeband, "price_pln_per_m", 0.0) or 0.0)
-
-        if manufacturer:
-            extras.append(manufacturer)
-        if band_type:
-            extras.append(band_type)
-        if extras:
-            label += f" [{', '.join(extras)}]"
-        if thickness > 0.0:
-            label += f" ({thickness:g} mm)"
-        if price > 0.0:
-            label += f" - {price:.2f} zl/mb"
-        return label
-
-    def reload_catalog(self) -> None:
-        current = self.get_edge_banding()
-        edgebands = self._catalog.list_edgebands() or []
-        self._default_edgeband_key_cache = next(
-            (
-                str(eb.key)
-                for eb in edgebands
-                if str(getattr(eb, "key", "") or "").strip().lower() != "brak"
-            ),
-            "Brak",
-        )
-
-        for _side_key, (_cb, combo) in self._rows.items():
-            current_key = str(combo.currentData() or "Brak")
-            combo.blockSignals(True)
-            combo.clear()
-            for edgeband in edgebands:
-                combo.addItem(self._edgeband_label(edgeband), edgeband.key)
-            idx = combo.findData(current_key)
-            if idx < 0:
-                idx = combo.findData("Brak")
-            combo.setCurrentIndex(idx if idx >= 0 else 0)
-            combo.blockSignals(False)
-
-        self.load_edge_banding(current)
-
-    def set_selected_count(self, n: int) -> None:
-        self.lab_sel.setText(f"Zaznaczone: {max(1, int(n))}")
-
-    def set_current_part(self, part_key: str, part_name_pl: str) -> None:
-        self.lab_part.setText(f"Formatka: {part_name_pl}")
-        self.preview.set_part_name(part_name_pl)
-
-    def set_default_edgeband_key(self, key: str) -> None:
-        normalized = str(key or "Brak").strip() or "Brak"
-        self._default_edgeband_key_cache = normalized
-
-    def get_default_edgeband_key(self) -> str:
-        return self._default_edgeband_key()
-
-    def _default_edgeband_key(self) -> str:
-        key = str(getattr(self, "_default_edgeband_key_cache", "Brak") or "Brak").strip()
-        return key or "Brak"
-
-    def _ensure_default_edgeband_for_row(self, combo: QComboBox) -> None:
-        current_key = str(combo.currentData() or "").strip()
-        if current_key and current_key.lower() != "brak":
-            return
-
-        default_key = self._default_edgeband_key()
-        idx = combo.findData(default_key)
-        if idx < 0:
-            idx = combo.findData("Brak")
-        if idx < 0:
-            return
-
-        prev = combo.blockSignals(True)
-        combo.setCurrentIndex(idx)
-        combo.blockSignals(prev)
-
-    def _preset(self, sides: set[str]) -> None:
-        for side_key, (cb, combo) in self._rows.items():
-            cb.blockSignals(True)
-            cb.setChecked(side_key in sides)
-            cb.blockSignals(False)
-            combo.setEnabled(cb.isChecked())
-            if cb.isChecked():
-                self._ensure_default_edgeband_for_row(combo)
-
-        self._sync_preview_from_rows()
-        self._sync_all_checkbox()
-        self.sig_changed.emit()
-
-    def _on_all_changed(self, state: int) -> None:
-        if state == 1:
-            return
-        want = (state == 2)
-        self._preset(set(EDGE_SIDES_PL.keys()) if want else set())
-
-    def _sync_all_checkbox(self) -> None:
-        checked = sum(1 for _s, (cb, _c) in self._rows.items() if cb.isChecked())
-        total = len(self._rows)
-        self.chk_all.blockSignals(True)
-        if checked == 0:
-            self.chk_all.setCheckState(Qt.CheckState.Unchecked)
-        elif checked == total:
-            self.chk_all.setCheckState(Qt.CheckState.Checked)
-        else:
-            self.chk_all.setCheckState(Qt.CheckState.PartiallyChecked)
-        self.chk_all.blockSignals(False)
-
-    def load_edge_banding(self, edge_banding: Dict[str, str]) -> None:
-        for side_key, (cb, combo) in self._rows.items():
-            cb.blockSignals(True)
-            combo.blockSignals(True)
-
-            if side_key in edge_banding:
-                cb.setChecked(True)
-                combo.setEnabled(True)
-                key = edge_banding.get(side_key, "Brak")
-                idx = combo.findData(key)
-                if idx < 0:
-                    idx = combo.findData("Brak")
-                combo.setCurrentIndex(idx if idx >= 0 else 0)
-            else:
-                cb.setChecked(False)
-                combo.setEnabled(False)
-                idx0 = combo.findData("Brak")
-                combo.setCurrentIndex(idx0 if idx0 >= 0 else 0)
-
-            cb.blockSignals(False)
-            combo.blockSignals(False)
-
-        self._sync_preview_from_rows()
-        self._sync_all_checkbox()
-
-    def _sync_preview_from_rows(self) -> None:
-        selected = {side for side, (cb, _combo) in self._rows.items() if cb.isChecked()}
-        self.preview.set_selected_edges(selected)
-
-    def _toggle_side_from_preview(self, side_key: str) -> None:
-        if side_key not in self._rows:
-            return
-        cb, combo = self._rows[side_key]
-        new_checked = not cb.isChecked()
-        cb.blockSignals(True)
-        cb.setChecked(new_checked)
-        cb.blockSignals(False)
-        combo.setEnabled(new_checked)
-        if new_checked:
-            self._ensure_default_edgeband_for_row(combo)
-        self._sync_preview_from_rows()
-        self._sync_all_checkbox()
-        self.sig_changed.emit()
-
-    def get_edge_banding(self) -> Dict[str, str]:
-        # zapisujemy tez 'Brak' jesli checkbox zaznaczony
-        out: Dict[str, str] = {}
-        for side_key, (cb, combo) in self._rows.items():
-            if cb.isChecked():
-                key = str(combo.currentData() or "Brak")
-                out[side_key] = key if key else "Brak"
-        return out
-
 class BomBlock(QWidget):
     sig_material_changed = pyqtSignal(str)
     sig_material_reset_requested = pyqtSignal()
@@ -2813,6 +468,7 @@ class ViewsCanvas(QWidget):
 
         self.view = ZoomGraphicsView(self)
         self.scene = QGraphicsScene(self)
+        self.scene.setBackgroundBrush(QColor("#ffffff"))
         self.view.setScene(self.scene)
 
         self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
@@ -3821,20 +1477,55 @@ class ViewsCanvas(QWidget):
         # - gdy pionow brak -> po'ki w ca'ym swietle
         # - gdy piony sa -> po'ki w lewym lub prawym segmencie
         mount = str(getattr(m, "shelf_mount", "right") or "right").lower()
+        draw_both_sides = (mount == "both") and (div_n > 0)
+
+        segment_specs: list[tuple[str, int]]
         if div_n <= 0:
-            seg_idx = 0
+            segment_specs = [("single", 0)]
+        elif draw_both_sides:
+            segment_specs = [("left", 0), ("right", div_n)]
+        elif mount == "left":
+            segment_specs = [("left", 0)]
         else:
-            seg_idx = 0 if mount == "left" else div_n  # lewy albo ostatni
+            segment_specs = [("right", div_n)]
 
-        seg_x = inner_x + seg_w * seg_idx + t * seg_idx
-        seg_x = max(inner_x, min(inner_x + max(0.0, inner_w - seg_w), seg_x))
+        def _parse_shelf_key(raw_key: str) -> tuple[str, int]:
+            key = str(raw_key or "").strip().lower()
+            if key.startswith("shelf_left_"):
+                tail = key[11:]
+                return "left", int(tail) if tail.isdigit() else 999
+            if key.startswith("shelf_right_"):
+                tail = key[12:]
+                return "right", int(tail) if tail.isdigit() else 999
+            if key.startswith("shelf_"):
+                tail = key[6:]
+                return "single", int(tail) if tail.isdigit() else 999
+            if key.startswith("shelf-"):
+                tail = key[6:]
+                return "single", int(tail) if tail.isdigit() else 999
+            return "single", 999
 
-        # po'ki - TYLKO w tym segmencie (klikane)
-        for idx in range(1, shelf_n + 1):
-            key = shelf_keys[idx - 1] if (idx - 1) < len(shelf_keys) else f"shelf_{idx}"
-            y_center = inner_y + (idx / (shelf_n + 1)) * inner_h
-            y_top = max(inner_y, min(inner_y + inner_h - t, y_center - t / 2))
-            add_part_rect(key=key, rect=QRectF(seg_x, y_top, seg_w, t), dashed=False, z=6)
+        shelf_by_slot: dict[tuple[str, int], str] = {}
+        for shelf_key in shelf_keys:
+            side_key, shelf_idx = _parse_shelf_key(shelf_key)
+            if side_key == "single" and draw_both_sides:
+                continue
+            slot = (side_key, shelf_idx)
+            if slot not in shelf_by_slot:
+                shelf_by_slot[slot] = shelf_key
+
+        for seg_side, seg_idx in segment_specs:
+            seg_x = inner_x + seg_w * seg_idx + t * seg_idx
+            seg_x = max(inner_x, min(inner_x + max(0.0, inner_w - seg_w), seg_x))
+
+            for idx in range(1, shelf_n + 1):
+                fallback_key = f"shelf_{idx}"
+                if draw_both_sides:
+                    fallback_key = f"shelf_{seg_side}_{idx}"
+                key = shelf_by_slot.get((seg_side, idx), fallback_key)
+                y_center = inner_y + (idx / (shelf_n + 1)) * inner_h
+                y_top = max(inner_y, min(inner_y + inner_h - t, y_center - t / 2))
+                add_part_rect(key=key, rect=QRectF(seg_x, y_top, seg_w, t), dashed=False, z=6)
 
         front_rect = _resolve_front_face_rect()
         if front_rect is not None:
@@ -3906,14 +1597,33 @@ class ViewsCanvas(QWidget):
             # SZUFLADY
             # --------------------------------
             if facade_mode == "drawers" and drawer_count > 1:
+                drawer_layout_mode = str(getattr(m, "drawer_layout_mode", "equal") or "equal").strip().lower()
+                try:
+                    small_front_h = float(getattr(m, "drawer_small_front_height_mm", 140.0) or 140.0)
+                except Exception:
+                    small_front_h = 140.0
+                small_front_h = max(60.0, small_front_h)
+
                 total_gap = gap_between_vertical * max(0, drawer_count - 1)
                 free_h = max(0.0, front_rect.height() - total_gap)
-                seg_h = free_h / drawer_count if drawer_count > 0 else 0.0
+
+                heights: list[float] = []
+                if drawer_layout_mode in ("small_top", "small_bottom") and drawer_count > 1:
+                    first_h = min(small_front_h, max(20.0, free_h * 0.45))
+                    remaining = max(0.0, free_h - first_h)
+                    each_rest = remaining / float(drawer_count - 1)
+                    if drawer_layout_mode == "small_top":
+                        heights = [first_h] + [each_rest for _ in range(drawer_count - 1)]
+                    else:
+                        heights = [each_rest for _ in range(drawer_count - 1)] + [first_h]
+                else:
+                    seg_h = free_h / drawer_count if drawer_count > 0 else 0.0
+                    heights = [seg_h for _ in range(drawer_count)]
 
                 cursor_y = front_rect.top()
 
                 for i in range(1, drawer_count):
-                    cursor_y += seg_h
+                    cursor_y += heights[i - 1]
                     split_y = cursor_y + gap_between_vertical * 0.5
 
                     line = self.scene.addLine(
@@ -4281,6 +1991,54 @@ class TabModul(QWidget):
         self.zone_left.body_lay.addStretch(1)
 
         # ---------- CENTER ----------
+        self.quick_bar = QFrame(self.zone_center)
+        self.quick_bar.setObjectName("modul_quick_bar")
+        self.quick_bar.setStyleSheet(
+            "QFrame#modul_quick_bar {"
+            "border: 1px solid #d8d8d8;"
+            "border-radius: 6px;"
+            "background: #fafafa;"
+            "}"
+        )
+        quick_lay = QHBoxLayout(self.quick_bar)
+        quick_lay.setContentsMargins(8, 6, 8, 6)
+        quick_lay.setSpacing(6)
+
+        self.btn_q_save = QPushButton("Zapisz")
+        self.btn_q_save.clicked.connect(self._shortcut_save_module)
+        quick_lay.addWidget(self.btn_q_save)
+
+        self.btn_q_overwrite = QPushButton("Nadpisz")
+        self.btn_q_overwrite.clicked.connect(self._on_overwrite)
+        quick_lay.addWidget(self.btn_q_overwrite)
+
+        self.btn_q_load = QPushButton("Wczytaj")
+        self.btn_q_load.clicked.connect(self._on_load)
+        quick_lay.addWidget(self.btn_q_load)
+
+        self.btn_q_new = QPushButton("Nowy")
+        self.btn_q_new.clicked.connect(self.start_new_module)
+        quick_lay.addWidget(self.btn_q_new)
+
+        self.btn_q_focus_name = QPushButton("Nazwa")
+        self.btn_q_focus_name.clicked.connect(self._shortcut_focus_module_name)
+        quick_lay.addWidget(self.btn_q_focus_name)
+
+        self.btn_q_doors = QPushButton("Drzwi")
+        self.btn_q_doors.clicked.connect(lambda: self._set_facade_mode_quick("doors"))
+        quick_lay.addWidget(self.btn_q_doors)
+
+        self.btn_q_drawers = QPushButton("Szuflady")
+        self.btn_q_drawers.clicked.connect(lambda: self._set_facade_mode_quick("drawers"))
+        quick_lay.addWidget(self.btn_q_drawers)
+
+        self.btn_q_shortcuts = QPushButton("Skroty")
+        self.btn_q_shortcuts.clicked.connect(self._open_shortcuts_dialog)
+        quick_lay.addWidget(self.btn_q_shortcuts)
+
+        quick_lay.addStretch(1)
+        self.zone_center.body_lay.addWidget(self.quick_bar, 0)
+
         self.canvas = ViewsCanvas()
         self.canvas.set_preview_mode(True)
         self.zone_center.body_lay.addWidget(self.canvas, 1)
@@ -4330,6 +2088,147 @@ class TabModul(QWidget):
         self._session_save_request()
         self.sessview.sig_clear_last.connect(self._on_clear_last_state)
         self.sessview.sig_hide_front_changed.connect(self._on_hide_front_toggle)
+        self._shortcut_actions = {
+            "save": ("Ctrl+S", self._shortcut_save_module),
+            "overwrite": ("Ctrl+Shift+S", self._on_overwrite),
+            "load": ("Ctrl+L", self._on_load),
+            "new": ("Ctrl+N", self.start_new_module),
+            "focus_name": ("Ctrl+F", self._shortcut_focus_module_name),
+            "toggle_front": ("Ctrl+H", self._toggle_front_preview_visibility),
+        }
+        self._setup_shortcuts_from_settings()
+
+    def _shortcut_save_module(self) -> None:
+        name = str(self.dim.ed_name.text() or "").strip() if hasattr(self, "dim") else ""
+        if name and self._store_has(name):
+            self._on_overwrite()
+        else:
+            self._on_save_new()
+
+    def _shortcut_focus_module_name(self) -> None:
+        if hasattr(self, "dim") and hasattr(self.dim, "ed_name"):
+            self.dim.ed_name.setFocus()
+            self.dim.ed_name.selectAll()
+
+    def _shortcut_settings_key(self) -> str:
+        return "modul_shortcuts_v2"
+
+    def _default_shortcut_strings(self) -> list[str]:
+        out: list[str] = []
+        for action_key, (seq, _handler) in dict(getattr(self, "_shortcut_actions", {}) or {}).items():
+            out.append(f"{action_key}={seq}")
+        return out
+
+    def _load_shortcut_map(self) -> dict[str, str]:
+        raw = load_ui_string_list(self._shortcut_settings_key(), self._default_shortcut_strings())
+        parsed: dict[str, str] = {}
+        for row in raw:
+            text = str(row or "").strip()
+            if not text or "=" not in text:
+                continue
+            key, seq = text.split("=", 1)
+            action = str(key or "").strip()
+            value = str(seq or "").strip()
+            if action:
+                parsed[action] = value
+        return parsed
+
+    def _save_shortcut_map(self, mapping: dict[str, str]) -> None:
+        rows: list[str] = []
+        for action_key in dict(getattr(self, "_shortcut_actions", {}) or {}).keys():
+            seq = str(mapping.get(action_key, "") or "").strip()
+            if not seq:
+                seq = str(self._shortcut_actions[action_key][0] or "").strip()
+            rows.append(f"{action_key}={seq}")
+        save_ui_string_list(self._shortcut_settings_key(), rows)
+
+    def _setup_shortcuts_from_settings(self) -> None:
+        if not hasattr(self, "_shortcut_actions"):
+            return
+
+        if hasattr(self, "_shortcuts_runtime"):
+            for shortcut in list(getattr(self, "_shortcuts_runtime", []) or []):
+                try:
+                    shortcut.setParent(None)
+                    shortcut.deleteLater()
+                except Exception:
+                    pass
+
+        shortcut_map = self._load_shortcut_map()
+        self._shortcuts_runtime = []
+
+        for action_key, (default_seq, handler) in self._shortcut_actions.items():
+            seq_text = str(shortcut_map.get(action_key, default_seq) or "").strip()
+            if not seq_text:
+                continue
+            shortcut = QShortcut(QKeySequence(seq_text), self)
+            shortcut.activated.connect(handler)
+            self._shortcuts_runtime.append(shortcut)
+            setattr(self, f"_shortcut_{action_key}", shortcut)
+
+    def _set_facade_mode_quick(self, mode: str) -> None:
+        mode_key = str(mode or "").strip().lower()
+        if not hasattr(self, "fhw") or not hasattr(self.fhw, "cb_facade_mode"):
+            return
+        idx = self.fhw.cb_facade_mode.findData(mode_key)
+        if idx < 0:
+            return
+        self.fhw.cb_facade_mode.setCurrentIndex(idx)
+
+    def _toggle_front_preview_visibility(self) -> None:
+        if hasattr(self, "fhw") and hasattr(self.fhw, "chk_temp_hide_front"):
+            now = bool(self.fhw.chk_temp_hide_front.isChecked())
+            self.fhw.chk_temp_hide_front.setChecked(not now)
+
+    def _open_shortcuts_dialog(self) -> None:
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Konfiguracja skrotow - Modul")
+        lay = QVBoxLayout(dlg)
+        form = QFormLayout()
+        lay.addLayout(form)
+
+        labels = {
+            "save": "Zapisz",
+            "overwrite": "Nadpisz",
+            "load": "Wczytaj",
+            "new": "Nowy",
+            "focus_name": "Fokus nazwy",
+            "toggle_front": "Pokaz/ukryj front",
+        }
+
+        current_map = self._load_shortcut_map()
+        edits: dict[str, QLineEdit] = {}
+
+        for action_key, (default_seq, _handler) in self._shortcut_actions.items():
+            edit = QLineEdit(str(current_map.get(action_key, default_seq) or default_seq))
+            edit.setPlaceholderText(default_seq)
+            edits[action_key] = edit
+            form.addRow(labels.get(action_key, action_key), edit)
+
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        btn_reset = btns.addButton("Domyslne", QDialogButtonBox.ButtonRole.ResetRole)
+        btn_reset.clicked.connect(
+            lambda: [
+                edits[k].setText(str(self._shortcut_actions[k][0] or ""))
+                for k in self._shortcut_actions.keys()
+            ]
+        )
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        lay.addWidget(btns)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        new_map: dict[str, str] = {}
+        for action_key, edit in edits.items():
+            value = str(edit.text() or "").strip()
+            if not value:
+                value = str(self._shortcut_actions[action_key][0] or "")
+            new_map[action_key] = value
+
+        self._save_shortcut_map(new_map)
+        self._setup_shortcuts_from_settings()
     def _get_collapsible_block_body(self, block: QWidget | None) -> QWidget | None:
         """
         Zwraca widget-body z CollapsibleBlock.
@@ -4819,6 +2718,28 @@ class TabModul(QWidget):
                     float(getattr(self._draft, "front_gap_between_vertical_mm", 0.0) or 0.0)
                 )
 
+            if hasattr(self.fhw, "cb_facade_mode"):
+                idx = self.fhw.cb_facade_mode.findData(
+                    str(getattr(self._draft, "facade_mode", "doors") or "doors")
+                )
+                if idx >= 0:
+                    self.fhw.cb_facade_mode.setCurrentIndex(idx)
+
+            if hasattr(self.fhw, "sp_drawer_count"):
+                self.fhw.sp_drawer_count.setValue(int(getattr(self._draft, "drawer_count", 3) or 3))
+
+            if hasattr(self.fhw, "cb_drawer_layout_mode"):
+                idx = self.fhw.cb_drawer_layout_mode.findData(
+                    str(getattr(self._draft, "drawer_layout_mode", "equal") or "equal")
+                )
+                if idx >= 0:
+                    self.fhw.cb_drawer_layout_mode.setCurrentIndex(idx)
+
+            if hasattr(self.fhw, "sp_drawer_small_front_h"):
+                self.fhw.sp_drawer_small_front_h.setValue(
+                    float(getattr(self._draft, "drawer_small_front_height_mm", 140.0) or 140.0)
+                )
+
             self.shelves.set_value(int(getattr(self._draft, "shelf_count", 0) or 0))
             self.shelves.set_enabled(True)
 
@@ -4986,6 +2907,8 @@ class TabModul(QWidget):
             front_offset_bottom_mm=float(self.fhw.sp_front_offset_bottom.value()),
             facade_mode=str(self.fhw.cb_facade_mode.currentData() or "doors"),
             drawer_count=int(self.fhw.sp_drawer_count.value()),
+            drawer_layout_mode=str(self.fhw.cb_drawer_layout_mode.currentData() or "equal"),
+            drawer_small_front_height_mm=float(self.fhw.sp_drawer_small_front_h.value()),
             hinge_vendor=str(self.fhw.cb_hinge_vendor.currentData() or "generic"),
             drawer_vendor=str(self.fhw.cb_drawer_vendor.currentData() or "generic"),
             drawer_tip_on=bool(self.fhw.chk_tipon.isChecked()),
@@ -5732,6 +3655,8 @@ class TabModul(QWidget):
 
         shelf_n = int(getattr(self._draft, "shelf_count", 0) or 0) if "shelf" in vp else 0
         div_n = int(getattr(self._draft, "divider_count", 0) or 0) if "divider" in vp else 0
+        shelf_mount = str(getattr(self._draft, "shelf_mount", "right") or "right").strip().lower()
+        expected_shelf_parts = shelf_n * 2 if (shelf_mount == "both" and div_n > 0) else shelf_n
 
         parts = getattr(self._draft, "parts", None) or {}
         self._draft.parts = parts
@@ -5739,7 +3664,7 @@ class TabModul(QWidget):
         exist_shelves = [k for k in parts.keys() if str(k).startswith("shelf_")]
         exist_divs = [k for k in parts.keys() if str(k).startswith("divider_")]
 
-        need = (len(exist_shelves) != shelf_n) or (len(exist_divs) != div_n)
+        need = (len(exist_shelves) != expected_shelf_parts) or (len(exist_divs) != div_n)
 
         if not need:
             return False

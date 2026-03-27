@@ -32,6 +32,12 @@ class DrawingSettings:
     auto_double_front_width_mm: float = 600.0
 
 
+@dataclass(frozen=True)
+class UiThemeSettings:
+    mode: str = "day"      # "day" | "night"
+    motif: str = "cream"   # "cream" | "blue" | "gray" | "green"
+
+
 def _project_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
@@ -208,5 +214,125 @@ def save_modul_splitter_sizes(sizes: list[int] | tuple[int, int, int]) -> None:
     data = _load_settings_data()
     ui = dict(data.get("ui") or {})
     ui["modul_splitter_sizes"] = normalized
+    data["ui"] = ui
+    _save_settings_data(data)
+
+
+def load_table_column_widths(key: str, default: list[int] | None = None) -> list[int]:
+    fallback = list(default or [])
+    key_norm = str(key or "").strip()
+    if not key_norm:
+        return fallback
+
+    data = _load_settings_data()
+    ui = data.get("ui") or {}
+    all_widths = ui.get("table_column_widths") or {}
+    raw = all_widths.get(key_norm) if isinstance(all_widths, dict) else None
+    if not isinstance(raw, list):
+        return fallback
+
+    out: list[int] = []
+    for value in raw:
+        try:
+            parsed = int(value)
+        except Exception:
+            return fallback
+        if parsed <= 0:
+            return fallback
+        out.append(parsed)
+    return out
+
+
+def save_table_column_widths(key: str, widths: list[int] | tuple[int, ...]) -> None:
+    key_norm = str(key or "").strip()
+    if not key_norm:
+        return
+
+    normalized: list[int] = []
+    for value in widths:
+        try:
+            parsed = int(value)
+        except Exception:
+            return
+        normalized.append(max(1, parsed))
+
+    data = _load_settings_data()
+    ui = dict(data.get("ui") or {})
+    all_widths = dict(ui.get("table_column_widths") or {})
+    all_widths[key_norm] = normalized
+    ui["table_column_widths"] = all_widths
+    data["ui"] = ui
+    _save_settings_data(data)
+
+
+def load_ui_string_list(key: str, default: list[str] | None = None) -> list[str]:
+    fallback = list(default or [])
+    key_norm = str(key or "").strip()
+    if not key_norm:
+        return fallback
+
+    data = _load_settings_data()
+    ui = data.get("ui") or {}
+    all_lists = ui.get("string_lists") or {}
+    raw = all_lists.get(key_norm) if isinstance(all_lists, dict) else None
+    if not isinstance(raw, list):
+        return fallback
+
+    out: list[str] = []
+    for value in raw:
+        text = str(value or "").strip()
+        if text:
+            out.append(text)
+    return out if out else fallback
+
+
+def save_ui_string_list(key: str, values: list[str] | tuple[str, ...]) -> None:
+    key_norm = str(key or "").strip()
+    if not key_norm:
+        return
+
+    normalized: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            normalized.append(text)
+
+    data = _load_settings_data()
+    ui = dict(data.get("ui") or {})
+    all_lists = dict(ui.get("string_lists") or {})
+    all_lists[key_norm] = normalized
+    ui["string_lists"] = all_lists
+    data["ui"] = ui
+    _save_settings_data(data)
+
+
+def load_ui_theme_settings() -> UiThemeSettings:
+    data = _load_settings_data()
+    ui = data.get("ui") or {}
+
+    mode = str(ui.get("theme_mode", "day")).strip().lower()
+    if mode not in ("day", "night"):
+        mode = "day"
+
+    motif = str(ui.get("theme_motif", "cream")).strip().lower()
+    if motif not in ("cream", "blue", "gray", "green"):
+        motif = "cream"
+
+    return UiThemeSettings(mode=mode, motif=motif)
+
+
+def save_ui_theme_settings(mode: str, motif: str) -> None:
+    mode_norm = str(mode or "day").strip().lower()
+    if mode_norm not in ("day", "night"):
+        mode_norm = "day"
+
+    motif_norm = str(motif or "cream").strip().lower()
+    if motif_norm not in ("cream", "blue", "gray", "green"):
+        motif_norm = "cream"
+
+    data = _load_settings_data()
+    ui = dict(data.get("ui") or {})
+    ui["theme_mode"] = mode_norm
+    ui["theme_motif"] = motif_norm
     data["ui"] = ui
     _save_settings_data(data)

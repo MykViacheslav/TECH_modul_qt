@@ -324,3 +324,19 @@ def test_tab_modul_selecting_non_front_clears_to_default_zone_context(tmp_path, 
     txt = w.fhw.lab_zone_context.text().lower()
 
     assert "aktywna edycja" in txt
+
+
+def test_front_hardware_block_drawer_layout_mode_roundtrip():
+    app = QApplication.instance() or QApplication([])
+
+    from src.domain.module_models import ModuleDef
+
+    w = FrontHardwareBlock()
+    idx = w.cb_drawer_layout_mode.findData("small_bottom")
+    assert idx >= 0
+    w.cb_drawer_layout_mode.setCurrentIndex(idx)
+    w.sp_drawer_small_front_h.setValue(175.0)
+
+    out = w.apply_to_module(ModuleDef())
+    assert out.drawer_layout_mode == "small_bottom"
+    assert out.drawer_small_front_height_mm == 175.0

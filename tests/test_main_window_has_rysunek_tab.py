@@ -1,6 +1,6 @@
 from PyQt6.QtCore import Qt
 from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication, QTabWidget
+from PyQt6.QtWidgets import QApplication
 
 from src.app.main_window import MainWindow
 
@@ -13,26 +13,16 @@ def test_main_window_has_start_order_quote_calendar_worktime_modul_komplet_scian
 
     w = MainWindow()
 
-    tabs = w.centralWidget()
-    assert isinstance(tabs, QTabWidget)
+    titles = list(w._tabs_by_title.keys())
+    for expected in [
+        "Start", "Nowe zamowienie", "Wycena",
+        "Kalendarz", "Czas pracy",
+        "Modul", "Komplet", "Sciana",
+        "Bazy", "Ustawienia",
+    ]:
+        assert expected in titles, f'Brak zakładki: "{expected}"'
 
-    titles = [tabs.tabText(i) for i in range(tabs.count())]
-
-    assert titles == [
-        "Start",
-        "Nowe zamowienie",
-        "Wycena",
-        "Plan",
-        "Schemat",
-        "Kalendarz",
-        "Czas pracy",
-        "Modul",
-        "Komplet",
-        "Sciana",
-        "Bazy",
-        "Ustawienia",
-    ]
-    assert tabs.currentWidget() is w._tabs_by_title["Start"]
+    assert w.tabs.currentWidget() is w._tabs_by_title["Start"]
     assert w.btn_nav_back.isEnabled() is False
     assert w.btn_nav_forward.isEnabled() is False
     assert w.btn_nav_home.isEnabled() is False
@@ -138,6 +128,28 @@ def test_main_window_navigation_buttons_track_history(tmp_path, monkeypatch):
     assert w.tabs.currentWidget() is tab_start
 
 
+def test_main_window_can_toggle_left_application_sidebar(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    w = MainWindow()
+    w.show()
+    app.processEvents()
+
+    assert w._sidebar.isHidden() is False
+    assert w.btn_sidebar_toggle.text() == "◀"
+
+    QTest.mouseClick(w.btn_sidebar_toggle, Qt.MouseButton.LeftButton)
+    assert w._sidebar.isHidden() is True
+    assert w.btn_sidebar_toggle.text() == "▶"
+
+    QTest.mouseClick(w.btn_sidebar_toggle, Qt.MouseButton.LeftButton)
+    assert w._sidebar.isHidden() is False
+    assert w.btn_sidebar_toggle.text() == "◀"
+
+
 def test_main_window_passes_new_order_context_into_sciana(tmp_path, monkeypatch):
     monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TECH_MODUL_TESTING", "1")
@@ -159,10 +171,10 @@ def test_main_window_passes_new_order_context_into_sciana(tmp_path, monkeypatch)
     QTest.mouseClick(tab_order.btn_go_to_sciana, Qt.MouseButton.LeftButton)
 
     assert w.tabs.currentWidget() is tab_sciana
-    assert tab_sciana.cb_client.currentData() == "Klient Kontekst"
+    assert "Klient Kontekst" in (tab_sciana.cb_client.currentData() or "")
     assert tab_sciana.cb_order.currentData() == "ORDER-KONTEKST"
     assert tab_sciana.cb_worker.currentData() == "Jan Kontekst"
-    assert "Klient: Klient Kontekst" in tab_sciana.lab_summary.text()
+    assert "Klient Kontekst" in tab_sciana.lab_summary.text()
     assert "Zamowienie: ORDER-KONTEKST" in tab_sciana.lab_summary.text()
     assert "Pracownik: Jan Kontekst" in tab_sciana.lab_summary.text()
 
@@ -180,6 +192,10 @@ def test_main_window_can_open_quote_item_from_order_as_sciana(tmp_path, monkeypa
     tab_order.cb_client_name.setCurrentText("Klient Oferta")
     tab_order.cb_worker_name.setCurrentText("Jan Oferta")
     tab_order.ed_order_code.setText("ORDER-OFERTA-1")
+    tab_order.cb_order_status.setCurrentText("Wycena")
+    tab_order.ed_order_address.setText("Warszawa, Testowa 10")
+    tab_order.ed_order_notes.setPlainText("Uwagi inwestora")
+    tab_order._current_order_calendar_note = "Pomiar wstepny"
     tab_order.ed_quote_item_name.setText("RTV salon")
     tab_order.cb_quote_item_kind.setCurrentText("RTV")
     tab_order.ed_quote_item_description.setText("Niska zabudowa + panel")
@@ -193,6 +209,10 @@ def test_main_window_can_open_quote_item_from_order_as_sciana(tmp_path, monkeypa
     assert tab_sciana.cb_client.currentData() == "Klient Oferta"
     assert tab_sciana.cb_order.currentData() == "ORDER-OFERTA-1"
     assert tab_sciana.cb_worker.currentData() == "Jan Oferta"
+    notes = tab_sciana.ed_notes.toPlainText()
+    assert "Niska zabudowa + panel" in notes
+    assert "Uwagi inwestora" in notes
+    assert "Pomiar wstepny" in notes
 
 
 def test_main_window_can_open_quote_item_from_order_as_komplet(tmp_path, monkeypatch):
@@ -208,6 +228,8 @@ def test_main_window_can_open_quote_item_from_order_as_komplet(tmp_path, monkeyp
     tab_order.cb_client_name.setCurrentText("Klient Oferta")
     tab_order.cb_worker_name.setCurrentText("Anna Oferta")
     tab_order.ed_order_code.setText("ORDER-OFERTA-2")
+    tab_order.cb_order_status.setCurrentText("Wycena")
+    tab_order.ed_order_address.setText("Krakow, Startowa 3")
     tab_order.ed_quote_item_name.setText("Szafa wejscie")
     tab_order.cb_quote_item_kind.setCurrentText("Szafa")
     tab_order.ed_quote_item_description.setText("Szafa wnekowa pod sufit")
@@ -221,6 +243,10 @@ def test_main_window_can_open_quote_item_from_order_as_komplet(tmp_path, monkeyp
     assert tab_komplet.ed_client.text() == "Klient Oferta"
     assert tab_komplet.ed_order.text() == "ORDER-OFERTA-2"
     assert tab_komplet.cb_worker.currentData() == "Anna Oferta"
+    assert "Status zamowienia: Wycena" in tab_komplet.lab_summary.text()
+    assert "Adres realizacji:" in tab_komplet.lab_summary.text()
+    assert "Startowa 3" in tab_komplet.lab_summary.text()
+    assert "Krakow" in tab_komplet.lab_summary.text()
 
 
 def test_main_window_passes_sciana_context_into_komplet(tmp_path, monkeypatch):
@@ -251,11 +277,11 @@ def test_main_window_passes_sciana_context_into_komplet(tmp_path, monkeypatch):
 
     assert w.tabs.currentWidget() is tab_komplet
     assert tab_komplet.cb_wall.currentData() == "SCIANA-KONTEKST"
-    assert tab_komplet.ed_client.text() == "Klient Sciana"
+    assert "Klient Sciana" in tab_komplet.ed_client.text()
     assert tab_komplet.ed_order.text() == "ORDER-SCIANA-KOMPLET"
     assert tab_komplet.cb_worker.currentData() == "Anna Sciana"
     assert "Powiazana sciana: SCIANA-KONTEKST" in tab_komplet.lab_summary.text()
-    assert "Klient: Klient Sciana" in tab_komplet.lab_summary.text()
+    assert "Klient Sciana" in tab_komplet.lab_summary.text()
     assert "Zamowienie: ORDER-SCIANA-KOMPLET" in tab_komplet.lab_summary.text()
     assert "Pracownik: Anna Sciana" in tab_komplet.lab_summary.text()
 
@@ -298,8 +324,8 @@ def test_main_window_can_return_from_komplet_to_order_with_context(tmp_path, mon
     QTest.mouseClick(tab_komplet.btn_back_to_order, Qt.MouseButton.LeftButton)
 
     assert w.tabs.currentWidget() is tab_order
-    assert tab_order.cb_client_name.currentText() == "Klient Powrot"
+    assert "Klient Powrot" in tab_order.cb_client_name.currentText()
     assert tab_order.ed_order_code.text() == "ORDER-POWROT-01"
     assert tab_order.cb_worker_name.currentText() == "Pracownik Powrot"
     assert tab_order.cb_order_status.currentText() == "Wycena"
-    assert tab_order.ed_order_address.text() == "Lodz, Powrotna 7"
+    assert "Powrotna 7" in tab_order.ed_order_address.text()

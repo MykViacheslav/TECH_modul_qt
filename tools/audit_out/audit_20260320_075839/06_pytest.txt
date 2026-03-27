@@ -1,0 +1,91 @@
+﻿........................................................................ [ 19%]
+..........................F............................................. [ 39%]
+........................................................................ [ 58%]
+........................................................................ [ 78%]
+...............................................F........................ [ 97%]
+.........                                                                [100%]
+================================== FAILURES ===================================
+_ test_main_window_has_start_order_quote_calendar_worktime_modul_komplet_sciana_bazy_and_ustawienia_tabs _
+
+tmp_path = WindowsPath('C:/Users/mykyt/AppData/Local/Temp/pytest-of-mykyt/pytest-1188/test_main_window_has_start_ord0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002190A92DFF0>
+
+    def test_main_window_has_start_order_quote_calendar_worktime_modul_komplet_sciana_bazy_and_ustawienia_tabs(tmp_path, monkeypatch):
+        monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+    
+        app = QApplication.instance() or QApplication([])
+    
+        w = MainWindow()
+    
+        tabs = w.centralWidget()
+        assert isinstance(tabs, QTabWidget)
+    
+        titles = [tabs.tabText(i) for i in range(tabs.count())]
+    
+>       assert titles == [
+            "Start",
+            "Nowe zamowienie",
+            "Wycena",
+            "Plan",
+            "Schemat",
+            "Kalendarz",
+            "Czas pracy",
+            "Modul",
+            "Komplet",
+            "Sciana",
+            "Bazy",
+            "Ustawienia",
+        ]
+E       AssertionError: assert ['Start', 'No... 'Modul', ...] == ['Start', 'No...lendarz', ...]
+E         
+E         At index 3 diff: 'Kalendarz' != 'Plan'
+E         Right contains 2 more items, first extra item: 'Bazy'
+E         Use -v to get more diff
+
+tests\test_main_window_has_rysunek_tab.py:21: AssertionError
+---------------------------- Captured stderr call -----------------------------
+QApplication::regClass: Registering window class 'Qt6102ThemeChangeObserverWindow' failed. (Klasa ju\ufffd istnieje.)
+_ test_build_tabs_contains_start_order_quote_calendar_worktime_modul_komplet_sciana_bazy_and_ustawienia _
+
+tmp_path = WindowsPath('C:/Users/mykyt/AppData/Local/Temp/pytest-of-mykyt/pytest-1188/test_build_tabs_contains_start0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002191122D810>
+
+    def test_build_tabs_contains_start_order_quote_calendar_worktime_modul_komplet_sciana_bazy_and_ustawienia(tmp_path, monkeypatch):
+        monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+    
+        app = QApplication.instance() or QApplication([])
+    
+        tabs = build_tabs()
+    
+        assert isinstance(tabs, list)
+        assert len(tabs) >= 10
+    
+        titles = [title for title, _widget in tabs]
+>       assert titles == [
+            "Start",
+            "Nowe zamowienie",
+            "Wycena",
+            "Plan",
+            "Schemat",
+            "Kalendarz",
+            "Czas pracy",
+            "Modul",
+            "Komplet",
+            "Sciana",
+            "Bazy",
+            "Ustawienia",
+        ]
+E       AssertionError: assert ['Start', 'No... 'Modul', ...] == ['Start', 'No...lendarz', ...]
+E         
+E         At index 3 diff: 'Kalendarz' != 'Plan'
+E         Right contains 2 more items, first extra item: 'Bazy'
+E         Use -v to get more diff
+
+tests\test_tabs_registry_with_rysunek.py:29: AssertionError
+---------------------------- Captured stderr call -----------------------------
+QApplication::regClass: Registering window class 'Qt6102ThemeChangeObserverWindow' failed. (Klasa ju\ufffd istnieje.)
+=========================== short test summary info ===========================
+FAILED tests/test_main_window_has_rysunek_tab.py::test_main_window_has_start_order_quote_calendar_worktime_modul_komplet_sciana_bazy_and_ustawienia_tabs
+FAILED tests/test_tabs_registry_with_rysunek.py::test_build_tabs_contains_start_order_quote_calendar_worktime_modul_komplet_sciana_bazy_and_ustawienia

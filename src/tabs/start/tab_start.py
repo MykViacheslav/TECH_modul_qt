@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
-from PyQt6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QStyle, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QStyle, QVBoxLayout, QWidget
 
 
 class TabStart(QWidget):
@@ -9,6 +9,7 @@ class TabStart(QWidget):
     sig_open_quote_requested = pyqtSignal()
     sig_open_calendar_requested = pyqtSignal()
     sig_open_work_time_requested = pyqtSignal()
+    sig_open_time_kiosk_requested = pyqtSignal()
     sig_open_clients_requested = pyqtSignal()
     sig_new_wall_requested = pyqtSignal()
     sig_new_assembly_requested = pyqtSignal()
@@ -27,15 +28,10 @@ class TabStart(QWidget):
         title.setStyleSheet("font-size: 26px; font-weight: 900; color:#14263d;")
         root.addWidget(title, 0, Qt.AlignmentFlag.AlignLeft)
 
-        subtitle = QLabel(
-            "Tu zaczynasz prace. Najpierw zakladasz zamowienie, potem przechodzisz do wyceny, projektu i realizacji."
-        )
+        subtitle = QLabel("Tu zaczynasz prace. Najpierw zakladasz zamowienie, potem przechodzisz dalej.")
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet("color:#5f6c7c; font-size:14px;")
         root.addWidget(subtitle, 0, Qt.AlignmentFlag.AlignLeft)
-
-        main_row = QHBoxLayout()
-        main_row.setSpacing(18)
 
         start_panel = self._make_panel()
         start_layout = QVBoxLayout(start_panel)
@@ -43,57 +39,32 @@ class TabStart(QWidget):
         start_layout.setSpacing(12)
         start_layout.addWidget(self._make_panel_title("Szybki start"))
 
-        start_note = QLabel(
-            "Zostawiamy tu tylko najwazniejsze kroki. Reszta kart jest pomocnicza i nie powinna przeszkadzac na starcie."
-        )
-        start_note.setWordWrap(True)
-        start_note.setStyleSheet("color:#617082;")
-        start_layout.addWidget(start_note)
-
         self.btn_new_order = self._make_primary_button("Nowe zamowienie", "Klient, pozycje do wyceny i start projektu.")
         self.btn_quote = self._make_primary_button("Wycena", "Koszt techniczny, cena handlowa i oferta.")
         self.btn_calendar = self._make_primary_button("Kalendarz", "Statusy, terminy i prowadzenie pracy.")
         self.btn_work_time = self._make_secondary_button("Czas pracy", "Godziny, dniowki i koszt ludzi.")
+        self.btn_time_kiosk = self._make_secondary_button("Tablet QR", "Szybkie odbicia czasu pracy na tablecie.")
 
-        start_layout.addWidget(self.btn_new_order)
-        start_layout.addWidget(self.btn_quote)
-        start_layout.addWidget(self.btn_calendar)
-        start_layout.addWidget(self.btn_work_time)
-        start_layout.addStretch(1)
-        main_row.addWidget(start_panel, 2)
-
-        flow_panel = self._make_panel()
-        flow_layout = QVBoxLayout(flow_panel)
-        flow_layout.setContentsMargins(18, 18, 18, 18)
-        flow_layout.setSpacing(14)
-        flow_layout.addWidget(self._make_panel_title("Przeplyw pracy"))
-
-        steps = QGridLayout()
-        steps.setHorizontalSpacing(12)
-        steps.setVerticalSpacing(12)
-        steps.addWidget(self._make_step_card("1", "Nowe zamowienie", "Zakladasz projekt i klienta."), 0, 0)
-        steps.addWidget(self._make_step_card("2", "Wycena", "Liczysz wariant i przygotowujesz oferte."), 0, 1)
-        steps.addWidget(self._make_step_card("3", "Sciana / Komplet", "Ukladasz projekt roboczy."), 1, 0)
-        steps.addWidget(self._make_step_card("4", "Kalendarz", "Planujesz etapy i ludzi."), 1, 1)
-        flow_layout.addLayout(steps)
-
-        flow_footer = QLabel("Program ma prowadzic przez kolejne etapy, a nie pokazywac wszystko naraz.")
-        flow_footer.setWordWrap(True)
-        flow_footer.setStyleSheet("color:#617082;")
-        flow_layout.addWidget(flow_footer)
-        main_row.addWidget(flow_panel, 3)
-
-        root.addLayout(main_row)
+        start_actions = QVBoxLayout()
+        start_actions.setContentsMargins(0, 0, 0, 0)
+        start_actions.setSpacing(8)
+        start_actions.addWidget(self.btn_new_order, 0)
+        start_actions.addWidget(self.btn_quote, 0)
+        start_actions.addWidget(self.btn_calendar, 0)
+        start_actions.addWidget(self.btn_work_time, 0)
+        start_actions.addWidget(self.btn_time_kiosk, 0)
+        start_actions.addStretch(0)
+        start_layout.addLayout(start_actions)
+        root.addWidget(start_panel)
 
         section = QLabel("Pozostale narzedzia")
         section.setStyleSheet("font-size: 15px; font-weight: 800; color:#203047;")
         root.addWidget(section, 0, Qt.AlignmentFlag.AlignLeft)
 
         tools_panel = self._make_panel()
-        tools_layout = QGridLayout(tools_panel)
+        tools_layout = QVBoxLayout(tools_panel)
         tools_layout.setContentsMargins(18, 18, 18, 18)
-        tools_layout.setHorizontalSpacing(12)
-        tools_layout.setVerticalSpacing(12)
+        tools_layout.setSpacing(8)
 
         self.btn_clients = self._make_secondary_button("Klienci", "Baza klientow.")
         self.btn_sciana = self._make_secondary_button("Sciana", "Nowa sciana lub pomiar.")
@@ -106,6 +77,7 @@ class TabStart(QWidget):
         self._set_button_icon(self.btn_quote, QStyle.StandardPixmap.SP_DialogApplyButton)
         self._set_button_icon(self.btn_calendar, QStyle.StandardPixmap.SP_FileDialogDetailedView)
         self._set_button_icon(self.btn_work_time, QStyle.StandardPixmap.SP_BrowserReload)
+        self._set_button_icon(self.btn_time_kiosk, QStyle.StandardPixmap.SP_DialogYesButton)
         self._set_button_icon(self.btn_clients, QStyle.StandardPixmap.SP_DirHomeIcon)
         self._set_button_icon(self.btn_sciana, QStyle.StandardPixmap.SP_FileDialogContentsView)
         self._set_button_icon(self.btn_komplet, QStyle.StandardPixmap.SP_DirOpenIcon)
@@ -113,27 +85,14 @@ class TabStart(QWidget):
         self._set_button_icon(self.btn_bazy, QStyle.StandardPixmap.SP_DriveHDIcon)
         self._set_button_icon(self.btn_settings, QStyle.StandardPixmap.SP_FileDialogInfoView)
 
-        tools_layout.addWidget(self.btn_clients, 0, 0)
-        tools_layout.addWidget(self.btn_sciana, 0, 1)
-        tools_layout.addWidget(self.btn_komplet, 0, 2)
-        tools_layout.addWidget(self.btn_modul, 1, 0)
-        tools_layout.addWidget(self.btn_bazy, 1, 1)
-        tools_layout.addWidget(self.btn_settings, 1, 2)
+        tools_layout.addWidget(self.btn_clients, 0)
+        tools_layout.addWidget(self.btn_sciana, 0)
+        tools_layout.addWidget(self.btn_komplet, 0)
+        tools_layout.addWidget(self.btn_modul, 0)
+        tools_layout.addWidget(self.btn_bazy, 0)
+        tools_layout.addWidget(self.btn_settings, 0)
         root.addWidget(tools_panel)
 
-        info_panel = self._make_panel()
-        info_layout = QHBoxLayout(info_panel)
-        info_layout.setContentsMargins(18, 14, 18, 14)
-        info_layout.setSpacing(18)
-        info_layout.addWidget(
-            self._make_info_card("Zasada", "Jeden ekran ma miec jedno glowne zadanie. Reszta ma byc schowana albo pomocnicza."),
-            1,
-        )
-        info_layout.addWidget(
-            self._make_info_card("Cel", "Program ma przyspieszac wycene i prowadzenie firmy, a nie meczyc nadmiarem pol."),
-            1,
-        )
-        root.addWidget(info_panel)
         root.addStretch(1)
 
         self.btn_new_order.clicked.connect(self.sig_new_order_requested.emit)
@@ -141,6 +100,7 @@ class TabStart(QWidget):
         self.btn_clients.clicked.connect(self.sig_open_clients_requested.emit)
         self.btn_calendar.clicked.connect(self.sig_open_calendar_requested.emit)
         self.btn_work_time.clicked.connect(self.sig_open_work_time_requested.emit)
+        self.btn_time_kiosk.clicked.connect(self.sig_open_time_kiosk_requested.emit)
         self.btn_sciana.clicked.connect(self.sig_new_wall_requested.emit)
         self.btn_komplet.clicked.connect(self.sig_new_assembly_requested.emit)
         self.btn_modul.clicked.connect(self.sig_new_module_requested.emit)
@@ -164,37 +124,45 @@ class TabStart(QWidget):
         return label
 
     def _make_primary_button(self, title: str, description: str) -> QPushButton:
-        btn = QPushButton(f"{title}\n{description}", self)
-        btn.setMinimumHeight(92)
+        btn = QPushButton(f"  {title}", self)
+        btn.setToolTip(f"{title}\n{description}")
+        btn.setAccessibleName(title)
+        btn.setMinimumHeight(48)
+        btn.setMaximumHeight(48)
+        btn.setMinimumWidth(260)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setStyleSheet(
             "QPushButton {"
             "text-align: left;"
-            "padding: 16px 18px;"
-            "border-radius: 16px;"
+            "padding: 0 12px;"
+            "border-radius: 12px;"
             "border: 1px solid #d7dfeb;"
             "background: #f7f9fc;"
             "color: #132640;"
             "font-size: 14px;"
-            "font-weight: 800;"
+            "font-weight: 700;"
             "}"
             "QPushButton:hover {"
             "border-color: #aebfd9;"
             "background: #eef3f9;"
             "}"
         )
-        btn.setIconSize(QSize(18, 18))
+        btn.setIconSize(QSize(22, 22))
         return btn
 
     def _make_secondary_button(self, title: str, description: str) -> QPushButton:
-        btn = QPushButton(f"{title}\n{description}", self)
-        btn.setMinimumHeight(84)
+        btn = QPushButton(f"  {title}", self)
+        btn.setToolTip(f"{title}\n{description}")
+        btn.setAccessibleName(title)
+        btn.setMinimumHeight(44)
+        btn.setMaximumHeight(44)
+        btn.setMinimumWidth(260)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setStyleSheet(
             "QPushButton {"
             "text-align: left;"
-            "padding: 14px 16px;"
-            "border-radius: 14px;"
+            "padding: 0 12px;"
+            "border-radius: 12px;"
             "border: 1px solid #e1e7ef;"
             "background: #ffffff;"
             "color: #203047;"
@@ -206,7 +174,7 @@ class TabStart(QWidget):
             "background: #f7f9fc;"
             "}"
         )
-        btn.setIconSize(QSize(18, 18))
+        btn.setIconSize(QSize(20, 20))
         return btn
 
     def _set_button_icon(self, button: QPushButton, icon_kind: QStyle.StandardPixmap) -> None:

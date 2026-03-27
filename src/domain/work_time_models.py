@@ -1,11 +1,21 @@
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
 
+def new_entry_id() -> str:
+    return str(uuid.uuid4())[:8].upper()
+
+
+def new_sheet_id() -> str:
+    return str(uuid.uuid4())[:8].upper()
+
+
 @dataclass
 class WorkTimeEntryDef:
+    entry_id: str = ""
     day: int = 1
     date_iso: str = ""
     work_type: str = ""
@@ -19,6 +29,7 @@ class WorkTimeEntryDef:
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "entry_id": self.entry_id,
             "day": int(self.day or 1),
             "date_iso": self.date_iso,
             "work_type": self.work_type,
@@ -35,6 +46,7 @@ class WorkTimeEntryDef:
     def from_dict(cls, data: Dict[str, Any]) -> "WorkTimeEntryDef":
         data = data or {}
         return cls(
+            entry_id=str(data.get("entry_id", "") or ""),
             day=int(data.get("day", 1) or 1),
             date_iso=str(data.get("date_iso", "") or ""),
             work_type=str(data.get("work_type", "") or ""),
@@ -50,6 +62,7 @@ class WorkTimeEntryDef:
 
 @dataclass
 class WorkerMonthSheetDef:
+    sheet_id: str = ""
     worker_name: str = ""
     year: int = 0
     month: int = 0
@@ -57,6 +70,7 @@ class WorkerMonthSheetDef:
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "sheet_id": self.sheet_id,
             "worker_name": self.worker_name,
             "year": int(self.year or 0),
             "month": int(self.month or 0),
@@ -68,6 +82,7 @@ class WorkerMonthSheetDef:
         data = data or {}
         entries_raw = data.get("entries", []) or []
         return cls(
+            sheet_id=str(data.get("sheet_id", "") or ""),
             worker_name=str(data.get("worker_name", "") or ""),
             year=int(data.get("year", 0) or 0),
             month=int(data.get("month", 0) or 0),

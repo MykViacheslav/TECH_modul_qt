@@ -1,19 +1,14 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Any, Dict
 
+from src.storage.data_paths import data_dir
+
 
 def _default_data_dir() -> Path:
-    env = os.environ.get("TECH_MODUL_DATA_DIR", "").strip()
-    if env:
-        return Path(env)
-
-    root = Path(__file__).resolve().parents[2]
-    proj = root.parent
-    return proj / "data"
+    return data_dir()
 
 
 class OrderDraftStoreJson:

@@ -16,6 +16,9 @@ def test_module_def_new_domain_fields_have_defaults():
 
     assert m.front_layout in ("overlay", "inset")
     assert m.facade_mode in ("doors", "drawers", "mixed")
+    assert m.shelf_mount in ("left", "right", "both")
+    assert m.drawer_layout_mode in ("equal", "small_top", "small_bottom")
+    assert m.drawer_small_front_height_mm > 0.0
 
 
 def test_module_def_to_dict_contains_new_domain_fields():
@@ -105,6 +108,26 @@ def test_module_def_roundtrip_keeps_new_domain_fields():
     assert m2.inherit_depth_from_wall is True
     assert m2.inherit_materials_from_group is False
     assert m2.inherit_edgeband_from_group is True
+
+
+def test_module_def_normalizes_shelf_mount_and_persists_drawer_layout():
+    m = ModuleDef.from_dict(
+        {
+            "name": "SHELF_BOTH",
+            "shelf_mount": "both",
+            "drawer_layout_mode": "small_top",
+            "drawer_small_front_height_mm": 155.0,
+        }
+    )
+
+    assert m.shelf_mount == "both"
+    assert m.drawer_layout_mode == "small_top"
+    assert m.drawer_small_front_height_mm == 155.0
+
+    d = m.to_dict()
+    assert d["shelf_mount"] == "both"
+    assert d["drawer_layout_mode"] == "small_top"
+    assert d["drawer_small_front_height_mm"] == 155.0
 
 
 def test_module_def_base_group_defaults_from_family_when_missing():

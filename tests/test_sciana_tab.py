@@ -5,6 +5,8 @@ from PyQt6.QtGui import QPixmap
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QDialog
 
+from src.app.app_settings import save_ui_string_list
+
 
 def _select_saved_module(tree, name: str) -> bool:
     for top_index in range(tree.topLevelItemCount()):
@@ -89,6 +91,684 @@ def test_sciana_tab_adds_saved_modules_and_aggregates_costs(tmp_path, monkeypatc
     assert w.lab_summary_hardware_total.text().endswith("zl")
     assert w.lab_summary_grand_total.text().endswith("zl")
     assert "Kalkulacja handlowa:" not in w.lab_summary.text()
+
+
+def test_sciana_tab_double_click_adds_saved_module(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    catalog = CatalogStoreJson()
+    store = ModuleStoreJson()
+
+    module = ModuleDef(
+        name="BASE_DBL",
+        width_mm=600.0,
+        depth_mm=500.0,
+        height_mm=720.0,
+        shelf_count=1,
+        visible_parts={"side_left", "side_right", "top", "bottom", "shelf", "front"},
+        materials={"carcass": "PB18", "front": "MDF19", "back": "HDF2.5"},
+    )
+    module.parts = build_module_parts(module, catalog)
+    store.save_new(module)
+
+    w = TabSciana(module_store=store)
+    w.show()
+    app.processEvents()
+
+    assert _select_saved_module(w.tree_saved_modules, "BASE_DBL")
+    item = w.tree_saved_modules.currentItem()
+    assert item is not None
+
+    w.tree_saved_modules.itemDoubleClicked.emit(item, 0)
+    app.processEvents()
+
+    assert len(w._assembly.items) == 1
+    assert len(w._resolved_items) == 1
+    assert w.tbl_items.rowCount() == 1
+
+
+def test_sciana_tab_enter_in_saved_search_adds_selected_module(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    catalog = CatalogStoreJson()
+    store = ModuleStoreJson()
+
+    module = ModuleDef(
+        name="BASE_RET",
+        width_mm=700.0,
+        depth_mm=500.0,
+        height_mm=720.0,
+        shelf_count=1,
+        visible_parts={"side_left", "side_right", "top", "bottom", "shelf", "front"},
+        materials={"carcass": "PB18", "front": "MDF19", "back": "HDF2.5"},
+    )
+    module.parts = build_module_parts(module, catalog)
+    store.save_new(module)
+
+    w = TabSciana(module_store=store)
+    w.show()
+    app.processEvents()
+
+    w.ed_saved_search.setText("BASE_RET")
+    app.processEvents()
+    assert _select_saved_module(w.tree_saved_modules, "BASE_RET")
+
+    w.ed_saved_search.returnPressed.emit()
+    app.processEvents()
+
+    assert len(w._assembly.items) == 1
+    assert len(w._resolved_items) == 1
+    assert w.tbl_items.rowCount() == 1
+
+
+def test_sciana_tab_shortcut_focus_targets_saved_search(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    w = TabSciana()
+    w.show()
+    app.processEvents()
+
+    w._shortcut_focus_search.activated.emit()
+    app.processEvents()
+    assert w.ed_saved_search.hasFocus() is True
+
+
+def test_sciana_tab_shortcuts_can_be_loaded_from_settings_and_quick_actions_work(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    save_ui_string_list(
+        "komplet_shortcuts_v2",
+        [
+            "save=Ctrl+Alt+S",
+            "overwrite=Ctrl+Alt+Shift+S",
+            "load=Ctrl+Alt+L",
+            "new=Ctrl+Alt+N",
+            "focus_search=Ctrl+Alt+F",
+            "duplicate=Ctrl+Alt+D",
+            "toggle_snap=Ctrl+Alt+G",
+            "toggle_left=Ctrl+Alt+P",
+        ],
+    )
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    w = TabSciana()
+    w.show()
+    app.processEvents()
+
+    assert w._shortcut_focus_search.key().toString() == "Ctrl+Alt+F"
+    assert w._shortcut_toggle_left.key().toString() == "Ctrl+Alt+P"
+
+    calls = {"save": 0}
+    monkeypatch.setattr(w, "_on_save_new", lambda: calls.__setitem__("save", calls["save"] + 1))
+    monkeypatch.setattr(w, "_assembly_store", type("_Store", (), {"get": lambda _self, _name: None})())
+    w.btn_q_save.click()
+    assert calls["save"] == 1
+
+    before_snap = bool(w._snap_grid_enabled)
+    w.btn_q_snap.click()
+    assert bool(w._snap_grid_enabled) is (not before_snap)
+
+    before_left = bool(w.left_zone.isVisible())
+    w._shortcut_toggle_left.activated.emit()
+    app.processEvents()
+    assert bool(w.left_zone.isVisible()) is (not before_left)
+
+
+def test_sciana_tab_can_toggle_left_panel_visibility(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    w = TabSciana()
+    w.show()
+    app.processEvents()
+
+    assert w.left_zone.isVisible() is True
+    assert "Ukryj" in w.btn_toggle_left_zone.text()
+
+    w.btn_toggle_left_zone.click()
+    app.processEvents()
+
+    assert w.left_zone.isVisible() is False
+    assert "Pokaz" in w.btn_toggle_left_zone.text()
+
+    w.btn_toggle_left_zone.click()
+    app.processEvents()
+
+    assert w.left_zone.isVisible() is True
+    assert "Ukryj" in w.btn_toggle_left_zone.text()
+
+
+def test_sciana_tab_duplicate_selected_item_creates_next_instance(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    catalog = CatalogStoreJson()
+    store = ModuleStoreJson()
+
+    module = ModuleDef(
+        name="BASE_DUP",
+        width_mm=600.0,
+        depth_mm=500.0,
+        height_mm=720.0,
+        shelf_count=1,
+        visible_parts={"side_left", "side_right", "top", "bottom", "shelf", "front"},
+        materials={"carcass": "PB18", "front": "MDF19", "back": "HDF2.5"},
+    )
+    module.parts = build_module_parts(module, catalog)
+    store.save_new(module)
+
+    w = TabSciana(module_store=store)
+    w.show()
+    app.processEvents()
+
+    assert _select_saved_module(w.tree_saved_modules, "BASE_DUP")
+    w.btn_add_saved.click()
+    app.processEvents()
+    assert len(w._assembly.items) == 1
+
+    w.tbl_items.selectRow(0)
+    app.processEvents()
+    assert w.btn_duplicate.isEnabled()
+    w.btn_duplicate.click()
+    app.processEvents()
+
+    assert len(w._assembly.items) == 2
+    assert w.tbl_items.rowCount() == 2
+    assert w._assembly.items[0].display_name() == "BASE_DUP"
+    assert w._assembly.items[1].display_name() == "BASE_DUP #2"
+    assert float(getattr(w._assembly.items[1], "offset_mm", 0.0) or 0.0) >= float(
+        getattr(w._assembly.items[0].module, "width_mm", 0.0) or 0.0
+    )
+
+
+def test_sciana_tab_duplicate_selected_items_for_multi_selection(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    catalog = CatalogStoreJson()
+    store = ModuleStoreJson()
+
+    module_a = ModuleDef(name="DUPM_A", width_mm=600.0, depth_mm=500.0, height_mm=720.0)
+    module_b = ModuleDef(name="DUPM_B", width_mm=800.0, depth_mm=500.0, height_mm=720.0)
+    module_a.parts = build_module_parts(module_a, catalog)
+    module_b.parts = build_module_parts(module_b, catalog)
+    store.save_new(module_a)
+    store.save_new(module_b)
+
+    w = TabSciana(module_store=store)
+    w.show()
+    app.processEvents()
+
+    assert _select_saved_module(w.tree_saved_modules, "DUPM_A")
+    w.btn_add_saved.click()
+    assert _select_saved_module(w.tree_saved_modules, "DUPM_B")
+    w.btn_add_saved.click()
+    app.processEvents()
+
+    sel = w.tbl_items.selectionModel()
+    assert sel is not None
+    idx0 = w.tbl_items.model().index(0, 0)
+    idx1 = w.tbl_items.model().index(1, 0)
+    sel.clearSelection()
+    sel.select(idx0, QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
+    sel.select(idx1, QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
+    app.processEvents()
+
+    assert w.btn_duplicate.isEnabled()
+    w.btn_duplicate.click()
+    app.processEvents()
+
+    assert len(w._assembly.items) == 4
+    assert w.tbl_items.rowCount() == 4
+    names = [item.display_name() for item in w._assembly.items]
+    assert names[0] == "DUPM_A"
+    assert names[1] == "DUPM_B"
+    assert names[2] == "DUPM_A #2"
+    assert names[3] == "DUPM_B #2"
+
+
+def test_sciana_tab_ctrl_d_shortcut_duplicates_selected_module(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    catalog = CatalogStoreJson()
+    store = ModuleStoreJson()
+
+    module = ModuleDef(name="DUP_SHORT", width_mm=600.0, depth_mm=500.0, height_mm=720.0)
+    module.parts = build_module_parts(module, catalog)
+    store.save_new(module)
+
+    w = TabSciana(module_store=store)
+    w.show()
+    app.processEvents()
+
+    assert _select_saved_module(w.tree_saved_modules, "DUP_SHORT")
+    w.btn_add_saved.click()
+    app.processEvents()
+    w.tbl_items.selectRow(0)
+    app.processEvents()
+
+    QTest.keyClick(w, Qt.Key.Key_D, Qt.KeyboardModifier.ControlModifier)
+    app.processEvents()
+
+    assert len(w._assembly.items) == 2
+    assert w._assembly.items[1].display_name() == "DUP_SHORT #2"
+
+
+def test_sciana_tab_aligns_selected_modules_top_and_bottom(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    catalog = CatalogStoreJson()
+    store = ModuleStoreJson()
+
+    module = ModuleDef(name="ALN_MOD", width_mm=600.0, depth_mm=500.0, height_mm=720.0)
+    module.parts = build_module_parts(module, catalog)
+    store.save_new(module)
+
+    w = TabSciana(module_store=store)
+    w.show()
+    app.processEvents()
+
+    assert _select_saved_module(w.tree_saved_modules, "ALN_MOD")
+    w.btn_add_saved.click()
+    assert _select_saved_module(w.tree_saved_modules, "ALN_MOD")
+    w.btn_add_saved.click()
+    app.processEvents()
+
+    w._assembly.items[0].position_y_mm = 120.0
+    w._assembly.items[1].position_y_mm = 540.0
+    w._rebuild_assembly(select_indexes=[0, 1])
+
+    sel = w.tbl_items.selectionModel()
+    assert sel is not None
+    flags = QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows
+    sel.clearSelection()
+    sel.select(w.tbl_items.model().index(0, 0), flags)
+    sel.select(w.tbl_items.model().index(1, 0), flags)
+    app.processEvents()
+
+    w._on_align_selected_vertical("top")
+    app.processEvents()
+    top_ys = [float(getattr(item, "y_mm", 0.0) or 0.0) for item in w._resolved_items[:2]]
+    assert abs(top_ys[0] - top_ys[1]) < 0.01
+
+    w._assembly.items[0].position_y_mm = 140.0
+    w._assembly.items[1].position_y_mm = 520.0
+    w._rebuild_assembly(select_indexes=[0, 1])
+    sel.clearSelection()
+    sel.select(w.tbl_items.model().index(0, 0), flags)
+    sel.select(w.tbl_items.model().index(1, 0), flags)
+    app.processEvents()
+
+    w._on_align_selected_vertical("bottom")
+    app.processEvents()
+    bottoms = [
+        float(getattr(item, "y_mm", 0.0) or 0.0) + float(getattr(item, "height_mm", 0.0) or 0.0)
+        for item in w._resolved_items[:2]
+    ]
+    assert abs(bottoms[0] - bottoms[1]) < 0.01
+
+
+def test_sciana_tab_distributes_selected_modules_horizontally(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    catalog = CatalogStoreJson()
+    store = ModuleStoreJson()
+
+    module = ModuleDef(name="DST_MOD", width_mm=400.0, depth_mm=500.0, height_mm=720.0)
+    module.parts = build_module_parts(module, catalog)
+    store.save_new(module)
+
+    w = TabSciana(module_store=store)
+    w.show()
+    app.processEvents()
+
+    assert _select_saved_module(w.tree_saved_modules, "DST_MOD")
+    w.btn_add_saved.click()
+    assert _select_saved_module(w.tree_saved_modules, "DST_MOD")
+    w.btn_add_saved.click()
+    assert _select_saved_module(w.tree_saved_modules, "DST_MOD")
+    w.btn_add_saved.click()
+    app.processEvents()
+
+    w._assembly.items[0].offset_mm = 100.0
+    w._assembly.items[1].offset_mm = 900.0
+    w._assembly.items[2].offset_mm = 2200.0
+    for index in (0, 1, 2):
+        w._assembly.items[index].offset_ref_mode = "wall_left"
+    w._rebuild_assembly(select_indexes=[0, 1, 2])
+
+    sel = w.tbl_items.selectionModel()
+    assert sel is not None
+    flags = QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows
+    sel.clearSelection()
+    sel.select(w.tbl_items.model().index(0, 0), flags)
+    sel.select(w.tbl_items.model().index(1, 0), flags)
+    sel.select(w.tbl_items.model().index(2, 0), flags)
+    app.processEvents()
+
+    w._on_distribute_selected_horizontally()
+    app.processEvents()
+
+    xs = [float(getattr(item, "x_mm", 0.0) or 0.0) for item in w._resolved_items[:3]]
+    gap1 = xs[1] - xs[0]
+    gap2 = xs[2] - xs[1]
+    assert abs(gap1 - gap2) < 1.0
+
+
+def test_sciana_tab_aligns_selected_modules_left_and_right(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    catalog = CatalogStoreJson()
+    store = ModuleStoreJson()
+
+    module_a = ModuleDef(name="ALX_A", width_mm=400.0, depth_mm=500.0, height_mm=720.0)
+    module_b = ModuleDef(name="ALX_B", width_mm=700.0, depth_mm=500.0, height_mm=720.0)
+    module_a.parts = build_module_parts(module_a, catalog)
+    module_b.parts = build_module_parts(module_b, catalog)
+    store.save_new(module_a)
+    store.save_new(module_b)
+
+    w = TabSciana(module_store=store)
+    w.show()
+    app.processEvents()
+
+    assert _select_saved_module(w.tree_saved_modules, "ALX_A")
+    w.btn_add_saved.click()
+    assert _select_saved_module(w.tree_saved_modules, "ALX_B")
+    w.btn_add_saved.click()
+    app.processEvents()
+
+    w._assembly.items[0].offset_ref_mode = "wall_left"
+    w._assembly.items[1].offset_ref_mode = "wall_left"
+    w._assembly.items[0].offset_mm = 300.0
+    w._assembly.items[1].offset_mm = 1500.0
+    w._rebuild_assembly(select_indexes=[0, 1])
+
+    sel = w.tbl_items.selectionModel()
+    assert sel is not None
+    flags = QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows
+    sel.clearSelection()
+    sel.select(w.tbl_items.model().index(0, 0), flags)
+    sel.select(w.tbl_items.model().index(1, 0), flags)
+    app.processEvents()
+
+    w._on_align_selected_horizontal("left")
+    app.processEvents()
+    lefts = [float(getattr(item, "x_mm", 0.0) or 0.0) for item in w._resolved_items[:2]]
+    assert abs(lefts[0] - lefts[1]) < 0.01
+
+    w._assembly.items[0].offset_mm = 300.0
+    w._assembly.items[1].offset_mm = 1800.0
+    w._rebuild_assembly(select_indexes=[0, 1])
+    sel.clearSelection()
+    sel.select(w.tbl_items.model().index(0, 0), flags)
+    sel.select(w.tbl_items.model().index(1, 0), flags)
+    app.processEvents()
+
+    w._on_align_selected_horizontal("right")
+    app.processEvents()
+    rights = [
+        float(getattr(item, "x_mm", 0.0) or 0.0) + float(getattr(item, "width_mm", 0.0) or 0.0)
+        for item in w._resolved_items[:2]
+    ]
+    assert abs(rights[0] - rights[1]) < 0.01
+
+
+def test_sciana_tab_snap_grid_rounds_offsets_and_can_toggle(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    catalog = CatalogStoreJson()
+    store = ModuleStoreJson()
+
+    module = ModuleDef(name="SNP_A", width_mm=600.0, depth_mm=500.0, height_mm=720.0)
+    module.parts = build_module_parts(module, catalog)
+    store.save_new(module)
+
+    w = TabSciana(module_store=store)
+    w.show()
+    app.processEvents()
+
+    assert _select_saved_module(w.tree_saved_modules, "SNP_A")
+    w.btn_add_saved.click()
+    app.processEvents()
+    w.tbl_items.selectRow(0)
+    app.processEvents()
+
+    assert w._snap_grid_enabled is False
+    w.preview.sig_toggle_snap_grid_requested.emit()
+    app.processEvents()
+    assert w._snap_grid_enabled is True
+    w._set_snap_step(25)
+    app.processEvents()
+    w._on_selected_offset_changed(73.0)
+    app.processEvents()
+    assert float(getattr(w._assembly.items[0], "offset_mm", 0.0) or 0.0) == 75.0
+
+    w.preview.sig_toggle_snap_grid_requested.emit()
+    app.processEvents()
+    assert w._snap_grid_enabled is False
+    w._on_selected_offset_changed(73.0)
+    app.processEvents()
+    assert abs(float(getattr(w._assembly.items[0], "offset_mm", 0.0) or 0.0) - 73.0) < 0.01
+
+
+def test_sciana_tab_preview_duplicate_signal_duplicates_selected_module(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    catalog = CatalogStoreJson()
+    store = ModuleStoreJson()
+
+    module = ModuleDef(name="CTX_DUP", width_mm=600.0, depth_mm=500.0, height_mm=720.0)
+    module.parts = build_module_parts(module, catalog)
+    store.save_new(module)
+
+    w = TabSciana(module_store=store)
+    w.show()
+    app.processEvents()
+
+    assert _select_saved_module(w.tree_saved_modules, "CTX_DUP")
+    w.btn_add_saved.click()
+    app.processEvents()
+    w.tbl_items.selectRow(0)
+    app.processEvents()
+
+    w.preview.sig_duplicate_selected_requested.emit()
+    app.processEvents()
+
+    assert len(w._assembly.items) == 2
+    assert w._assembly.items[1].display_name() == "CTX_DUP #2"
+
+
+def test_sciana_tab_duplicate_selected_item_supports_directions(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    catalog = CatalogStoreJson()
+    store = ModuleStoreJson()
+    module = ModuleDef(name="DIR_DUP", width_mm=600.0, depth_mm=500.0, height_mm=720.0)
+    module.parts = build_module_parts(module, catalog)
+    store.save_new(module)
+
+    def make_tab() -> TabSciana:
+        w = TabSciana(module_store=store)
+        w.show()
+        app.processEvents()
+        assert _select_saved_module(w.tree_saved_modules, "DIR_DUP")
+        w.btn_add_saved.click()
+        app.processEvents()
+        w._assembly.items[0].offset_mm = 1200.0
+        w._assembly.items[0].position_y_mm = 800.0
+        w._rebuild_assembly(select_index=0)
+        app.processEvents()
+        w.tbl_items.selectRow(0)
+        app.processEvents()
+        return w
+
+    for direction in ("right", "left", "down", "up"):
+        w = make_tab()
+        source = w._resolved_items[0]
+        source_x = float(getattr(source, "x_mm", 0.0) or 0.0)
+        source_y = float(getattr(source, "y_mm", 0.0) or 0.0)
+
+        w._on_duplicate_selected_item_direction(direction)
+        app.processEvents()
+
+        assert len(w._resolved_items) == 2
+        duplicate = w._resolved_items[1]
+        duplicate_x = float(getattr(duplicate, "x_mm", 0.0) or 0.0)
+        duplicate_y = float(getattr(duplicate, "y_mm", 0.0) or 0.0)
+        if direction == "right":
+            assert duplicate_x > source_x
+        elif direction == "left":
+            assert duplicate_x < source_x
+        elif direction == "down":
+            assert duplicate_y > source_y
+        elif direction == "up":
+            assert duplicate_y < source_y
+        w.close()
+
+
+def test_sciana_tab_duplicate_repeat_x3_creates_three_instances_total(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    catalog = CatalogStoreJson()
+    store = ModuleStoreJson()
+    module = ModuleDef(name="REP_DUP", width_mm=600.0, depth_mm=500.0, height_mm=720.0)
+    module.parts = build_module_parts(module, catalog)
+    store.save_new(module)
+
+    w = TabSciana(module_store=store)
+    w.show()
+    app.processEvents()
+
+    assert _select_saved_module(w.tree_saved_modules, "REP_DUP")
+    w.btn_add_saved.click()
+    app.processEvents()
+    w.tbl_items.selectRow(0)
+    app.processEvents()
+
+    w._on_duplicate_selected_item_repeat(3)
+    app.processEvents()
+
+    assert len(w._assembly.items) == 3
+    assert [item.display_name() for item in w._assembly.items] == ["REP_DUP", "REP_DUP #2", "REP_DUP #3"]
 
 
 def test_sciana_tab_saved_module_library_supports_quick_filters_and_search(tmp_path, monkeypatch):
@@ -2089,6 +2769,114 @@ def test_sciana_tab_can_apply_bulk_height_and_front_material_to_selected_modules
     assert [dict(item.module.materials or {}).get("front") for item in w._resolved_items] == ["MDF19_LAK", "MDF19_LAK"]
 
 
+def test_sciana_tab_bulk_material_change_applies_immediately_for_multi_selection(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    catalog = CatalogStoreJson()
+    store = ModuleStoreJson()
+
+    module_a = ModuleDef(
+        name="BULK_AUTO_A",
+        width_mm=600.0,
+        depth_mm=500.0,
+        height_mm=720.0,
+        materials={"carcass": "PB18", "front": "MDF19", "back": "HDF2.5"},
+    )
+    module_b = ModuleDef(
+        name="BULK_AUTO_B",
+        width_mm=800.0,
+        depth_mm=500.0,
+        height_mm=720.0,
+        materials={"carcass": "PB18", "front": "MDF19", "back": "HDF2.5"},
+    )
+    module_a.parts = build_module_parts(module_a, catalog)
+    module_b.parts = build_module_parts(module_b, catalog)
+    store.save_new(module_a)
+    store.save_new(module_b)
+
+    w = TabSciana(module_store=store)
+    w.show()
+    app.processEvents()
+
+    assert _select_saved_module(w.tree_saved_modules, "BULK_AUTO_A")
+    w.btn_add_saved.click()
+    assert _select_saved_module(w.tree_saved_modules, "BULK_AUTO_B")
+    w.btn_add_saved.click()
+    app.processEvents()
+
+    selection_model = w.tbl_items.selectionModel()
+    assert selection_model is not None
+    selection_model.clearSelection()
+    flags = QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows
+    selection_model.select(w.tbl_items.model().index(0, 0), flags)
+    selection_model.select(w.tbl_items.model().index(1, 0), flags)
+    app.processEvents()
+
+    idx_front = w.cb_bulk_material_front.findData("MDF19_LAK")
+    assert idx_front >= 0
+    w.cb_bulk_material_front.setCurrentIndex(idx_front)
+    app.processEvents()
+
+    assert [dict(item.module.materials or {}).get("front") for item in w._assembly.items] == ["MDF19_LAK", "MDF19_LAK"]
+    assert [dict(item.module.materials or {}).get("front") for item in w._resolved_items] == ["MDF19_LAK", "MDF19_LAK"]
+
+
+def test_sciana_tab_bulk_height_change_applies_immediately_for_multi_selection(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.core.module_parts_service import build_module_parts
+    from src.domain.module_models import ModuleDef
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.storage.module_store_json import ModuleStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    catalog = CatalogStoreJson()
+    store = ModuleStoreJson()
+
+    module_a = ModuleDef(name="BULK_H_A", width_mm=600.0, depth_mm=500.0, height_mm=720.0)
+    module_b = ModuleDef(name="BULK_H_B", width_mm=800.0, depth_mm=500.0, height_mm=760.0)
+    module_a.parts = build_module_parts(module_a, catalog)
+    module_b.parts = build_module_parts(module_b, catalog)
+    store.save_new(module_a)
+    store.save_new(module_b)
+
+    w = TabSciana(module_store=store)
+    w.show()
+    app.processEvents()
+
+    assert _select_saved_module(w.tree_saved_modules, "BULK_H_A")
+    w.btn_add_saved.click()
+    assert _select_saved_module(w.tree_saved_modules, "BULK_H_B")
+    w.btn_add_saved.click()
+    app.processEvents()
+
+    selection_model = w.tbl_items.selectionModel()
+    assert selection_model is not None
+    selection_model.clearSelection()
+    flags = QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows
+    selection_model.select(w.tbl_items.model().index(0, 0), flags)
+    selection_model.select(w.tbl_items.model().index(1, 0), flags)
+    app.processEvents()
+
+    w.sp_bulk_height.setValue(910.0)
+    app.processEvents()
+
+    assert [float(item.module.height_mm) for item in w._assembly.items] == [910.0, 910.0]
+    assert [float(item.height_mm) for item in w._resolved_items] == [910.0, 910.0]
+
+
 def test_sciana_tab_can_ctrl_click_preview_to_multi_select_modules(tmp_path, monkeypatch):
     monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("TECH_MODUL_TESTING", "1")
@@ -2516,6 +3304,44 @@ def test_sciana_tab_shows_architect_references_for_selected_order_context(tmp_pa
     assert w.lab_project_reference_info.text()
     assert w.lab_project_reference_preview.pixmap() is not None
     assert not w.lab_project_reference_preview.pixmap().isNull()
+
+
+def test_sciana_tab_pulls_order_context_into_new_assembly(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.domain.order_models import OrderDef
+    from src.storage.order_store_json import OrderStoreJson
+    from src.tabs.sciana.tab_sciana import TabSciana
+
+    order_store = OrderStoreJson(path=tmp_path / "orders.json")
+    order_store.save_new(
+        OrderDef(
+            code="ORDER-KOMPLET-01",
+            client_name="Klient Komplet",
+            worker_name="Monter Komplet",
+            status="Do akceptacji",
+            site_address="Warszawa, Prosta 10",
+        )
+    )
+
+    w = TabSciana(order_store=order_store)
+    w.start_new_assembly_from_wall_context(
+        {
+            "order_name": "ORDER-KOMPLET-01",
+            "quote_item_name": "Szafa garderoba",
+            "quote_item_kind": "Szafa",
+        }
+    )
+
+    assert w.ed_name.text() == "Szafa garderoba"
+    assert w.ed_client.text() == "Klient Komplet"
+    assert w.ed_order.text() == "ORDER-KOMPLET-01"
+    assert w.cb_worker.currentData() == "Monter Komplet"
+    assert "Status zamowienia: Do akceptacji" in w.lab_summary.text()
+    assert "Adres realizacji: Warszawa, Prosta 10" in w.lab_summary.text()
 
 
 def test_sciana_tab_places_lower_and_hanging_modules_in_wall_zones(tmp_path, monkeypatch):

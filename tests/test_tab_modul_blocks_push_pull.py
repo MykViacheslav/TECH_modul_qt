@@ -21,7 +21,7 @@ def test_blocks_pull_after_apply(tmp_path, monkeypatch):
         carcass_joint_type="type2",
         shelf_count=2,
         divider_count=1,
-        shelf_mount="right",
+        shelf_mount="both",
         module_type="hanging",
         cabinet_kind="upper",
         ref_point="LBT",
@@ -44,7 +44,7 @@ def test_blocks_pull_after_apply(tmp_path, monkeypatch):
     assert w._draft.carcass_joint_type == "type2"
     assert w._draft.shelf_count == 2
     assert w._draft.divider_count == 1
-    assert w._draft.shelf_mount == "right"
+    assert w._draft.shelf_mount == "both"
 
     assert w._draft.module_type == "hanging"
     assert w._draft.cabinet_kind == "upper"

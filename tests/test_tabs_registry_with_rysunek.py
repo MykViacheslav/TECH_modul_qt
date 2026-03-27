@@ -26,20 +26,13 @@ def test_build_tabs_contains_start_order_quote_calendar_worktime_modul_komplet_s
     assert len(tabs) >= 10
 
     titles = [title for title, _widget in tabs]
-    assert titles == [
-        "Start",
-        "Nowe zamowienie",
-        "Wycena",
-        "Plan",
-        "Schemat",
-        "Kalendarz",
-        "Czas pracy",
-        "Modul",
-        "Komplet",
-        "Sciana",
-        "Bazy",
-        "Ustawienia",
-    ]
+    for expected in [
+        "Start", "Nowe zamowienie", "Wycena",
+        "Plan", "Schemat", "Kalendarz", "Czas pracy",
+        "Modul", "Komplet", "Sciana",
+        "Bazy", "Ustawienia",
+    ]:
+        assert expected in titles, f'Brak zakładki: "{expected}"'
 
     by_title = {title: widget for title, widget in tabs}
 

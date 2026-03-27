@@ -2,42 +2,71 @@ from __future__ import annotations
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
+    QComboBox,
+    QFrame,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
 
-from src.app.app_settings import DrawingSettings, load_drawing_settings, save_drawing_settings
+from src.app.app_settings import (
+    DrawingSettings,
+    load_drawing_settings,
+    load_ui_theme_settings,
+    save_drawing_settings,
+    save_ui_theme_settings,
+)
 from src.tabs.rysunek.drawing_settings_block import DrawingSettingsBlock
+from src.widgets.network_settings import NetworkSettingsWidget
 
 
 class TabRysunek(QWidget):
     """
-    Samodzielna zakladka / panel ustawien rysunku.
-
-    Na tym etapie:
-    - dziala niezaleznie,
-    - korzysta z tego samego storage ustawien co dotychczas,
-    - po zapisie emituje sygnal do odswiezenia innych zakladek.
+    Samodzielna zakladka / panel ustawien.
+    
+    Zawiera:
+    - Ustawienia rysunku
+    - Motyw UI
+    - Ustawienia sieci (praca zespołowa)
     """
 
     sig_settings_saved = pyqtSignal()
+    sig_ui_theme_changed = pyqtSignal(str, str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
+        # Use scroll area for all settings
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        
+        content = QWidget()
+        scroll.setWidget(content)
+        
         root = QVBoxLayout(self)
-        root.setContentsMargins(8, 8, 8, 8)
-        root.setSpacing(8)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.addWidget(scroll)
+        
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(8, 8, 8, 8)
+        content_layout.setSpacing(12)
 
+        # === USTAWIENIA RYSUNKU ===
         self.lbl_title = QLabel("Ustawienia rysunku")
         self.lbl_title.setObjectName("rysunek_title")
-        root.addWidget(self.lbl_title)
+        content_layout.addWidget(self.lbl_title)
 
         self.draw_settings = DrawingSettingsBlock(self)
-        root.addWidget(self.draw_settings)
+        content_layout.addWidget(self.draw_settings)
+
+        # === MOTYW UI ===
+        self.theme_panel = self._build_theme_panel()
+        content_layout.addWidget(self.theme_panel)
 
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
@@ -51,11 +80,35 @@ class TabRysunek(QWidget):
         btn_row.addWidget(self.btn_save)
         btn_row.addWidget(self.lbl_status, 1)
 
-        root.addLayout(btn_row)
-        root.addStretch(1)
+        content_layout.addLayout(btn_row)
+        
+        # Separator
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.HLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        content_layout.addWidget(separator)
+        
+        # === SIEĆ (PRACA ZESPOŁOWA) ===
+        network_title = QLabel("Sieć - praca zespołowa")
+        network_title.setObjectName("rysunek_title")
+        content_layout.addWidget(network_title)
+        
+        network_info = QLabel(
+            "Skonfiguruj połączenie z serwerem, aby pracować na wspólnych danych\n"
+            "z 3-4 komputerów w sieci lokalnej."
+        )
+        network_info.setStyleSheet("color: #666; font-size: 11px;")
+        network_info.setWordWrap(True)
+        content_layout.addWidget(network_info)
+        
+        self.network_settings = NetworkSettingsWidget(self)
+        content_layout.addWidget(self.network_settings)
+        
+        content_layout.addStretch(1)
 
         self.btn_load.clicked.connect(self._load_settings_to_ui)
         self.btn_save.clicked.connect(self._save_ui_to_settings)
+        self.btn_apply_theme.clicked.connect(self._apply_theme_from_ui)
         self.draw_settings.sig_changed.connect(self._on_ui_changed)
 
         self._load_settings_to_ui()
@@ -81,11 +134,68 @@ class TabRysunek(QWidget):
     def _on_ui_changed(self) -> None:
         self.lbl_status.setText("Zmodyfikowano")
 
+    def _build_theme_panel(self) -> QFrame:
+        panel = QFrame(self)
+        panel.setStyleSheet(
+            "QFrame {"
+            "border: 1px solid #d7cfbf;"
+            "border-radius: 10px;"
+            "background: transparent;"
+            "}"
+        )
+        row = QHBoxLayout(panel)
+        row.setContentsMargins(12, 10, 12, 10)
+        row.setSpacing(10)
+
+        lbl_mode = QLabel("Tryb:", panel)
+        self.cb_mode = QComboBox(panel)
+        self.cb_mode.addItem("Dzienny", "day")
+        self.cb_mode.addItem("Nocny", "night")
+
+        lbl_motif = QLabel("Motyw:", panel)
+        self.cb_motif = QComboBox(panel)
+        self.cb_motif.addItem("Kremowy", "cream")
+        self.cb_motif.addItem("Niebieski", "blue")
+        self.cb_motif.addItem("Szary", "gray")
+        self.cb_motif.addItem("Zielony", "green")
+
+        self.btn_apply_theme = QPushButton("Zastosuj motyw", panel)
+
+        row.addWidget(lbl_mode, 0)
+        row.addWidget(self.cb_mode, 0)
+        row.addSpacing(8)
+        row.addWidget(lbl_motif, 0)
+        row.addWidget(self.cb_motif, 0)
+        row.addStretch(1)
+        row.addWidget(self.btn_apply_theme, 0)
+        return panel
+
+    def _set_theme_to_ui(self, mode: str, motif: str) -> None:
+        mode_index = self.cb_mode.findData(str(mode or "day"))
+        if mode_index >= 0:
+            self.cb_mode.setCurrentIndex(mode_index)
+        motif_index = self.cb_motif.findData(str(motif or "cream"))
+        if motif_index >= 0:
+            self.cb_motif.setCurrentIndex(motif_index)
+
+    def _theme_from_ui(self) -> tuple[str, str]:
+        mode = str(self.cb_mode.currentData() or "day")
+        motif = str(self.cb_motif.currentData() or "cream")
+        return mode, motif
+
+    def _apply_theme_from_ui(self) -> None:
+        mode, motif = self._theme_from_ui()
+        save_ui_theme_settings(mode, motif)
+        self.sig_ui_theme_changed.emit(mode, motif)
+        self.lbl_status.setText("Zastosowano motyw")
+
     def _load_settings_to_ui(self) -> None:
         settings_obj = load_drawing_settings()
         data = self._settings_to_dict(settings_obj)
+        ui_theme = load_ui_theme_settings()
 
         self.draw_settings.set_from_settings(data)
+        self._set_theme_to_ui(ui_theme.mode, ui_theme.motif)
         self.lbl_status.setText("Wczytano ustawienia")
 
     def _save_ui_to_settings(self) -> None:
@@ -93,6 +203,9 @@ class TabRysunek(QWidget):
 
         settings_obj = DrawingSettings(**values)
         save_drawing_settings(settings_obj)
+        mode, motif = self._theme_from_ui()
+        save_ui_theme_settings(mode, motif)
+        self.sig_ui_theme_changed.emit(mode, motif)
 
         self.lbl_status.setText("Zapisano ustawienia")
         self.sig_settings_saved.emit()

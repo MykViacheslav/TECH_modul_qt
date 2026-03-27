@@ -1,0 +1,3 @@
+﻿FILES: 511
+PY: 191
+OUT: C:\PythonProject\TECH_modul\tools\audit_out\audit_20260320_075839

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -12,6 +11,7 @@ from src.domain.module_base_group import (
     sort_module_base_groups,
 )
 from src.domain.module_models import ModuleDef
+from src.storage.data_paths import data_dir
 
 
 @dataclass(frozen=True)
@@ -21,13 +21,7 @@ class StoreResult:
 
 
 def _default_data_dir() -> Path:
-    env = os.environ.get("TECH_MODUL_DATA_DIR", "").strip()
-    if env:
-        return Path(env)
-
-    root = Path(__file__).resolve().parents[2]
-    proj = root.parent
-    return proj / "data"
+    return data_dir()
 
 
 class ModuleStoreJson:

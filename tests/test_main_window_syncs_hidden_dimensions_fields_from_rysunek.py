@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QApplication, QTabWidget
+from PyQt6.QtWidgets import QApplication
 
 from src.app.main_window import MainWindow
 
@@ -11,15 +11,8 @@ def test_main_window_syncs_rysunek_save_to_hidden_dimensions_fields_in_modul(tmp
 
     w = MainWindow()
 
-    tabs = w.centralWidget()
-    assert isinstance(tabs, QTabWidget)
-
-    by_title = {}
-    for i in range(tabs.count()):
-        by_title[tabs.tabText(i)] = tabs.widget(i)
-
-    modul = by_title["Modul"]
-    rysunek = by_title["Ustawienia"]
+    modul = w._tabs_by_title["Modul"]
+    rysunek = w._tabs_by_title["Ustawienia"]
 
     rysunek.draw_settings.set_from_settings({
         "rect_line_color": "#222222",

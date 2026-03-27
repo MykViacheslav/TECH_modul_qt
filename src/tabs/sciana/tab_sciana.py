@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from PyQt6.QtCore import QItemSelectionModel, QMimeData, QPointF, Qt, QRectF, pyqtSignal
-from PyQt6.QtGui import QColor, QBrush, QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent, QFont, QMouseEvent, QPen, QPixmap
+from PyQt6.QtGui import QColor, QBrush, QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent, QFont, QKeySequence, QMouseEvent, QPen, QPixmap, QShortcut
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QAbstractSpinBox,
@@ -34,18 +34,21 @@ from PyQt6.QtWidgets import (
     QScrollArea,
     QTreeWidget,
     QTreeWidgetItem,
+    QDialog,
+    QDialogButtonBox,
 )
 
-from src.app.app_settings import load_drawing_settings
+from src.app.app_settings import load_drawing_settings, load_ui_string_list, save_ui_string_list
 from src.core.module_parts_service import build_module_parts, normalize_rail_offsets_mm
 from src.domain.assembly_models import (
     AssemblyModuleItemDef,
     FurnitureAssemblyDef,
     normalize_assembly_offset_ref_mode,
+    new_assembly_id,
 )
 from src.domain.assembly_resolution_service import resolve_assembly_items
 from src.domain.module_base_group import module_base_group_label_pl, normalize_module_base_group
-from src.domain.module_models import ModuleDef, normalize_module_type
+from src.domain.module_models import ModuleDef, normalize_module_type, new_module_id
 from src.domain.wall_models import WallLayoutDef
 from src.storage.assembly_store_json import AssemblyStoreJson
 from src.storage.catalog_store_json import CatalogStoreJson
@@ -384,6 +387,16 @@ class AssemblyPreviewView(QGraphicsView):
     sig_apply_module_front_material_to_selected = pyqtSignal(int)
     sig_apply_module_carcass_material_to_selected = pyqtSignal(int)
     sig_apply_module_back_material_to_selected = pyqtSignal(int)
+    sig_duplicate_selected_requested = pyqtSignal()
+    sig_duplicate_selected_direction_requested = pyqtSignal(str)
+    sig_duplicate_selected_repeat_requested = pyqtSignal(int)
+    sig_duplicate_preview_requested = pyqtSignal(str)
+    sig_align_selected_requested = pyqtSignal(str)
+    sig_distribute_selected_requested = pyqtSignal()
+    sig_toggle_snap_grid_requested = pyqtSignal()
+    sig_snap_step_requested = pyqtSignal(int)
+    sig_remove_selected_requested = pyqtSignal()
+    sig_move_selected_requested = pyqtSignal(int)
 
     def __init__(
         self,
@@ -1656,9 +1669,21 @@ class AssemblyPreviewView(QGraphicsView):
         if event.button() == Qt.MouseButton.LeftButton:
             scene_pos = self.mapToScene(event.position().toPoint())
             preserve_selection = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+            range_selection = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
             if self._view_mode == "top":
                 top_index = self._index_at_scene_pos(scene_pos, self._top_item_rects)
                 if top_index >= 0:
+                    if range_selection:
+                        anchor = int(self._last_selected_index)
+                        if anchor < 0 and self._last_selected_indexes:
+                            anchor = int(self._last_selected_indexes[0])
+                        if anchor < 0:
+                            anchor = int(top_index)
+                        start = min(anchor, int(top_index))
+                        end = max(anchor, int(top_index))
+                        self.sig_module_selection_group_requested.emit(list(range(start, end + 1)), preserve_selection)
+                        event.accept()
+                        return
                     if preserve_selection:
                         self.sig_module_selection_requested.emit(top_index, True)
                         event.accept()
@@ -1678,6 +1703,17 @@ class AssemblyPreviewView(QGraphicsView):
             else:
                 front_index = self._index_at_scene_pos(scene_pos, self._item_rects)
                 if front_index >= 0:
+                    if range_selection:
+                        anchor = int(self._last_selected_index)
+                        if anchor < 0 and self._last_selected_indexes:
+                            anchor = int(self._last_selected_indexes[0])
+                        if anchor < 0:
+                            anchor = int(front_index)
+                        start = min(anchor, int(front_index))
+                        end = max(anchor, int(front_index))
+                        self.sig_module_selection_group_requested.emit(list(range(start, end + 1)), preserve_selection)
+                        event.accept()
+                        return
                     if preserve_selection:
                         self.sig_module_selection_requested.emit(front_index, True)
                         event.accept()
@@ -1890,6 +1926,36 @@ class AssemblyPreviewView(QGraphicsView):
         else:
             act_toggle = menu.addAction("Dodaj ten modul do zaznaczenia (Ctrl)")
         menu.addSeparator()
+        act_duplicate = menu.addAction("Powiel zaznaczone")
+        act_duplicate_right = menu.addAction("Powiel w prawo")
+        act_duplicate_left = menu.addAction("Powiel w lewo")
+        act_duplicate_down = menu.addAction("Powiel w dol")
+        act_duplicate_up = menu.addAction("Powiel w gore")
+        duplicate_repeat_menu = menu.addMenu("Szybkie powielenie")
+        act_duplicate_x2 = duplicate_repeat_menu.addAction("Powiel x2")
+        act_duplicate_x3 = duplicate_repeat_menu.addAction("Powiel x3")
+        act_duplicate_x5 = duplicate_repeat_menu.addAction("Powiel x5")
+        duplicate_preview_menu = menu.addMenu("Pokaz podglad kierunku")
+        act_preview_right = duplicate_preview_menu.addAction("Podglad: w prawo")
+        act_preview_left = duplicate_preview_menu.addAction("Podglad: w lewo")
+        act_preview_down = duplicate_preview_menu.addAction("Podglad: w dol")
+        act_preview_up = duplicate_preview_menu.addAction("Podglad: w gore")
+        act_remove = menu.addAction("Usun zaznaczone")
+        act_move_left = menu.addAction("Przesun zaznaczone w lewo")
+        act_move_right = menu.addAction("Przesun zaznaczone w prawo")
+        menu.addSeparator()
+        act_align_left = menu.addAction("Wyrownaj do lewej")
+        act_align_right = menu.addAction("Wyrownaj do prawej")
+        act_align_top = menu.addAction("Wyrownaj do gory")
+        act_align_bottom = menu.addAction("Wyrownaj do dolu")
+        act_distribute = menu.addAction("Rozstaw rownomiernie")
+        act_toggle_snap = menu.addAction("Przelacz snap siatki 50 mm")
+        snap_step_menu = menu.addMenu("Krok snap")
+        act_snap_10 = snap_step_menu.addAction("10 mm")
+        act_snap_25 = snap_step_menu.addAction("25 mm")
+        act_snap_50 = snap_step_menu.addAction("50 mm")
+        act_snap_100 = snap_step_menu.addAction("100 mm")
+        menu.addSeparator()
         act_apply_height = menu.addAction("Przepisz wysokosc tego modulu do zaznaczonych")
         act_apply_width = menu.addAction("Przepisz szerokosc tego modulu do zaznaczonych")
         act_apply_depth = menu.addAction("Przepisz glebokosc tego modulu do zaznaczonych")
@@ -1907,6 +1973,136 @@ class AssemblyPreviewView(QGraphicsView):
             self.sig_module_selection_requested.emit(index, True)
             event.accept()
             return
+        if chosen in {
+            act_duplicate,
+            act_duplicate_right,
+            act_duplicate_left,
+            act_duplicate_down,
+            act_duplicate_up,
+            act_duplicate_x2,
+            act_duplicate_x3,
+            act_duplicate_x5,
+            act_preview_right,
+            act_preview_left,
+            act_preview_down,
+            act_preview_up,
+            act_remove,
+            act_move_left,
+            act_move_right,
+            act_align_left,
+            act_align_right,
+            act_align_top,
+            act_align_bottom,
+            act_distribute,
+            act_toggle_snap,
+            act_snap_10,
+            act_snap_25,
+            act_snap_50,
+            act_snap_100,
+        }:
+            if index not in selected_set:
+                preserve_selection = bool(selected_set)
+                self.sig_module_selection_requested.emit(index, preserve_selection)
+            if chosen == act_duplicate:
+                self.sig_duplicate_selected_requested.emit()
+                event.accept()
+                return
+            if chosen == act_duplicate_right:
+                self.sig_duplicate_selected_direction_requested.emit("right")
+                event.accept()
+                return
+            if chosen == act_duplicate_left:
+                self.sig_duplicate_selected_direction_requested.emit("left")
+                event.accept()
+                return
+            if chosen == act_duplicate_down:
+                self.sig_duplicate_selected_direction_requested.emit("down")
+                event.accept()
+                return
+            if chosen == act_duplicate_up:
+                self.sig_duplicate_selected_direction_requested.emit("up")
+                event.accept()
+                return
+            if chosen == act_duplicate_x2:
+                self.sig_duplicate_selected_repeat_requested.emit(2)
+                event.accept()
+                return
+            if chosen == act_duplicate_x3:
+                self.sig_duplicate_selected_repeat_requested.emit(3)
+                event.accept()
+                return
+            if chosen == act_duplicate_x5:
+                self.sig_duplicate_selected_repeat_requested.emit(5)
+                event.accept()
+                return
+            if chosen == act_preview_right:
+                self.sig_duplicate_preview_requested.emit("right")
+                event.accept()
+                return
+            if chosen == act_preview_left:
+                self.sig_duplicate_preview_requested.emit("left")
+                event.accept()
+                return
+            if chosen == act_preview_down:
+                self.sig_duplicate_preview_requested.emit("down")
+                event.accept()
+                return
+            if chosen == act_preview_up:
+                self.sig_duplicate_preview_requested.emit("up")
+                event.accept()
+                return
+            if chosen == act_remove:
+                self.sig_remove_selected_requested.emit()
+                event.accept()
+                return
+            if chosen == act_move_left:
+                self.sig_move_selected_requested.emit(-1)
+                event.accept()
+                return
+            if chosen == act_move_right:
+                self.sig_move_selected_requested.emit(1)
+                event.accept()
+                return
+            if chosen == act_align_left:
+                self.sig_align_selected_requested.emit("left")
+                event.accept()
+                return
+            if chosen == act_align_right:
+                self.sig_align_selected_requested.emit("right")
+                event.accept()
+                return
+            if chosen == act_align_top:
+                self.sig_align_selected_requested.emit("top")
+                event.accept()
+                return
+            if chosen == act_align_bottom:
+                self.sig_align_selected_requested.emit("bottom")
+                event.accept()
+                return
+            if chosen == act_distribute:
+                self.sig_distribute_selected_requested.emit()
+                event.accept()
+                return
+            if chosen == act_toggle_snap:
+                self.sig_toggle_snap_grid_requested.emit()
+                event.accept()
+                return
+            if chosen == act_snap_10:
+                self.sig_snap_step_requested.emit(10)
+                event.accept()
+                return
+            if chosen == act_snap_25:
+                self.sig_snap_step_requested.emit(25)
+                event.accept()
+                return
+            if chosen == act_snap_50:
+                self.sig_snap_step_requested.emit(50)
+                event.accept()
+                return
+            if chosen == act_snap_100:
+                self.sig_snap_step_requested.emit(100)
+                event.accept()
+                return
         if chosen == act_apply_height:
             self.sig_apply_module_height_to_selected.emit(index)
             event.accept()
@@ -2194,22 +2390,34 @@ class TabSciana(QWidget):
         self._order_store = order_store if order_store is not None else OrderStoreJson()
         self._worker_store = worker_store if worker_store is not None else WorkerStoreJson()
         self._assembly_store = assembly_store if assembly_store is not None else AssemblyStoreJson()
-        self._assembly = FurnitureAssemblyDef()
+        self._assembly = FurnitureAssemblyDef(assembly_id=new_assembly_id())
         self._resolved_items = []
         self._is_pushing_ui = False
         self._is_syncing_offset_ui = False
+        self._is_syncing_bulk_ui = False
         self._is_syncing_view_ui = False
         self._order_status_context = ""
         self._site_address_context = ""
         self._project_references: list[dict[str, str]] = []
         self._project_reference_pixmap = QPixmap()
+        self._left_zone_visible = True
+        self._left_zone_last_width = 330
+        self._right_zone_visible = True
+        self._right_zone_last_width = 300
+        self._snap_grid_enabled = False
+        self._snap_grid_step_mm = 50.0
 
         root = QHBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(8)
 
-        splitter = QSplitter(Qt.Orientation.Horizontal, self)
-        root.addWidget(splitter, 1)
+        self.right_zone_toggle = QPushButton("▶ Panel informacyjny", self)
+        self.right_zone_toggle.setStyleSheet("QPushButton { border: none; background: transparent; color: #555; font-weight: 600; padding: 4px; text-align: left; }")
+        self.right_zone_toggle.clicked.connect(self._toggle_right_zone)
+        root.addWidget(self.right_zone_toggle, 0)
+
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        root.addWidget(self.main_splitter, 1)
 
         self.left_zone = self._build_left_zone()
         self.center_zone = self._build_center_zone()
@@ -2223,6 +2431,16 @@ class TabSciana(QWidget):
         self.preview.sig_apply_module_front_material_to_selected.connect(self._on_preview_apply_front_material_to_selected)
         self.preview.sig_apply_module_carcass_material_to_selected.connect(self._on_preview_apply_carcass_material_to_selected)
         self.preview.sig_apply_module_back_material_to_selected.connect(self._on_preview_apply_back_material_to_selected)
+        self.preview.sig_duplicate_selected_requested.connect(self._on_duplicate_selected_item)
+        self.preview.sig_duplicate_selected_direction_requested.connect(self._on_duplicate_selected_item_direction)
+        self.preview.sig_duplicate_selected_repeat_requested.connect(self._on_duplicate_selected_item_repeat)
+        self.preview.sig_duplicate_preview_requested.connect(self._show_duplicate_direction_preview)
+        self.preview.sig_align_selected_requested.connect(self._on_align_selected_requested)
+        self.preview.sig_distribute_selected_requested.connect(self._on_distribute_selected_horizontally)
+        self.preview.sig_toggle_snap_grid_requested.connect(self._toggle_snap_grid)
+        self.preview.sig_snap_step_requested.connect(self._set_snap_step)
+        self.preview.sig_remove_selected_requested.connect(self._on_remove_selected_item)
+        self.preview.sig_move_selected_requested.connect(self._move_selected_item)
         self.preview.sig_module_reordered.connect(self._on_preview_module_reordered)
         self.preview.sig_module_offset_changed.connect(self._on_preview_module_offset_changed)
         self.preview.sig_module_position_changed.connect(self._on_preview_module_position_changed)
@@ -2235,15 +2453,25 @@ class TabSciana(QWidget):
         self.preview_top.sig_apply_module_front_material_to_selected.connect(self._on_preview_apply_front_material_to_selected)
         self.preview_top.sig_apply_module_carcass_material_to_selected.connect(self._on_preview_apply_carcass_material_to_selected)
         self.preview_top.sig_apply_module_back_material_to_selected.connect(self._on_preview_apply_back_material_to_selected)
+        self.preview_top.sig_duplicate_selected_requested.connect(self._on_duplicate_selected_item)
+        self.preview_top.sig_duplicate_selected_direction_requested.connect(self._on_duplicate_selected_item_direction)
+        self.preview_top.sig_duplicate_selected_repeat_requested.connect(self._on_duplicate_selected_item_repeat)
+        self.preview_top.sig_duplicate_preview_requested.connect(self._show_duplicate_direction_preview)
+        self.preview_top.sig_align_selected_requested.connect(self._on_align_selected_requested)
+        self.preview_top.sig_distribute_selected_requested.connect(self._on_distribute_selected_horizontally)
+        self.preview_top.sig_toggle_snap_grid_requested.connect(self._toggle_snap_grid)
+        self.preview_top.sig_snap_step_requested.connect(self._set_snap_step)
+        self.preview_top.sig_remove_selected_requested.connect(self._on_remove_selected_item)
+        self.preview_top.sig_move_selected_requested.connect(self._move_selected_item)
         self.preview_top.sig_module_top_position_changed.connect(self._on_preview_top_position_changed)
 
-        splitter.addWidget(self.left_zone)
-        splitter.addWidget(self.center_zone)
-        splitter.addWidget(self.right_zone)
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 1)
-        splitter.setStretchFactor(2, 0)
-        splitter.setSizes([330, 1080, 300])
+        self.main_splitter.addWidget(self.left_zone)
+        self.main_splitter.addWidget(self.center_zone)
+        self.main_splitter.addWidget(self.right_zone)
+        self.main_splitter.setStretchFactor(0, 0)
+        self.main_splitter.setStretchFactor(1, 1)
+        self.main_splitter.setStretchFactor(2, 0)
+        self.main_splitter.setSizes([330, 1080, 300])
 
         self._reload_profiles()
         self._reload_quick_material_presets()
@@ -2261,6 +2489,19 @@ class TabSciana(QWidget):
         self.preview_top.set_vertical_reference_mode(self._selected_vertical_reference_mode())
         self._push_assembly_to_ui()
         self._rebuild_assembly()
+        self._shortcut_actions = {
+            "save": ("Ctrl+S", self._shortcut_save_assembly),
+            "overwrite": ("Ctrl+Shift+S", self._on_overwrite),
+            "load": ("Ctrl+L", self._on_load),
+            "new": ("Ctrl+N", self.start_new_assembly),
+            "focus_search": ("Ctrl+F", self._shortcut_focus_saved_search),
+            "duplicate": ("Ctrl+D", self._on_duplicate_selected_item),
+            "toggle_snap": ("Ctrl+G", self._toggle_snap_grid),
+            "toggle_left": ("Ctrl+Shift+L", self._toggle_left_zone_visibility),
+        }
+        self._setup_shortcuts_from_settings()
+        self._refresh_left_zone_toggle_button()
+        self._refresh_snap_button_text()
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
@@ -2543,8 +2784,10 @@ class TabSciana(QWidget):
         self.cb_saved_business_group.currentIndexChanged.connect(self._reload_saved_modules)
         self.cb_saved_preset_variant.currentIndexChanged.connect(self._reload_saved_modules)
         self.ed_saved_search.textChanged.connect(self._reload_saved_modules)
+        self.ed_saved_search.returnPressed.connect(self._on_add_saved_module)
         self.btn_add_saved.clicked.connect(self._on_add_saved_module)
         self.tree_saved_modules.currentItemChanged.connect(self._on_saved_module_selection_changed)
+        self.tree_saved_modules.itemDoubleClicked.connect(self._on_saved_module_item_double_clicked)
         self.cb_active_view.currentIndexChanged.connect(self._on_active_view_changed)
 
         return panel
@@ -2611,6 +2854,89 @@ class TabSciana(QWidget):
         if self._is_syncing_view_ui:
             return
         self._set_active_view_mode(mode)
+
+    def _refresh_left_zone_toggle_button(self) -> None:
+        if not hasattr(self, "btn_toggle_left_zone"):
+            return
+        self.btn_toggle_left_zone.setText("Pokaz lewy panel" if not self._left_zone_visible else "Ukryj lewy panel")
+
+    def _refresh_snap_button_text(self) -> None:
+        if not hasattr(self, "btn_snap_grid"):
+            return
+        step_label = int(self._snap_grid_step_mm) if float(self._snap_grid_step_mm).is_integer() else self._snap_grid_step_mm
+        self.btn_snap_grid.setChecked(bool(self._snap_grid_enabled))
+        state = "ON" if self._snap_grid_enabled else "OFF"
+        self.btn_snap_grid.setText(f"Snap {step_label}mm: {state}")
+        if hasattr(self, "cb_snap_step"):
+            idx = self.cb_snap_step.findData(int(round(float(self._snap_grid_step_mm))))
+            if idx >= 0 and self.cb_snap_step.currentIndex() != idx:
+                self.cb_snap_step.blockSignals(True)
+                self.cb_snap_step.setCurrentIndex(idx)
+                self.cb_snap_step.blockSignals(False)
+
+    def _toggle_right_zone(self) -> None:
+        self._right_zone_visible = not self._right_zone_visible
+        if self._right_zone_visible:
+            self.right_zone.setVisible(True)
+            self.right_zone_toggle.setText("▶ Panel informacyjny")
+            sizes = list(self.main_splitter.sizes())
+            if len(sizes) >= 3:
+                sizes[2] = self._right_zone_last_width
+                self.main_splitter.setSizes(sizes)
+        else:
+            sizes = list(self.main_splitter.sizes())
+            if len(sizes) >= 3:
+                self._right_zone_last_width = sizes[2]
+                sizes[2] = 0
+                self.main_splitter.setSizes(sizes)
+            self.right_zone.setVisible(False)
+            self.right_zone_toggle.setText("◀ Panel informacyjny")
+
+    def _toggle_snap_grid(self, _checked: bool | None = None) -> None:
+        self._snap_grid_enabled = not self._snap_grid_enabled
+        self._refresh_snap_button_text()
+        self._set_store_status(
+            f"Snap siatki {'wlaczony' if self._snap_grid_enabled else 'wylaczony'} ({self._snap_grid_step_mm:.0f} mm).",
+            ok=True,
+        )
+
+    def _set_snap_step(self, step_mm: int) -> None:
+        step = max(1, int(step_mm or 50))
+        self._snap_grid_step_mm = float(step)
+        self._refresh_snap_button_text()
+        self._set_store_status(f"Ustawiono krok snap: {step} mm.", ok=True)
+
+    def _on_snap_step_combo_changed(self, _index: int) -> None:
+        self._set_snap_step(int(self.cb_snap_step.currentData() or 50))
+
+    def _snap_mm(self, value_mm: float) -> float:
+        if not self._snap_grid_enabled:
+            return float(value_mm)
+        step = max(1.0, float(self._snap_grid_step_mm or 50.0))
+        return round(float(value_mm) / step) * step
+
+    def _toggle_left_zone_visibility(self) -> None:
+        if not hasattr(self, "main_splitter"):
+            return
+        sizes = self.main_splitter.sizes()
+        if len(sizes) < 3:
+            return
+
+        left, center, right = int(sizes[0]), int(sizes[1]), int(sizes[2])
+        if self._left_zone_visible:
+            if left > 0:
+                self._left_zone_last_width = max(220, left)
+            self.left_zone.setVisible(False)
+            self._left_zone_visible = False
+            self.main_splitter.setSizes([0, max(300, center + left), right])
+        else:
+            target_left = max(220, int(self._left_zone_last_width or 330))
+            self.left_zone.setVisible(True)
+            self._left_zone_visible = True
+            restored_center = max(300, center - target_left)
+            self.main_splitter.setSizes([target_left, restored_center, right])
+
+        self._refresh_left_zone_toggle_button()
 
     def _format_module_family_label(self, family: str) -> str:
         family = str(family or "").strip()
@@ -2813,8 +3139,64 @@ class TabSciana(QWidget):
         view_switch_layout.addWidget(QLabel("Widok:", view_switch), 0)
         view_switch_layout.addWidget(self.btn_view_front, 0)
         view_switch_layout.addWidget(self.btn_view_top, 0)
+        self.btn_snap_grid = QPushButton("Snap 50mm: OFF", view_switch)
+        self.btn_snap_grid.setCheckable(True)
+        self.btn_snap_grid.setChecked(False)
+        self.btn_snap_grid.setStyleSheet(self.btn_view_front.styleSheet())
+        view_switch_layout.addWidget(self.btn_snap_grid, 0)
+        self.cb_snap_step = QComboBox(view_switch)
+        self.cb_snap_step.addItem("10 mm", 10)
+        self.cb_snap_step.addItem("25 mm", 25)
+        self.cb_snap_step.addItem("50 mm", 50)
+        self.cb_snap_step.addItem("100 mm", 100)
+        self.cb_snap_step.setCurrentIndex(2)
+        view_switch_layout.addWidget(self.cb_snap_step, 0)
+        self.btn_toggle_left_zone = QPushButton("Ukryj lewy panel", view_switch)
+        self.btn_toggle_left_zone.setStyleSheet(self.btn_view_front.styleSheet())
+        view_switch_layout.addWidget(self.btn_toggle_left_zone, 0)
         info_top_row.addWidget(view_switch, 0)
         info_layout.addLayout(info_top_row)
+
+        quick_actions = QWidget(self.preview_info_box)
+        quick_actions.setStyleSheet("QWidget { background: transparent; border: 0; }")
+        quick_actions_layout = QHBoxLayout(quick_actions)
+        quick_actions_layout.setContentsMargins(0, 0, 0, 0)
+        quick_actions_layout.setSpacing(6)
+
+        self.btn_q_save = QPushButton("Zapisz", quick_actions)
+        self.btn_q_save.clicked.connect(self._shortcut_save_assembly)
+        quick_actions_layout.addWidget(self.btn_q_save, 0)
+
+        self.btn_q_overwrite = QPushButton("Nadpisz", quick_actions)
+        self.btn_q_overwrite.clicked.connect(self._on_overwrite)
+        quick_actions_layout.addWidget(self.btn_q_overwrite, 0)
+
+        self.btn_q_load = QPushButton("Wczytaj", quick_actions)
+        self.btn_q_load.clicked.connect(self._on_load)
+        quick_actions_layout.addWidget(self.btn_q_load, 0)
+
+        self.btn_q_new = QPushButton("Nowy", quick_actions)
+        self.btn_q_new.clicked.connect(self.start_new_assembly)
+        quick_actions_layout.addWidget(self.btn_q_new, 0)
+
+        self.btn_q_search = QPushButton("Szukaj", quick_actions)
+        self.btn_q_search.clicked.connect(self._shortcut_focus_saved_search)
+        quick_actions_layout.addWidget(self.btn_q_search, 0)
+
+        self.btn_q_duplicate = QPushButton("Duplikuj", quick_actions)
+        self.btn_q_duplicate.clicked.connect(self._on_duplicate_selected_item)
+        quick_actions_layout.addWidget(self.btn_q_duplicate, 0)
+
+        self.btn_q_snap = QPushButton("Snap", quick_actions)
+        self.btn_q_snap.clicked.connect(self._toggle_snap_grid)
+        quick_actions_layout.addWidget(self.btn_q_snap, 0)
+
+        self.btn_q_shortcuts = QPushButton("Skroty", quick_actions)
+        self.btn_q_shortcuts.clicked.connect(self._open_shortcuts_dialog)
+        quick_actions_layout.addWidget(self.btn_q_shortcuts, 0)
+
+        quick_actions_layout.addStretch(1)
+        info_layout.addWidget(quick_actions, 0)
 
         self.lab_active_module_info = QLabel("Dodaj zapisany modul, aby zaczac ukladanie kompletu.")
         self.lab_active_module_info.setWordWrap(True)
@@ -2856,6 +3238,9 @@ class TabSciana(QWidget):
 
         self.btn_view_front.clicked.connect(lambda: self._on_view_toggle_clicked("front"))
         self.btn_view_top.clicked.connect(lambda: self._on_view_toggle_clicked("top"))
+        self.btn_snap_grid.clicked.connect(self._toggle_snap_grid)
+        self.cb_snap_step.currentIndexChanged.connect(self._on_snap_step_combo_changed)
+        self.btn_toggle_left_zone.clicked.connect(self._toggle_left_zone_visibility)
         return panel
 
     def _build_right_zone(self) -> QWidget:
@@ -2900,9 +3285,21 @@ class TabSciana(QWidget):
         btn_row = QHBoxLayout()
         self.btn_move_up = QPushButton("W lewo")
         self.btn_move_down = QPushButton("W prawo")
+        self.btn_duplicate = QPushButton("Duplikuj")
+        self.btn_align_left = QPushButton("Wyrownaj lewo")
+        self.btn_align_right = QPushButton("Wyrownaj prawo")
+        self.btn_align_top = QPushButton("Wyrownaj gora")
+        self.btn_align_bottom = QPushButton("Wyrownaj dol")
+        self.btn_distribute = QPushButton("Rozstaw")
         self.btn_remove = QPushButton("Usun")
         btn_row.addWidget(self.btn_move_up)
         btn_row.addWidget(self.btn_move_down)
+        btn_row.addWidget(self.btn_duplicate)
+        btn_row.addWidget(self.btn_align_left)
+        btn_row.addWidget(self.btn_align_right)
+        btn_row.addWidget(self.btn_align_top)
+        btn_row.addWidget(self.btn_align_bottom)
+        btn_row.addWidget(self.btn_distribute)
         btn_row.addWidget(self.btn_remove)
         items_layout.addLayout(btn_row)
         scroll_layout.addWidget(box_items, 0)
@@ -3085,6 +3482,12 @@ class TabSciana(QWidget):
         self.btn_remove.clicked.connect(self._on_remove_selected_item)
         self.btn_move_up.clicked.connect(lambda: self._move_selected_item(-1))
         self.btn_move_down.clicked.connect(lambda: self._move_selected_item(1))
+        self.btn_duplicate.clicked.connect(self._on_duplicate_selected_item)
+        self.btn_align_left.clicked.connect(lambda: self._on_align_selected_horizontal("left"))
+        self.btn_align_right.clicked.connect(lambda: self._on_align_selected_horizontal("right"))
+        self.btn_align_top.clicked.connect(lambda: self._on_align_selected_vertical("top"))
+        self.btn_align_bottom.clicked.connect(lambda: self._on_align_selected_vertical("bottom"))
+        self.btn_distribute.clicked.connect(self._on_distribute_selected_horizontally)
         self.cb_selected_x_ref.currentIndexChanged.connect(self._on_selected_x_reference_changed)
         self.cb_selected_y_ref.currentIndexChanged.connect(self._on_selected_y_reference_changed)
         self.sp_selected_offset.valueChanged.connect(self._on_selected_offset_changed)
@@ -3096,6 +3499,10 @@ class TabSciana(QWidget):
         self.cb_selected_material_front.currentIndexChanged.connect(self._on_selected_module_materials_changed)
         self.cb_selected_material_back.currentIndexChanged.connect(self._on_selected_module_materials_changed)
         self.btn_apply_bulk_modules.clicked.connect(self._apply_bulk_changes_to_selected)
+        self.sp_bulk_height.valueChanged.connect(self._on_bulk_height_changed_auto)
+        self.cb_bulk_material_carcass.currentIndexChanged.connect(self._on_bulk_materials_changed_auto)
+        self.cb_bulk_material_front.currentIndexChanged.connect(self._on_bulk_materials_changed_auto)
+        self.cb_bulk_material_back.currentIndexChanged.connect(self._on_bulk_materials_changed_auto)
         self.tbl_project_refs.itemSelectionChanged.connect(self._on_project_reference_selection_changed)
 
         return panel
@@ -3878,6 +4285,133 @@ class TabSciana(QWidget):
         has_module = bool(item and str(item.data(0, SAVED_MODULE_NAME_ROLE) or "").strip())
         self.btn_add_saved.setEnabled(has_module)
 
+    def _on_saved_module_item_double_clicked(self, item: QTreeWidgetItem | None, _column: int) -> None:
+        source_name = str(item.data(0, SAVED_MODULE_NAME_ROLE) or "").strip() if item is not None else ""
+        if not source_name:
+            return
+        self.tree_saved_modules.setCurrentItem(item)
+        self._add_saved_module_by_name(source_name)
+
+    def _shortcut_save_assembly(self) -> None:
+        name = str(getattr(self._assembly, "name", "") or "").strip()
+        existing = self._assembly_store.get(name) if name else None
+        if existing is not None:
+            self._on_overwrite()
+        else:
+            self._on_save_new()
+
+    def _shortcut_focus_saved_search(self) -> None:
+        self.ed_saved_search.setFocus()
+        self.ed_saved_search.selectAll()
+
+    def _shortcut_settings_key(self) -> str:
+        return "komplet_shortcuts_v2"
+
+    def _default_shortcut_strings(self) -> list[str]:
+        out: list[str] = []
+        for action_key, (seq, _handler) in dict(getattr(self, "_shortcut_actions", {}) or {}).items():
+            out.append(f"{action_key}={seq}")
+        return out
+
+    def _load_shortcut_map(self) -> dict[str, str]:
+        raw = load_ui_string_list(self._shortcut_settings_key(), self._default_shortcut_strings())
+        parsed: dict[str, str] = {}
+        for row in raw:
+            text = str(row or "").strip()
+            if not text or "=" not in text:
+                continue
+            key, seq = text.split("=", 1)
+            action = str(key or "").strip()
+            value = str(seq or "").strip()
+            if action:
+                parsed[action] = value
+        return parsed
+
+    def _save_shortcut_map(self, mapping: dict[str, str]) -> None:
+        rows: list[str] = []
+        for action_key in dict(getattr(self, "_shortcut_actions", {}) or {}).keys():
+            seq = str(mapping.get(action_key, "") or "").strip()
+            if not seq:
+                seq = str(self._shortcut_actions[action_key][0] or "").strip()
+            rows.append(f"{action_key}={seq}")
+        save_ui_string_list(self._shortcut_settings_key(), rows)
+
+    def _setup_shortcuts_from_settings(self) -> None:
+        if not hasattr(self, "_shortcut_actions"):
+            return
+
+        if hasattr(self, "_shortcuts_runtime"):
+            for shortcut in list(getattr(self, "_shortcuts_runtime", []) or []):
+                try:
+                    shortcut.setParent(None)
+                    shortcut.deleteLater()
+                except Exception:
+                    pass
+
+        shortcut_map = self._load_shortcut_map()
+        self._shortcuts_runtime = []
+
+        for action_key, (default_seq, handler) in self._shortcut_actions.items():
+            seq_text = str(shortcut_map.get(action_key, default_seq) or "").strip()
+            if not seq_text:
+                continue
+            shortcut = QShortcut(QKeySequence(seq_text), self)
+            shortcut.activated.connect(handler)
+            self._shortcuts_runtime.append(shortcut)
+            setattr(self, f"_shortcut_{action_key}", shortcut)
+
+    def _open_shortcuts_dialog(self) -> None:
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Konfiguracja skrotow - Komplet")
+        lay = QVBoxLayout(dlg)
+        form = QFormLayout()
+        lay.addLayout(form)
+
+        labels = {
+            "save": "Zapisz",
+            "overwrite": "Nadpisz",
+            "load": "Wczytaj",
+            "new": "Nowy",
+            "focus_search": "Fokus szukaj",
+            "duplicate": "Duplikuj",
+            "toggle_snap": "Przelacz snap",
+            "toggle_left": "Lewy panel",
+        }
+
+        current_map = self._load_shortcut_map()
+        edits: dict[str, QLineEdit] = {}
+
+        for action_key, (default_seq, _handler) in self._shortcut_actions.items():
+            edit = QLineEdit(str(current_map.get(action_key, default_seq) or default_seq))
+            edit.setPlaceholderText(default_seq)
+            edits[action_key] = edit
+            form.addRow(labels.get(action_key, action_key), edit)
+
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        btn_reset = btns.addButton("Domyslne", QDialogButtonBox.ButtonRole.ResetRole)
+        btn_reset.clicked.connect(
+            lambda: [
+                edits[k].setText(str(self._shortcut_actions[k][0] or ""))
+                for k in self._shortcut_actions.keys()
+            ]
+        )
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        lay.addWidget(btns)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        new_map: dict[str, str] = {}
+        for action_key, edit in edits.items():
+            value = str(edit.text() or "").strip()
+            if not value:
+                value = str(self._shortcut_actions[action_key][0] or "")
+            new_map[action_key] = value
+
+        self._save_shortcut_map(new_map)
+        self._setup_shortcuts_from_settings()
+
     def _push_assembly_to_ui(self) -> None:
         self._is_pushing_ui = True
         try:
@@ -4110,7 +4644,7 @@ class TabSciana(QWidget):
         return True
 
     def start_new_assembly(self) -> None:
-        self._assembly = FurnitureAssemblyDef()
+        self._assembly = FurnitureAssemblyDef(assembly_id=new_assembly_id())
         self._order_status_context = ""
         self._site_address_context = ""
         self._reload_saved_walls()
@@ -4125,12 +4659,14 @@ class TabSciana(QWidget):
         quote_item_name = str(payload.get("quote_item_name", "") or "").strip()
         quote_item_kind = str(payload.get("quote_item_kind", "") or "").strip()
         order_def = self._order_store.get(order_name) if order_name else None
+        client_name = str(payload.get("client_name", "") or getattr(order_def, "client_name", "") or "").strip()
+        worker_name = str(payload.get("worker_name", "") or getattr(order_def, "worker_name", "") or "").strip()
         self._assembly = FurnitureAssemblyDef(
             name=quote_item_name or "Komplet 1",
             wall_name=str(payload.get("wall_name", "") or "").strip(),
-            client_name=str(payload.get("client_name", "") or "").strip(),
+            client_name=client_name,
             order_name=order_name,
-            worker_name=str(payload.get("worker_name", "") or "").strip(),
+            worker_name=worker_name,
             width_mm=float(payload.get("width_mm", 3000.0) or 3000.0),
             height_mm=float(payload.get("height_mm", 2500.0) or 2500.0),
             depth_mm=float(payload.get("depth_mm", 560.0) or 560.0),
@@ -4220,6 +4756,8 @@ class TabSciana(QWidget):
             return False
 
         cloned = ModuleDef.from_dict(module.to_dict()) if hasattr(module, "to_dict") else ModuleDef()
+        if hasattr(cloned, "module_id"):
+            cloned.module_id = new_module_id()
         if not getattr(cloned, "parts", None):
             cloned.parts = build_module_parts(cloned, self._catalog)
 
@@ -4439,7 +4977,8 @@ class TabSciana(QWidget):
             return
         min_offset = self.preview._min_offset_for_module_index(index)
         max_offset = self.preview._max_offset_for_module_index(index)
-        self._assembly.items[index].offset_mm = max(min_offset, min(float(offset_mm or 0.0), max_offset))
+        snapped_offset = self._snap_mm(float(offset_mm or 0.0))
+        self._assembly.items[index].offset_mm = max(min_offset, min(float(snapped_offset), max_offset))
         self._rebuild_assembly(select_index=index)
 
     def _on_preview_module_position_changed(self, index: int, offset_mm: float, y_mm: float) -> None:
@@ -4449,8 +4988,10 @@ class TabSciana(QWidget):
         min_offset = self.preview._min_offset_for_module_index(index)
         max_offset = self.preview._max_offset_for_module_index(index)
         max_y = self.preview._max_y_for_index(index)
-        self._assembly.items[index].offset_mm = max(min_offset, min(float(offset_mm or 0.0), max_offset))
-        self._assembly.items[index].position_y_mm = max(0.0, min(float(y_mm or 0.0), max_y))
+        snapped_offset = self._snap_mm(float(offset_mm or 0.0))
+        snapped_y = self._snap_mm(float(y_mm or 0.0))
+        self._assembly.items[index].offset_mm = max(min_offset, min(float(snapped_offset), max_offset))
+        self._assembly.items[index].position_y_mm = max(0.0, min(float(snapped_y), max_y))
         self._rebuild_assembly(select_index=index)
 
     def _on_preview_top_position_changed(self, index: int, offset_mm: float, wall_offset_mm: float) -> None:
@@ -4460,8 +5001,10 @@ class TabSciana(QWidget):
         min_offset = self.preview_top._min_offset_for_module_index(index)
         max_offset = self.preview_top._max_offset_for_module_index(index)
         max_wall_offset = self.preview_top._max_wall_depth_offset_for_index(index)
-        self._assembly.items[index].offset_mm = max(min_offset, min(float(offset_mm or 0.0), max_offset))
-        self._assembly.items[index].wall_depth_offset_mm = max(0.0, min(float(wall_offset_mm or 0.0), max_wall_offset))
+        snapped_offset = self._snap_mm(float(offset_mm or 0.0))
+        snapped_wall_offset = self._snap_mm(float(wall_offset_mm or 0.0))
+        self._assembly.items[index].offset_mm = max(min_offset, min(float(snapped_offset), max_offset))
+        self._assembly.items[index].wall_depth_offset_mm = max(0.0, min(float(snapped_wall_offset), max_wall_offset))
         self._rebuild_assembly(select_index=index)
 
     def _selected_index(self) -> int:
@@ -4651,6 +5194,53 @@ class TabSciana(QWidget):
 
         self._rebuild_assembly(select_indexes=selected_indexes)
 
+    def _on_bulk_materials_changed_auto(self, _index: int) -> None:
+        if self._is_syncing_bulk_ui:
+            return
+        selected_indexes = [index for index in self._selected_indexes() if 0 <= index < len(self._assembly.items)]
+        if len(selected_indexes) < 2:
+            return
+
+        carcass_key = str(self.cb_bulk_material_carcass.currentData() or "").strip()
+        front_key = str(self.cb_bulk_material_front.currentData() or "").strip()
+        back_key = str(self.cb_bulk_material_back.currentData() or "").strip()
+        if not (carcass_key or front_key or back_key):
+            return
+
+        for index in selected_indexes:
+            module = self._assembly.items[index].module
+            material_map = dict(getattr(module, "materials", {}) or {})
+            if carcass_key:
+                material_map["carcass"] = carcass_key
+            if front_key:
+                material_map["front"] = front_key
+            if back_key:
+                material_map["back"] = back_key
+            module.materials = material_map
+
+        self._set_store_status(
+            f"Zmieniono materialy dla {len(selected_indexes)} zaznaczonych modulow.",
+            ok=True,
+        )
+        self._rebuild_assembly(select_indexes=selected_indexes)
+
+    def _on_bulk_height_changed_auto(self, value: float) -> None:
+        if self._is_syncing_bulk_ui:
+            return
+        selected_indexes = [index for index in self._selected_indexes() if 0 <= index < len(self._assembly.items)]
+        height_value = float(value or 0.0)
+        if len(selected_indexes) < 2 or height_value <= 0.0:
+            return
+
+        for index in selected_indexes:
+            self._assembly.items[index].module.height_mm = height_value
+
+        self._set_store_status(
+            f"Zmieniono wysokosc dla {len(selected_indexes)} zaznaczonych modulow.",
+            ok=True,
+        )
+        self._rebuild_assembly(select_indexes=selected_indexes)
+
     def _on_selected_y_reference_changed(self) -> None:
         if self._is_syncing_offset_ui:
             return
@@ -4689,7 +5279,8 @@ class TabSciana(QWidget):
             return
         min_offset = self.preview._min_offset_for_module_index(index)
         max_offset = self.preview._max_offset_for_module_index(index)
-        self._assembly.items[index].offset_mm = max(min_offset, min(float(value or 0.0), max_offset))
+        snapped_value = self._snap_mm(float(value or 0.0))
+        self._assembly.items[index].offset_mm = max(min_offset, min(float(snapped_value), max_offset))
         self._rebuild_assembly(select_index=index)
 
     def _on_selected_y_changed(self, value: float) -> None:
@@ -4700,9 +5291,11 @@ class TabSciana(QWidget):
             return
         if self._is_top_view_active():
             max_wall_offset = self.preview_top._max_wall_depth_offset_for_index(index)
-            self._assembly.items[index].wall_depth_offset_mm = max(0.0, min(float(value or 0.0), max_wall_offset))
+            snapped_value = self._snap_mm(float(value or 0.0))
+            self._assembly.items[index].wall_depth_offset_mm = max(0.0, min(float(snapped_value), max_wall_offset))
         else:
-            self._assembly.items[index].position_y_mm = self._y_from_vertical_offset_ui_value(index, float(value or 0.0))
+            converted = self._y_from_vertical_offset_ui_value(index, float(value or 0.0))
+            self._assembly.items[index].position_y_mm = self._snap_mm(float(converted))
         self._rebuild_assembly(select_index=index)
 
     def _on_selected_dimensions_changed(self, _value: float) -> None:
@@ -4739,6 +5332,309 @@ class TabSciana(QWidget):
             self._assembly.items.pop(index)
         next_index = min(selected_indexes[0], len(self._assembly.items) - 1)
         self._rebuild_assembly(select_index=next_index)
+
+    def _on_duplicate_selected_item(self) -> None:
+        self._on_duplicate_selected_item_direction("right")
+
+    def _normalized_duplicate_direction(self, direction: str) -> str:
+        direction_key = str(direction or "right").strip().lower()
+        if direction_key not in {"right", "left", "down", "up"}:
+            return "right"
+        return direction_key
+
+    def _selected_indexes_for_duplicate(self) -> list[int]:
+        selected_indexes = self._selected_indexes()
+        return [index for index in sorted({int(i) for i in selected_indexes}) if 0 <= index < len(self._assembly.items)]
+
+    def _build_duplicate_layout(self, direction: str) -> tuple[list[dict[str, object]], str]:
+        direction_key = self._normalized_duplicate_direction(direction)
+        valid_indexes = self._selected_indexes_for_duplicate()
+        if not valid_indexes:
+            return [], direction_key
+
+        gap_mm = max(0.0, float(getattr(self._assembly, "gap_mm", 0.0) or 0.0))
+        resolved_lookup = {index: self._resolved_items[index] for index in valid_indexes if 0 <= index < len(self._resolved_items)}
+
+        min_x = None
+        max_right = None
+        min_y = None
+        max_bottom = None
+        for index in valid_indexes:
+            resolved = resolved_lookup.get(index)
+            source_item = self._assembly.items[index]
+            x_mm = float(getattr(resolved, "x_mm", getattr(source_item, "offset_mm", 0.0)) or 0.0)
+            y_mm = float(getattr(resolved, "y_mm", getattr(source_item, "position_y_mm", 0.0) or 0.0) or 0.0)
+            width_mm = float(getattr(resolved, "width_mm", getattr(source_item.module, "width_mm", 0.0)) or 0.0)
+            height_mm = float(getattr(resolved, "height_mm", getattr(source_item.module, "height_mm", 0.0)) or 0.0)
+            min_x = x_mm if min_x is None else min(min_x, x_mm)
+            max_right = (x_mm + width_mm) if max_right is None else max(max_right, x_mm + width_mm)
+            min_y = y_mm if min_y is None else min(min_y, y_mm)
+            max_bottom = (y_mm + height_mm) if max_bottom is None else max(max_bottom, y_mm + height_mm)
+
+        block_width = max(0.0, float((max_right or 0.0) - (min_x or 0.0)))
+        block_height = max(0.0, float((max_bottom or 0.0) - (min_y or 0.0)))
+        dx = 0.0
+        dy = 0.0
+        if direction_key == "right":
+            dx = block_width + gap_mm
+        elif direction_key == "left":
+            dx = -(block_width + gap_mm)
+        elif direction_key == "down":
+            dy = block_height + gap_mm
+        elif direction_key == "up":
+            dy = -(block_height + gap_mm)
+
+        wall_width = max(0.0, float(getattr(self._assembly, "width_mm", 0.0) or 0.0))
+        wall_height = max(0.0, float(getattr(self._assembly, "height_mm", 0.0) or 0.0))
+
+        layout: list[dict[str, object]] = []
+        for index in valid_indexes:
+            source_item = self._assembly.items[index]
+            source_module = source_item.module
+            source_resolved = resolved_lookup.get(index)
+            source_x = float(getattr(source_resolved, "x_mm", getattr(source_item, "offset_mm", 0.0)) or 0.0)
+            source_y = float(getattr(source_resolved, "y_mm", getattr(source_item, "position_y_mm", 0.0) or 0.0) or 0.0)
+            width_mm = float(getattr(source_resolved, "width_mm", getattr(source_module, "width_mm", 0.0)) or 0.0)
+            height_mm = float(getattr(source_resolved, "height_mm", getattr(source_module, "height_mm", 0.0)) or 0.0)
+
+            duplicate_x = source_x + dx
+            duplicate_y = source_y + dy
+            max_left = max(0.0, wall_width - width_mm)
+            max_top = max(0.0, wall_height - height_mm)
+            duplicate_x = max(0.0, min(float(duplicate_x), max_left))
+            duplicate_y = max(0.0, min(float(duplicate_y), max_top))
+
+            layout.append(
+                {
+                    "index": index,
+                    "source_item": source_item,
+                    "source_name": str(getattr(source_item, "source_name", "") or getattr(source_module, "name", "") or "Modul"),
+                    "duplicate_x": duplicate_x,
+                    "duplicate_y": duplicate_y,
+                    "width_mm": width_mm,
+                    "height_mm": height_mm,
+                }
+            )
+        return layout, direction_key
+
+    def _show_duplicate_direction_preview(self, direction: str) -> None:
+        layout, direction_key = self._build_duplicate_layout(direction)
+        if not layout:
+            return
+
+        min_x = min(float(item["duplicate_x"]) for item in layout)
+        max_right = max(float(item["duplicate_x"]) + float(item["width_mm"]) for item in layout)
+        min_y = min(float(item["duplicate_y"]) for item in layout)
+        max_bottom = max(float(item["duplicate_y"]) + float(item["height_mm"]) for item in layout)
+
+        direction_labels = {
+            "right": "Podglad: w prawo",
+            "left": "Podglad: w lewo",
+            "down": "Podglad: w dol",
+            "up": "Podglad: w gore",
+        }
+        label = direction_labels.get(direction_key, "Podglad: w prawo")
+
+        if self._is_top_view_active():
+            top_h = float(self.preview_top._top_view_height())
+            top_y = float(self.preview_top._top_view_base_y())
+            top_rect = QRectF(float(min_x), top_y, float(max_right - min_x), top_h)
+            self.preview_top._update_drag_preview(float(min_x), ghost_rect=top_rect, ghost_label=label)
+            self.preview._update_drag_preview(None)
+        else:
+            front_rect = QRectF(float(min_x), float(min_y), float(max_right - min_x), float(max_bottom - min_y))
+            self.preview._update_drag_preview(float(min_x), ghost_rect=front_rect, ghost_label=label)
+            self.preview_top._update_drag_preview(None)
+
+    def _on_duplicate_selected_item_repeat(self, multiplier: int) -> None:
+        copies = max(0, int(multiplier) - 1)
+        if copies <= 0:
+            return
+        for _ in range(copies):
+            self._on_duplicate_selected_item_direction("right")
+
+    def _on_align_selected_requested(self, anchor: str) -> None:
+        anchor_key = str(anchor or "").strip().lower()
+        if anchor_key in {"left", "right"}:
+            self._on_align_selected_horizontal(anchor_key)
+            return
+        self._on_align_selected_vertical(anchor_key or "top")
+
+    def _on_align_selected_horizontal(self, anchor: str) -> None:
+        selected_indexes = [index for index in self._selected_indexes() if 0 <= index < len(self._assembly.items)]
+        if len(selected_indexes) < 2:
+            return
+
+        resolved_items = {
+            index: self._resolved_items[index]
+            for index in selected_indexes
+            if 0 <= index < len(self._resolved_items)
+        }
+        if len(resolved_items) < 2:
+            return
+
+        anchor_key = str(anchor or "left").strip().lower()
+        if anchor_key == "right":
+            target_right = max(
+                float(getattr(resolved_items[index], "x_mm", 0.0) or 0.0)
+                + float(getattr(resolved_items[index], "width_mm", 0.0) or 0.0)
+                for index in selected_indexes
+                if index in resolved_items
+            )
+            for index in selected_indexes:
+                resolved = resolved_items.get(index)
+                if resolved is None:
+                    continue
+                width_mm = float(getattr(resolved, "width_mm", 0.0) or 0.0)
+                target_x = target_right - width_mm
+                min_offset = self.preview._min_offset_for_module_index(index)
+                max_offset = self.preview._max_offset_for_module_index(index)
+                base_x = self.preview._base_x_for_module_index(index)
+                target_offset = self._snap_mm(target_x - base_x)
+                self._assembly.items[index].offset_ref_mode = "wall_left"
+                self._assembly.items[index].offset_mm = max(min_offset, min(float(target_offset), max_offset))
+            self._set_store_status(f"Wyrownano {len(selected_indexes)} modulow do prawej.", ok=True)
+        else:
+            target_left = min(
+                float(getattr(resolved_items[index], "x_mm", 0.0) or 0.0)
+                for index in selected_indexes
+                if index in resolved_items
+            )
+            for index in selected_indexes:
+                min_offset = self.preview._min_offset_for_module_index(index)
+                max_offset = self.preview._max_offset_for_module_index(index)
+                base_x = self.preview._base_x_for_module_index(index)
+                target_offset = self._snap_mm(target_left - base_x)
+                self._assembly.items[index].offset_ref_mode = "wall_left"
+                self._assembly.items[index].offset_mm = max(min_offset, min(float(target_offset), max_offset))
+            self._set_store_status(f"Wyrownano {len(selected_indexes)} modulow do lewej.", ok=True)
+
+        self._rebuild_assembly(select_indexes=selected_indexes)
+
+    def _on_align_selected_vertical(self, anchor: str) -> None:
+        selected_indexes = [index for index in self._selected_indexes() if 0 <= index < len(self._assembly.items)]
+        if len(selected_indexes) < 2:
+            return
+
+        resolved_items = {
+            index: self._resolved_items[index]
+            for index in selected_indexes
+            if 0 <= index < len(self._resolved_items)
+        }
+        if len(resolved_items) < 2:
+            return
+
+        anchor_key = str(anchor or "top").strip().lower()
+        if anchor_key == "bottom":
+            target_bottom = max(
+                float(getattr(resolved_items[index], "y_mm", 0.0) or 0.0)
+                + float(getattr(resolved_items[index], "height_mm", 0.0) or 0.0)
+                for index in selected_indexes
+                if index in resolved_items
+            )
+            for index in selected_indexes:
+                resolved = resolved_items.get(index)
+                if resolved is None:
+                    continue
+                module_height = float(getattr(resolved, "height_mm", 0.0) or 0.0)
+                target_y = self._snap_mm(max(0.0, target_bottom - module_height))
+                max_y = self.preview._max_y_for_index(index)
+                self._assembly.items[index].position_y_mm = max(0.0, min(float(target_y), float(max_y)))
+            self._set_store_status(f"Wyrownano {len(selected_indexes)} modulow do dolu.", ok=True)
+        else:
+            target_top = min(
+                float(getattr(resolved_items[index], "y_mm", 0.0) or 0.0)
+                for index in selected_indexes
+                if index in resolved_items
+            )
+            for index in selected_indexes:
+                max_y = self.preview._max_y_for_index(index)
+                snapped_y = self._snap_mm(target_top)
+                self._assembly.items[index].position_y_mm = max(0.0, min(float(snapped_y), float(max_y)))
+            self._set_store_status(f"Wyrownano {len(selected_indexes)} modulow do gory.", ok=True)
+
+        self._rebuild_assembly(select_indexes=selected_indexes)
+
+    def _on_distribute_selected_horizontally(self) -> None:
+        selected_indexes = [index for index in self._selected_indexes() if 0 <= index < len(self._assembly.items)]
+        if len(selected_indexes) < 3:
+            return
+
+        sortable: list[tuple[int, float]] = []
+        for index in selected_indexes:
+            x_mm = float(
+                getattr(self._resolved_items[index], "x_mm", self._assembly.items[index].offset_mm)
+                if 0 <= index < len(self._resolved_items)
+                else self._assembly.items[index].offset_mm
+            )
+            sortable.append((index, x_mm))
+        sortable.sort(key=lambda pair: pair[1])
+
+        left_x = float(sortable[0][1])
+        right_x = float(sortable[-1][1])
+        if len(sortable) <= 1 or right_x <= left_x:
+            return
+        step = (right_x - left_x) / float(len(sortable) - 1)
+
+        for pos, (index, _x) in enumerate(sortable):
+            target_x = self._snap_mm(left_x + step * float(pos))
+            self._assembly.items[index].offset_ref_mode = "wall_left"
+            min_offset = self.preview._min_offset_for_module_index(index)
+            max_offset = self.preview._max_offset_for_module_index(index)
+            base_x = self.preview._base_x_for_module_index(index)
+            target_offset = max(min_offset, min(float(target_x - base_x), max_offset))
+            self._assembly.items[index].offset_mm = target_offset
+
+        self._set_store_status(f"Rownomiernie rozstawiono {len(sortable)} modulow.", ok=True)
+        self._rebuild_assembly(select_indexes=[index for index, _x in sortable])
+
+    def _on_duplicate_selected_item_direction(self, direction: str) -> None:
+        layout, direction_key = self._build_duplicate_layout(direction)
+        if not layout:
+            return
+
+        insert_at = int(layout[-1]["index"]) + 1
+        inserted_indexes: list[int] = []
+        source_items: list[AssemblyModuleItemDef] = []
+        for entry in layout:
+            source_item = entry["source_item"]
+            assert isinstance(source_item, AssemblyModuleItemDef)
+            source_items.append(source_item)
+            source_module = source_item.module
+            cloned_module = ModuleDef.from_dict(source_module.to_dict()) if hasattr(source_module, "to_dict") else ModuleDef()
+            if hasattr(cloned_module, "module_id"):
+                cloned_module.module_id = new_module_id()
+            if not getattr(cloned_module, "parts", None):
+                cloned_module.parts = build_module_parts(cloned_module, self._catalog)
+            source_name = str(entry["source_name"])
+            duplicate_offset = float(entry["duplicate_x"])
+            duplicate_y = float(entry["duplicate_y"])
+
+            duplicate_item = AssemblyModuleItemDef(
+                source_name=source_name,
+                instance_name=self._next_instance_name(source_name),
+                offset_ref_mode="wall_left",
+                offset_mm=duplicate_offset,
+                position_y_mm=duplicate_y,
+                wall_depth_offset_mm=float(getattr(source_item, "wall_depth_offset_mm", 0.0) or 0.0),
+                module=cloned_module,
+            )
+            self._assembly.items.insert(insert_at, duplicate_item)
+            inserted_indexes.append(insert_at)
+            insert_at += 1
+
+        direction_labels = {
+            "right": "w prawo",
+            "left": "w lewo",
+            "down": "w dol",
+            "up": "w gore",
+        }
+        direction_label = direction_labels.get(direction_key, "w prawo")
+        if len(source_items) == 1:
+            self._set_store_status(f'Duplikowano modul "{source_items[0].display_name()}" ({direction_label}).', ok=True)
+        else:
+            self._set_store_status(f"Duplikowano {len(source_items)} zaznaczone moduly ({direction_label}).", ok=True)
+        self._rebuild_assembly(select_indexes=inserted_indexes)
 
     def _move_selected_item(self, direction: int) -> None:
         selected_indexes = self._selected_indexes()
@@ -4822,6 +5718,12 @@ class TabSciana(QWidget):
         self.btn_remove.setEnabled(has_selection)
         self.btn_move_up.setEnabled(selected_count == 1)
         self.btn_move_down.setEnabled(selected_count == 1)
+        self.btn_duplicate.setEnabled(has_selection)
+        self.btn_align_left.setEnabled(selected_count >= 2)
+        self.btn_align_right.setEnabled(selected_count >= 2)
+        self.btn_align_top.setEnabled(selected_count >= 2)
+        self.btn_align_bottom.setEnabled(selected_count >= 2)
+        self.btn_distribute.setEnabled(selected_count >= 3)
         self._sync_selected_offset_editor()
         self._sync_bulk_module_editor()
 
@@ -4847,12 +5749,12 @@ class TabSciana(QWidget):
     def _selected_order_details(self) -> tuple[str, str]:
         order_name = str(getattr(self._assembly, "order_name", "") or "").strip()
         if not order_name:
-            return "", ""
+            return str(self._order_status_context or "").strip(), str(self._site_address_context or "").strip()
         order_def = self._order_store.get(order_name)
         if order_def is None:
-            return "", ""
-        status = str(getattr(order_def, "status", "") or "").strip()
-        site_address = str(getattr(order_def, "site_address", "") or "").strip()
+            return str(self._order_status_context or "").strip(), str(self._site_address_context or "").strip()
+        status = str(self._order_status_context or getattr(order_def, "status", "") or "").strip()
+        site_address = str(self._site_address_context or getattr(order_def, "site_address", "") or "").strip()
         return status, site_address
 
     def _refresh_summary(self) -> None:

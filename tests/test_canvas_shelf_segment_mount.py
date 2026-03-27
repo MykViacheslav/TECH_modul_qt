@@ -61,3 +61,44 @@ def test_shelf_is_drawn_only_in_selected_segment(tmp_path, monkeypatch):
     # przy jednym dividerze i mount="right" polka ma byc w prawym segmencie,
     # czyli jej lewa krawedz nie moze zaczynac sie przy lewym boku korpusu
     assert r.left() > 100.0
+
+
+def test_shelf_both_sides_draws_left_and_right_parts(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.tabs.modul.tab_modul import ViewsCanvas
+    from src.domain.module_models import ModuleDef
+    from src.core.module_parts_service import build_module_parts
+    from src.storage.catalog_store_json import CatalogStoreJson
+
+    m = ModuleDef(
+        name="X2",
+        width_mm=800.0,
+        depth_mm=500.0,
+        height_mm=500.0,
+        carcass_joint_type="type1",
+        shelf_count=2,
+        divider_count=1,
+        shelf_mount="both",
+        cabinet_kind="lower",
+        ref_point="LBB",
+        visible_parts=set(["side_left", "side_right", "top", "bottom", "divider", "shelf"]),
+        materials={"carcass": "PB18", "front": "MDF19", "back": "HDF2.5"},
+        parts={},
+    )
+    m.parts = build_module_parts(m, CatalogStoreJson())
+
+    c = ViewsCanvas()
+    c.render_module(m, fit=False, selected_part_key="shelf_left_1")
+
+    keys = set()
+    for it in c.scene.items():
+        k = _item_key(it)
+        if isinstance(k, str):
+            keys.add(k)
+
+    assert "shelf_left_1" in keys
+    assert "shelf_right_1" in keys

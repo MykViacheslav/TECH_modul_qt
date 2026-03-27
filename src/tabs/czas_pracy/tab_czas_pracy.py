@@ -4,7 +4,8 @@ from calendar import monthrange
 from dataclasses import replace
 from datetime import date
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QModelIndex, Qt
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
@@ -16,6 +17,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QPushButton,
     QSpinBox,
+    QStyledItemDelegate,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -23,40 +25,89 @@ from PyQt6.QtWidgets import (
 )
 
 from src.domain.work_time_costing import compute_work_time_cost
-from src.domain.work_time_models import WorkTimeEntryDef, WorkerMonthSheetDef
+from src.domain.work_time_models import WorkTimeEntryDef, WorkerMonthSheetDef, new_entry_id, new_sheet_id
 from src.domain.worker_models import WorkerDef
 from src.storage.work_time_store_json import WorkTimeStoreJson
 from src.storage.worker_store_json import WorkerStoreJson
 
 
 MONTH_ITEMS: tuple[tuple[int, str], ...] = (
-    (1, "Styczen"),
-    (2, "Luty"),
-    (3, "Marzec"),
-    (4, "Kwiecien"),
-    (5, "Maj"),
-    (6, "Czerwiec"),
-    (7, "Lipiec"),
-    (8, "Sierpien"),
-    (9, "Wrzesien"),
-    (10, "Pazdziernik"),
+    (1,  "Styczeń"),
+    (2,  "Luty"),
+    (3,  "Marzec"),
+    (4,  "Kwiecień"),
+    (5,  "Maj"),
+    (6,  "Czerwiec"),
+    (7,  "Lipiec"),
+    (8,  "Sierpień"),
+    (9,  "Wrzesień"),
+    (10, "Październik"),
     (11, "Listopad"),
-    (12, "Grudzien"),
+    (12, "Grudzień"),
 )
 
 PAY_MODE_ITEMS: tuple[str, ...] = ("Godzinowa", "Dniowka")
 
 WORK_TYPE_ITEMS: tuple[str, ...] = (
+    "",
     "Projekt / wycena",
     "Produkcja",
-    "Montaz",
+    "Montaż",
     "Praca na miejscu",
     "Lakiernia",
     "Delegacja / wyjazd",
-    "Zakup materialow",
+    "Zakup materiałów",
+    "BHP / szkolenie",
+    "Urlop",
     "Inne",
 )
 
+_DAY_NAMES = ("Pn", "Wt", "Śr", "Cz", "Pt", "So", "Nd")
+
+_COLOR_WEEKEND   = QColor("#f0f4ff")   # sobota / niedziela – jasnoniebieski
+_COLOR_SATURDAY  = QColor("#e8f0fe")
+_COLOR_SUNDAY    = QColor("#fdecea")   # niedziela – delikatny różowy
+_COLOR_FILLED    = QColor("#f0fdf4")   # wiersz z wpisanym rodzajem – zielonkawy
+
+# ── Kolumny tabeli ──────────────────────────────────────────────────────────
+COL_DAY    = 0
+COL_DATE   = 1
+COL_TYPE   = 2
+COL_FROM   = 3
+COL_TO     = 4
+COL_HOURS  = 5
+COL_OT     = 6
+COL_EXTRA  = 7
+COL_PROJ   = 8
+COL_NOTE   = 9
+
+
+# ---------------------------------------------------------------------------
+# Delegate – ComboBox w kolumnie "Rodzaj"
+# ---------------------------------------------------------------------------
+
+class _WorkTypeDelegate(QStyledItemDelegate):
+    def createEditor(self, parent, option, index: QModelIndex):  # type: ignore[override]
+        cb = QComboBox(parent)
+        for item in WORK_TYPE_ITEMS:
+            cb.addItem(item)
+        return cb
+
+    def setEditorData(self, editor, index: QModelIndex) -> None:  # type: ignore[override]
+        value = str(index.data(Qt.ItemDataRole.EditRole) or "")
+        idx = editor.findText(value)
+        editor.setCurrentIndex(idx if idx >= 0 else 0)
+
+    def setModelData(self, editor, model, index: QModelIndex) -> None:  # type: ignore[override]
+        model.setData(index, editor.currentText(), Qt.ItemDataRole.EditRole)
+
+    def updateEditorGeometry(self, editor, option, index: QModelIndex) -> None:  # type: ignore[override]
+        editor.setGeometry(option.rect)
+
+
+# ---------------------------------------------------------------------------
+# Pomocnicze parsowanie czasu
+# ---------------------------------------------------------------------------
 
 def _parse_clock_value(value: str) -> tuple[int, int] | None:
     text = str(value or "").strip()
@@ -97,6 +148,18 @@ def _compute_hours(start_time: str, end_time: str, explicit_hours: str) -> float
     return round((end_minutes - start_minutes) / 60.0, 2)
 
 
+def _format_pln(value: float) -> str:
+    try:
+        amount = float(value)
+    except Exception:
+        amount = 0.0
+    return f"{amount:.2f} PLN"
+
+
+# ---------------------------------------------------------------------------
+# Główna zakładka
+# ---------------------------------------------------------------------------
+
 class TabCzasPracy(QWidget):
     def __init__(
         self,
@@ -118,7 +181,8 @@ class TabCzasPracy(QWidget):
         root.addWidget(title)
 
         subtitle = QLabel(
-            "Osobna karta do prowadzenia czasu pracy pracownikow, roznych trybow rozliczania i miesiecznej tabeli godzin."
+            "Miesięczne zestawienie godzin pracy. Wybierz pracownika i miesiąc — "
+            "tabela pokazuje wszystkie dni z możliwością wpisania godzin, rodzaju pracy i projektu."
         )
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet("color:#555555;")
@@ -127,13 +191,16 @@ class TabCzasPracy(QWidget):
         top_row = QHBoxLayout()
         top_row.setSpacing(12)
 
+        # ── Panel lewý: Plan miesiąca ──────────────────────────────────────
         controls, controls_layout = self._make_panel(
-            "Plan miesiaca",
-            "Tutaj wybierasz pracownika, miesiac i podstawowe reguly rozliczenia tego okresu.",
+            "Plan miesiąca",
+            "Pracownik, okres i stawki rozliczeniowe.",
         )
+
         period_title = QLabel("Okres i pracownik", controls)
         period_title.setStyleSheet("font-weight:700; color:#0f172a;")
         controls_layout.addWidget(period_title)
+
         form = QFormLayout()
         self.cb_worker = QComboBox(self)
         self.cb_month = QComboBox(self)
@@ -142,6 +209,22 @@ class TabCzasPracy(QWidget):
         self.sp_year = QSpinBox(self)
         self.sp_year.setRange(2020, 2100)
         self.sp_year.setValue(date.today().year)
+        form.addRow("Pracownik", self.cb_worker)
+        form.addRow("Miesiąc", self.cb_month)
+        form.addRow("Rok", self.sp_year)
+        controls_layout.addLayout(form)
+
+        buttons = QHBoxLayout()
+        self.btn_refresh = QPushButton("Wczytaj miesiąc", self)
+        buttons.addWidget(self.btn_refresh)
+        buttons.addStretch(1)
+        controls_layout.addLayout(buttons)
+
+        # Stawki
+        rates_title = QLabel("Rozliczenie i dodatki", controls)
+        rates_title.setStyleSheet("font-weight:700; color:#0f172a; margin-top:6px;")
+        controls_layout.addWidget(rates_title)
+
         self.cb_pay_mode = QComboBox(self)
         for item in PAY_MODE_ITEMS:
             self.cb_pay_mode.addItem(item)
@@ -149,12 +232,12 @@ class TabCzasPracy(QWidget):
         self.sp_hourly_rate.setRange(0.0, 1000.0)
         self.sp_hourly_rate.setDecimals(2)
         self.sp_hourly_rate.setSingleStep(1.0)
-        self.sp_hourly_rate.setSuffix(" PLN/h")
+        self.sp_hourly_rate.setSuffix(" zł/h")
         self.sp_daily_rate = QDoubleSpinBox(self)
         self.sp_daily_rate.setRange(0.0, 5000.0)
         self.sp_daily_rate.setDecimals(2)
         self.sp_daily_rate.setSingleStep(10.0)
-        self.sp_daily_rate.setSuffix(" PLN/dzien")
+        self.sp_daily_rate.setSuffix(" zł/dzień")
         self.sp_overtime_multiplier = QDoubleSpinBox(self)
         self.sp_overtime_multiplier.setRange(0.0, 5.0)
         self.sp_overtime_multiplier.setDecimals(2)
@@ -164,43 +247,30 @@ class TabCzasPracy(QWidget):
         self.sp_delegation_day_addon.setRange(0.0, 5000.0)
         self.sp_delegation_day_addon.setDecimals(2)
         self.sp_delegation_day_addon.setSingleStep(10.0)
-        self.sp_delegation_day_addon.setSuffix(" PLN/dzien")
+        self.sp_delegation_day_addon.setSuffix(" zł/dzień")
         self.sp_montage_hour_addon = QDoubleSpinBox(self)
         self.sp_montage_hour_addon.setRange(0.0, 1000.0)
         self.sp_montage_hour_addon.setDecimals(2)
         self.sp_montage_hour_addon.setSingleStep(1.0)
-        self.sp_montage_hour_addon.setSuffix(" PLN/h")
+        self.sp_montage_hour_addon.setSuffix(" zł/h")
         self.sp_onsite_hour_addon = QDoubleSpinBox(self)
         self.sp_onsite_hour_addon.setRange(0.0, 1000.0)
         self.sp_onsite_hour_addon.setDecimals(2)
         self.sp_onsite_hour_addon.setSingleStep(1.0)
-        self.sp_onsite_hour_addon.setSuffix(" PLN/h")
+        self.sp_onsite_hour_addon.setSuffix(" zł/h")
         self.sp_lacquer_hour_addon = QDoubleSpinBox(self)
         self.sp_lacquer_hour_addon.setRange(0.0, 1000.0)
         self.sp_lacquer_hour_addon.setDecimals(2)
         self.sp_lacquer_hour_addon.setSingleStep(1.0)
-        self.sp_lacquer_hour_addon.setSuffix(" PLN/h")
-        form.addRow("Pracownik", self.cb_worker)
-        form.addRow("Miesiac", self.cb_month)
-        form.addRow("Rok", self.sp_year)
-        controls_layout.addLayout(form)
+        self.sp_lacquer_hour_addon.setSuffix(" zł/h")
 
-        buttons = QHBoxLayout()
-        self.btn_refresh = QPushButton("Wczytaj miesiac", self)
-        buttons.addWidget(self.btn_refresh)
-        buttons.addStretch(1)
-        controls_layout.addLayout(buttons)
-
-        rates_title = QLabel("Rozliczenie i dodatki", controls)
-        rates_title.setStyleSheet("font-weight:700; color:#0f172a; margin-top:6px;")
-        controls_layout.addWidget(rates_title)
         rates_form = QFormLayout()
         rates_form.addRow("Tryb rozlicz.", self.cb_pay_mode)
         rates_form.addRow("Stawka godz.", self.sp_hourly_rate)
-        rates_form.addRow("Dniowka", self.sp_daily_rate)
-        rates_form.addRow("Nadgodz. x", self.sp_overtime_multiplier)
-        rates_form.addRow("Delegacja / dzien", self.sp_delegation_day_addon)
-        rates_form.addRow("Montaz / godz.", self.sp_montage_hour_addon)
+        rates_form.addRow("Dniówka", self.sp_daily_rate)
+        rates_form.addRow("Nadgodz. ×", self.sp_overtime_multiplier)
+        rates_form.addRow("Delegacja / dzień", self.sp_delegation_day_addon)
+        rates_form.addRow("Montaż / godz.", self.sp_montage_hour_addon)
         rates_form.addRow("Na miejscu / godz.", self.sp_onsite_hour_addon)
         rates_form.addRow("Lakiernia / godz.", self.sp_lacquer_hour_addon)
         controls_layout.addLayout(rates_form)
@@ -208,14 +278,9 @@ class TabCzasPracy(QWidget):
         action_title = QLabel("Zapis", controls)
         action_title.setStyleSheet("font-weight:700; color:#0f172a; margin-top:6px;")
         controls_layout.addWidget(action_title)
-        action_note = QLabel(
-            "Najpierw ustawiasz stawki pracownika, potem wpisujesz dni i zapisujesz miesiac pracy."
-        )
-        action_note.setWordWrap(True)
-        action_note.setStyleSheet("color:#64748b;")
-        controls_layout.addWidget(action_note)
+
         action_buttons = QHBoxLayout()
-        self.btn_save_rate = QPushButton("Zapisz stawke", self)
+        self.btn_save_rate = QPushButton("Zapisz stawkę", self)
         self.btn_save_sheet = QPushButton("Zapisz godziny", self)
         action_buttons.addWidget(self.btn_save_rate)
         action_buttons.addWidget(self.btn_save_sheet)
@@ -225,81 +290,114 @@ class TabCzasPracy(QWidget):
         self.lab_status = QLabel("", self)
         self.lab_status.setWordWrap(True)
         controls_layout.addWidget(self.lab_status)
+        controls_layout.addStretch(1)
         top_row.addWidget(controls, 1)
 
+        # ── Panel prawy: Podsumowanie miesiąca ────────────────────────────
         summary, summary_layout = self._make_panel(
-            "Podsumowanie miesiaca",
-            "To jest szybki koszt pracownika z wybranego miesiaca, razem z nadgodzinami i dodatkami etapow.",
+            "Podsumowanie miesiąca",
+            "Koszt pracownika z wybranego miesiąca łącznie z nadgodzinami i dodatkami.",
         )
         summary_grid = QGridLayout()
         summary_grid.setSpacing(10)
-        self.lab_days = self._make_metric_card("Dni pracy", "0")
-        self.lab_hours = self._make_metric_card("Godziny", "0.0")
-        self.lab_overtime = self._make_metric_card("Nadgodziny", "0.0")
-        self.lab_cost = self._make_metric_card("Koszt miesiaca", "0.00 PLN")
-        summary_grid.addWidget(self.lab_days, 0, 0)
-        summary_grid.addWidget(self.lab_hours, 0, 1)
+        self.lab_days     = self._make_metric_card("Dni pracy",      "0")
+        self.lab_hours    = self._make_metric_card("Godziny",        "0.0")
+        self.lab_overtime = self._make_metric_card("Nadgodziny",     "0.0")
+        self.lab_cost     = self._make_metric_card("Koszt miesiąca", _format_pln(0.0))
+        summary_grid.addWidget(self.lab_days,     0, 0)
+        summary_grid.addWidget(self.lab_hours,    0, 1)
         summary_grid.addWidget(self.lab_overtime, 1, 0)
-        summary_grid.addWidget(self.lab_cost, 1, 1)
+        summary_grid.addWidget(self.lab_cost,     1, 1)
         summary_layout.addLayout(summary_grid)
+
         self.lab_breakdown = QLabel("", self)
         self.lab_breakdown.setWordWrap(True)
-        self.lab_breakdown.setStyleSheet("color:#475569;")
+        self.lab_breakdown.setStyleSheet("color:#475569; font-size: 12px;")
         summary_layout.addWidget(self.lab_breakdown)
+
+        # legenda kolorów
+        legend_row = QHBoxLayout()
+        legend_row.setSpacing(8)
+        for color, label in (
+            (_COLOR_FILLED,  "Dzień z pracą"),
+            (_COLOR_SATURDAY, "Sobota"),
+            (_COLOR_SUNDAY,   "Niedziela"),
+        ):
+            dot = QLabel("■")
+            dot.setStyleSheet(f"color: {color.name()}; font-size: 18px;")
+            lbl = QLabel(label)
+            lbl.setStyleSheet("font-size: 11px; color: #6b7280;")
+            legend_row.addWidget(dot)
+            legend_row.addWidget(lbl)
+        legend_row.addStretch(1)
+        summary_layout.addLayout(legend_row)
+        summary_layout.addStretch(1)
         top_row.addWidget(summary, 1)
 
         root.addLayout(top_row)
 
+        # ── Tabela godzin ─────────────────────────────────────────────────
         sheet_box, sheet_layout = self._make_panel(
-            "Tabela miesiaca",
-            "Wpisujesz tutaj realne dni pracy, typ pracy, godziny, nadgodziny, dodatki i kod projektu.",
+            "Tabela miesiąca",
+            "Kliknij komórkę Rodzaj i wybierz typ pracy z listy. "
+            "Wpisz Od/Do (np. 7:00 / 15:30) — godziny obliczą się automatycznie.",
         )
-        sheet_hint = QLabel(
-            "Przyklady rodzaju pracy: Projekt / wycena, Produkcja, Montaz, Praca na miejscu, Lakiernia, Delegacja / wyjazd."
-        )
-        sheet_hint.setWordWrap(True)
-        sheet_hint.setStyleSheet("color:#64748b;")
-        sheet_layout.addWidget(sheet_hint)
 
         self.tbl_hours = QTableWidget(0, 10, self)
         self.tbl_hours.setHorizontalHeaderLabels(
-            ["Dzien", "Data", "Rodzaj", "Od", "Do", "Godz.", "Nadg.", "Dodatek", "Projekt", "Notatka"]
+            ["Dzień", "Data", "Rodzaj pracy", "Od", "Do", "Godz.", "Nadg.", "Dodatek zł", "Projekt", "Notatka"]
         )
-        self.tbl_hours.setAlternatingRowColors(True)
+        self.tbl_hours.setAlternatingRowColors(False)
         self.tbl_hours.verticalHeader().setVisible(False)
+        self.tbl_hours.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+
         header = self.tbl_hours.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(9, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(COL_DAY,   QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(COL_DATE,  QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(COL_TYPE,  QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(COL_FROM,  QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(COL_TO,    QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(COL_HOURS, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(COL_OT,    QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(COL_EXTRA, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(COL_PROJ,  QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(COL_NOTE,  QHeaderView.ResizeMode.Stretch)
+        header.resizeSection(COL_TYPE, 160)
+
+        # Delegate dla kolumny Rodzaj
+        self._type_delegate = _WorkTypeDelegate(self.tbl_hours)
+        self.tbl_hours.setItemDelegateForColumn(COL_TYPE, self._type_delegate)
+
+        # Auto-refresh godzin po zmianie Od/Do
+        self.tbl_hours.cellChanged.connect(self._on_cell_changed)
+
         sheet_layout.addWidget(self.tbl_hours, 1)
         root.addWidget(sheet_box, 1)
 
+        # Połączenia sygnałów
         self.cb_worker.currentTextChanged.connect(self._load_selected_month)
         self.cb_month.currentIndexChanged.connect(self._load_selected_month)
         self.sp_year.valueChanged.connect(self._load_selected_month)
         self.btn_refresh.clicked.connect(self._load_selected_month)
         self.btn_save_rate.clicked.connect(self._save_hourly_rate)
         self.btn_save_sheet.clicked.connect(self._save_sheet)
-        self.cb_pay_mode.currentTextChanged.connect(lambda _text: self._refresh_summary())
-        self.sp_hourly_rate.valueChanged.connect(lambda _value: self._refresh_summary())
-        self.sp_daily_rate.valueChanged.connect(lambda _value: self._refresh_summary())
-        self.sp_overtime_multiplier.valueChanged.connect(lambda _value: self._refresh_summary())
-        self.sp_delegation_day_addon.valueChanged.connect(lambda _value: self._refresh_summary())
-        self.sp_montage_hour_addon.valueChanged.connect(lambda _value: self._refresh_summary())
-        self.sp_onsite_hour_addon.valueChanged.connect(lambda _value: self._refresh_summary())
-        self.sp_lacquer_hour_addon.valueChanged.connect(lambda _value: self._refresh_summary())
+        self.cb_pay_mode.currentTextChanged.connect(lambda _: self._refresh_summary())
+        self.sp_hourly_rate.valueChanged.connect(lambda _: self._refresh_summary())
+        self.sp_daily_rate.valueChanged.connect(lambda _: self._refresh_summary())
+        self.sp_overtime_multiplier.valueChanged.connect(lambda _: self._refresh_summary())
+        self.sp_delegation_day_addon.valueChanged.connect(lambda _: self._refresh_summary())
+        self.sp_montage_hour_addon.valueChanged.connect(lambda _: self._refresh_summary())
+        self.sp_onsite_hour_addon.valueChanged.connect(lambda _: self._refresh_summary())
+        self.sp_lacquer_hour_addon.valueChanged.connect(lambda _: self._refresh_summary())
 
         self._reload_workers()
         month_index = max(date.today().month - 1, 0)
         self.cb_month.setCurrentIndex(month_index)
         self._load_selected_month()
+
+    # ------------------------------------------------------------------
+    # Pomocnicze widgety
+    # ------------------------------------------------------------------
 
     def _make_panel(self, title: str, subtitle: str = "") -> tuple[QFrame, QVBoxLayout]:
         frame = QFrame(self)
@@ -315,7 +413,7 @@ class TabCzasPracy(QWidget):
         if subtitle:
             sub = QLabel(subtitle, frame)
             sub.setWordWrap(True)
-            sub.setStyleSheet("color:#64748b;")
+            sub.setStyleSheet("color:#64748b; font-size: 12px;")
             layout.addWidget(sub)
         return frame, layout
 
@@ -342,6 +440,10 @@ class TabCzasPracy(QWidget):
         if isinstance(label, QLabel):
             label.setText(value)
 
+    # ------------------------------------------------------------------
+    # Dane pracowników
+    # ------------------------------------------------------------------
+
     def _reload_workers(self) -> None:
         current = self.cb_worker.currentText().strip()
         self.cb_worker.clear()
@@ -357,6 +459,10 @@ class TabCzasPracy(QWidget):
 
     def _selected_year(self) -> int:
         return int(self.sp_year.value())
+
+    # ------------------------------------------------------------------
+    # Ładowanie miesiąca
+    # ------------------------------------------------------------------
 
     def _load_selected_month(self) -> None:
         if self._is_loading:
@@ -379,33 +485,117 @@ class TabCzasPracy(QWidget):
         finally:
             self._is_loading = False
 
+    # ------------------------------------------------------------------
+    # Tabela
+    # ------------------------------------------------------------------
+
     def _fill_table(self, worker_name: str, year: int, month: int) -> None:
-        sheet = self._work_time_store.get_sheet(worker_name, year, month) if worker_name else WorkerMonthSheetDef(worker_name="", year=year, month=month)
-        by_day = {int(entry.day): entry for entry in sheet.entries}
-        days_in_month = monthrange(year, month)[1]
-        self.tbl_hours.setRowCount(0)
-        for day in range(1, days_in_month + 1):
-            self.tbl_hours.insertRow(day - 1)
-            date_iso = f"{year:04d}-{month:02d}-{day:02d}"
-            entry = by_day.get(day, WorkTimeEntryDef(day=day, date_iso=date_iso))
-            fixed_values = [str(day), date_iso]
-            for col, value in enumerate(fixed_values):
-                item = QTableWidgetItem(value)
-                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                self.tbl_hours.setItem(day - 1, col, item)
-            self.tbl_hours.setItem(day - 1, 2, QTableWidgetItem(entry.work_type))
-            self.tbl_hours.setItem(day - 1, 3, QTableWidgetItem(entry.start_time))
-            self.tbl_hours.setItem(day - 1, 4, QTableWidgetItem(entry.end_time))
-            self.tbl_hours.setItem(day - 1, 5, QTableWidgetItem(f"{float(entry.hours or 0.0):.2f}" if float(entry.hours or 0.0) else ""))
-            self.tbl_hours.setItem(day - 1, 6, QTableWidgetItem(f"{float(entry.overtime_hours or 0.0):.2f}" if float(entry.overtime_hours or 0.0) else ""))
-            self.tbl_hours.setItem(day - 1, 7, QTableWidgetItem(f"{float(entry.extra_pay or 0.0):.2f}" if float(entry.extra_pay or 0.0) else ""))
-            self.tbl_hours.setItem(day - 1, 8, QTableWidgetItem(entry.project_code))
-            self.tbl_hours.setItem(day - 1, 9, QTableWidgetItem(entry.note))
-            if not entry.work_type:
-                item_type = self.tbl_hours.item(day - 1, 2)
-                if item_type is not None:
-                    item_type.setToolTip("Przyklady: " + ", ".join(WORK_TYPE_ITEMS))
+        self.tbl_hours.blockSignals(True)
+        try:
+            sheet = (
+                self._work_time_store.get_sheet(worker_name, year, month)
+                if worker_name
+                else WorkerMonthSheetDef(sheet_id=new_sheet_id(), worker_name="", year=year, month=month)
+            )
+            by_day = {int(entry.day): entry for entry in sheet.entries}
+            days_in_month = monthrange(year, month)[1]
+            self.tbl_hours.setRowCount(0)
+
+            for day in range(1, days_in_month + 1):
+                row = day - 1
+                self.tbl_hours.insertRow(row)
+
+                date_iso = f"{year:04d}-{month:02d}-{day:02d}"
+                weekday = date(year, month, day).weekday()   # 0=Pn … 6=Nd
+                day_name = _DAY_NAMES[weekday]
+                entry = by_day.get(day, WorkTimeEntryDef(entry_id=new_entry_id(), day=day, date_iso=date_iso))
+
+                # Kolumny tylko do odczytu
+                day_item = QTableWidgetItem(f"{day_name} {day}")
+                day_item.setFlags(day_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                day_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.tbl_hours.setItem(row, COL_DAY, day_item)
+
+                date_item = QTableWidgetItem(date_iso)
+                date_item.setFlags(date_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self.tbl_hours.setItem(row, COL_DATE, date_item)
+
+                # Edytowalne kolumny
+                self.tbl_hours.setItem(row, COL_TYPE,  QTableWidgetItem(entry.work_type))
+                self.tbl_hours.setItem(row, COL_FROM,  QTableWidgetItem(entry.start_time))
+                self.tbl_hours.setItem(row, COL_TO,    QTableWidgetItem(entry.end_time))
+                hours = float(entry.hours or 0.0)
+                self.tbl_hours.setItem(row, COL_HOURS, QTableWidgetItem(
+                    f"{hours:.2f}" if hours else ""
+                ))
+                ot = float(entry.overtime_hours or 0.0)
+                self.tbl_hours.setItem(row, COL_OT,   QTableWidgetItem(
+                    f"{ot:.2f}" if ot else ""
+                ))
+                ex = float(entry.extra_pay or 0.0)
+                self.tbl_hours.setItem(row, COL_EXTRA, QTableWidgetItem(
+                    f"{ex:.2f}" if ex else ""
+                ))
+                self.tbl_hours.setItem(row, COL_PROJ,  QTableWidgetItem(entry.project_code))
+                self.tbl_hours.setItem(row, COL_NOTE,  QTableWidgetItem(entry.note))
+
+                # Kolorowanie wierszy
+                self._color_row(row, weekday, bool(entry.work_type))
+
+        finally:
+            self.tbl_hours.blockSignals(False)
         self._refresh_summary()
+
+    def _color_row(self, row: int, weekday: int, has_work: bool) -> None:
+        """Koloruje wiersz zależnie od dnia tygodnia i obecności danych."""
+        if weekday == 6:       # Niedziela
+            bg = _COLOR_SUNDAY
+        elif weekday == 5:     # Sobota
+            bg = _COLOR_SATURDAY
+        elif has_work:
+            bg = _COLOR_FILLED
+        else:
+            bg = QColor("#ffffff")
+
+        for col in range(self.tbl_hours.columnCount()):
+            item = self.tbl_hours.item(row, col)
+            if item is not None:
+                item.setBackground(bg)
+
+    def _on_cell_changed(self, row: int, col: int) -> None:
+        """Po zmianie Od/Do przelicz godziny i odśwież kolory."""
+        if self._is_loading:
+            return
+        if col in (COL_FROM, COL_TO):
+            start = self._row_text(row, COL_FROM)
+            end   = self._row_text(row, COL_TO)
+            hours = _compute_hours(start, end, "")
+            self.tbl_hours.blockSignals(True)
+            try:
+                item = self.tbl_hours.item(row, COL_HOURS)
+                if item is not None:
+                    item.setText(f"{hours:.2f}" if hours else "")
+                else:
+                    self.tbl_hours.setItem(row, COL_HOURS, QTableWidgetItem(f"{hours:.2f}" if hours else ""))
+            finally:
+                self.tbl_hours.blockSignals(False)
+
+        # Odśwież kolor wiersza
+        try:
+            year  = self._selected_year()
+            month = self._selected_month()
+            day   = row + 1
+            weekday = date(year, month, day).weekday()
+        except Exception:
+            weekday = 0
+
+        has_work = bool(self._row_text(row, COL_TYPE))
+        self._color_row(row, weekday, has_work)
+        self._refresh_summary()
+
+    # ------------------------------------------------------------------
+    # Odczyt danych z tabeli
+    # ------------------------------------------------------------------
 
     def _row_text(self, row: int, column: int) -> str:
         item = self.tbl_hours.item(row, column)
@@ -414,50 +604,57 @@ class TabCzasPracy(QWidget):
     def _collect_entries(self) -> list[WorkTimeEntryDef]:
         entries: list[WorkTimeEntryDef] = []
         for row in range(self.tbl_hours.rowCount()):
-            work_type = self._row_text(row, 2)
-            start_time = self._row_text(row, 3)
-            end_time = self._row_text(row, 4)
-            hours_text = self._row_text(row, 5)
-            overtime_text = self._row_text(row, 6).replace(",", ".")
-            extra_pay_text = self._row_text(row, 7).replace(",", ".")
-            project_code = self._row_text(row, 8)
-            note = self._row_text(row, 9)
-            if not any([work_type, start_time, end_time, hours_text, overtime_text, extra_pay_text, project_code, note]):
+            work_type   = self._row_text(row, COL_TYPE)
+            start_time  = self._row_text(row, COL_FROM)
+            end_time    = self._row_text(row, COL_TO)
+            hours_text  = self._row_text(row, COL_HOURS)
+            ot_text     = self._row_text(row, COL_OT).replace(",", ".")
+            extra_text  = self._row_text(row, COL_EXTRA).replace(",", ".")
+            project_code = self._row_text(row, COL_PROJ)
+            note        = self._row_text(row, COL_NOTE)
+
+            if not any([work_type, start_time, end_time, hours_text, ot_text, extra_text, project_code, note]):
                 continue
+
             hours_value = _compute_hours(start_time, end_time, hours_text)
             try:
-                overtime_value = max(float(overtime_text), 0.0) if overtime_text else 0.0
+                ot_value = max(float(ot_text), 0.0) if ot_text else 0.0
             except ValueError:
-                overtime_value = 0.0
+                ot_value = 0.0
             try:
-                extra_pay_value = float(extra_pay_text) if extra_pay_text else 0.0
+                extra_value = float(extra_text) if extra_text else 0.0
             except ValueError:
-                extra_pay_value = 0.0
-            entries.append(
-                WorkTimeEntryDef(
-                    day=row + 1,
-                    date_iso=self._row_text(row, 1),
-                    work_type=work_type,
-                    start_time=start_time,
-                    end_time=end_time,
-                    hours=hours_value,
-                    overtime_hours=overtime_value,
-                    extra_pay=extra_pay_value,
-                    project_code=project_code,
-                    note=note,
-                )
-            )
+                extra_value = 0.0
+
+            entries.append(WorkTimeEntryDef(
+                entry_id=new_entry_id(),
+                day=row + 1,
+                date_iso=self._row_text(row, COL_DATE),
+                work_type=work_type,
+                start_time=start_time,
+                end_time=end_time,
+                hours=hours_value,
+                overtime_hours=ot_value,
+                extra_pay=extra_value,
+                project_code=project_code,
+                note=note,
+            ))
         return entries
+
+    # ------------------------------------------------------------------
+    # Podsumowanie
+    # ------------------------------------------------------------------
 
     def _refresh_summary(self) -> None:
         entries = self._collect_entries()
+        worker_name = self.cb_worker.currentText().strip()
         sheet = WorkerMonthSheetDef(
-            worker_name=self.cb_worker.currentText().strip(),
+            sheet_id=new_sheet_id(),
+            worker_name=worker_name,
             year=self._selected_year(),
             month=self._selected_month(),
             entries=entries,
         )
-        worker_name = self.cb_worker.currentText().strip()
         worker = WorkerDef(
             name=worker_name,
             pay_mode=self.cb_pay_mode.currentText().strip() or "Godzinowa",
@@ -470,15 +667,20 @@ class TabCzasPracy(QWidget):
             lacquer_hour_addon_pln=float(self.sp_lacquer_hour_addon.value()),
         )
         breakdown = compute_work_time_cost([sheet], {worker_name: worker})
-        self._set_metric(self.lab_days, str(breakdown.tracked_days))
-        self._set_metric(self.lab_hours, f"{breakdown.total_hours:.2f}")
+        self._set_metric(self.lab_days,     str(breakdown.tracked_days))
+        self._set_metric(self.lab_hours,    f"{breakdown.total_hours:.2f}")
         self._set_metric(self.lab_overtime, f"{breakdown.overtime_hours:.2f}")
-        self._set_metric(self.lab_cost, f"{breakdown.total_cost:.2f} PLN")
+        self._set_metric(self.lab_cost, _format_pln(breakdown.total_cost))
         self.lab_breakdown.setText(
-            "Baza: "
-            f"{breakdown.base_total:.2f} PLN | Nadgodziny: {breakdown.overtime_total:.2f} PLN | "
-            f"Dodatki etapow: {breakdown.stage_extra_total:.2f} PLN | Dodatki reczne: {breakdown.manual_extra_total:.2f} PLN"
+            f"Baza: {_format_pln(breakdown.base_total)}  |  "
+            f"Nadgodziny: {_format_pln(breakdown.overtime_total)}  |  "
+            f"Dodatki etapow: {_format_pln(breakdown.stage_extra_total)}  |  "
+            f"Dodatki reczne: {_format_pln(breakdown.manual_extra_total)}"
         )
+
+    # ------------------------------------------------------------------
+    # Zapis
+    # ------------------------------------------------------------------
 
     def _save_hourly_rate(self) -> None:
         worker_name = self.cb_worker.currentText().strip()
@@ -511,6 +713,7 @@ class TabCzasPracy(QWidget):
             return
         entries = self._collect_entries()
         sheet = WorkerMonthSheetDef(
+            sheet_id=new_sheet_id(),
             worker_name=worker_name,
             year=self._selected_year(),
             month=self._selected_month(),
@@ -522,5 +725,5 @@ class TabCzasPracy(QWidget):
 
     def _set_status(self, message: str, ok: bool) -> None:
         color = "#2d6a4f" if ok else "#b42318"
-        self.lab_status.setStyleSheet(f"color:{color};")
+        self.lab_status.setStyleSheet(f"color:{color}; font-weight: 600;")
         self.lab_status.setText(str(message or ""))

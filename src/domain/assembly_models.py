@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
 from src.domain.module_models import ModuleDef
+
+
+def new_assembly_id() -> str:
+    return str(uuid.uuid4())[:8].upper()
 
 
 def normalize_assembly_offset_ref_mode(raw_mode: str) -> str:
@@ -63,6 +68,7 @@ class AssemblyModuleItemDef:
 
 @dataclass
 class FurnitureAssemblyDef:
+    assembly_id: str = ""
     name: str = "Komplet 1"
     wall_name: str = ""
     client_name: str = ""
@@ -98,6 +104,7 @@ class FurnitureAssemblyDef:
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "assembly_id": self.assembly_id,
             "name": self.name,
             "wall_name": self.wall_name,
             "client_name": self.client_name,
@@ -146,6 +153,7 @@ class FurnitureAssemblyDef:
                     items.append(AssemblyModuleItemDef.from_dict(raw_item))
 
         return cls(
+            assembly_id=str(data.get("assembly_id", "") or ""),
             name=str(data.get("name", "Komplet 1") or "Komplet 1"),
             wall_name=str(data.get("wall_name", "") or ""),
             client_name=str(data.get("client_name", "") or ""),

@@ -17,6 +17,7 @@ def _normalize_attachments(raw: Any) -> List[Dict[str, str]]:
         target_name = str(item.get("target_name", "") or "").strip()
         source_path = str(item.get("source_path", "") or "").strip()
         source_page = str(item.get("source_page", "") or "").strip()
+        source_app = str(item.get("source_app", "") or "").strip()
         if not path:
             continue
         result.append(
@@ -28,6 +29,7 @@ def _normalize_attachments(raw: Any) -> List[Dict[str, str]]:
                 "target_name": target_name,
                 "source_path": source_path,
                 "source_page": source_page,
+                "source_app": source_app,
             }
         )
     return result
@@ -42,6 +44,11 @@ def _normalize_quote_items(raw: Any) -> List[Dict[str, str]]:
         name = str(item.get("name", "") or "").strip()
         kind = str(item.get("kind", "") or "").strip()
         description = str(item.get("description", "") or "").strip()
+        try:
+            quantity = int(float(item.get("quantity", item.get("qty", 1)) or 1))
+        except Exception:
+            quantity = 1
+        quantity = max(1, quantity)
         if not name:
             continue
         result.append(
@@ -49,6 +56,7 @@ def _normalize_quote_items(raw: Any) -> List[Dict[str, str]]:
                 "name": name,
                 "kind": kind or "Inne",
                 "description": description,
+                "quantity": str(quantity),
             }
         )
     return result
@@ -132,6 +140,8 @@ def _normalize_customer_payments(raw: Any) -> List[Dict[str, Any]]:
 @dataclass
 class OrderDef:
     code: str = ""
+    order_name: str = ""
+    order_id: str = ""
     client_name: str = ""
     worker_name: str = ""
     status: str = "Nowe"
@@ -140,7 +150,19 @@ class OrderDef:
     calendar_date: str = ""
     calendar_note: str = ""
     site_address: str = ""
+    site_street: str = ""
+    site_house_number: str = ""
+    site_apartment_number: str = ""
+    site_postal_code: str = ""
+    site_city: str = ""
     notes: str = ""
+    date_wycena: str = ""
+    date_produkcja: str = ""
+    date_zakup_mat: str = ""
+    date_montaz: str = ""
+    date_poprawki: str = ""
+    date_projekt: str = ""
+    date_probki: str = ""
     attachments: List[Dict[str, str]] = field(default_factory=list)
     quote_items: List[Dict[str, str]] = field(default_factory=list)
     material_choices: List[Dict[str, str]] = field(default_factory=list)
@@ -150,6 +172,8 @@ class OrderDef:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "code": self.code,
+            "order_name": self.order_name,
+            "order_id": self.order_id,
             "client_name": self.client_name,
             "worker_name": self.worker_name,
             "status": self.status,
@@ -158,7 +182,19 @@ class OrderDef:
             "calendar_date": self.calendar_date,
             "calendar_note": self.calendar_note,
             "site_address": self.site_address,
+            "site_street": self.site_street,
+            "site_house_number": self.site_house_number,
+            "site_apartment_number": self.site_apartment_number,
+            "site_postal_code": self.site_postal_code,
+            "site_city": self.site_city,
             "notes": self.notes,
+            "date_wycena": self.date_wycena,
+            "date_produkcja": self.date_produkcja,
+            "date_zakup_mat": self.date_zakup_mat,
+            "date_montaz": self.date_montaz,
+            "date_poprawki": self.date_poprawki,
+            "date_projekt": self.date_projekt,
+            "date_probki": self.date_probki,
             "attachments": _normalize_attachments(self.attachments),
             "quote_items": _normalize_quote_items(self.quote_items),
             "material_choices": _normalize_material_choices(self.material_choices),
@@ -171,6 +207,8 @@ class OrderDef:
         data = data or {}
         return cls(
             code=str(data.get("code", "") or ""),
+            order_name=str(data.get("order_name", "") or ""),
+            order_id=str(data.get("order_id", "") or ""),
             client_name=str(data.get("client_name", "") or ""),
             worker_name=str(data.get("worker_name", "") or ""),
             status=str(data.get("status", "Nowe") or "Nowe"),
@@ -179,7 +217,19 @@ class OrderDef:
             calendar_date=str(data.get("calendar_date", "") or ""),
             calendar_note=str(data.get("calendar_note", "") or ""),
             site_address=str(data.get("site_address", "") or ""),
+            site_street=str(data.get("site_street", "") or ""),
+            site_house_number=str(data.get("site_house_number", "") or ""),
+            site_apartment_number=str(data.get("site_apartment_number", "") or ""),
+            site_postal_code=str(data.get("site_postal_code", "") or ""),
+            site_city=str(data.get("site_city", "") or ""),
             notes=str(data.get("notes", "") or ""),
+            date_wycena=str(data.get("date_wycena", "") or ""),
+            date_produkcja=str(data.get("date_produkcja", "") or ""),
+            date_zakup_mat=str(data.get("date_zakup_mat", "") or ""),
+            date_montaz=str(data.get("date_montaz", "") or ""),
+            date_poprawki=str(data.get("date_poprawki", "") or ""),
+            date_projekt=str(data.get("date_projekt", "") or ""),
+            date_probki=str(data.get("date_probki", "") or ""),
             attachments=_normalize_attachments(data.get("attachments", [])),
             quote_items=_normalize_quote_items(data.get("quote_items", [])),
             material_choices=_normalize_material_choices(data.get("material_choices", [])),

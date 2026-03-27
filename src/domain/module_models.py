@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass, field
 from typing import Dict, Any
 
 from src.domain.module_base_group import default_module_base_group_for_family, normalize_module_base_group
+
+
+def new_module_id() -> str:
+    return str(uuid.uuid4())[:8].upper()
 
 
 PartKey = str
@@ -39,6 +44,16 @@ def module_type_to_cabinet_kind(module_type: str, fallback_kind: str = "lower") 
     if fallback in ("upper", "lower"):
         return fallback
     return "lower"
+
+
+SHELF_MOUNT_KEYS = {"left", "right", "both"}
+
+
+def normalize_shelf_mount(value: str) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized in SHELF_MOUNT_KEYS:
+        return normalized
+    return "right"
 
 
 @dataclass
@@ -126,6 +141,7 @@ class ModuleFamilyDef:
 
 @dataclass
 class ModuleDef:
+    module_id: str = ""
     name: str = "MOD_TEST_1"
     base_group: str = ""
 
@@ -171,6 +187,8 @@ class ModuleDef:
     drawer_count: int = 3
     hinge_vendor: str = "generic"
     drawer_vendor: str = "generic"
+    drawer_layout_mode: str = "equal"
+    drawer_small_front_height_mm: float = 140.0
     drawer_tip_on: bool = False
     drawer_rear_clearance_mm: float = 10.0
     drawer_tip_on_clearance_mm: float = 20.0
@@ -182,9 +200,11 @@ class ModuleDef:
         fallback_group = default_module_base_group_for_family(getattr(self, "module_family", ""))
         self.base_group = normalize_module_base_group(getattr(self, "base_group", ""), fallback_key=fallback_group)
         self.module_type = normalize_module_type(getattr(self, "module_type", "legacy"))
+        self.shelf_mount = normalize_shelf_mount(getattr(self, "shelf_mount", "right"))
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "module_id": self.module_id,
             "name": self.name,
             "base_group": self.base_group,
             "width_mm": float(self.width_mm),
@@ -213,6 +233,8 @@ class ModuleDef:
             "drawer_count": int(self.drawer_count),
             "hinge_vendor": self.hinge_vendor,
             "drawer_vendor": self.drawer_vendor,
+            "drawer_layout_mode": self.drawer_layout_mode,
+            "drawer_small_front_height_mm": float(self.drawer_small_front_height_mm),
             "drawer_tip_on": bool(self.drawer_tip_on),
             "drawer_rear_clearance_mm": float(self.drawer_rear_clearance_mm),
             "drawer_tip_on_clearance_mm": float(self.drawer_tip_on_clearance_mm),
@@ -238,6 +260,7 @@ class ModuleDef:
                     parsed_parts[str(k)] = v
 
         return cls(
+            module_id=str(data.get("module_id", "") or ""),
             name=str(data.get("name", "MOD_TEST_1") or "MOD_TEST_1"),
             base_group=str(data.get("base_group", "") or ""),
             width_mm=float(data.get("width_mm", 820.0) or 820.0),
@@ -266,6 +289,8 @@ class ModuleDef:
             drawer_count=int(data.get("drawer_count", 3) or 3),
             hinge_vendor=str(data.get("hinge_vendor", "generic") or "generic"),
             drawer_vendor=str(data.get("drawer_vendor", "generic") or "generic"),
+            drawer_layout_mode=str(data.get("drawer_layout_mode", "equal") or "equal"),
+            drawer_small_front_height_mm=float(data.get("drawer_small_front_height_mm", 140.0) or 140.0),
             drawer_tip_on=bool(data.get("drawer_tip_on", False)),
             drawer_rear_clearance_mm=float(data.get("drawer_rear_clearance_mm", 10.0) or 10.0),
             drawer_tip_on_clearance_mm=float(data.get("drawer_tip_on_clearance_mm", 20.0) or 20.0),

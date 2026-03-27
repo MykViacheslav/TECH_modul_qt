@@ -27,14 +27,16 @@ from src.domain.module_base_group import (
     module_base_group_label_pl,
     normalize_module_base_group,
 )
-from src.domain.module_models import ModuleDef
+from src.domain.module_models import ModuleDef, new_module_id
 from src.storage.catalog_store_json import CatalogStoreJson
 
 
 def _clone_module(module: ModuleDef) -> ModuleDef:
     if hasattr(module, "to_dict"):
-        return ModuleDef.from_dict(module.to_dict())
-    return ModuleDef()
+        d = module.to_dict()
+        d["module_id"] = new_module_id()
+        return ModuleDef.from_dict(d)
+    return ModuleDef(module_id=new_module_id())
 
 
 class ModuleMiniPreview(QWidget):

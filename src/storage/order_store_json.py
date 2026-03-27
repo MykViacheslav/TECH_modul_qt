@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from src.domain.order_models import OrderDef
+from src.storage.data_paths import data_dir
 
 
 @dataclass(frozen=True)
@@ -17,9 +18,7 @@ class StoreResult:
 class OrderStoreJson:
     def __init__(self, path: Path | None = None) -> None:
         if path is None:
-            root = Path(__file__).resolve().parents[2]
-            proj = root.parent
-            path = proj / "data" / "orders.json"
+            path = data_dir() / "orders.json"
         self._path = path
         self._path.parent.mkdir(parents=True, exist_ok=True)
         if not self._path.exists():

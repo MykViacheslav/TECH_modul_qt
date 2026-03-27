@@ -87,12 +87,12 @@ def test_bazy_tab_has_subtabs_and_can_add_client_and_order(tmp_path, monkeypatch
     assert w.tree_modules.topLevelItemCount() >= 1
     assert w.tbl_walls.rowCount() == 1
     assert w.tbl_assemblies.rowCount() == 1
-    assert w.tbl_walls.horizontalHeader().sectionResizeMode(0) == QHeaderView.ResizeMode.ResizeToContents
-    assert w.tbl_assemblies.horizontalHeader().sectionResizeMode(0) == QHeaderView.ResizeMode.ResizeToContents
-    assert w.tbl_clients.horizontalHeader().sectionResizeMode(0) == QHeaderView.ResizeMode.ResizeToContents
-    assert w.tbl_orders.horizontalHeader().sectionResizeMode(0) == QHeaderView.ResizeMode.ResizeToContents
-    assert w.tbl_workers.horizontalHeader().sectionResizeMode(0) == QHeaderView.ResizeMode.ResizeToContents
-    assert w.tbl_workers.horizontalHeader().stretchLastSection() is True
+    assert w.tbl_walls.horizontalHeader().sectionResizeMode(0) == QHeaderView.ResizeMode.Interactive
+    assert w.tbl_assemblies.horizontalHeader().sectionResizeMode(0) == QHeaderView.ResizeMode.Interactive
+    assert w.tbl_clients.horizontalHeader().sectionResizeMode(0) == QHeaderView.ResizeMode.Interactive
+    assert w.tbl_orders.horizontalHeader().sectionResizeMode(0) == QHeaderView.ResizeMode.Interactive
+    assert w.tbl_workers.horizontalHeader().sectionResizeMode(0) == QHeaderView.ResizeMode.Interactive
+    assert w.tbl_workers.horizontalHeader().stretchLastSection() is False
     assert w.btn_client_add.maximumWidth() <= 140
     assert w.btn_client_overwrite.maximumWidth() <= 140
     assert w.btn_delete_module.maximumWidth() <= 140

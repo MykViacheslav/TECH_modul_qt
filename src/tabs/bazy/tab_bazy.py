@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -25,6 +27,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from src.app.app_settings import load_table_column_widths, save_table_column_widths
 from src.domain.client_models import ClientDef
 from src.domain.assembly_models import FurnitureAssemblyDef
 from src.domain.order_models import OrderDef
@@ -118,7 +121,7 @@ class TabBazy(QWidget):
             self._reload_clients_tab()
             if clear_form:
                 self._clear_client_form()
-                self.ed_client_name.setFocus()
+                self.ed_client_id.setFocus()
         return opened
 
     def open_orders_tab(self, clear_form: bool = False) -> bool:
@@ -187,19 +190,44 @@ class TabBazy(QWidget):
         layout.addWidget(lab_value)
         return box, lab_value
 
-    def _configure_content_width_table(self, table: QTableWidget) -> None:
+    def _configure_content_width_table(self, table: QTableWidget, table_key: str) -> None:
         header = table.horizontalHeader()
-        header.setStretchLastSection(True)
-        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        if table.columnCount() > 0:
-            header.setSectionResizeMode(table.columnCount() - 1, QHeaderView.ResizeMode.Stretch)
+        header.setStretchLastSection(False)
+        for col in range(table.columnCount()):
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+        table.setProperty("column_widths_key", table_key)
+        header.sectionResized.connect(
+            lambda _idx, _old, _new, t=table: self._save_table_column_widths_for(t)
+        )
+        if not self._restore_table_column_widths_for(table):
+            table.resizeColumnsToContents()
+            self._save_table_column_widths_for(table)
 
     def _resize_table_to_contents(self, table: QTableWidget) -> None:
         try:
-            table.resizeColumnsToContents()
+            if not self._restore_table_column_widths_for(table):
+                table.resizeColumnsToContents()
             table.resizeRowsToContents()
         except Exception:
             pass
+
+    def _restore_table_column_widths_for(self, table: QTableWidget) -> bool:
+        key = str(table.property("column_widths_key") or "").strip()
+        if not key:
+            return False
+        widths = load_table_column_widths(key)
+        if len(widths) != table.columnCount():
+            return False
+        for idx, width in enumerate(widths):
+            table.setColumnWidth(idx, max(40, int(width)))
+        return True
+
+    def _save_table_column_widths_for(self, table: QTableWidget) -> None:
+        key = str(table.property("column_widths_key") or "").strip()
+        if not key:
+            return
+        widths = [int(table.columnWidth(idx)) for idx in range(table.columnCount())]
+        save_table_column_widths(key, widths)
 
     def _build_modules_tab(self) -> QWidget:
         panel = QWidget(self)
@@ -321,7 +349,7 @@ class TabBazy(QWidget):
         self.tbl_walls.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.tbl_walls.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tbl_walls.verticalHeader().setVisible(False)
-        self._configure_content_width_table(self.tbl_walls)
+        self._configure_content_width_table(self.tbl_walls, "bazy_walls")
         layout.addWidget(self.tbl_walls, 1)
 
         btns = QHBoxLayout()
@@ -387,7 +415,7 @@ class TabBazy(QWidget):
         self.tbl_assemblies.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.tbl_assemblies.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tbl_assemblies.verticalHeader().setVisible(False)
-        self._configure_content_width_table(self.tbl_assemblies)
+        self._configure_content_width_table(self.tbl_assemblies, "bazy_assemblies")
         layout.addWidget(self.tbl_assemblies, 1)
 
         btns = QHBoxLayout()
@@ -439,18 +467,74 @@ class TabBazy(QWidget):
         panel = QWidget(self)
         layout = QVBoxLayout(panel)
 
-        form = QFormLayout()
         self.ed_client_name = QLineEdit()
-        self.ed_client_phone = QLineEdit()
-        self.ed_client_email = QLineEdit()
-        self.ed_client_city = QLineEdit()
-        self.ed_client_notes = QTextEdit()
-        self.ed_client_notes.setMaximumHeight(90)
+        self.ed_client_name.setVisible(False)
 
-        form.addRow("Nazwa", self.ed_client_name)
-        form.addRow("Telefon", self.ed_client_phone)
-        form.addRow("E-mail", self.ed_client_email)
-        form.addRow("Miasto", self.ed_client_city)
+        compact = QHBoxLayout()
+        compact.setSpacing(8)
+        self.ed_client_id = QLineEdit()
+        self.ed_client_id.setPlaceholderText("ID")
+        self.ed_client_id.setMaximumWidth(120)
+        self.ed_client_first_name = QLineEdit()
+        self.ed_client_first_name.setPlaceholderText("Imie")
+        self.ed_client_first_name.setMaximumWidth(170)
+        self.ed_client_last_name = QLineEdit()
+        self.ed_client_last_name.setPlaceholderText("Nazwisko")
+        self.ed_client_last_name.setMaximumWidth(220)
+        self.ed_client_phone = QLineEdit()
+        self.ed_client_phone.setPlaceholderText("Telefon")
+        self.ed_client_phone.setMaximumWidth(170)
+        self.ed_client_email = QLineEdit()
+        self.ed_client_email.setPlaceholderText("E-mail")
+        self.ed_client_email.setMaximumWidth(240)
+
+        compact.addWidget(QLabel("ID"))
+        compact.addWidget(self.ed_client_id)
+        compact.addWidget(QLabel("Imie"))
+        compact.addWidget(self.ed_client_first_name)
+        compact.addWidget(QLabel("Nazwisko"))
+        compact.addWidget(self.ed_client_last_name)
+        compact.addWidget(QLabel("Telefon"))
+        compact.addWidget(self.ed_client_phone)
+        compact.addWidget(QLabel("E-mail"))
+        compact.addWidget(self.ed_client_email)
+        compact.addStretch(1)
+        layout.addLayout(compact)
+
+        address_row = QHBoxLayout()
+        address_row.setSpacing(8)
+        self.ed_client_street = QLineEdit()
+        self.ed_client_street.setPlaceholderText("Ulica")
+        self.ed_client_street.setMaximumWidth(240)
+        self.ed_client_house_number = QLineEdit()
+        self.ed_client_house_number.setPlaceholderText("Dom")
+        self.ed_client_house_number.setMaximumWidth(100)
+        self.ed_client_apartment_number = QLineEdit()
+        self.ed_client_apartment_number.setPlaceholderText("Mieszkanie")
+        self.ed_client_apartment_number.setMaximumWidth(120)
+        self.ed_client_postal_code = QLineEdit()
+        self.ed_client_postal_code.setPlaceholderText("Kod")
+        self.ed_client_postal_code.setMaximumWidth(130)
+        self.ed_client_city = QLineEdit()
+        self.ed_client_city.setPlaceholderText("Miasto")
+        self.ed_client_city.setMaximumWidth(180)
+        address_row.addWidget(QLabel("Ulica"))
+        address_row.addWidget(self.ed_client_street)
+        address_row.addWidget(QLabel("Dom"))
+        address_row.addWidget(self.ed_client_house_number)
+        address_row.addWidget(QLabel("Mieszkanie"))
+        address_row.addWidget(self.ed_client_apartment_number)
+        address_row.addWidget(QLabel("Kod"))
+        address_row.addWidget(self.ed_client_postal_code)
+        address_row.addWidget(QLabel("Miasto"))
+        address_row.addWidget(self.ed_client_city)
+        address_row.addStretch(1)
+        layout.addLayout(address_row)
+
+        form = QFormLayout()
+        self.ed_client_notes = QTextEdit()
+        self.ed_client_notes.setMaximumHeight(56)
+
         form.addRow("Notatki", self.ed_client_notes)
         layout.addLayout(form)
 
@@ -473,13 +557,15 @@ class TabBazy(QWidget):
         btns.addStretch(1)
         layout.addLayout(btns)
 
-        self.tbl_clients = QTableWidget(0, 4, panel)
-        self.tbl_clients.setHorizontalHeaderLabels(["Nazwa", "Telefon", "E-mail", "Miasto"])
+        self.tbl_clients = QTableWidget(0, 10, panel)
+        self.tbl_clients.setHorizontalHeaderLabels(
+            ["ID", "Imie", "Nazwisko", "Telefon", "E-mail", "Ulica", "Dom", "Mieszkanie", "Kod", "Miasto"]
+        )
         self.tbl_clients.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tbl_clients.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.tbl_clients.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tbl_clients.verticalHeader().setVisible(False)
-        self._configure_content_width_table(self.tbl_clients)
+        self._configure_content_width_table(self.tbl_clients, "bazy_clients")
         layout.addWidget(self.tbl_clients, 1)
 
         self.lab_clients_status = QLabel("")
@@ -545,7 +631,7 @@ class TabBazy(QWidget):
         self.tbl_orders.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.tbl_orders.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tbl_orders.verticalHeader().setVisible(False)
-        self._configure_content_width_table(self.tbl_orders)
+        self._configure_content_width_table(self.tbl_orders, "bazy_orders")
         layout.addWidget(self.tbl_orders, 1)
 
         self.lab_orders_status = QLabel("")
@@ -601,10 +687,7 @@ class TabBazy(QWidget):
         self.tbl_materials_preview.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.tbl_materials_preview.setAlternatingRowColors(True)
         self.tbl_materials_preview.verticalHeader().setVisible(False)
-        self.tbl_materials_preview.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.tbl_materials_preview.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.tbl_materials_preview.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        self.tbl_materials_preview.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self._configure_content_width_table(self.tbl_materials_preview, "bazy_materials_preview")
         materials_layout.addWidget(self.tbl_materials_preview, 1)
         tables_row.addWidget(materials_box, 2)
 
@@ -615,9 +698,7 @@ class TabBazy(QWidget):
         self.tbl_edgebands_preview.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.tbl_edgebands_preview.setAlternatingRowColors(True)
         self.tbl_edgebands_preview.verticalHeader().setVisible(False)
-        self.tbl_edgebands_preview.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.tbl_edgebands_preview.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.tbl_edgebands_preview.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self._configure_content_width_table(self.tbl_edgebands_preview, "bazy_edgebands_preview")
         edgebands_layout.addWidget(self.tbl_edgebands_preview, 1)
         tables_row.addWidget(edgebands_box, 1)
 
@@ -628,10 +709,7 @@ class TabBazy(QWidget):
         self.tbl_hardware_preview.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.tbl_hardware_preview.setAlternatingRowColors(True)
         self.tbl_hardware_preview.verticalHeader().setVisible(False)
-        self.tbl_hardware_preview.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.tbl_hardware_preview.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.tbl_hardware_preview.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        self.tbl_hardware_preview.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self._configure_content_width_table(self.tbl_hardware_preview, "bazy_hardware_preview")
         hardware_layout.addWidget(self.tbl_hardware_preview, 1)
         tables_row.addWidget(hardware_box, 2)
 
@@ -738,7 +816,7 @@ class TabBazy(QWidget):
         self.tbl_workers.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.tbl_workers.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tbl_workers.verticalHeader().setVisible(False)
-        self._configure_content_width_table(self.tbl_workers)
+        self._configure_content_width_table(self.tbl_workers, "bazy_workers")
         layout.addWidget(self.tbl_workers, 1)
 
         self.lab_workers_status = QLabel("")
@@ -1263,11 +1341,65 @@ class TabBazy(QWidget):
         label.setText(str(message_pl or ""))
         label.setStyleSheet("color:#0f6a2f;" if ok else "color:#a61b1b;")
 
+    @staticmethod
+    def _split_client_key(value: str) -> tuple[str, str]:
+        text = str(value or "").strip()
+        if "|" not in text:
+            return "", text
+        client_id, full_name = text.split("|", 1)
+        return client_id.strip(), full_name.strip()
+
+    @staticmethod
+    def _split_full_name(full_name: str) -> tuple[str, str]:
+        parts = str(full_name or "").strip().split()
+        if not parts:
+            return "", ""
+        if len(parts) == 1:
+            return parts[0], ""
+        return parts[0], " ".join(parts[1:])
+
+    @staticmethod
+    def _build_client_key(client_id: str, first_name: str, last_name: str, fallback_name: str = "") -> str:
+        cid = str(client_id or "").strip()
+        first = str(first_name or "").strip()
+        last = str(last_name or "").strip()
+        full_name = " ".join(part for part in (first, last) if part).strip()
+        if cid and full_name:
+            return f"{cid} | {full_name}"
+        if full_name:
+            return full_name
+        return str(fallback_name or "").strip()
+
+    def _client_identity_parts(self, client: ClientDef) -> tuple[str, str, str]:
+        parsed_id, parsed_full_name = self._split_client_key(str(getattr(client, "name", "") or ""))
+        parsed_first, parsed_last = self._split_full_name(parsed_full_name)
+        client_id = str(getattr(client, "client_id", "") or parsed_id).strip()
+        first_name = str(getattr(client, "first_name", "") or parsed_first).strip()
+        last_name = str(getattr(client, "last_name", "") or parsed_last).strip()
+        return client_id, first_name, last_name
+
     def _client_from_form(self) -> ClientDef:
+        client_id = str(self.ed_client_id.text().strip())
+        first_name = str(self.ed_client_first_name.text().strip())
+        last_name = str(self.ed_client_last_name.text().strip())
+        typed_name = str(self.ed_client_name.text().strip())
+        client_name = self._build_client_key(
+            client_id=client_id,
+            first_name=first_name,
+            last_name=last_name,
+            fallback_name=typed_name,
+        )
         return ClientDef(
-            name=str(self.ed_client_name.text().strip()),
+            name=client_name,
+            client_id=client_id,
+            first_name=first_name,
+            last_name=last_name,
             phone=str(self.ed_client_phone.text().strip()),
             email=str(self.ed_client_email.text().strip()),
+            street=str(self.ed_client_street.text().strip()),
+            house_number=str(self.ed_client_house_number.text().strip()),
+            apartment_number=str(self.ed_client_apartment_number.text().strip()),
+            postal_code=str(self.ed_client_postal_code.text().strip()),
             city=str(self.ed_client_city.text().strip()),
             notes=str(self.ed_client_notes.toPlainText().strip()),
         )
@@ -1277,15 +1409,24 @@ class TabBazy(QWidget):
         if not rows:
             return ""
         item = self.tbl_clients.item(int(rows[0].row()), 0)
-        return item.text().strip() if item is not None else ""
+        if item is None:
+            return ""
+        return str(item.data(Qt.ItemDataRole.UserRole) or item.text() or "").strip()
 
     def _clear_client_form(self) -> None:
         self._is_syncing_client_ui = True
         try:
             self.tbl_clients.clearSelection()
             self.ed_client_name.clear()
+            self.ed_client_id.clear()
+            self.ed_client_first_name.clear()
+            self.ed_client_last_name.clear()
             self.ed_client_phone.clear()
             self.ed_client_email.clear()
+            self.ed_client_street.clear()
+            self.ed_client_house_number.clear()
+            self.ed_client_apartment_number.clear()
+            self.ed_client_postal_code.clear()
             self.ed_client_city.clear()
             self.ed_client_notes.clear()
         finally:
@@ -1301,8 +1442,16 @@ class TabBazy(QWidget):
         self._is_syncing_client_ui = True
         try:
             self.ed_client_name.setText(client.name)
+            client_id, first_name, last_name = self._client_identity_parts(client)
+            self.ed_client_id.setText(client_id)
+            self.ed_client_first_name.setText(first_name)
+            self.ed_client_last_name.setText(last_name)
             self.ed_client_phone.setText(client.phone)
             self.ed_client_email.setText(client.email)
+            self.ed_client_street.setText(str(getattr(client, "street", "") or ""))
+            self.ed_client_house_number.setText(str(getattr(client, "house_number", "") or ""))
+            self.ed_client_apartment_number.setText(str(getattr(client, "apartment_number", "") or ""))
+            self.ed_client_postal_code.setText(str(getattr(client, "postal_code", "") or ""))
             self.ed_client_city.setText(client.city)
             self.ed_client_notes.setPlainText(client.notes)
         finally:
@@ -1312,11 +1461,38 @@ class TabBazy(QWidget):
         clients = self._client_store.list_clients()
         self.tbl_clients.setRowCount(len(clients))
         for row, client in enumerate(clients):
-            values = [client.name, client.phone, client.email, client.city]
+            client_id, first_name, last_name = self._client_identity_parts(client)
+            values = [
+                client_id,
+                first_name,
+                last_name,
+                client.phone,
+                client.email,
+                str(getattr(client, "street", "") or ""),
+                str(getattr(client, "house_number", "") or ""),
+                str(getattr(client, "apartment_number", "") or ""),
+                str(getattr(client, "postal_code", "") or ""),
+                client.city,
+            ]
             for col, value in enumerate(values):
-                self.tbl_clients.setItem(row, col, QTableWidgetItem(value))
+                item = QTableWidgetItem(value)
+                if col == 0:
+                    item.setData(Qt.ItemDataRole.UserRole, client.name)
+                self.tbl_clients.setItem(row, col, item)
         self._reload_order_client_choices()
         self._resize_table_to_contents(self.tbl_clients)
+
+    def _generate_next_client_id(self) -> str:
+        max_id = 0
+        for client in self._client_store.list_clients():
+            raw_id = str(getattr(client, "client_id", "") or "").strip()
+            if not raw_id:
+                raw_id, _ = self._split_client_key(str(getattr(client, "name", "") or ""))
+            match = re.search(r"(\d+)$", raw_id)
+            if match is None:
+                continue
+            max_id = max(max_id, int(match.group(1)))
+        return f"K{max_id + 1:04d}"
 
     def _reload_order_client_choices(self) -> None:
         current = self.cb_order_client.currentText().strip()
@@ -1341,25 +1517,34 @@ class TabBazy(QWidget):
         self.cb_order_worker.blockSignals(False)
 
     def _on_client_add(self) -> None:
+        if not str(self.ed_client_id.text().strip()):
+            self.ed_client_id.setText(self._generate_next_client_id())
         client = self._client_from_form()
         if not client.name:
-            self._set_status(self.lab_clients_status, "Podaj nazwe klienta.", ok=False)
+            self._set_status(self.lab_clients_status, "Podaj ID, imie i nazwisko klienta.", ok=False)
             return
         result = self._client_store.save_new(client)
         self._set_status(self.lab_clients_status, result.message_pl, ok=result.ok)
         self._reload_clients_tab()
 
     def _on_client_overwrite(self) -> None:
+        if not str(self.ed_client_id.text().strip()):
+            self.ed_client_id.setText(self._generate_next_client_id())
         client = self._client_from_form()
         if not client.name:
-            self._set_status(self.lab_clients_status, "Podaj nazwe klienta.", ok=False)
+            self._set_status(self.lab_clients_status, "Podaj ID, imie i nazwisko klienta.", ok=False)
             return
         result = self._client_store.overwrite(client)
         self._set_status(self.lab_clients_status, result.message_pl, ok=result.ok)
         self._reload_clients_tab()
 
     def _on_client_delete(self) -> None:
-        name = self._selected_client_name() or str(self.ed_client_name.text().strip())
+        name = self._selected_client_name() or self._build_client_key(
+            self.ed_client_id.text().strip(),
+            self.ed_client_first_name.text().strip(),
+            self.ed_client_last_name.text().strip(),
+            self.ed_client_name.text().strip(),
+        )
         if not name:
             self._set_status(self.lab_clients_status, "Wybierz klienta do usuniecia.", ok=False)
             return

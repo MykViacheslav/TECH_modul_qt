@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
+
+
+def new_wall_id() -> str:
+    return str(uuid.uuid4())[:8].upper()
 
 
 @dataclass
@@ -67,6 +72,7 @@ class WallPhotoDef:
 
 @dataclass
 class WallLayoutDef:
+    wall_id: str = ""
     name: str = "Sciana 1"
     client_name: str = ""
     order_name: str = ""
@@ -97,6 +103,7 @@ class WallLayoutDef:
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "wall_id": self.wall_id,
             "name": self.name,
             "client_name": self.client_name,
             "order_name": self.order_name,
@@ -147,6 +154,7 @@ class WallLayoutDef:
                 photos.append(WallPhotoDef.from_dict(item))
 
         return cls(
+            wall_id=str(data.get("wall_id", "") or ""),
             name=str(data.get("name", "Sciana 1") or "Sciana 1"),
             client_name=str(data.get("client_name", "") or ""),
             order_name=str(data.get("order_name", "") or ""),

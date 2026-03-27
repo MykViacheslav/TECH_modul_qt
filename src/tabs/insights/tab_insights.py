@@ -43,6 +43,54 @@ def _load_plan_counts() -> tuple[str, int, int, int]:
     return updated, done_count, progress_count, todo_count
 
 
+def _load_plan_items_by_status() -> tuple[list[str], list[str]]:
+    progress_items: list[str] = []
+    todo_items: list[str] = []
+    plan_file = _plan_path()
+    if not plan_file.exists():
+        return progress_items, todo_items
+
+    active_status = ""
+    for raw_line in plan_file.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw_line.strip()
+        if not line:
+            active_status = ""
+            continue
+        if line.startswith("--------------------------------------------------"):
+            active_status = ""
+            continue
+
+        if line.startswith("[IN PROGRESS]"):
+            active_status = "IN PROGRESS"
+            head = line.replace("[IN PROGRESS]", "", 1).strip(" :-")
+            if head:
+                progress_items.append(head)
+            continue
+
+        if line.startswith("[TODO]"):
+            active_status = "TODO"
+            head = line.replace("[TODO]", "", 1).strip(" :-")
+            if head:
+                todo_items.append(head)
+            continue
+
+        if not line.startswith("-"):
+            continue
+        if "[DONE]" in line:
+            continue
+
+        item = line.lstrip("-").strip()
+        if not item:
+            continue
+
+        if active_status == "IN PROGRESS":
+            progress_items.append(item)
+        elif active_status == "TODO":
+            todo_items.append(item)
+
+    return progress_items, todo_items
+
+
 class _InfoCard(QFrame):
     def __init__(self, title: str, value: str, accent: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -98,37 +146,45 @@ class _SectionBox(QFrame):
 
 class TabInsights(QWidget):
     DONE_ITEMS = [
-        "Nowe zamowienie dziala jako centrum projektu: klient, pracownik, zalaczniki, pozycje, probki i kasa klienta.",
-        "Szybka oferta klienta jest juz gotowa: HTML, PDF i referencje obrazowe z PDF architekta.",
-        "Komplet ma biblioteke gotowych modulow, presety materialow, dekorow i szybka edycje grupowa.",
-        "Kalendarz ma statusy, procent zaawansowania, historie zmian i szybkie filtry etapow.",
-        "Czas pracy ma juz tabele miesieczne, tryby rozliczenia i podstawy kosztu robocizny.",
+        "Nowe zamowienie — centrum projektu: klient, pracownik, zalaczniki, pozycje, probki, kasa klienta.",
+        "Szybka oferta klienta: HTML, PDF, referencje obrazowe z PDF architekta.",
+        "Komplet — biblioteka modulow, presety materialow, dekorow, szybka edycja grupowa.",
+        "Czas pracy — tabele miesieczne, tryby rozliczenia, podstawy kosztu robocizny.",
+        "Kalendarz wizualny — widok tygodniowy i miesieczny na wzor Google Calendar.",
+        "Kalendarz — 4 stanowiska: Lakiernia, CNC, Skladanie, Biuro — kazde jako osobny rzad w siatce.",
+        "Kalendarz — 9 typow zdarzen z kolorami: Zlecenie, Montaz, Pomiary, Wstepna wycena, Zam. materialow, Poprawki, Badania, BHP, Inne.",
+        "Drag & drop — przeciaganie blokow miedzy dniami i stanowiskami myszka.",
+        "Zdarzenia niezwiazane z zamowieniem (Badania, BHP) jako osobne wpisy w kalendarzu.",
+        "Zapis zdarzen kalendarza do osobnego pliku JSON (calendar_events.json).",
     ]
 
     IN_PROGRESS_ITEMS = [
-        "Etap 1: dalej upraszczamy wyglad i prace w Komplet i Sciana.",
-        "Etap 1A: dalej wzmacniamy szybka wycene zamiast pelnego projektu technicznego.",
-        "Etap 3: rozwijamy prowadzenie firmy: statusy, kalendarz, pracownicy i obciazenie pracy.",
+        "Wycena — dopinamy eksport do PDF i podsumowanie kosztow materialu vs robocizny.",
+        "Komplet i Sciana — upraszczamy widok i przyspieszamy edycje.",
+        "Kalendarz — filtrowanie po stanowisku i pracowniku w widoku tygodniowym.",
     ]
 
     NEXT_ITEMS = [
-        "Bazy -> Materialy trzeba przerobic na prawdziwy katalog z cenami, kodami i stanowymi minimum.",
-        "Magazyn i dokumenty zakupu: faktury, WZ, paragony, dostawy oraz zejscie materialu ze stanu.",
+        "Bazy Materialy — prawdziwy katalog z cenami, kodami, stanami minimalnymi.",
+        "Magazyn i dokumenty zakupu: faktury, WZ, paragony, dostawy, zejscie materialu ze stanu.",
         "Kasa pracownikow i stale koszty firmy: zaliczki, wyplaty, auta, paliwo, czynsz, serwis.",
-        "Dopiero potem mocniejsze dopieszczenie oferty klienta i bardziej premium wygladu aplikacji.",
+        "Eksport wyceny do Excela — taki format jak obecne arkusze (Oferta, Opis materialow, mat).",
+        "Powiadomienia i przypomnienia dla zdarzen kalendarza.",
     ]
 
     WHAT_WE_KEEP = [
-        "Logika materialow, magazynu, stanów minimalnych i dokumentow zakupu.",
+        "Logike materialow, magazynu, stanow minimalnych i dokumentow zakupu.",
         "Kase klienta i realne etapy platnosci powiazane z projektem.",
         "Statusy zamowienia i prowadzenie pracy firmy na etapach.",
         "Pracownikow, ich czas pracy i koszty robocizny.",
+        "Wizualny kalendarz stanowiskowy jako glowne narzedzie planowania.",
     ]
 
     WHAT_WE_SKIP = [
         "Starego wygladu typu XP i ciezkich, dlugich formularzy.",
         "Zasady 'wszystko na jednym ekranie'.",
         "Chaotycznego mieszania logiki technicznej, finansowej i magazynowej w jednej karcie.",
+        "Recznego przepisywania danych miedzy Excelem a aplikacja — dane maja byc w jednym miejscu.",
     ]
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -149,6 +205,11 @@ class TabInsights(QWidget):
         root.setSpacing(18)
 
         updated, done_count, progress_count, todo_count = _load_plan_counts()
+        progress_items, todo_items = _load_plan_items_by_status()
+        if not progress_items:
+            progress_items = list(self.IN_PROGRESS_ITEMS)
+        if not todo_items:
+            todo_items = list(self.NEXT_ITEMS)
 
         title = QLabel("PLAN I ANALIZA PROJEKTU")
         title.setStyleSheet("font-size: 28px; font-weight: 800; color: #25334c;")
@@ -212,7 +273,7 @@ class TabInsights(QWidget):
         work_box = _SectionBox("W toku", "To sa obszary, nad ktorymi teraz najbardziej warto pracowac.", self)
         work_list = QListWidget(self)
         self._style_list(work_list)
-        for item in self.IN_PROGRESS_ITEMS:
+        for item in progress_items[:18]:
             work_list.addItem(QListWidgetItem(f"- {item}"))
         work_box.layout_main.addWidget(work_list)
         progress_row.addWidget(work_box, 1)
@@ -220,7 +281,7 @@ class TabInsights(QWidget):
         next_box = _SectionBox("Do zrobienia", "Nastepne duze kroki, z ktorych bedzie najwieksza korzysc dla firmy.", self)
         next_list = QListWidget(self)
         self._style_list(next_list)
-        for item in self.NEXT_ITEMS:
+        for item in todo_items[:20]:
             next_list.addItem(QListWidgetItem(f"- {item}"))
         next_box.layout_main.addWidget(next_list)
         progress_row.addWidget(next_box, 1)
