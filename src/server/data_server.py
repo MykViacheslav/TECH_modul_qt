@@ -9,15 +9,167 @@ from __future__ import annotations
 import json
 import os
 import threading
+import ssl
+from functools import lru_cache
+from io import BytesIO
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urlparse, parse_qs
 
+from PIL import Image, ImageDraw, ImageFont
+
 from src.server.kiosk_page import build_kiosk_html
+from src.server.package_scanner_page import build_package_scanner_html
+from src.server.measure_mobile_page import build_measure_mobile_html
+from src.server.stanowisko_page import build_stanowisko_html
 from src.server.kiosk_service import KioskService
+from src.domain.package_qr import parse_package_qr_payload
 from src.storage.data_paths import data_dir
+
+
+def _load_icon_font(size: int) -> ImageFont.ImageFont:
+    try:
+        return ImageFont.truetype("DejaVuSans-Bold.ttf", size)
+    except Exception:
+        return ImageFont.load_default()
+
+
+@lru_cache(maxsize=8)
+def _build_kiosk_icon(size: int) -> bytes:
+    size = max(int(size), 64)
+    img = Image.new("RGBA", (size, size), (16, 22, 35, 255))
+    draw = ImageDraw.Draw(img)
+
+    border = max(3, size // 64)
+    radius = int(size * 0.18)
+    outer = (border, border, size - border, size - border)
+    inner = (int(size * 0.12), int(size * 0.12), int(size * 0.88), int(size * 0.88))
+
+    draw.rounded_rectangle(outer, radius=radius, fill=(21, 31, 49, 255), outline=(110, 231, 255, 220), width=border)
+    draw.rounded_rectangle(inner, radius=int(size * 0.14), fill=(14, 20, 34, 255), outline=(124, 156, 255, 200), width=max(2, border - 1))
+
+    accent = (110, 231, 255, 255)
+    good = (47, 209, 140, 255)
+    white = (243, 247, 255, 255)
+
+    block = int(size * 0.11)
+    gap = int(size * 0.045)
+    x0 = int(size * 0.2)
+    y0 = int(size * 0.2)
+    coords = [
+        (x0, y0),
+        (x0 + block + gap, y0),
+        (x0, y0 + block + gap),
+    ]
+    for idx, (x, y) in enumerate(coords):
+        color = accent if idx != 1 else good
+        draw.rounded_rectangle((x, y, x + block, y + block), radius=max(4, block // 5), fill=color)
+
+    qr_size = int(size * 0.26)
+    qr_x = int(size * 0.58)
+    qr_y = int(size * 0.24)
+    draw.rounded_rectangle((qr_x, qr_y, qr_x + qr_size, qr_y + qr_size), radius=max(6, qr_size // 7), fill=(255, 255, 255, 255))
+    draw.rounded_rectangle((qr_x + qr_size * 0.2, qr_y + qr_size * 0.2, qr_x + qr_size * 0.8, qr_y + qr_size * 0.8), radius=max(4, qr_size // 10), fill=(16, 22, 35, 255))
+
+    text = "TM"
+    font = _load_icon_font(int(size * 0.26))
+    bbox = draw.textbbox((0, 0), text, font=font)
+    tx = (size - (bbox[2] - bbox[0])) / 2
+    ty = size * 0.52
+    draw.text((tx, ty), text, fill=white, font=font)
+
+    bar_y = int(size * 0.79)
+    draw.rounded_rectangle((int(size * 0.18), bar_y, int(size * 0.82), bar_y + max(6, size // 34)), radius=max(3, size // 40), fill=(110, 231, 255, 200))
+
+    buf = BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
+
+
+def _build_kiosk_manifest() -> dict[str, Any]:
+    return {
+        "name": "TECH_modul Kiosk",
+        "short_name": "TECH Kiosk",
+        "start_url": "/kiosk-lite",
+        "scope": "/",
+        "display": "standalone",
+        "orientation": "portrait",
+        "background_color": "#101623",
+        "theme_color": "#101623",
+        "icons": [
+            {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+            {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
+        ],
+    }
+
+
+def _build_time_kiosk_manifest() -> dict[str, Any]:
+    return {
+        "name": "TECH_modul Czas Pracy",
+        "short_name": "Czas Pracy",
+        "start_url": "/kiosk-time?app=1",
+        "scope": "/",
+        "display": "standalone",
+        "orientation": "portrait",
+        "background_color": "#101623",
+        "theme_color": "#101623",
+        "icons": [
+            {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+            {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
+        ],
+    }
+
+
+def _build_pack_scanner_manifest() -> dict[str, Any]:
+    return {
+        "name": "TECH_modul Pack Scanner",
+        "short_name": "Pack Scanner",
+        "start_url": "/pack-scanner?app=1",
+        "scope": "/",
+        "display": "standalone",
+        "orientation": "portrait",
+        "background_color": "#0f172a",
+        "theme_color": "#0f172a",
+        "icons": [
+            {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+            {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
+        ],
+    }
+
+
+def _build_measure_mobile_manifest() -> dict[str, Any]:
+    return {
+        "name": "TECH_modul Pomiary Mobile",
+        "short_name": "Pomiary",
+        "start_url": "/measure-mobile?app=1",
+        "scope": "/",
+        "display": "standalone",
+        "orientation": "portrait",
+        "background_color": "#10233a",
+        "theme_color": "#10233a",
+        "icons": [
+            {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+            {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
+        ],
+    }
+
+
+def _build_service_worker() -> bytes:
+    script = """
+self.addEventListener('install', event => {
+  self.skipWaiting();
+});
+self.addEventListener('activate', event => {
+  event.waitUntil(self.clients.claim());
+});
+self.addEventListener('fetch', event => {
+  if (event.request.method !== 'GET') return;
+  event.respondWith(fetch(event.request));
+});
+"""
+    return script.strip().encode("utf-8")
 
 
 class DataStoreHandler(BaseHTTPRequestHandler):
@@ -29,7 +181,7 @@ class DataStoreHandler(BaseHTTPRequestHandler):
     
     def log_message(self, format: str, *args) -> None:
         """Override to reduce log noise."""
-        pass  # Comment out for debugging: super().log_message(format, *args)
+        pass # Comment out for debugging: super().log_message(format, *args)
     
     def _send_json(self, data: Any, status: int = 200) -> None:
         """Send JSON response."""
@@ -53,6 +205,14 @@ class DataStoreHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(response)
+
+    def _send_binary(self, data: bytes, content_type: str, status: int = 200) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(data)
     
     def _read_json_body(self) -> Optional[dict]:
         """Read JSON from request body."""
@@ -84,9 +244,83 @@ class DataStoreHandler(BaseHTTPRequestHandler):
         path_parts = [part for part in parsed.path.strip("/").split("/") if part]
         first = path_parts[0] if path_parts else ""
 
-        # GET /kiosk - web kiosk for Android tablets
-        if parsed.path.rstrip("/") == "/kiosk":
-            self._send_html(build_kiosk_html())
+        # GET /manifest.webmanifest - PWA manifest for Android home screen icon
+        if parsed.path.rstrip("/") == "/manifest.webmanifest":
+            manifest = json.dumps(_build_kiosk_manifest(), ensure_ascii=False).encode("utf-8")
+            self._send_binary(manifest, "application/manifest+json; charset=utf-8")
+            return
+
+        # GET /manifest-time.webmanifest - dedicated manifest for time clock reader
+        if parsed.path.rstrip("/") in {"/manifest-time.webmanifest", "/time-kiosk.webmanifest"}:
+            manifest = json.dumps(_build_time_kiosk_manifest(), ensure_ascii=False).encode("utf-8")
+            self._send_binary(manifest, "application/manifest+json; charset=utf-8")
+            return
+
+        # GET /pack-scanner.webmanifest - PWA manifest for package scanner app icon
+        if parsed.path.rstrip("/") in {"/pack-scanner.webmanifest", "/manifest-pack.webmanifest"}:
+            manifest = json.dumps(_build_pack_scanner_manifest(), ensure_ascii=False).encode("utf-8")
+            self._send_binary(manifest, "application/manifest+json; charset=utf-8")
+            return
+
+        # GET /measure-mobile.webmanifest - PWA manifest for measurements mobile view
+        if parsed.path.rstrip("/") in {"/measure-mobile.webmanifest", "/manifest-measure.webmanifest"}:
+            manifest = json.dumps(_build_measure_mobile_manifest(), ensure_ascii=False).encode("utf-8")
+            self._send_binary(manifest, "application/manifest+json; charset=utf-8")
+            return
+
+        # GET /sw.js - very small service worker so Android can install the kiosk
+        if parsed.path.rstrip("/") == "/sw.js":
+            self._send_binary(_build_service_worker(), "application/javascript; charset=utf-8")
+            return
+
+        # GET app icons
+        if parsed.path.rstrip("/") in {"/icon-180.png", "/apple-touch-icon.png", "/icon-192.png", "/icon-512.png"}:
+            size = 192
+            if parsed.path.rstrip("/") in {"/icon-180.png", "/apple-touch-icon.png"}:
+                size = 180
+            elif parsed.path.rstrip("/") == "/icon-512.png":
+                size = 512
+            self._send_binary(_build_kiosk_icon(size), "image/png")
+            return
+
+        # GET /ca.crt - CA cert download for Android/iOS HTTPS trust setup
+        if parsed.path.rstrip("/") in {"/ca.crt", "/tech-modul-ca.crt"}:
+            ca_file = data_dir() / "https" / "TECH_modul_CA.crt"
+            if not ca_file.exists():
+                self._send_error("CA certificate not found. Start HTTPS first.", 404)
+                return
+            self._send_binary(ca_file.read_bytes(), "application/x-x509-ca-cert")
+            return
+
+        # GET /kiosk or /kiosk-lite - web kiosk for Android tablets
+        if parsed.path.rstrip("/") in {"/kiosk", "/kiosk-lite"}:
+            lite_mode = parsed.path.rstrip("/") == "/kiosk-lite"
+            query = parse_qs(parsed.query or "")
+            if str((query.get("mode") or [""])[0]).strip().lower() == "lite":
+                lite_mode = True
+            self._send_html(build_kiosk_html(lite=lite_mode))
+            return
+
+        # GET /kiosk-time - dedicated time reader URL for home-screen icon
+        if parsed.path.rstrip("/") in {"/kiosk-time", "/czas-pracy", "/czytnik-godzin"}:
+            self._send_html(build_kiosk_html(lite=True))
+            return
+
+        # GET /pack-scanner - lightweight package QR scanner (no ads)
+        if parsed.path.rstrip("/") in {"/pack-scanner", "/scanner", "/pack-scan", "/scanner-mobile"}:
+            self._send_html(build_package_scanner_html())
+            return
+
+        # GET /measure-mobile - lightweight phone view for wall measurements
+        if parsed.path.rstrip("/") in {"/measure-mobile", "/pomiary-mobile", "/measurement-mobile"}:
+            self._send_html(build_measure_mobile_html())
+            return
+
+        # GET /stanowisko?id=cnc - wall display for a production station
+        if parsed.path.rstrip("/") in {"/stanowisko", "/station", "/stanowiska"}:
+            query = parse_qs(parsed.query or "")
+            station_id = str((query.get("id") or query.get("station") or [""])[0]).strip().lower()
+            self._send_html(build_stanowisko_html(station_id))
             return
 
         # GET /api/health - health check
@@ -99,7 +333,7 @@ class DataStoreHandler(BaseHTTPRequestHandler):
             self._handle_kiosk_workers()
             return
 
-        # GET /api/kiosk/state?worker_id=... - current kiosk state for a worker
+        # GET /api/kiosk/stateEmailworker_id=... - current kiosk state for a worker
         if first == "api" and len(path_parts) == 3 and path_parts[1] == "kiosk" and path_parts[2] == "state":
             self._handle_kiosk_state(parsed)
             return
@@ -138,6 +372,11 @@ class DataStoreHandler(BaseHTTPRequestHandler):
         # POST /api/kiosk/action - perform a kiosk action
         if first == "api" and len(path_parts) == 3 and path_parts[1] == "kiosk" and path_parts[2] == "action":
             self._handle_kiosk_action()
+            return
+
+        # POST /api/pack/parse - parse TECH_PACK payload
+        if first == "api" and len(path_parts) == 3 and path_parts[1] == "pack" and path_parts[2] == "parse":
+            self._handle_pack_parse()
             return
         
         # POST /api/{store} - create or update item
@@ -228,6 +467,22 @@ class DataStoreHandler(BaseHTTPRequestHandler):
         
         try:
             data = json.loads(file_path.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and isinstance(data.get("items"), dict):
+                for key, item in data.get("items", {}).items():
+                    if not isinstance(item, dict):
+                        continue
+                    item_id_field = (
+                        item.get("id")
+                        or item.get("code")
+                        or item.get("order_id")
+                        or item.get("worker_id")
+                        or item.get("name")
+                        or item.get("alarm_id")
+                        or str(key)
+                    )
+                    if str(item_id_field) == str(item_id) or str(key) == str(item_id):
+                        self._send_json({"data": item})
+                        return
             items = self._extract_items(data, store_name)
             
             for item in items:
@@ -257,6 +512,33 @@ class DataStoreHandler(BaseHTTPRequestHandler):
                 data = json.loads(file_path.read_text(encoding="utf-8"))
             else:
                 data = []
+
+            # Map-mode store: {"schema_version": N, "items": {"id": {...}}}
+            if isinstance(data, dict) and isinstance(data.get("items"), dict):
+                item = body.get("data", body)
+                if not isinstance(item, dict):
+                    self._send_error("Invalid item format", 400)
+                    return
+                item_id = (
+                    item.get("id")
+                    or item.get("code")
+                    or item.get("order_id")
+                    or item.get("worker_id")
+                    or item.get("name")
+                    or item.get("alarm_id")
+                )
+                item_id_str = str(item_id or "").strip()
+                if not item_id_str:
+                    self._send_error("Item id is required for map stores", 400)
+                    return
+                items_map = data.get("items", {})
+                items_map[item_id_str] = item
+                data["items"] = items_map
+                if "schema_version" not in data:
+                    data["schema_version"] = 2
+                file_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+                self._send_json({"ok": True, "message": "Saved", "id": item_id_str})
+                return
             
             # Ensure data is a list
             if isinstance(data, dict):
@@ -307,7 +589,7 @@ class DataStoreHandler(BaseHTTPRequestHandler):
         """Update specific item."""
         body = self._read_json_body()
         if body is None:
-            return  # Error already sent
+            return # Error already sent
         # Reuse POST handler
         self._handle_post_store(store_name)
     
@@ -320,6 +602,25 @@ class DataStoreHandler(BaseHTTPRequestHandler):
         
         try:
             data = json.loads(file_path.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and isinstance(data.get("items"), dict):
+                items_map = data.get("items", {})
+                removed = items_map.pop(str(item_id), None)
+                if removed is None:
+                    # Fallback: remove by inner id fields
+                    to_delete = None
+                    for key, item in items_map.items():
+                        if not isinstance(item, dict):
+                            continue
+                        item_id_field = item.get("id") or item.get("code") or item.get("order_id") or item.get("worker_id") or item.get("name") or item.get("alarm_id")
+                        if str(item_id_field) == str(item_id):
+                            to_delete = key
+                            break
+                    if to_delete is not None:
+                        items_map.pop(to_delete, None)
+                data["items"] = items_map
+                file_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+                self._send_json({"ok": True, "message": "Deleted"})
+                return
             items = self._extract_items(data, store_name)
             
             new_items = []
@@ -342,6 +643,8 @@ class DataStoreHandler(BaseHTTPRequestHandler):
             for key in ["items", "rows", "data", "orders", "alarms", "workers", "clients"]:
                 if key in data and isinstance(data[key], list):
                     return data[key]
+                if key in data and isinstance(data[key], dict):
+                    return [item for item in data[key].values() if isinstance(item, dict)]
         return []
 
     def _handle_kiosk_workers(self) -> None:
@@ -389,6 +692,21 @@ class DataStoreHandler(BaseHTTPRequestHandler):
         result = service.perform_action(worker_id, action, work_type=work_type)
         self._send_json(result.to_dict(), 200 if result.ok else 400)
 
+    def _handle_pack_parse(self) -> None:
+        body = self._read_json_body()
+        if body is None:
+            self._send_error("No data provided")
+            return
+        qr_text = str(body.get("qr_text") or body.get("text") or body.get("scan") or "").strip()
+        if not qr_text:
+            self._send_error("qr_text is required", 400)
+            return
+        parsed = parse_package_qr_payload(qr_text)
+        if parsed is None:
+            self._send_json({"ok": False, "message": "Not a TECH_PACK payload"}, 400)
+            return
+        self._send_json({"ok": True, "message": "OK", "data": parsed.to_dict()}, 200)
+
 
 class DataServer:
     """
@@ -404,17 +722,19 @@ class DataServer:
         self._thread: Optional[threading.Thread] = None
         self._running = False
     
-    def start(self, background: bool = True) -> None:
+    def start(self, background: bool = True, ssl_context: ssl.SSLContext | None = None, scheme: str = "http") -> None:
         """Start the server."""
         handler = DataStoreHandler
         handler.data_dir = data_dir()
         handler.kiosk_service = self.kiosk_service if self.kiosk_service is not None else KioskService()
-        
+
         self._server = HTTPServer((self.host, self.port), handler)
+        if ssl_context is not None:
+            self._server.socket = ssl_context.wrap_socket(self._server.socket, server_side=True)
         self._running = True
-        
+
         actual_port = self._server.server_port if self._server is not None else self.port
-        print(f"TECH_modul Server started on http://{self.host}:{actual_port}")
+        print(f"TECH_modul Server started on {scheme}://{self.host}:{actual_port}")
         print(f"Data directory: {data_dir()}")
         
         if background:
@@ -438,8 +758,8 @@ class DataServer:
         return self._running
 
 
-def start_server(host: str = "0.0.0.0", port: int = 8000) -> DataServer:
+def start_server(host: str = "0.0.0.0", port: int = 8000, ssl_context: ssl.SSLContext | None = None, scheme: str = "http") -> DataServer:
     """Convenience function to start server."""
     server = DataServer(host, port)
-    server.start(background=True)
+    server.start(background=True, ssl_context=ssl_context, scheme=scheme)
     return server
