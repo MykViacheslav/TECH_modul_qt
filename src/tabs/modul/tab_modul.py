@@ -12,8 +12,10 @@ from src.domain.module_resolution_service import build_resolved_module_domain_st
 from src.storage.module_store_json import ModuleStoreJson
 from src.storage.resolved_preview_store_json import save_resolved_preview_payload
 from src.storage.catalog_store_json import CatalogStoreJson
+from src.storage.receptura_store_json import RecepturaStoreJson
 from src.core.costing.module_costs import calculate_module_cost_breakdown
 from src.core.module_parts_service import build_module_parts
+from src.services.receptura_bridge_service import build_catalog_material_from_receptura
 from src.app.app_settings import (
     load_drawing_settings,
     save_drawing_settings,
@@ -24,10 +26,11 @@ from src.app.app_settings import (
     DrawingSettings,
 )
 from src.storage.session_store_json import load_last_session, save_last_session, clear_last_session
-from src.tabs.modul.dialog_load_module import LoadModuleDialog
+from src.tabs.modul.dialog_load_module import LoadModuleDialog, ModuleMiniPreview
 from src.storage.default_module_store_json import load_default_module, save_default_module, clear_default_module
 import os
 from src.tabs.rysunek.drawing_settings_block import DrawingSettingsBlock as ExtractedDrawingSettingsBlock
+from src.ui.ui_polish import mark_ui_card, set_ui_variant
 from src.tabs.modul.material_grouping import (
     collapse_profile_map_to_groups,
     expand_group_edgebands_to_module_map,
@@ -42,6 +45,7 @@ from src.tabs.modul.dividers_block import DividersBlock
 from src.tabs.modul.edge_banding_block import EDGE_SIDES_PL, EdgeBandingBlock
 from src.tabs.modul.front_hardware_block import FrontHardwareBlock
 from src.tabs.modul.materials_block import MaterialsBlock
+from src.tabs.receptura.receptura_picker import pick_receptura_rows
 from src.tabs.modul.module_defaults import (
     _is_startup_module_state_valid,
     build_default_module,
@@ -49,10 +53,13 @@ from src.tabs.modul.module_defaults import (
     normalize_rail_offsets_mm,
 )
 from src.tabs.modul.project_tree_block import ProjectTreeBlock
+from src.tabs.modul.parts_table_block import PartsTableBlock
 from src.tabs.modul.reference_point_block import ReferencePointBlock
 from src.tabs.modul.session_view_block import SessionAndViewBlock
 from src.tabs.modul.shelves_block import ShelvesBlock
 from src.tabs.modul.visible_parts_block import VisiblePartsBlock
+from src.tabs.modul.bom_block import BomBlock
+from src.tabs.modul.views_canvas import ViewsCanvas, ZoomGraphicsView
 # ==========================================================
 # KOMPATYBILNOSC WSTECZNA
 # ----------------------------------------------------------
@@ -80,7 +87,7 @@ class ZoneFrame(QFrame):
         lay.setSpacing(8)
 
         lab = QLabel(title_pl)
-        lab.setStyleSheet("font-weight:700;")
+        lab.setObjectName("zoneTitle")
         lay.addWidget(lab)
 
         self.body = QWidget(self)
@@ -99,9 +106,16 @@ class ZoneFrame(QFrame):
 
         self.setStyleSheet("""
             QFrame#zone_left, QFrame#zone_center, QFrame#zone_right {
-                border: 2px solid #cc0000;
-                border-radius: 8px;
-                background: #ffffff;
+                border: 1px solid #d8e1ee;
+                border-radius: 14px;
+                background: #f7f9fc;
+            }
+            QLabel#zoneTitle {
+                font-size: 11px;
+                letter-spacing: 0.08em;
+                font-weight: 700;
+                color: #64748b;
+                padding: 1px 4px 3px 4px;
             }
         """)
 # endregion
@@ -139,1700 +153,17 @@ class NoWheelDoubleSpinBox(QDoubleSpinBox):
 # - przygotowujemy bezpieczne przeniesienie tego bloku
 #   poza zakladke "Modul", bez zmiany obecnej logiki dzialania.
 # endregion
-class BomBlock(QWidget):
-    sig_material_changed = pyqtSignal(str)
-    sig_material_reset_requested = pyqtSignal()
-
-    def __init__(self, catalog: CatalogStoreJson, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._catalog = catalog
-
-        self._is_loading_material_editor = False
-
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(6)
-
-        self.title = QLabel("BOM (zaznacz element w drzewie)")
-        self.title.setStyleSheet("font-weight:700;")
-        lay.addWidget(self.title)
-
-        self.form = QFormLayout()
-        self.form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-
-        self.v_name = QLabel("-")
-        self.v_mat = QLabel("-")
-        self.v_dims = QLabel("-")
-        self.v_edge = QLabel("-")
-        self.v_offsets = QLabel("-")
-
-        self.form.addRow("Nazwa", self.v_name)
-        self.form.addRow("Material", self.v_mat)
-        self.form.addRow("Wymiary", self.v_dims)
-        self.form.addRow("Oklejanie", self.v_edge)
-        self.form.addRow("Offsety wiencow", self.v_offsets)
-
-        self.cb_part_material = QComboBox()
-
-        self.btn_reset_part_material = QPushButton("Reset do grupy")
-        self.btn_reset_part_material.setEnabled(False)
-
-        material_row = QWidget(self)
-        material_row_lay = QHBoxLayout(material_row)
-        material_row_lay.setContentsMargins(0, 0, 0, 0)
-        material_row_lay.setSpacing(6)
-        material_row_lay.addWidget(self.cb_part_material, 1)
-        material_row_lay.addWidget(self.btn_reset_part_material, 0)
-
-        self.form.addRow("Material detalu", material_row)
-
-        lay.addLayout(self.form)
-
-        self.sum_title = QLabel("Podsumowanie materialow (szt / m2 / zl)")
-        self.sum_title.setStyleSheet("font-weight:700; margin-top:6px;")
-        lay.addWidget(self.sum_title)
-
-        self.v_sum = QLabel("-")
-        self.v_sum.setWordWrap(True)
-        lay.addWidget(self.v_sum)
-
-        self.eb_title = QLabel("Podsumowanie okleiny (mb)")
-        self.eb_title.setStyleSheet("font-weight:700; margin-top:6px;")
-        lay.addWidget(self.eb_title)
-
-        self.v_eb = QLabel("-")
-        self.v_eb.setWordWrap(True)
-        lay.addWidget(self.v_eb)
-
-        self.hw_title = QLabel("Podsumowanie okuc (szt / kpl / zl)")
-        self.hw_title.setStyleSheet("font-weight:700; margin-top:6px;")
-        lay.addWidget(self.hw_title)
-
-        self.v_hw = QLabel("-")
-        self.v_hw.setWordWrap(True)
-        lay.addWidget(self.v_hw)
-
-        self.total_title = QLabel("Koszt modulu")
-        self.total_title.setStyleSheet("font-weight:700; margin-top:6px;")
-        lay.addWidget(self.total_title)
-
-        self.v_total = QLabel("-")
-        self.v_total.setWordWrap(True)
-        lay.addWidget(self.v_total)
-
-        lay.addStretch(1)
-
-        self._reload_catalog_cache()
-        self.cb_part_material.currentIndexChanged.connect(self._emit_material_changed)
-        self.btn_reset_part_material.clicked.connect(self.sig_material_reset_requested.emit)
-        self.clear_part()
-
-    def _reload_catalog_cache(self) -> None:
-        materials = self._catalog.list_materials() or []
-        self._mat_name = {m.key: m.name_pl for m in materials}
-        self._mat_price = {}
-        for material in materials:
-            try:
-                price = float(getattr(material, "price_pln_per_m2", 0.0) or 0.0)
-            except Exception:
-                price = 0.0
-            if price > 0.0:
-                self._mat_price[material.key] = price
-
-        edgebands = self._catalog.list_edgebands() or []
-        self._eb_name = {e.key: e.name_pl for e in edgebands}
-        self._eb_price = {}
-        for edgeband in edgebands:
-            try:
-                price = float(getattr(edgeband, "price_pln_per_m", 0.0) or 0.0)
-            except Exception:
-                price = 0.0
-            if price > 0.0:
-                self._eb_price[edgeband.key] = price
-
-        hardware = self._catalog.list_hardware() or []
-        self._hw_name = {item.key: item.name_pl for item in hardware}
-        self._hw_price = {}
-        for item in hardware:
-            try:
-                price = float(getattr(item, "price_pln", 0.0) or 0.0)
-            except Exception:
-                price = 0.0
-            if price > 0.0:
-                self._hw_price[item.key] = price
-
-        current_key = str(self.cb_part_material.currentData() or "")
-        self._is_loading_material_editor = True
-        try:
-            self.cb_part_material.clear()
-            for material in materials:
-                self.cb_part_material.addItem(self._material_combo_label(material), material.key)
-            idx = self.cb_part_material.findData(current_key)
-            if idx < 0 and self.cb_part_material.count() > 0:
-                idx = 0
-            if idx >= 0:
-                self.cb_part_material.setCurrentIndex(idx)
-        finally:
-            self._is_loading_material_editor = False
-
-    def reload_catalog(self) -> None:
-        self._reload_catalog_cache()
-
-    def _material_combo_label(self, material) -> str:
-        label = f"{material.key} ({material.thickness_mm:g} mm) - {material.name_pl}"
-        manufacturer = str(getattr(material, "manufacturer", "") or "").strip()
-        material_type = str(getattr(material, "material_type", "") or "").strip()
-        extras = [value for value in (manufacturer, material_type) if value]
-        if extras:
-            label += f" [{', '.join(extras)}]"
-        price = float(getattr(material, "price_pln_per_m2", 0.0) or 0.0)
-        if price > 0.0:
-            label += f" - {price:.2f} zl/m2"
-        return label
-
-    def _emit_material_changed(self, _index: int) -> None:
-        if self._is_loading_material_editor:
-            return
-        self.sig_material_changed.emit(str(self.cb_part_material.currentData() or ""))
-
-    def _set_material_editor_state(
-        self,
-        material_key: str,
-        default_material_key: str = "",
-        enabled: bool = False,
-        override_active: bool = False,
-    ) -> None:
-        self._is_loading_material_editor = True
-        try:
-            current_key = str(material_key or default_material_key or "").strip()
-            idx = self.cb_part_material.findData(current_key)
-            if idx < 0 and default_material_key:
-                idx = self.cb_part_material.findData(default_material_key)
-            if idx < 0 and self.cb_part_material.count() > 0:
-                idx = 0
-            if idx >= 0:
-                self.cb_part_material.setCurrentIndex(idx)
-
-            self.cb_part_material.setEnabled(bool(enabled))
-            self.btn_reset_part_material.setEnabled(bool(enabled and override_active))
-
-            tooltip = ""
-            if default_material_key:
-                tooltip = f"Domyslny z grupy: {default_material_key}"
-            self.btn_reset_part_material.setToolTip(tooltip)
-        finally:
-            self._is_loading_material_editor = False
-
-    def clear_part(self) -> None:
-        self.v_name.setText("-")
-        self.v_mat.setText("-")
-        self.v_dims.setText("-")
-        self.v_edge.setText("-")
-        self.v_offsets.setText("-")
-        self._set_material_editor_state("", enabled=False, override_active=False)
-
-    def _material_label(self, key: str) -> str:
-        name = self._mat_name.get(key, "")
-        if not name or name == key:
-            return key or "-"
-        return f"{key} - {name}"
-
-    def set_part(self, part: PartDef, default_material_key: str = "") -> None:
-        current_material_key = str(part.material_key or default_material_key or "-")
-        override_key = str(getattr(part, "material_override_key", "") or "").strip()
-
-        self.v_name.setText(part.name_pl or "-")
-        self.v_mat.setText(self._material_label(current_material_key))
-        d = part.dims_mm or {}
-        self.v_dims.setText(f'{d.get("w","-")} x {d.get("h","-")} x {d.get("t","-")} mm')
-
-        eb = part.edge_banding or {}
-        if not eb:
-            self.v_edge.setText("-")
-        else:
-            chunks = []
-            for side, key in eb.items():
-                name_pl = self._eb_name.get(key, key)
-                chunks.append(f'{EDGE_SIDES_PL.get(side, side)}={name_pl}')
-            self.v_edge.setText(", ".join(chunks))
-
-        self._set_material_editor_state(
-            material_key=current_material_key,
-            default_material_key=default_material_key,
-            enabled=True,
-            override_active=bool(override_key) or (
-                bool(default_material_key) and current_material_key != default_material_key
-            ),
-        )
-
-    def set_module(self, m: ModuleDef) -> None:
-        vp = set(getattr(m, "visible_parts", set()) or set())
-        top_offset_mm = float(getattr(m, "top_rail_offset_mm", 0.0) or 0.0)
-        bottom_offset_mm = float(getattr(m, "bottom_rail_offset_mm", 0.0) or 0.0)
-
-        top_txt = f"gora {top_offset_mm:.1f} mm" if "top" in vp else "gora: brak"
-        bottom_txt = f"dol {bottom_offset_mm:.1f} mm" if "bottom" in vp else "dol: brak"
-        self.v_offsets.setText(f"{top_txt}, {bottom_txt}")
-
-        breakdown = calculate_module_cost_breakdown(
-            m,
-            self._catalog,
-            auto_double_front_width_mm=float(load_drawing_settings().auto_double_front_width_mm or 600.0),
-        )
-
-        if not breakdown.material_lines:
-            self.v_sum.setText("-")
-        else:
-            lines = []
-            for line in breakdown.material_lines:
-                if line.priced:
-                    lines.append(f"{line.label}: {line.count} szt, {line.area_m2:.3f} m2, {line.cost_pln:.2f} zl")
-                else:
-                    lines.append(f"{line.label}: {line.count} szt, {line.area_m2:.3f} m2")
-            if any(line.priced for line in breakdown.material_lines):
-                lines.append(f"RAZEM: {breakdown.material_total_pln:.2f} zl")
-            self.v_sum.setText("\n".join(lines))
-
-        if not breakdown.edgeband_lines:
-            self.v_eb.setText("-")
-        else:
-            lines = []
-            for line in breakdown.edgeband_lines:
-                if line.priced:
-                    lines.append(f"{line.label}: {line.length_m:.2f} mb, {line.cost_pln:.2f} zl")
-                else:
-                    lines.append(f"{line.label}: {line.length_m:.2f} mb")
-            if any(line.priced for line in breakdown.edgeband_lines):
-                lines.append(f"RAZEM: {breakdown.edgeband_total_pln:.2f} zl")
-            self.v_eb.setText("\n".join(lines))
-
-        if not breakdown.hardware_lines:
-            self.v_hw.setText("-")
-        else:
-            lines = []
-            for line in breakdown.hardware_lines:
-                qty = float(line.quantity or 0.0)
-                qty_txt = str(int(qty)) if abs(qty - round(qty)) < 0.001 else f"{qty:.2f}"
-                label = line.label
-                if line.manufacturer:
-                    label += f" [{line.manufacturer}]"
-                note = f", {line.note}" if line.note else ""
-                if line.priced:
-                    lines.append(f"{label}: {qty_txt} {line.unit}, {line.cost_pln:.2f} zl{note}")
-                else:
-                    lines.append(f"{label}: {qty_txt} {line.unit}{note}")
-
-            if breakdown.hardware_lines:
-                lines.append(f"RAZEM: {breakdown.hardware_total_pln:.2f} zl")
-            self.v_hw.setText("\n".join(lines) if lines else "-")
-
-        total_lines = [
-            f"Materialy: {breakdown.material_total_pln:.2f} zl",
-            f"Okleina: {breakdown.edgeband_total_pln:.2f} zl",
-            f"Okucia: {breakdown.hardware_total_pln:.2f} zl",
-            f"RAZEM: {breakdown.grand_total_pln:.2f} zl",
-        ]
-        self.v_total.setText("\n".join(total_lines))
+# ==========================================================
+# region CENTER: Zoomable view (WYDZIELONE DO views_canvas.py)
+# ==========================================================
+# ZoomGraphicsView jest teraz w src.tabs.modul.views_canvas
 # endregion
 
 
 # ==========================================================
-# region CENTER: Zoomable view
+# region CENTER: ViewsCanvas (WYDZIELONE DO views_canvas.py)
 # ==========================================================
-class ZoomGraphicsView(QGraphicsView):
-    def wheelEvent(self, e):
-        # zoom ko'kiem (zamiast przewijania)
-        factor = 1.15
-        if e.angleDelta().y() < 0:
-            factor = 1.0 / factor
-        self.scale(factor, factor)
-        e.accept()
-# endregion
-
-
-# ==========================================================
-# region CENTER: ViewsCanvas (klik formatki + front/plecy w rzucie z gory)
-# ==========================================================
-class ViewsCanvas(QWidget):
-    sig_clicked_part = pyqtSignal(str)
-    sig_front_zone_handle_clicked = pyqtSignal(str)
-    sig_front_zone_handle_dragged = pyqtSignal(str, float)
-    sig_rail_offset_handle_clicked = pyqtSignal(str)
-    sig_rail_offset_handle_dragged = pyqtSignal(str, float)
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(6)
-
-        self.view = ZoomGraphicsView(self)
-        self.scene = QGraphicsScene(self)
-        self.scene.setBackgroundBrush(QColor("#ffffff"))
-        self.view.setScene(self.scene)
-
-        self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
-        self.view.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
-        self.view.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
-        self.view.setRenderHints(QPainter.RenderHint.Antialiasing | QPainter.RenderHint.TextAntialiasing)
-        self.view.viewport().installEventFilter(self)
-
-        lay.addWidget(self.view, 1)
-
-        # TECH:
-        # preview_mode = uproszczony podglad w zakladce "Modul"
-        # bez technicznych napisow i bez linii wymiarowych.
-        self._preview_mode = False
-
-        # UX handles in preview
-        self._last_front_zone_handle_key = ""
-        self._last_rail_offset_handle_key = ""
-        self._viewport_drag_handle_key = ""
-        self._show_front_zone_handle_labels = True
-
-    def _fit_scene_to_view(self) -> None:
-        scene_rect = self.scene.sceneRect()
-        if scene_rect.isNull() or scene_rect.isEmpty():
-            return
-        self.view.fitInView(scene_rect, Qt.AspectRatioMode.KeepAspectRatio)
-
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        self._fit_scene_to_view()
-
-    @staticmethod
-    def _is_front_zone_handle_key(handle_key: str) -> bool:
-        return str(handle_key or "").startswith("front_zone_handle__")
-
-    @staticmethod
-    def _is_rail_offset_handle_key(handle_key: str) -> bool:
-        return str(handle_key or "").startswith("rail_offset_handle__")
-
-    @classmethod
-    def _is_preview_handle_key(cls, handle_key: str) -> bool:
-        return cls._is_front_zone_handle_key(handle_key) or cls._is_rail_offset_handle_key(handle_key)
-
-    def set_preview_hide_front(self, hide: bool) -> None:
-        self._preview_hide_front = bool(hide)
-
-    def is_preview_front_hidden(self) -> bool:
-        return bool(self._preview_hide_front)
-
-    def set_preview_mode(self, on: bool) -> None:
-        self._preview_mode = bool(on)
-
-    def is_preview_mode(self) -> bool:
-        return bool(getattr(self, "_preview_mode", False))
-
-    def set_active_front_zone_handle(self, handle_key: str) -> None:
-        key = str(handle_key or "").strip()
-        self._last_front_zone_handle_key = key if self._is_front_zone_handle_key(key) else ""
-        if self._last_front_zone_handle_key:
-            self._last_rail_offset_handle_key = ""
-
-    def clear_active_front_zone_handle(self) -> None:
-        self._last_front_zone_handle_key = ""
-
-    def active_front_zone_handle_key(self) -> str:
-        return str(getattr(self, "_last_front_zone_handle_key", "") or "").strip()
-
-    def set_active_rail_offset_handle(self, handle_key: str) -> None:
-        key = str(handle_key or "").strip()
-        self._last_rail_offset_handle_key = key if self._is_rail_offset_handle_key(key) else ""
-        if self._last_rail_offset_handle_key:
-            self._last_front_zone_handle_key = ""
-
-    def clear_active_rail_offset_handle(self) -> None:
-        self._last_rail_offset_handle_key = ""
-
-    def active_rail_offset_handle_key(self) -> str:
-        return str(getattr(self, "_last_rail_offset_handle_key", "") or "").strip()
-
-    def set_active_preview_handle(self, handle_key: str) -> None:
-        key = str(handle_key or "").strip()
-        if self._is_front_zone_handle_key(key):
-            self.set_active_front_zone_handle(key)
-        elif self._is_rail_offset_handle_key(key):
-            self.set_active_rail_offset_handle(key)
-        else:
-            self.clear_active_preview_handle()
-
-    def clear_active_preview_handle(self) -> None:
-        self._last_front_zone_handle_key = ""
-        self._last_rail_offset_handle_key = ""
-
-    def active_preview_handle_key(self) -> str:
-        return self.active_rail_offset_handle_key() or self.active_front_zone_handle_key()
-
-    @staticmethod
-    def _normalize_preview_handle_key(raw_key: str) -> str:
-        key = str(raw_key or "").strip()
-        if key.endswith("__label"):
-            key = key[:-7]
-        return key
-
-    def _preview_handle_key_from_view_pos(self, pos) -> str:
-        item = self.view.itemAt(pos)
-        if item is None:
-            return ""
-
-        try:
-            key = self._normalize_preview_handle_key(str(item.data(0) or ""))
-        except Exception:
-            key = ""
-
-        return key if self._is_preview_handle_key(key) else ""
-
-    def eventFilter(self, obj, event):
-        if obj is self.view.viewport():
-            et = event.type()
-
-            if et == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
-                key = self._preview_handle_key_from_view_pos(event.pos())
-                if key:
-                    self._viewport_drag_handle_key = key
-                    self.set_active_preview_handle(key)
-                    if self._is_rail_offset_handle_key(key):
-                        self.sig_rail_offset_handle_clicked.emit(key)
-                    elif self._is_front_zone_handle_key(key):
-                        self.sig_front_zone_handle_clicked.emit(key)
-                    event.accept()
-                    return True
-
-            elif et == QEvent.Type.MouseMove and self._viewport_drag_handle_key:
-                if event.buttons() & Qt.MouseButton.LeftButton:
-                    scene_pos = self.view.mapToScene(event.pos())
-                    key = self._viewport_drag_handle_key
-                    if self._is_rail_offset_handle_key(key):
-                        self.sig_rail_offset_handle_dragged.emit(key, float(scene_pos.y()))
-                    elif self._is_front_zone_handle_key(key):
-                        self.sig_front_zone_handle_dragged.emit(key, float(scene_pos.y()))
-                    event.accept()
-                    return True
-
-            elif et == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
-                if self._viewport_drag_handle_key:
-                    self._viewport_drag_handle_key = ""
-                    event.accept()
-                    return True
-
-        return super().eventFilter(obj, event)
-
-    def front_zone_handle_labels_enabled(self) -> bool:
-        return bool(getattr(self, "_show_front_zone_handle_labels", True))
-    @staticmethod
-    def _pen(color_hex: str, px: int, dashed: bool = False) -> QPen:
-        pen = QPen(QColor(color_hex))
-        pen.setWidth(max(1, int(px)))
-        pen.setCosmetic(True)
-        if dashed:
-            pen.setStyle(Qt.PenStyle.DashLine)
-        return pen
-
-    def _add_text_centered(self, text: str, cx: float, cy: float, rotation_deg: float = 0.0) -> None:
-        t = self.scene.addText(text)
-        t.setZValue(20)
-        t.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations, True)
-
-        br = t.boundingRect()
-        t.setTransformOriginPoint(br.center())
-        t.setRotation(rotation_deg)
-        t.setPos(cx - br.center().x(), cy - br.center().y())
-
-    def _draw_grid(self, bounds: QRectF, step_mm: float, color_hex: str, width_px: int) -> None:
-        pen = QPen(QColor(color_hex))
-        pen.setWidth(max(1, int(width_px)))
-        pen.setCosmetic(True)
-
-        left = int(bounds.left() // step_mm) * int(step_mm)
-        right = int(bounds.right() // step_mm + 1) * int(step_mm)
-        top = int(bounds.top() // step_mm) * int(step_mm)
-        bottom = int(bounds.bottom() // step_mm + 1) * int(step_mm)
-
-        x = float(left)
-        while x <= right:
-            self.scene.addLine(x, bounds.top(), x, bounds.bottom(), pen)
-            x += step_mm
-
-        y = float(top)
-        while y <= bottom:
-            self.scene.addLine(bounds.left(), y, bounds.right(), y, pen)
-            y += step_mm
-
-    def _arrow_head_h(self, x: float, y: float, direction: int, size: float, pen: QPen) -> None:
-        tip = QPointF(x, y)
-        back = QPointF(x - direction * size, y)
-        p1 = QPointF(back.x(), back.y() - size * 0.45)
-        p2 = QPointF(back.x(), back.y() + size * 0.45)
-        poly = QPolygonF([tip, p1, p2])
-        self.scene.addPolygon(poly, pen, QBrush(pen.color()))
-
-    def _arrow_head_v(self, x: float, y: float, direction: int, size: float, pen: QPen) -> None:
-        tip = QPointF(x, y)
-        back = QPointF(x, y - direction * size)
-        p1 = QPointF(back.x() - size * 0.45, back.y())
-        p2 = QPointF(back.x() + size * 0.45, back.y())
-        poly = QPolygonF([tip, p1, p2])
-        self.scene.addPolygon(poly, pen, QBrush(pen.color()))
-
-    @staticmethod
-    def _safe_float(value, default: float) -> float:
-        try:
-            return float(value)
-        except Exception:
-            return float(default)
-
-    def _resolve_front_layout_for_preview(self, m: ModuleDef) -> str:
-        layout = str(getattr(m, "front_layout", "") or "").strip().lower()
-        if layout in ("overlay", "inset"):
-            return layout
-
-        s = load_drawing_settings()
-        mode = str(getattr(s, "front_mode", "external") or "external").strip().lower()
-        return "inset" if mode == "internal" else "overlay"
-
-    def _resolve_front_zone_offsets_mm(
-            self,
-            m: ModuleDef,
-            H: float,
-            t_carcass: float,
-            layout: str,
-    ) -> tuple[str, float, float]:
-        """
-        Zwraca:
-        - mode
-        - top_offset_mm
-        - bottom_offset_mm
-        """
-        mode = str(getattr(m, "front_height_mode", "full") or "full").strip().lower()
-
-        H = max(0.0, float(H))
-        t_carcass = max(0.0, float(t_carcass))
-        min_face_h = 2.0
-
-        try:
-            top_raw = float(getattr(m, "front_offset_top_mm", 0.0) or 0.0)
-        except Exception:
-            top_raw = 0.0
-
-        try:
-            bottom_raw = float(getattr(m, "front_offset_bottom_mm", 0.0) or 0.0)
-        except Exception:
-            bottom_raw = 0.0
-
-        top_ref_mode = str(getattr(m, "front_top_ref_mode", "rail_end") or "rail_end").strip().lower()
-        bottom_ref_mode = str(getattr(m, "front_bottom_ref_mode", "rail_end") or "rail_end").strip().lower()
-
-        vp = set(getattr(m, "visible_parts", set()) or set())
-
-        raw_top_rail_offset_mm = float(getattr(m, "top_rail_offset_mm", 0.0) or 0.0)
-        raw_bottom_rail_offset_mm = float(getattr(m, "bottom_rail_offset_mm", 0.0) or 0.0)
-
-        norm_top_rail_offset_mm, norm_bottom_rail_offset_mm = normalize_rail_offsets_mm(
-            height_mm=H,
-            rail_thickness_mm=t_carcass,
-            top_offset_mm=raw_top_rail_offset_mm,
-            bottom_offset_mm=raw_bottom_rail_offset_mm,
-        )
-
-        rail_top_shift_mm = norm_top_rail_offset_mm if "top" in vp else 0.0
-        rail_bottom_shift_mm = norm_bottom_rail_offset_mm if "bottom" in vp else 0.0
-
-        def _top_ref_to_offset(ref_mode: str) -> float:
-            if ref_mode == "rail_start":
-                return rail_top_shift_mm + 0.0
-            if ref_mode == "rail_center":
-                return rail_top_shift_mm + t_carcass * 0.5
-            if ref_mode == "rail_end":
-                return rail_top_shift_mm + t_carcass
-            if ref_mode == "custom":
-                return top_raw
-            return rail_top_shift_mm + t_carcass
-
-        def _bottom_ref_base_offset(ref_mode: str) -> float:
-            if ref_mode == "rail_end":
-                return rail_bottom_shift_mm + 0.0
-            if ref_mode == "rail_center":
-                return rail_bottom_shift_mm + t_carcass * 0.5
-            if ref_mode == "rail_start":
-                return rail_bottom_shift_mm + t_carcass
-            if ref_mode == "custom":
-                return 0.0
-            return rail_bottom_shift_mm + 0.0
-
-        if mode == "full":
-            return "full", 0.0, 0.0
-
-        if mode == "to_top_rail":
-            top_off = max(0.0, min(_top_ref_to_offset(top_ref_mode), H))
-
-            if bottom_ref_mode == "custom":
-                bottom_candidate = bottom_raw
-            else:
-                bottom_candidate = _bottom_ref_base_offset(bottom_ref_mode) + bottom_raw
-
-            max_bottom = max(0.0, H - top_off - min_face_h)
-            bottom_off = max(0.0, min(bottom_candidate, max_bottom))
-
-            max_top = max(0.0, H - bottom_off - min_face_h)
-            top_off = max(0.0, min(top_off, max_top))
-
-            return "to_top_rail", top_off, bottom_off
-
-        top_off = max(0.0, min(top_raw, H))
-        max_bottom = max(0.0, H - top_off - min_face_h)
-        bottom_off = max(0.0, min(bottom_raw, max_bottom))
-
-        max_top_2 = max(0.0, H - bottom_off - min_face_h)
-        top_off = max(0.0, min(top_off, max_top_2))
-
-        return "offsets", top_off, bottom_off
-
-    def _resolve_front_face_gaps_mm(self, m: ModuleDef) -> tuple[float, float, float, float]:
-        def _num(attr_name: str) -> float:
-            try:
-                return max(0.0, float(getattr(m, attr_name, 0.0) or 0.0))
-            except Exception:
-                return 0.0
-
-        gap_left = _num("front_gap_left_mm")
-        gap_right = _num("front_gap_right_mm")
-        gap_top = _num("front_gap_top_mm")
-        gap_bottom = _num("front_gap_bottom_mm")
-        return gap_left, gap_right, gap_top, gap_bottom
-
-    def _build_front_rect_front_view(
-            self,
-            front_view: QRectF,
-            m: ModuleDef,
-            L: float,
-            H: float,
-            t_carcass: float,
-    ) -> QRectF:
-        layout = self._resolve_front_layout_for_preview(m)
-        _mode, top_off, bottom_off = self._resolve_front_zone_offsets_mm(
-            m=m,
-            H=H,
-            t_carcass=t_carcass,
-            layout=layout,
-        )
-        gap_left, gap_right, gap_top, gap_bottom = self._resolve_front_face_gaps_mm(m)
-
-        L = max(0.0, float(L))
-        H = max(0.0, float(H))
-        t_carcass = max(0.0, float(t_carcass))
-
-        if layout == "inset":
-            x = front_view.left() + t_carcass + gap_left
-            w = max(0.0, L - 2.0 * t_carcass - gap_left - gap_right)
-        else:
-            side_gap = 2.0
-            x = front_view.left() + side_gap + gap_left
-            w = max(0.0, L - 2.0 * side_gap - gap_left - gap_right)
-
-        y = front_view.top() + float(top_off) + gap_top
-        h = max(0.0, H - float(top_off) - float(bottom_off) - gap_top - gap_bottom)
-
-        return QRectF(x, y, w, h)
-
-    def _front_zone_handles_enabled(self, m: ModuleDef) -> bool:
-        mode = str(getattr(m, "front_height_mode", "full") or "full").strip().lower()
-        return mode in ("offsets", "to_top_rail")
-
-    def _build_front_zone_handle_rects(
-            self,
-            front_rect: QRectF | None,
-            m: ModuleDef,
-    ) -> list[tuple[str, QRectF]]:
-        if front_rect is None:
-            return []
-
-        if front_rect.width() <= 0.0 or front_rect.height() <= 0.0:
-            return []
-
-        if not self._front_zone_handles_enabled(m):
-            return []
-
-        mode = str(getattr(m, "front_height_mode", "full") or "full").strip().lower()
-
-        grip_h = 8.0
-        side_pad = max(10.0, min(40.0, float(front_rect.width()) * 0.2))
-        gx = front_rect.left() + side_pad
-        gw = max(24.0, float(front_rect.width()) - 2.0 * side_pad)
-
-        out: list[tuple[str, QRectF]] = []
-
-        if mode == "offsets":
-            out.append(
-                (
-                    "front_zone_handle__top",
-                    QRectF(gx, front_rect.top() - grip_h / 2.0, gw, grip_h),
-                )
-            )
-
-        out.append(
-            (
-                "front_zone_handle__bottom",
-                QRectF(gx, front_rect.bottom() - grip_h / 2.0, gw, grip_h),
-            )
-        )
-
-        return out
-
-    def _build_rail_offset_handle_label_specs(
-            self,
-            handle_rects: list[tuple[str, QRectF]],
-            top_offset_mm: float,
-            bottom_offset_mm: float,
-    ) -> list[tuple[str, str, QPointF]]:
-        out: list[tuple[str, str, QPointF]] = []
-
-        for handle_key, handle_rect in handle_rects:
-            value_mm = float(top_offset_mm if handle_key.endswith("__top") else bottom_offset_mm)
-            caption = (
-                f"GORA {value_mm:.1f} mm"
-                if handle_key.endswith("__top")
-                else f"DOL {value_mm:.1f} mm"
-            )
-
-            if handle_key.endswith("__top"):
-                pos = QPointF(
-                    handle_rect.center().x() - 34.0,
-                    handle_rect.top() - 18.0,
-                )
-            else:
-                pos = QPointF(
-                    handle_rect.center().x() - 30.0,
-                    handle_rect.bottom() + 2.0,
-                )
-
-            out.append((handle_key, caption, pos))
-
-        return out
-
-    def _build_front_zone_handle_label_specs(
-            self,
-            handle_rects: list[tuple[str, QRectF]],
-    ) -> list[tuple[str, str, QPointF]]:
-        out: list[tuple[str, str, QPointF]] = []
-
-        if not self.front_zone_handle_labels_enabled():
-            return out
-
-        for handle_key, handle_rect in handle_rects:
-            caption = "GORA" if handle_key.endswith("__top") else "DOL"
-
-            if handle_key.endswith("__top"):
-                pos = QPointF(
-                    handle_rect.center().x() - 18.0,
-                    handle_rect.top() - 18.0,
-                )
-            else:
-                pos = QPointF(
-                    handle_rect.center().x() - 14.0,
-                    handle_rect.bottom() + 2.0,
-                )
-
-            out.append((handle_key, caption, pos))
-
-        return out
-
-    def render_module(
-            self,
-            m: ModuleDef,
-            fit: bool = True,
-            selected_part_key: str = "",
-            show_dimensions: bool = True,
-            show_view_labels: bool = True,
-    ) -> None:
-        s = load_drawing_settings()
-        self.scene.clear()
-
-        preview_mode = bool(getattr(self, "_preview_mode", False))
-        effective_show_dimensions = bool(show_dimensions)
-        effective_show_view_labels = bool(show_view_labels) and (not preview_mode)
-
-        pen_rect = self._pen(s.rect_line_color, s.rect_line_width_px)
-        pen_dim = self._pen(s.dim_line_color, s.dim_line_width_px)
-
-        L = float(m.width_mm)
-        W = float(m.depth_mm)
-        H = float(m.height_mm)
-
-        # grubosc korpusu z czesci (jesli jest)
-        t_carcass = 18.0
-        p_sl = (m.parts or {}).get("side_left")
-        if p_sl and p_sl.dims_mm and "t" in p_sl.dims_mm:
-            t_carcass = float(p_sl.dims_mm["t"])
-
-        # grubosci front/plecy
-        t_front = float((m.parts.get("front").dims_mm.get("t", 18.0)) if m.parts.get("front") else 18.0)
-        t_back = float((m.parts.get("back").dims_mm.get("t", 3.0)) if m.parts.get("back") else 3.0)
-
-        front_view = QRectF(0, 0, L, H)
-        gap = max(140.0, H * 0.18)
-        top_view = QRectF(0, H + gap, L, W)
-
-        dim_off = 80.0
-        label_off_x = 120.0
-
-        def _guess_body_thickness_mm() -> float:
-            raw = ""
-            try:
-                raw = str((getattr(m, "materials", {}) or {}).get("carcass", "") or "")
-            except Exception:
-                raw = ""
-
-            token = []
-            started = False
-            dot_used = False
-
-            for ch in raw:
-                if ch.isdigit():
-                    token.append(ch)
-                    started = True
-                elif ch in ",." and started and not dot_used:
-                    token.append(".")
-                    dot_used = True
-                elif started:
-                    break
-
-            try:
-                return float("".join(token)) if token else 18.0
-            except Exception:
-                return 18.0
-
-        body_t = _guess_body_thickness_mm()
-
-        preview_hide_front = False
-        for _attr in (
-                "_temp_hide_front_preview",
-                "_preview_hide_front",
-                "_front_hidden_in_preview",
-                "_hide_front_in_preview",
-        ):
-            preview_hide_front = preview_hide_front or bool(getattr(self, _attr, False))
-
-        if hasattr(self, "is_front_hidden_in_preview"):
-            try:
-                preview_hide_front = preview_hide_front or bool(self.is_front_hidden_in_preview())
-            except Exception:
-                pass
-
-        vp = set(m.visible_parts or set())
-
-        front_layout = self._resolve_front_layout_for_preview(m)
-
-        show_front_on_preview = bool(getattr(s, "show_front_part", True)) and (not preview_hide_front) and (
-                "front" in vp
-        )
-
-        def _resolve_front_face_rect() -> QRectF | None:
-            if not show_front_on_preview:
-                return None
-
-            rect = self._build_front_rect_front_view(
-                front_view=front_view,
-                m=m,
-                L=L,
-                H=H,
-                t_carcass=t_carcass,
-            )
-
-            if rect.width() <= 0.0 or rect.height() <= 0.0:
-                return None
-
-            return rect
-
-        def _resolve_front_top_rect() -> QRectF | None:
-            if not show_front_on_preview:
-                return None
-
-            ft = max(2.0, min(float(t_front), float(W)))
-
-            if front_layout == "overlay":
-                out = 5.0
-                return QRectF(top_view.left(), top_view.bottom() + out, L, ft)
-
-            return QRectF(
-                top_view.left() + body_t,
-                top_view.bottom() - ft,
-                max(0.0, L - 2 * body_t),
-                ft,
-            )
-
-        front_top_rect = _resolve_front_top_rect()
-
-        # dodatkowy margines na front zewnetrzny w rzucie z gory
-        extra_bottom = 0.0
-        if front_top_rect is not None and front_layout == "overlay":
-            extra_bottom = front_top_rect.height() + 35.0
-
-        left_extra = (label_off_x + 120.0) if effective_show_view_labels else 60.0
-        top_extra = (dim_off + 140.0) if effective_show_dimensions else 60.0
-        right_extra = (dim_off + 200.0) if effective_show_dimensions else 80.0
-        bottom_extra = 200.0 if effective_show_dimensions else 80.0
-
-        bounds = QRectF(
-            min(front_view.left() - left_extra, top_view.left() - left_extra),
-            min(front_view.top() - top_extra, top_view.top() - top_extra),
-            max(front_view.right() + right_extra, top_view.right() + right_extra),
-            max(front_view.bottom() + bottom_extra, top_view.bottom() + bottom_extra + extra_bottom),
-        )
-
-        if s.grid_enabled:
-            self._draw_grid(bounds, s.grid_step_mm, s.grid_color, s.grid_width_px)
-
-        # obrys rzutow
-        self.scene.addRect(front_view, pen_rect, QBrush(Qt.BrushStyle.NoBrush))
-        self.scene.addRect(top_view, pen_rect, QBrush(Qt.BrushStyle.NoBrush))
-
-        # etykiety
-        if effective_show_view_labels:
-            self._add_text_centered("PRZOD", front_view.left() - label_off_x, front_view.top() + 24.0, 0.0)
-            self._add_text_centered("GORA", top_view.left() - label_off_x, top_view.top() + 24.0, 0.0)
-
-        # klikalne recty
-        class PartRect(QGraphicsRectItem):
-            def __init__(
-                    self,
-                    rect: QRectF,
-                    key: str,
-                    canvas: "ViewsCanvas",
-                    pen: QPen,
-                    brush: QBrush,
-                    z: float = 0.0,
-                    active_handle: bool = False,
-            ) -> None:
-                super().__init__(rect)
-                self.key = str(key)
-                self.setData(0, self.key)
-                self._canvas = canvas
-                self._drag_started = False
-                self._active_handle = bool(active_handle)
-
-                self._normal_pen = pen
-                self._normal_brush = brush
-
-                self.setPen(pen)
-                self.setBrush(brush)
-                self.setZValue(float(z))
-                self.setToolTip(self.key)
-
-                self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
-
-                if self._canvas._is_preview_handle_key(self.key):
-                    self.setCursor(Qt.CursorShape.SizeVerCursor)
-                    self.setAcceptHoverEvents(True)
-                    self._apply_handle_style(active=self._active_handle, hot=False)
-
-            def _apply_handle_style(self, active: bool = False, hot: bool = False) -> None:
-                if not self._canvas._is_preview_handle_key(self.key):
-                    self.setPen(self._normal_pen)
-                    self.setBrush(self._normal_brush)
-                    return
-
-                if hot:
-                    line = QColor("#c2410c")
-                    fill = QColor("#fde2b8")
-                    width = 3.0
-                elif active:
-                    line = QColor("#d97706")
-                    fill = QColor("#fde7c7")
-                    width = 2.6
-                else:
-                    line = QColor("#0f4c81")
-                    fill = QColor("#d9ebff")
-                    width = 2.0
-
-                fill.setAlpha(130)
-
-                pen = QPen(line, width)
-                pen.setStyle(Qt.PenStyle.SolidLine)
-                brush = QBrush(fill)
-
-                self.setPen(pen)
-                self.setBrush(brush)
-
-            def hoverEnterEvent(self, event) -> None:
-                try:
-                    if self._canvas._is_preview_handle_key(self.key):
-                        active = (self._canvas.active_preview_handle_key() == self.key)
-                        self._apply_handle_style(active=active, hot=True)
-                except Exception:
-                    pass
-                event.accept()
-
-            def hoverLeaveEvent(self, event) -> None:
-                try:
-                    if self._canvas._is_preview_handle_key(self.key):
-                        active = (self._canvas.active_preview_handle_key() == self.key)
-                        self._apply_handle_style(active=active, hot=False)
-                except Exception:
-                    pass
-                event.accept()
-
-            def mousePressEvent(self, event) -> None:
-                try:
-                    if self._canvas._is_front_zone_handle_key(self.key):
-                        self._drag_started = True
-                        self.setCursor(Qt.CursorShape.ClosedHandCursor)
-                        self._canvas.set_active_front_zone_handle(self.key)
-                        self._apply_handle_style(active=True, hot=True)
-                        self._canvas.sig_front_zone_handle_clicked.emit(self.key)
-                    elif self._canvas._is_rail_offset_handle_key(self.key):
-                        self._drag_started = True
-                        self.setCursor(Qt.CursorShape.ClosedHandCursor)
-                        self._canvas.set_active_rail_offset_handle(self.key)
-                        self._apply_handle_style(active=True, hot=True)
-                        self._canvas.sig_rail_offset_handle_clicked.emit(self.key)
-                    else:
-                        self._canvas.clear_active_preview_handle()
-                        self._canvas.sig_clicked_part.emit(self.key)
-                except Exception:
-                    pass
-                event.accept()
-
-            def mouseMoveEvent(self, event) -> None:
-                try:
-                    if self._canvas._is_front_zone_handle_key(self.key) and self._drag_started:
-                        self._canvas.sig_front_zone_handle_dragged.emit(
-                            self.key,
-                            float(event.scenePos().y()),
-                        )
-                    elif self._canvas._is_rail_offset_handle_key(self.key) and self._drag_started:
-                        self._canvas.sig_rail_offset_handle_dragged.emit(
-                            self.key,
-                            float(event.scenePos().y()),
-                        )
-                except Exception:
-                    pass
-                event.accept()
-
-            def mouseReleaseEvent(self, event) -> None:
-                try:
-                    if self._canvas._is_preview_handle_key(self.key):
-                        self._drag_started = False
-                        self.setCursor(Qt.CursorShape.SizeVerCursor)
-                        self._apply_handle_style(active=True, hot=False)
-                except Exception:
-                    pass
-                event.accept()
-        def add_part_rect(
-                key: str,
-                rect: QRectF,
-                dashed: bool = False,
-                z: float = 5.0,
-        ) -> None:
-            sel = (key == selected_part_key) or (
-                    selected_part_key == "front" and str(key).startswith("front__")
-            )
-
-            p = self._pen(s.rect_line_color, s.rect_line_width_px + (2 if sel else 0), dashed=dashed)
-
-            br = QBrush(Qt.BrushStyle.NoBrush)
-            if sel:
-                c = QColor(s.dim_line_color)
-                c.setAlpha(40)
-                br = QBrush(c)
-
-            active_handle = (key == self.active_preview_handle_key())
-
-            item = PartRect(
-                rect,
-                key,
-                self,
-                p,
-                br,
-                z,
-                active_handle=active_handle,
-            )
-            self.scene.addItem(item)
-
-        def add_front_zone_label(
-                key: str,
-                caption: str,
-                pos: QPointF,
-                active: bool = False,
-        ) -> None:
-            item = QGraphicsSimpleTextItem(caption)
-            item.setData(0, key)
-            item.setPos(pos)
-            item.setZValue(13)
-
-            color = QColor("#d97706" if active else "#0f4c81")
-            item.setBrush(QBrush(color))
-            item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
-            item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations, True)
-
-            self.scene.addItem(item)
-
-
-        vp = set(m.visible_parts or set())
-        jt = getattr(m, "carcass_joint_type", "type1")
-
-        # ---------------- PRZOD: rama korpusu wg typu ----------------
-        t = float(t_carcass)
-
-        raw_top_rail_offset_mm = float(getattr(m, "top_rail_offset_mm", 0.0) or 0.0)
-        raw_bottom_rail_offset_mm = float(getattr(m, "bottom_rail_offset_mm", 0.0) or 0.0)
-
-        norm_top_rail_offset_mm, norm_bottom_rail_offset_mm = normalize_rail_offsets_mm(
-            height_mm=H,
-            rail_thickness_mm=t,
-            top_offset_mm=raw_top_rail_offset_mm,
-            bottom_offset_mm=raw_bottom_rail_offset_mm,
-        )
-
-        top_rail_offset_mm = norm_top_rail_offset_mm if "top" in vp else 0.0
-        bottom_rail_offset_mm = norm_bottom_rail_offset_mm if "bottom" in vp else 0.0
-
-        top_rail_presence_mm = t if "top" in vp else 0.0
-        bottom_rail_presence_mm = t if "bottom" in vp else 0.0
-
-        top_y = front_view.top() + top_rail_offset_mm
-        bot_y = front_view.bottom() - bottom_rail_presence_mm - bottom_rail_offset_mm
-
-        if jt == "type1":
-            side_y = front_view.top()
-            side_h = H
-
-            top_x = front_view.left() + t
-            top_w = max(0.0, L - 2 * t)
-
-            bot_x = top_x
-            bot_w = top_w
-        else:
-            side_y = front_view.top() + top_rail_presence_mm + top_rail_offset_mm
-            side_h = max(
-                0.0,
-                H - top_rail_presence_mm - bottom_rail_presence_mm - top_rail_offset_mm - bottom_rail_offset_mm,
-            )
-
-            top_x = front_view.left()
-            top_w = L
-
-            bot_x = top_x
-            bot_w = top_w
-
-        if "side_left" in vp:
-            add_part_rect("side_left", QRectF(front_view.left(), side_y, t, side_h), z=6)
-        if "side_right" in vp:
-            add_part_rect("side_right", QRectF(front_view.right() - t, side_y, t, side_h), z=6)
-
-        if "top" in vp:
-            add_part_rect("top", QRectF(top_x, top_y, top_w, t), z=7)
-        if "bottom" in vp:
-            add_part_rect("bottom", QRectF(bot_x, bot_y, bot_w, t), z=7)
-
-        rail_handle_rects: list[tuple[str, QRectF]] = []
-        rail_grip_h = 20.0
-
-        show_rail_handles = str(selected_part_key or "").strip() != "front"
-
-        if show_rail_handles and "top" in vp and top_w > 0.0:
-            top_pad = max(10.0, min(40.0, float(top_w) * 0.2))
-            top_handle_w = max(36.0, float(top_w) - 2.0 * top_pad)
-            rail_handle_rects.append(
-                (
-                    "rail_offset_handle__top",
-                    QRectF(top_x + top_pad, top_y - rail_grip_h / 2.0, top_handle_w, rail_grip_h),
-                )
-            )
-
-        if show_rail_handles and "bottom" in vp and bot_w > 0.0:
-            bottom_pad = max(10.0, min(40.0, float(bot_w) * 0.2))
-            bottom_handle_w = max(36.0, float(bot_w) - 2.0 * bottom_pad)
-            rail_handle_rects.append(
-                (
-                    "rail_offset_handle__bottom",
-                    QRectF(bot_x + bottom_pad, bot_y - rail_grip_h / 2.0, bottom_handle_w, rail_grip_h),
-                )
-            )
-
-        for handle_key, handle_rect in rail_handle_rects:
-            add_part_rect(
-                handle_key,
-                handle_rect,
-                dashed=False,
-                z=11,
-            )
-
-            grip_size = max(10.0, min(14.0, handle_rect.height()))
-            grip_y = handle_rect.center().y() - grip_size / 2.0
-            left_grip = QRectF(
-                handle_rect.left() - grip_size * 0.5,
-                grip_y,
-                grip_size,
-                grip_size,
-            )
-            right_grip = QRectF(
-                handle_rect.right() - grip_size * 0.5,
-                grip_y,
-                grip_size,
-                grip_size,
-            )
-
-            add_part_rect(
-                handle_key,
-                left_grip,
-                dashed=False,
-                z=12,
-            )
-            add_part_rect(
-                handle_key,
-                right_grip,
-                dashed=False,
-                z=12,
-            )
-
-        rail_label_specs = self._build_rail_offset_handle_label_specs(
-            rail_handle_rects,
-            top_offset_mm=top_rail_offset_mm,
-            bottom_offset_mm=bottom_rail_offset_mm,
-        )
-        for handle_key, caption, pos in rail_label_specs:
-            add_front_zone_label(
-                key=f"{handle_key}__label",
-                caption=caption,
-                pos=pos,
-                active=(handle_key == self.active_rail_offset_handle_key()),
-            )
-
-
-        active_rail_handle_key = self.active_rail_offset_handle_key()
-        if active_rail_handle_key:
-            active_rail_rect = None
-            for handle_key, handle_rect in rail_handle_rects:
-                if handle_key == active_rail_handle_key:
-                    active_rail_rect = handle_rect
-                    break
-
-            if active_rail_rect is not None:
-                guide_pen = self._pen("#d97706", max(2, s.dim_line_width_px), dashed=True)
-                guide = self.scene.addLine(
-                    front_view.left(),
-                    active_rail_rect.center().y(),
-                    front_view.right(),
-                    active_rail_rect.center().y(),
-                    guide_pen,
-                )
-                guide.setData(0, f"{active_rail_handle_key}__guide")
-                guide.setZValue(10.5)
-        # --- POLKI/PIONY (klikalne) + POLKI w segmencie left/right ---
-        vp = set(getattr(m, "visible_parts", set()) or set())
-
-        div_n = int(getattr(m, "divider_count", 0) or 0) if ("divider" in vp) else 0
-        shelf_n = int(getattr(m, "shelf_count", 0) or 0) if ("shelf" in vp) else 0
-
-        parts = getattr(m, "parts", {}) or {}
-        parts_keys = list(parts.keys())
-
-        def _idx_of(k: str) -> int:
-            s_key = str(k)
-            for sep in ("_", "-"):
-                if sep in s_key:
-                    tail = s_key.split(sep)[-1]
-                    if tail.isdigit():
-                        return int(tail)
-            return 999
-
-        div_keys = sorted(
-            [k for k in parts_keys if str(k).startswith("divider_") or str(k).startswith("divider-")],
-            key=lambda x: _idx_of(str(x))
-        )
-        shelf_keys = sorted(
-            [k for k in parts_keys if str(k).startswith("shelf_") or str(k).startswith("shelf-")],
-            key=lambda x: _idx_of(str(x))
-        )
-
-        # fallback (wazne dla testow i gdy parts chwilowo puste)
-        if not div_keys and div_n > 0:
-            div_keys = [f"divider_{i}" for i in range(1, div_n + 1)]
-        if not shelf_keys and shelf_n > 0:
-            shelf_keys = [f"shelf_{i}" for i in range(1, shelf_n + 1)]
-
-        # swiat'o (zawsze miedzy wiencami)
-        inner_x = front_view.left() + t
-        inner_y = front_view.top() + top_rail_presence_mm + top_rail_offset_mm
-        inner_w = max(0.0, L - 2 * t)
-        inner_h = max(
-            0.0,
-            H - top_rail_presence_mm - bottom_rail_presence_mm - top_rail_offset_mm - bottom_rail_offset_mm,
-        )
-
-        # segmenty: jesli brak pionow -> 1 segment = ca'e swiat'o
-        seg_w = inner_w
-        if div_n > 0:
-            clear = max(0.0, inner_w - div_n * t)
-            seg_w = clear / (div_n + 1)
-
-        # piony (klikane)
-        for i in range(1, div_n + 1):
-            key = div_keys[i - 1] if (i - 1) < len(div_keys) else f"divider_{i}"
-            x = inner_x + seg_w * i + t * (i - 1)
-            add_part_rect(key=key, rect=QRectF(x, inner_y, t, inner_h), dashed=False, z=6)
-
-        # segment dla po'ek:
-        # - gdy pionow brak -> po'ki w ca'ym swietle
-        # - gdy piony sa -> po'ki w lewym lub prawym segmencie
-        mount = str(getattr(m, "shelf_mount", "right") or "right").lower()
-        draw_both_sides = (mount == "both") and (div_n > 0)
-
-        segment_specs: list[tuple[str, int]]
-        if div_n <= 0:
-            segment_specs = [("single", 0)]
-        elif draw_both_sides:
-            segment_specs = [("left", 0), ("right", div_n)]
-        elif mount == "left":
-            segment_specs = [("left", 0)]
-        else:
-            segment_specs = [("right", div_n)]
-
-        def _parse_shelf_key(raw_key: str) -> tuple[str, int]:
-            key = str(raw_key or "").strip().lower()
-            if key.startswith("shelf_left_"):
-                tail = key[11:]
-                return "left", int(tail) if tail.isdigit() else 999
-            if key.startswith("shelf_right_"):
-                tail = key[12:]
-                return "right", int(tail) if tail.isdigit() else 999
-            if key.startswith("shelf_"):
-                tail = key[6:]
-                return "single", int(tail) if tail.isdigit() else 999
-            if key.startswith("shelf-"):
-                tail = key[6:]
-                return "single", int(tail) if tail.isdigit() else 999
-            return "single", 999
-
-        shelf_by_slot: dict[tuple[str, int], str] = {}
-        for shelf_key in shelf_keys:
-            side_key, shelf_idx = _parse_shelf_key(shelf_key)
-            if side_key == "single" and draw_both_sides:
-                continue
-            slot = (side_key, shelf_idx)
-            if slot not in shelf_by_slot:
-                shelf_by_slot[slot] = shelf_key
-
-        for seg_side, seg_idx in segment_specs:
-            seg_x = inner_x + seg_w * seg_idx + t * seg_idx
-            seg_x = max(inner_x, min(inner_x + max(0.0, inner_w - seg_w), seg_x))
-
-            for idx in range(1, shelf_n + 1):
-                fallback_key = f"shelf_{idx}"
-                if draw_both_sides:
-                    fallback_key = f"shelf_{seg_side}_{idx}"
-                key = shelf_by_slot.get((seg_side, idx), fallback_key)
-                y_center = inner_y + (idx / (shelf_n + 1)) * inner_h
-                y_top = max(inner_y, min(inner_y + inner_h - t, y_center - t / 2))
-                add_part_rect(key=key, rect=QRectF(seg_x, y_top, seg_w, t), dashed=False, z=6)
-
-        front_rect = _resolve_front_face_rect()
-        if front_rect is not None:
-            add_part_rect(
-                "front__front",
-                front_rect,
-                dashed=True,
-                z=4,
-            )
-
-            handle_rects = self._build_front_zone_handle_rects(front_rect, m)
-
-            for handle_key, handle_rect in handle_rects:
-                add_part_rect(
-                    handle_key,
-                    handle_rect,
-                    dashed=False,
-                    z=12,
-                )
-
-            label_specs = self._build_front_zone_handle_label_specs(handle_rects)
-            for handle_key, caption, pos in label_specs:
-                add_front_zone_label(
-                    key=f"{handle_key}__label",
-                    caption=caption,
-                    pos=pos,
-                    active=(handle_key == self.active_front_zone_handle_key()),
-                )
-
-            # --------------------------------------------------
-            # WSPOLNE USTAWIENIA FRONTU - LICZONE TYLKO RAZ
-            # --------------------------------------------------
-            facade_mode = str(getattr(m, "facade_mode", "doors") or "doors").strip().lower()
-            drawer_count = int(getattr(m, "drawer_count", 3) or 3)
-
-            hinge_edge_offset = float(getattr(s, "hinge_edge_offset_mm", 12.0) or 12.0)
-            if hinge_edge_offset < 0.0:
-                hinge_edge_offset = 12.0
-
-            auto_double_front_width = float(getattr(s, "auto_double_front_width_mm", 600.0) or 600.0)
-            if auto_double_front_width < 100.0:
-                auto_double_front_width = 600.0
-
-            try:
-                gap_between_vertical = max(
-                    0.0,
-                    float(getattr(m, "front_gap_between_vertical_mm", 0.0) or 0.0),
-                )
-            except Exception:
-                gap_between_vertical = 0.0
-
-            door_left = front_rect.left()
-            door_right = front_rect.right()
-            door_top = front_rect.top()
-            door_bottom = front_rect.bottom()
-
-            door_w = front_rect.width()
-            door_h = front_rect.height()
-
-            is_double_door = (facade_mode == "doors") and (door_w >= auto_double_front_width)
-
-            hinge_offset_y = 80.0
-            hinge_size = 28.0
-
-            hinge_pen = QPen(QColor(20, 20, 20))
-            hinge_pen.setWidth(2)
-
-            # --------------------------------
-            # SZUFLADY
-            # --------------------------------
-            if facade_mode == "drawers" and drawer_count > 1:
-                drawer_layout_mode = str(getattr(m, "drawer_layout_mode", "equal") or "equal").strip().lower()
-                try:
-                    small_front_h = float(getattr(m, "drawer_small_front_height_mm", 140.0) or 140.0)
-                except Exception:
-                    small_front_h = 140.0
-                small_front_h = max(60.0, small_front_h)
-
-                total_gap = gap_between_vertical * max(0, drawer_count - 1)
-                free_h = max(0.0, front_rect.height() - total_gap)
-
-                heights: list[float] = []
-                if drawer_layout_mode in ("small_top", "small_bottom") and drawer_count > 1:
-                    first_h = min(small_front_h, max(20.0, free_h * 0.45))
-                    remaining = max(0.0, free_h - first_h)
-                    each_rest = remaining / float(drawer_count - 1)
-                    if drawer_layout_mode == "small_top":
-                        heights = [first_h] + [each_rest for _ in range(drawer_count - 1)]
-                    else:
-                        heights = [each_rest for _ in range(drawer_count - 1)] + [first_h]
-                else:
-                    seg_h = free_h / drawer_count if drawer_count > 0 else 0.0
-                    heights = [seg_h for _ in range(drawer_count)]
-
-                cursor_y = front_rect.top()
-
-                for i in range(1, drawer_count):
-                    cursor_y += heights[i - 1]
-                    split_y = cursor_y + gap_between_vertical * 0.5
-
-                    line = self.scene.addLine(
-                        front_rect.left(),
-                        split_y,
-                        front_rect.right(),
-                        split_y,
-                        pen_dim,
-                    )
-                    line.setZValue(9)
-
-                    try:
-                        line.key = f"front__drawer_split_{i}"
-                        line.setData(0, line.key)
-                    except Exception:
-                        pass
-
-                    cursor_y += gap_between_vertical
-
-            # --------------------------------
-            # DRZWI PODWOJNE
-            # --------------------------------
-            elif is_double_door:
-                mid = door_left + door_w / 2.0
-
-                split_line = self.scene.addLine(
-                    mid,
-                    door_top,
-                    mid,
-                    door_bottom,
-                    pen_dim
-                )
-                split_line.setZValue(9)
-
-                split_line.key = "front__split_line"
-
-                hx_left = door_left + hinge_edge_offset
-                for hy in (door_top + hinge_offset_y, door_bottom - hinge_offset_y):
-                    hinge = self.scene.addRect(
-                        hx_left - hinge_size / 2,
-                        hy - hinge_size / 2,
-                        hinge_size,
-                        hinge_size,
-                        hinge_pen
-                    )
-                    hinge.setZValue(10)
-
-                    hinge_dot = self.scene.addEllipse(
-                        hx_left - 3,
-                        hy - 3,
-                        6,
-                        6,
-                        hinge_pen
-                    )
-                    hinge_dot.setZValue(11)
-
-                hx_right = door_right - hinge_edge_offset
-                for hy in (door_top + hinge_offset_y, door_bottom - hinge_offset_y):
-                    hinge = self.scene.addRect(
-                        hx_right - hinge_size / 2,
-                        hy - hinge_size / 2,
-                        hinge_size,
-                        hinge_size,
-                        hinge_pen
-                    )
-                    hinge.setZValue(10)
-
-                    hinge_dot = self.scene.addEllipse(
-                        hx_right - 3,
-                        hy - 3,
-                        6,
-                        6,
-                        hinge_pen
-                    )
-                    hinge_dot.setZValue(11)
-
-                hy1 = door_top + door_h * 0.4
-                hy2 = door_top + door_h * 0.6
-                handle_gap = 40.0
-
-                h1 = self.scene.addLine(
-                    mid - handle_gap,
-                    hy1,
-                    mid - handle_gap,
-                    hy2,
-                    pen_dim
-                )
-                h1.setZValue(10)
-
-                h2 = self.scene.addLine(
-                    mid + handle_gap,
-                    hy1,
-                    mid + handle_gap,
-                    hy2,
-                    pen_dim
-                )
-                h2.setZValue(10)
-
-            # --------------------------------
-            # DRZWI POJEDYNCZE
-            # --------------------------------
-            elif facade_mode == "doors":
-                hinge_side = str(getattr(m, "door_hinge_side", "left") or "left").strip().lower()
-                if hinge_side not in ("left", "right"):
-                    hinge_side = "left"
-
-                if hinge_side == "left":
-                    hx = door_left + hinge_edge_offset
-                else:
-                    hx = door_right - hinge_edge_offset
-
-                for hy in (door_top + hinge_offset_y, door_bottom - hinge_offset_y):
-                    hinge = self.scene.addRect(
-                        hx - hinge_size / 2,
-                        hy - hinge_size / 2,
-                        hinge_size,
-                        hinge_size,
-                        hinge_pen
-                    )
-                    hinge.setZValue(10)
-
-                    hinge_dot = self.scene.addEllipse(
-                        hx - 3,
-                        hy - 3,
-                        6,
-                        6,
-                        hinge_pen
-                    )
-                    hinge_dot.setZValue(11)
-
-                handle_offset = 40.0
-                if hinge_side == "left":
-                    handle_x = door_right - handle_offset
-                else:
-                    handle_x = door_left + handle_offset
-
-                hy1 = door_top + door_h * 0.4
-                hy2 = door_top + door_h * 0.6
-
-                handle = self.scene.addLine(
-                    handle_x,
-                    hy1,
-                    handle_x,
-                    hy2,
-                    pen_dim
-                )
-                handle.setZValue(10)
-
-        # ---------------- GORA: boki + front/plecy ----------------
-        # boki jako pasy
-        if "side_left" in vp:
-            add_part_rect("side_left", QRectF(top_view.left(), top_view.top(), t, W), z=6)
-        if "side_right" in vp:
-            add_part_rect("side_right", QRectF(top_view.right() - t, top_view.top(), t, W), z=6)
-
-        # plecy (u gory) - domyslnie rysujemy jako pas w srodku korpusu
-        if "back" in vp:
-            bt = min(t_back, W)
-            add_part_rect("back", QRectF(top_view.left(), top_view.top(), L, bt), dashed=True, z=4)
-
-        # front w rzucie z gory - zaleznie od typu: overlay / inset
-        if front_top_rect is not None:
-            add_part_rect(key="front__top", rect=front_top_rect, dashed=True, z=9)
-
-            # wazne: zeby fitInView nie ucinalo overlay
-            bounds = bounds.united(front_top_rect)
-        # ---------------- Linie wymiarowe ----------------
-        if effective_show_dimensions:
-            tick = 26.0
-            arrow = 26.0
-
-            def dim_h(x1: float, x2: float, y_obj: float, y_dim: float, text: str) -> None:
-                self.scene.addLine(x1, y_obj, x1, y_dim, pen_dim)
-                self.scene.addLine(x2, y_obj, x2, y_dim, pen_dim)
-                self.scene.addLine(x1, y_dim, x2, y_dim, pen_dim)
-
-                if s.dim_end_style == "arrows":
-                    self._arrow_head_h(x1, y_dim, +1, arrow, pen_dim)
-                    self._arrow_head_h(x2, y_dim, -1, arrow, pen_dim)
-                else:
-                    self.scene.addLine(x1, y_dim - tick / 2, x1, y_dim + tick / 2, pen_dim)
-                    self.scene.addLine(x2, y_dim - tick / 2, x2, y_dim + tick / 2, pen_dim)
-
-                self._add_text_centered(text, (x1 + x2) / 2, y_dim - 30.0, 0.0)
-
-            def dim_v(y1: float, y2: float, x_obj: float, x_dim: float, text: str) -> None:
-                self.scene.addLine(x_obj, y1, x_dim, y1, pen_dim)
-                self.scene.addLine(x_obj, y2, x_dim, y2, pen_dim)
-                self.scene.addLine(x_dim, y1, x_dim, y2, pen_dim)
-
-                if s.dim_end_style == "arrows":
-                    self._arrow_head_v(x_dim, y1, +1, arrow, pen_dim)
-                    self._arrow_head_v(x_dim, y2, -1, arrow, pen_dim)
-                else:
-                    self.scene.addLine(x_dim - tick / 2, y1, x_dim + tick / 2, y1, pen_dim)
-                    self.scene.addLine(x_dim - tick / 2, y2, x_dim + tick / 2, y2, pen_dim)
-
-                self._add_text_centered(text, x_dim + 28.0, (y1 + y2) / 2, -90.0)
-
-            dim_h(front_view.left(), front_view.right(), front_view.top(), front_view.top() - dim_off, f"L = {L:g} mm")
-            dim_v(front_view.top(), front_view.bottom(), front_view.right(), front_view.right() + dim_off, f"H = {H:g} mm")
-            dim_v(top_view.top(), top_view.bottom(), top_view.right(), top_view.right() + dim_off, f"W = {W:g} mm")
-
-        scene_bounds = self.scene.itemsBoundingRect()
-        if scene_bounds.isNull() or scene_bounds.isEmpty():
-            scene_bounds = bounds
-        self.scene.setSceneRect(scene_bounds.adjusted(-40, -40, 40, 40))
-        if fit:
-            self._fit_scene_to_view()
+# ViewsCanvas jest teraz w src.tabs.modul.views_canvas
 # endregion
 
 
@@ -1845,6 +176,7 @@ class TabModul(QWidget):
 
         self._store = ModuleStoreJson()
         self._catalog = CatalogStoreJson()
+        self._receptura_store = RecepturaStoreJson()
 
         # --- SESSION tylko tutaj (TabModul) ---
         self._session_ready = False
@@ -1896,9 +228,9 @@ class TabModul(QWidget):
         split = QSplitter(Qt.Orientation.Horizontal, self)
         root.addWidget(split, 1)
 
-        self.zone_left = ZoneFrame("left", "STREFA LEWA", self, scrollable=True)
-        self.zone_center = ZoneFrame("center", "STREFA SRODKOWA", self, scrollable=False)
-        self.zone_right = ZoneFrame("right", "STREFA PRAWA", self, scrollable=True)
+        self.zone_left = ZoneFrame("left", "PARAMETRY", self, scrollable=True)
+        self.zone_center = ZoneFrame("center", "MODUL KONSTRUKTORSKI", self, scrollable=False)
+        self.zone_right = ZoneFrame("right", "BOM I KOSZTY", self, scrollable=True)
 
         self.zone_left.setMinimumWidth(320)
         self.zone_right.setMinimumWidth(320)
@@ -1916,25 +248,25 @@ class TabModul(QWidget):
         self._zone_splitter.splitterMoved.connect(self._on_zone_splitter_moved)
 
         # ---------- LEFT BLOCKS ----------
-        self.blk_dims = CollapsibleBlock("Wymiary (L/W/H) + baza modulow")
+        self.blk_dims = CollapsibleBlock("Wymiary modulu")
         self.blk_dims.setObjectName("blk_dims")
         self.dim = DimensionsBlock()
         self.blk_dims.content_layout().addWidget(self.dim)
         self.zone_left.body_lay.addWidget(self.blk_dims)
 
-        self.blk_mat = CollapsibleBlock("Materialy modulu")
+        self.blk_mat = CollapsibleBlock("Materialy")
         self.blk_mat.setObjectName("blk_mat")
         self.mat = MaterialsBlock(self._catalog)
         self.blk_mat.content_layout().addWidget(self.mat)
         self.zone_left.body_lay.addWidget(self.blk_mat)
 
-        self.blk_fhw = CollapsibleBlock("Fronty i okucia")
+        self.blk_fhw = CollapsibleBlock("Front i wyposazenie")
         self.blk_fhw.setObjectName("blk_fhw")
         self.fhw = FrontHardwareBlock(self._catalog)
         self.blk_fhw.content_layout().addWidget(self.fhw)
         self.zone_left.body_lay.addWidget(self.blk_fhw)
 
-        self.blk_joint = CollapsibleBlock("Laczenia korpusu")
+        self.blk_joint = CollapsibleBlock("Elementy korpusu")
         self.blk_joint.setObjectName("blk_joint")
         self.joint = CarcassJointsBlock()
         self.blk_joint.content_layout().addWidget(self.joint)
@@ -1946,7 +278,7 @@ class TabModul(QWidget):
         self.blk_shelves.content_layout().addWidget(self.shelves)
         self.zone_left.body_lay.addWidget(self.blk_shelves)
 
-        self.blk_div = CollapsibleBlock("Piony")
+        self.blk_div = CollapsibleBlock("Przegrody")
         self.blk_div.setObjectName("blk_div")
         self.dividers = DividersBlock()
         self.blk_div.content_layout().addWidget(self.dividers)
@@ -1958,10 +290,10 @@ class TabModul(QWidget):
         self.blk_ref.content_layout().addWidget(self.ref)
         self.zone_left.body_lay.addWidget(self.blk_ref)
 
-        self.blk_tree = CollapsibleBlock("Drzewo projektu")
+        self.blk_tree = CollapsibleBlock("Lista formatek")
         self.blk_tree.setObjectName("blk_tree")
-        self.blk_tree.setMaximumHeight(240)
-        self.tree = ProjectTreeBlock()
+        self.blk_tree.setMaximumHeight(360)
+        self.tree = PartsTableBlock()
         self.blk_tree.content_layout().addWidget(self.tree)
         self.zone_left.body_lay.addWidget(self.blk_tree)
 
@@ -1993,48 +325,83 @@ class TabModul(QWidget):
         # ---------- CENTER ----------
         self.quick_bar = QFrame(self.zone_center)
         self.quick_bar.setObjectName("modul_quick_bar")
-        self.quick_bar.setStyleSheet(
-            "QFrame#modul_quick_bar {"
-            "border: 1px solid #d8d8d8;"
-            "border-radius: 6px;"
-            "background: #fafafa;"
-            "}"
-        )
+        mark_ui_card(self.quick_bar, elevated=False)
+        self.quick_bar.setStyleSheet("""
+            QFrame#modul_quick_bar {
+                background: #edf3fb;
+                border: 1px solid #d5e1f1;
+                border-radius: 14px;
+            }
+        """)
         quick_lay = QHBoxLayout(self.quick_bar)
-        quick_lay.setContentsMargins(8, 6, 8, 6)
-        quick_lay.setSpacing(6)
+        quick_lay.setContentsMargins(12, 10, 12, 10)
+        quick_lay.setSpacing(10)
+
+        self.btn_q_new = QPushButton("Nowy")
+        self.btn_q_new.clicked.connect(self.start_new_module)
+        set_ui_variant(self.btn_q_new, "primary")
+        self.btn_q_new.setMinimumHeight(36)
+        quick_lay.addWidget(self.btn_q_new)
+
+        self.btn_q_clear = QPushButton("Wyczysc")
+        self.btn_q_clear.clicked.connect(self._on_clear_current_module)
+        set_ui_variant(self.btn_q_clear, "primary")
+        self.btn_q_clear.setMinimumHeight(36)
+        quick_lay.addWidget(self.btn_q_clear)
 
         self.btn_q_save = QPushButton("Zapisz")
         self.btn_q_save.clicked.connect(self._shortcut_save_module)
+        set_ui_variant(self.btn_q_save, "primary")
+        self.btn_q_save.setMinimumHeight(36)
         quick_lay.addWidget(self.btn_q_save)
 
         self.btn_q_overwrite = QPushButton("Nadpisz")
         self.btn_q_overwrite.clicked.connect(self._on_overwrite)
+        set_ui_variant(self.btn_q_overwrite, "ghost")
+        self.btn_q_overwrite.setMinimumHeight(36)
         quick_lay.addWidget(self.btn_q_overwrite)
 
         self.btn_q_load = QPushButton("Wczytaj")
-        self.btn_q_load.clicked.connect(self._on_load)
+        self.btn_q_load.clicked.connect(self._on_load_from_base_preview)
+        set_ui_variant(self.btn_q_load, "primary")
+        self.btn_q_load.setMinimumHeight(36)
         quick_lay.addWidget(self.btn_q_load)
 
-        self.btn_q_new = QPushButton("Nowy")
-        self.btn_q_new.clicked.connect(self.start_new_module)
-        quick_lay.addWidget(self.btn_q_new)
+        self.btn_q_delete = QPushButton("Usun")
+        self.btn_q_delete.clicked.connect(self._on_dim_delete_clicked)
+        set_ui_variant(self.btn_q_delete, "ghost")
+        self.btn_q_delete.setMinimumHeight(36)
+        quick_lay.addWidget(self.btn_q_delete)
 
         self.btn_q_focus_name = QPushButton("Nazwa")
         self.btn_q_focus_name.clicked.connect(self._shortcut_focus_module_name)
+        set_ui_variant(self.btn_q_focus_name, "ghost")
+        self.btn_q_focus_name.setMinimumHeight(36)
         quick_lay.addWidget(self.btn_q_focus_name)
 
         self.btn_q_doors = QPushButton("Drzwi")
         self.btn_q_doors.clicked.connect(lambda: self._set_facade_mode_quick("doors"))
+        set_ui_variant(self.btn_q_doors, "ghost")
+        self.btn_q_doors.setMinimumHeight(36)
         quick_lay.addWidget(self.btn_q_doors)
 
         self.btn_q_drawers = QPushButton("Szuflady")
         self.btn_q_drawers.clicked.connect(lambda: self._set_facade_mode_quick("drawers"))
+        set_ui_variant(self.btn_q_drawers, "ghost")
+        self.btn_q_drawers.setMinimumHeight(36)
         quick_lay.addWidget(self.btn_q_drawers)
 
         self.btn_q_shortcuts = QPushButton("Skroty")
         self.btn_q_shortcuts.clicked.connect(self._open_shortcuts_dialog)
+        set_ui_variant(self.btn_q_shortcuts, "ghost")
+        self.btn_q_shortcuts.setMinimumHeight(36)
         quick_lay.addWidget(self.btn_q_shortcuts)
+
+        self.btn_q_receptura = QPushButton("Receptura")
+        self.btn_q_receptura.clicked.connect(self._on_import_materials_from_receptura)
+        set_ui_variant(self.btn_q_receptura, "success")
+        self.btn_q_receptura.setMinimumHeight(36)
+        quick_lay.addWidget(self.btn_q_receptura)
 
         quick_lay.addStretch(1)
         self.zone_center.body_lay.addWidget(self.quick_bar, 0)
@@ -2044,12 +411,22 @@ class TabModul(QWidget):
         self.zone_center.body_lay.addWidget(self.canvas, 1)
 
         # ---------- RIGHT ----------
-        blk_edge = CollapsibleBlock("Oklejanie formatki (klikaj na miniaturze)")
+        blk_preview = CollapsibleBlock("Podglad modulu")
+        self.preview_mini = ModuleMiniPreview(self.zone_right)
+        self.preview_mini.setMinimumHeight(240)
+        self.preview_info = QLabel("-", self.zone_right)
+        self.preview_info.setWordWrap(True)
+        self.preview_info.setStyleSheet("font-weight:600; color:#213042;")
+        blk_preview.content_layout().addWidget(self.preview_mini)
+        blk_preview.content_layout().addWidget(self.preview_info)
+        self.zone_right.body_lay.addWidget(blk_preview, 0)
+
+        blk_edge = CollapsibleBlock("Oklejanie formatki")
         self.edge = EdgeBandingBlock(self._catalog)
         blk_edge.content_layout().addWidget(self.edge)
         self.zone_right.body_lay.addWidget(blk_edge, 1)
 
-        blk_bom = CollapsibleBlock("BOM")
+        blk_bom = CollapsibleBlock("BOM i koszty")
         self.bom = BomBlock(self._catalog)
         blk_bom.content_layout().addWidget(self.bom)
         self.zone_right.body_lay.addWidget(blk_bom, 1)
@@ -2091,7 +468,7 @@ class TabModul(QWidget):
         self._shortcut_actions = {
             "save": ("Ctrl+S", self._shortcut_save_module),
             "overwrite": ("Ctrl+Shift+S", self._on_overwrite),
-            "load": ("Ctrl+L", self._on_load),
+            "load": ("Ctrl+L", self._on_load_from_base_preview),
             "new": ("Ctrl+N", self.start_new_module),
             "focus_name": ("Ctrl+F", self._shortcut_focus_module_name),
             "toggle_front": ("Ctrl+H", self._toggle_front_preview_visibility),
@@ -2229,6 +606,70 @@ class TabModul(QWidget):
 
         self._save_shortcut_map(new_map)
         self._setup_shortcuts_from_settings()
+
+    def _on_import_materials_from_receptura(self) -> None:
+        source_rows = self._receptura_store.list_for_module()
+        if not source_rows:
+            QMessageBox.information(self, "Receptura", "Brak pozycji oznaczonych 'Do modulu'.")
+            return
+
+        picked_rows = pick_receptura_rows(
+            self,
+            source_rows,
+            title="Wybierz pozycje z Receptury do Modulu",
+            subtitle="Wybrane pozycje zostana dodane/uzupelnione w katalogu materialow Modulu.",
+            allow_multi=True,
+        )
+        if not picked_rows:
+            return
+
+        exported = self._catalog.export_catalog()
+        materials = [dict(item) for item in (exported.get("materials") or []) if isinstance(item, dict)]
+        idx_by_key = {str(item.get("key", "") or "").strip(): idx for idx, item in enumerate(materials)}
+
+        added = 0
+        updated = 0
+        for row in picked_rows:
+            material_row = build_catalog_material_from_receptura(row)
+            key = str(material_row.get("key", "") or "").strip()
+            if not key:
+                continue
+            existing_idx = idx_by_key.get(key, -1)
+            if existing_idx >= 0:
+                if dict(materials[existing_idx]) != dict(material_row):
+                    materials[existing_idx] = dict(material_row)
+                    updated += 1
+            else:
+                idx_by_key[key] = len(materials)
+                materials.append(dict(material_row))
+                added += 1
+
+        if added <= 0 and updated <= 0:
+            QMessageBox.information(self, "Receptura", "Brak zmian do importu.")
+            return
+
+        try:
+            self._catalog.replace_catalog(materials=materials)
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Receptura",
+                f"Nie udalo sie zaimportowac materialow do katalogu Modulu.\n\nSzczegoly: {exc}",
+            )
+            return
+
+        self._on_catalog_changed()
+        QMessageBox.information(
+            self,
+            "Receptura",
+            (
+                f"Import zakonczony.\n"
+                f"Dodano materialow: {added}\n"
+                f"Zaktualizowano materialow: {updated}\n\n"
+                f"Nowe pozycje znajdziesz w bloku 'Materialy modulu' i w BOM."
+            ),
+        )
+
     def _get_collapsible_block_body(self, block: QWidget | None) -> QWidget | None:
         """
         Zwraca widget-body z CollapsibleBlock.
@@ -2270,6 +711,10 @@ class TabModul(QWidget):
         Startowo zwiniete:
         - Po'ki
         - Piony
+        - Punkt odniesienia
+        - Drzewo projektu
+        - Widoczne elementy
+        - Sesja i widok
         """
         self._set_collapsible_block_body_visible(getattr(self, "blk_dims", None), True)
         self._set_collapsible_block_body_visible(getattr(self, "blk_mat", None), True)
@@ -2278,6 +723,10 @@ class TabModul(QWidget):
 
         self._set_collapsible_block_body_visible(getattr(self, "blk_shelves", None), False)
         self._set_collapsible_block_body_visible(getattr(self, "blk_div", None), False)
+        self._set_collapsible_block_body_visible(getattr(self, "blk_ref", None), False)
+        self._set_collapsible_block_body_visible(getattr(self, "blk_tree", None), False)
+        self._set_collapsible_block_body_visible(getattr(self, "blk_vis", None), False)
+        self._set_collapsible_block_body_visible(getattr(self, "blk_sess", None), False)
 
     def _apply_edgeband_to_selected(self) -> None:
         keys = self.tree.selected_part_keys()
@@ -2433,6 +882,8 @@ class TabModul(QWidget):
     # ---------------------------
     def _hook_signals(self) -> None:
         self.tree.sig_selected_part.connect(self._on_selected_part)
+        self.tree.sig_visibility_changed.connect(self._on_parts_table_visibility_changed)
+        self.tree.sig_grain_changed.connect(self._on_parts_table_grain_changed)
         self.canvas.sig_clicked_part.connect(self._on_canvas_part_clicked)
 
         if hasattr(self.canvas, "sig_front_zone_handle_clicked"):
@@ -2448,6 +899,8 @@ class TabModul(QWidget):
             self.canvas.sig_rail_offset_handle_dragged.connect(self._on_rail_offset_handle_dragged)
 
         # CRUD bazy modu'ow
+        self.dim.sig_new.connect(self.start_new_module)
+        self.dim.sig_clear.connect(self._on_clear_current_module)
         self.dim.sig_save.connect(self._on_dim_save_clicked)
         self.dim.sig_overwrite.connect(self._on_dim_overwrite_clicked)
         self.dim.sig_load.connect(self._on_load_from_base_preview)
@@ -2455,6 +908,7 @@ class TabModul(QWidget):
 
         # zmiany wymiarow -> render
         self.dim.ed_name.textChanged.connect(self._on_any_change)
+        self.dim.ed_name.textChanged.connect(self._refresh_crud_action_state)
         self.dim.cb_base_group.currentIndexChanged.connect(self._on_any_change)
         self.dim.sp_w.valueChanged.connect(self._on_any_change)
         self.dim.sp_d.valueChanged.connect(self._on_any_change)
@@ -2492,116 +946,6 @@ class TabModul(QWidget):
         self.sessview.sig_clear_last.connect(self._on_clear_last_state)
         self.sessview.sig_hide_front_changed.connect(self._on_hide_front_toggle)
         self.sessview.sig_set_current_as_default.connect(self._on_set_current_as_default)
-    # ---------------------------
-    # region HANDLERS: Zapisz / Nadpisz (baza modu'ow)
-    # ---------------------------
-    def _ensure_name_for_save(self) -> str:
-        name = self.dim.ed_name.text().strip()
-        if not name:
-            # automatyczna nazwa jesli pusto
-            w = int(self.dim.sp_w.value())
-            d = int(self.dim.sp_d.value())
-            h = int(self.dim.sp_h.value())
-            name = f"MOD_{w}x{d}x{h}"
-            self.dim.ed_name.setText(name)
-        return name
-
-    def _store_try(self, fn_name: str, *args) -> bool:
-        if not hasattr(self._store, fn_name):
-            return False
-        fn = getattr(self._store, fn_name)
-
-        # probujemy kilka wariantow sygnatur
-        variants = []
-        if len(args) == 2:
-            name, m = args
-            md = m.to_dict() if hasattr(m, "to_dict") else m
-            variants = [
-                (name, m),
-                (name, md),
-                (m,),
-                (md,),
-            ]
-        else:
-            variants = [args]
-
-        last_exc = None
-        for a in variants:
-            try:
-                fn(*a)
-                return True
-            except TypeError as e:
-                last_exc = e
-                continue
-            except Exception as e:
-                last_exc = e
-                break
-
-        if last_exc:
-            raise last_exc
-        return False
-
-    def _on_dim_save_clicked(self) -> None:
-        # 1) zaciagnij UI -> draft
-        if hasattr(self, "_pull_ui_to_draft"):
-            self._pull_ui_to_draft()
-
-        # 2) upewnij sie, ze jest nazwa
-        name = self._ensure_name_for_save()
-        try:
-            # jesli ModuleDef ma pole name - ustaw je spojnie
-            if getattr(self._draft, "name", "") != name:
-                self._draft.name = name
-        except Exception:
-            pass
-
-        # 3) zapis do bazy (rozne mozliwe nazwy metod w store)
-        ok = (
-                self._store_try("save_new", name, self._draft)
-                or self._store_try("save", name, self._draft)
-                or self._store_try("create", name, self._draft)
-                or self._store_try("insert", name, self._draft)
-                or self._store_try("upsert", name, self._draft)
-        )
-
-        if not ok:
-            # jesli store ma inna nazwe - pokazemy b'ad zamiast ciszy
-            raise RuntimeError("Nie znaleziono metody zapisu w ModuleStoreJson (save_new/save/create/insert/upsert).")
-
-        # 4) NAJWAZNIEJSZE: po zapisie od razu zapisz sesje (restart bedzie dzialal)
-        if hasattr(self, "_session_save_now"):
-            self._session_save_now()
-
-    def _on_dim_overwrite_clicked(self) -> None:
-        # 1) zaciagnij UI -> draft
-        if hasattr(self, "_pull_ui_to_draft"):
-            self._pull_ui_to_draft()
-
-        name = self._ensure_name_for_save()
-        try:
-            if getattr(self._draft, "name", "") != name:
-                self._draft.name = name
-        except Exception:
-            pass
-
-        ok = (
-                self._store_try("overwrite", name, self._draft)
-                or self._store_try("update", name, self._draft)
-                or self._store_try("replace", name, self._draft)
-                or self._store_try("save_overwrite", name, self._draft)
-                or self._store_try("save", name, self._draft)  # czasem save = overwrite
-                or self._store_try("upsert", name, self._draft)
-        )
-
-        if not ok:
-            raise RuntimeError(
-                "Nie znaleziono metody nadpisu w ModuleStoreJson (overwrite/update/replace/save/upsert).")
-
-        if hasattr(self, "_session_save_now"):
-            self._session_save_now()
-
-    # endregion
-
 
     # ---------------------------
     # region UI <-> DRAFT
@@ -2772,6 +1116,8 @@ class TabModul(QWidget):
 
             self._is_pushing_ui = False
 
+        self._refresh_crud_action_state()
+
     def _sync_existence_dependent_visibility_ui(self) -> None:
         if not hasattr(self, "vis"):
             return
@@ -2810,6 +1156,33 @@ class TabModul(QWidget):
 
         if hasattr(self, "dividers") and hasattr(self.dividers, "set_mount_enabled"):
             self.dividers.set_mount_enabled(divider_exists)
+
+    def _refresh_crud_action_state(self, *_args) -> None:
+        if not hasattr(self, "dim"):
+            return
+
+        name = str(self.dim.ed_name.text() or "").strip()
+        has_name = bool(name)
+        exists_in_store = False
+
+        if has_name:
+            try:
+                exists_in_store = bool(self._store_has(name))
+            except Exception:
+                exists_in_store = False
+
+        overwrite_enabled = has_name and exists_in_store
+        delete_enabled = has_name and exists_in_store
+
+        if hasattr(self.dim, "btn_over"):
+            self.dim.btn_over.setEnabled(overwrite_enabled)
+        if hasattr(self.dim, "btn_del"):
+            self.dim.btn_del.setEnabled(delete_enabled)
+
+        if hasattr(self, "btn_q_overwrite"):
+            self.btn_q_overwrite.setEnabled(overwrite_enabled)
+        if hasattr(self, "btn_q_delete"):
+            self.btn_q_delete.setEnabled(delete_enabled)
 
     def _pull_ui_to_draft(self) -> None:
         vis = set(self.vis.get_visible_parts() or set())
@@ -2981,22 +1354,6 @@ class TabModul(QWidget):
         setattr(self._draft, "front_gap_between_vertical_mm", gap_between_vertical)
 
         self._resolved_domain_state = build_resolved_module_domain_state(self._draft)
-    def _session_save_request(self) -> None:
-        if not getattr(self, "_session_ready", False):
-            return
-        # lekki debounce, zeby nie zapisywac pliku 1000 razy przy kreceniu spinboxem
-        self._session_timer.start(250)
-
-    def _session_save_now(self) -> None:
-        if not getattr(self, "_session_ready", False):
-            return
-        try:
-            ui = {
-                "selected_part_key": self._selected_part_key,
-            }
-            save_last_session(self._draft, ui)
-        except Exception:
-            pass
 
     def _on_clear_last_state(self) -> None:
         clear_last_session()
@@ -3117,64 +1474,7 @@ class TabModul(QWidget):
 
     # endregion
 
-        # ==========================================================
-        # region HANDLERS: baza modu'ow + zapis sesji
-        # ==========================================================
-        def _apply_module_and_refresh(self, m: ModuleDef) -> None:
-            """Jedyny poprawny sposob: podmien draft -> rebuild -> push -> render -> zapisz sesje."""
-            self._draft = m
-
-            # zawsze przebuduj czesci wg aktualnej logiki
-            if hasattr(self, "rebuild_parts"):
-                self.rebuild_parts()
-            else:
-                self._rebuild_parts()
-
-            self._push_draft_to_ui()
-
-            # wybierz sensowny element
-            if getattr(self._draft, "parts", None):
-                if self._selected_part_key not in self._draft.parts:
-                    self._selected_part_key = next(iter(self._draft.parts.keys()))
-                self.tree.select_part(self._selected_part_key)
-
-            self._render_right()
-            self.canvas.render_module(self._draft, fit=True, selected_part_key=self._selected_part_key)
-
-            # -> TU jest klucz: restart bedzie OK, bo zapisujemy sesje NATYCHMIAST
-            self._session_save_now()
-
-        def _on_dim_save_clicked(self) -> None:
-            """Klik 'Zapisz' -> po udanym zapisie do bazy, zapisz tez sesje."""
-            # tu masz swoja istniejaca logike zapisu - jesli masz metode _on_save_to_base to ja wo'aj
-            if hasattr(self, "_on_save_to_base"):
-                self._on_save_to_base()
-            elif hasattr(self, "_on_save_new"):
-                self._on_save_new()
-            else:
-                # jesli nie masz jeszcze osobnej metody - nic nie robimy
-                return
-
-            # -> po zapisie: sesja
-            self._session_save_now()
-
-        def _on_dim_overwrite_clicked(self) -> None:
-            """Klik 'Nadpisz' -> po udanym nadpisaniu, zapisz sesje."""
-            if hasattr(self, "_on_overwrite_to_base"):
-                self._on_overwrite_to_base()
-            elif hasattr(self, "_on_overwrite"):
-                self._on_overwrite()
-            else:
-                return
-
-            # -> po nadpisaniu: sesja
-            self._session_save_now()
-
-        # endregion
-
-        self._session_save_now()
-
-      # ==========================================================
+    # ==========================================================
     # region APPLY: wczytanie modulu -> UI (pewnie)
     # ==========================================================
     def _restore_front_zone_fields_from_store_payload(self, m: ModuleDef) -> ModuleDef:
@@ -3511,6 +1811,33 @@ class TabModul(QWidget):
             self.edge.set_selected_count(len(self.tree.selected_part_keys()) or 1)
         else:
             self.edge.set_selected_count(1)
+
+        self._refresh_module_mini_preview()
+
+    def _refresh_module_mini_preview(self) -> None:
+        if not hasattr(self, "preview_mini"):
+            return
+
+        try:
+            self.preview_mini.set_module(self._draft)
+        except Exception:
+            return
+
+        if not hasattr(self, "preview_info"):
+            return
+
+        name = str(getattr(self._draft, "name", "") or "").strip() or "Nowy modul"
+        try:
+            width_mm = float(getattr(self._draft, "width_mm", 0.0) or 0.0)
+            height_mm = float(getattr(self._draft, "height_mm", 0.0) or 0.0)
+            depth_mm = float(getattr(self._draft, "depth_mm", 0.0) or 0.0)
+        except Exception:
+            width_mm = 0.0
+            height_mm = 0.0
+            depth_mm = 0.0
+
+        dims_line = f"{int(round(width_mm))} x {int(round(height_mm))} x {int(round(depth_mm))} mm"
+        self.preview_info.setText(f"{name}\n{dims_line}")
     # endregion
 
     # ---------------------------
@@ -3913,6 +2240,43 @@ class TabModul(QWidget):
         if hasattr(self, "_session_save_request"):
             self._session_save_request()
 
+    def _on_parts_table_visibility_changed(self, part_key: str, visible: bool) -> None:
+        """Obsluга klikniecia ikony oka w tabeli formatek — toggluje widocznosc elementu."""
+        if not getattr(self, "_draft", None):
+            return
+        from dataclasses import replace as _dc_replace
+        vp = set(getattr(self._draft, "visible_parts", set()) or set())
+        if visible:
+            vp.add(part_key)
+        else:
+            vp.discard(part_key)
+        try:
+            self._draft = _dc_replace(self._draft, visible_parts=vp)
+        except Exception:
+            return
+        if hasattr(self, "canvas") and hasattr(self.canvas, "render_module"):
+            self.canvas.render_module(self._draft, fit=False,
+                                      selected_part_key=getattr(self, "_selected_part_key", ""))
+        if hasattr(self, "_session_save_request"):
+            self._session_save_request()
+
+    def _on_parts_table_grain_changed(self, part_key: str, grain_direction: str) -> None:
+        """Obsluга klikniecia komorki uslojenia w tabeli — zmienia grain_direction w PartDef."""
+        if not getattr(self, "_draft", None):
+            return
+        from dataclasses import replace as _dc_replace
+        parts = dict(self._draft.parts or {})
+        part = parts.get(part_key)
+        if part is None:
+            return
+        parts[part_key] = _dc_replace(part, grain_direction=grain_direction)
+        try:
+            self._draft = _dc_replace(self._draft, parts=parts)
+        except Exception:
+            return
+        if hasattr(self, "_session_save_request"):
+            self._session_save_request()
+
     def _on_canvas_part_clicked(self, part_key: str) -> None:
         if "__" in part_key:
             base_key = part_key.split("__", 1)[0]
@@ -4184,23 +2548,57 @@ class TabModul(QWidget):
                 fit=False,
                 selected_part_key=self._selected_part_key,
             )
+
+    def _show_storage_operation_error(self, action_label: str, exc: Exception) -> None:
+        action = str(action_label or "wykonac operacje na module").strip()
+        message = (
+            f"Nie udalo sie {action}.\n\n"
+            f"Szczegoly: {exc}"
+        )
+        try:
+            QMessageBox.critical(self, "Blad zapisu/odczytu", message)
+        except Exception:
+            pass
+
     def _on_save_new(self) -> None:
-        self._pull_ui_to_draft()
-        if not self._draft.name:
-            QMessageBox.warning(self, "Brak nazwy", "Podaj nazwe modulu przed zapisem.")
+        try:
+            self._pull_ui_to_draft()
+            if not self._draft.name:
+                QMessageBox.warning(self, "Brak nazwy", "Podaj nazwe modulu przed zapisem.")
+                return
+
+            res = self._store.save_new(self._draft)
+        except Exception as exc:
+            self._show_storage_operation_error("zapisac nowy modul", exc)
             return
 
-        res = self._store.save_new(self._draft)
-        QMessageBox.information(self, "Zapis", res.message_pl)
+        ok = bool(getattr(res, "ok", True))
+        message = str(getattr(res, "message_pl", "") or "Zapis zakonczony.")
+        if ok:
+            QMessageBox.information(self, "Zapis", message)
+        else:
+            QMessageBox.warning(self, "Zapis", message)
+        self._refresh_crud_action_state()
 
     def _on_overwrite(self) -> None:
-        self._pull_ui_to_draft()
-        if not self._draft.name:
-            QMessageBox.warning(self, "Brak nazwy", "Podaj nazwe modulu przed nadpisaniem.")
+        try:
+            self._pull_ui_to_draft()
+            if not self._draft.name:
+                QMessageBox.warning(self, "Brak nazwy", "Podaj nazwe modulu przed nadpisaniem.")
+                return
+
+            res = self._store.overwrite(self._draft)
+        except Exception as exc:
+            self._show_storage_operation_error("nadpisac modul", exc)
             return
 
-        res = self._store.overwrite(self._draft)
-        QMessageBox.information(self, "Nadpisz", res.message_pl)
+        ok = bool(getattr(res, "ok", True))
+        message = str(getattr(res, "message_pl", "") or "Nadpisywanie zakonczone.")
+        if ok:
+            QMessageBox.information(self, "Nadpisz", message)
+        else:
+            QMessageBox.warning(self, "Nadpisz", message)
+        self._refresh_crud_action_state()
 
     def _on_load(self) -> None:
         name = self.dim.ed_name.text().strip()
@@ -4208,7 +2606,11 @@ class TabModul(QWidget):
             QMessageBox.warning(self, "Brak nazwy", "Wpisz nazwe modulu do wczytania.")
             return
 
-        m = self._store.get(name)
+        try:
+            m = self._store.get(name)
+        except Exception as exc:
+            self._show_storage_operation_error(f'wczytac modul "{name}"', exc)
+            return
         if m is None:
             QMessageBox.warning(self, "Brak w bazie", f'Nie znaleziono modulu "{name}".')
             return
@@ -4217,17 +2619,10 @@ class TabModul(QWidget):
         if ans != QMessageBox.StandardButton.Yes:
             return
 
-        self._draft = m
-        self._rebuild_parts()
-        self._push_draft_to_ui()
-
-        if self._draft.parts:
-            if self._selected_part_key not in self._draft.parts:
-                self._selected_part_key = next(iter(self._draft.parts.keys()))
-            self.tree.select_part(self._selected_part_key)
-
-        self._render_right()
-        self.canvas.render_module(self._draft, fit=True, selected_part_key=self._selected_part_key)
+        try:
+            self._apply_loaded_module(m)
+        except Exception as exc:
+            self._show_storage_operation_error(f'zastosowac wczytany modul "{name}"', exc)
 
     def _session_save_request(self) -> None:
         if not getattr(self, "_session_ready", False):
@@ -4279,61 +2674,70 @@ class TabModul(QWidget):
             self._session_save_now()
 
     def _on_load_from_base_preview(self) -> None:
-        dlg = LoadModuleDialog(self, self._store)
-        if dlg.exec() != dlg.DialogCode.Accepted:
-            return
+        try:
+            dlg = LoadModuleDialog(self, self._store)
+            if dlg.exec() != dlg.DialogCode.Accepted:
+                return
 
-        res = dlg.result_value()
-        if res is None:
-            return
+            res = dlg.result_value()
+            if res is None:
+                return
 
-        self._apply_loaded_module(res.module)
+            if not self._is_testing():
+                answer = QMessageBox.question(
+                    self,
+                    "Wczytaj modul",
+                    f'Wczytac modul "{res.name}"?',
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if answer != QMessageBox.StandardButton.Yes:
+                    return
+
+            self._apply_loaded_module(res.module)
+            self._refresh_crud_action_state()
+        except Exception as exc:
+            self._show_storage_operation_error("wczytac modul z podgladu bazy", exc)
 
     def load_module_from_store_name(self, name: str) -> bool:
-        module_name = str(name or "").strip()
-        if not module_name:
+        try:
+            module_name = str(name or "").strip()
+            if not module_name:
+                return False
+
+            module = self._store.get(module_name) if hasattr(self._store, "get") else None
+            if module is None:
+                return False
+
+            self._apply_loaded_module(module)
+            return True
+        except Exception:
             return False
 
-        module = self._store.get(module_name) if hasattr(self._store, "get") else None
-        if module is None:
-            return False
+    def _on_clear_current_module(self) -> None:
+        if not self._is_testing():
+            answer = QMessageBox.question(
+                self,
+                "Wyczysc modul",
+                "Wyczysc aktualny modul i porzucic niezapisane zmiany?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
 
-        self._apply_loaded_module(module)
-        return True
+        self._apply_loaded_module(build_default_module())
+        self._refresh_crud_action_state()
 
     def start_new_module(self) -> None:
         self._apply_loaded_module(build_default_module())
+        self._refresh_crud_action_state()
 
     # ==========================================================
     # region BASE CRUD: Zapisz / Nadpisz / Usun (odporne na rozne sygnatury store)
     # ==========================================================
     def _is_testing(self) -> bool:
         return str(os.environ.get("TECH_MODUL_TESTING", "")).strip() == "1"
-
-    def _store_list_names(self) -> list[str]:
-        for fn in ("list_names", "list_module_names", "names", "list"):
-            if hasattr(self._store, fn):
-                try:
-                    out = getattr(self._store, fn)()
-                    return list(out) if out is not None else []
-                except Exception:
-                    pass
-        return []
-
-    def _store_has(self, name: str) -> bool:
-        names = self._store_list_names()
-        if names:
-            return name in names
-
-        # fallback: probuj load/get
-        for fn in ("load", "load_module", "get", "read"):
-            if hasattr(self._store, fn):
-                try:
-                    getattr(self._store, fn)(name)
-                    return True
-                except Exception:
-                    return False
-        return False
 
     def _store_list_names(self) -> list[str]:
         for fn in ("list_names", "list_module_names", "names", "list"):
@@ -4687,6 +3091,7 @@ class TabModul(QWidget):
             self._session_save_now()
             if not self._is_testing():
                 QMessageBox.information(self, "Zapisano", f"Zapisano modul: {name}")
+            self._refresh_crud_action_state()
         except Exception as e:
             if self._is_testing():
                 raise
@@ -4707,6 +3112,7 @@ class TabModul(QWidget):
             self._session_save_now()
             if not self._is_testing():
                 QMessageBox.information(self, "Nadpisano", f"Nadpisano modul: {name}")
+            self._refresh_crud_action_state()
         except Exception as e:
             if self._is_testing():
                 raise
@@ -4729,6 +3135,7 @@ class TabModul(QWidget):
             self._store_delete(name)
             if not self._is_testing():
                 QMessageBox.information(self, "Usunieto", f"Usunieto: {name}")
+            self._refresh_crud_action_state()
         except Exception as e:
             if self._is_testing():
                 raise

@@ -56,6 +56,33 @@ def normalize_shelf_mount(value: str) -> str:
     return "right"
 
 
+GRAIN_VERTICAL = "vertical"
+GRAIN_HORIZONTAL = "horizontal"
+GRAIN_NONE = "none"
+GRAIN_LABELS: dict[str, str] = {
+    GRAIN_VERTICAL: "↕ Pion",
+    GRAIN_HORIZONTAL: "↔ Poziom",
+    GRAIN_NONE: "— Brak",
+}
+
+# Domyslny kierunek uslojenia dla kazdego klucza czesci
+_PART_DEFAULT_GRAIN: dict[str, str] = {
+    "side_left": GRAIN_VERTICAL,
+    "side_right": GRAIN_VERTICAL,
+    "top": GRAIN_HORIZONTAL,
+    "bottom": GRAIN_HORIZONTAL,
+    "back": GRAIN_VERTICAL,
+    "front": GRAIN_VERTICAL,
+    "divider": GRAIN_VERTICAL,
+}
+
+
+def default_grain_for_part(part_key: str) -> str:
+    """Zwraca domyslny kierunek uslojenia dla klucza czesci."""
+    base = str(part_key).split("_")[0]
+    return _PART_DEFAULT_GRAIN.get(part_key, _PART_DEFAULT_GRAIN.get(base, GRAIN_VERTICAL))
+
+
 @dataclass
 class PartDef:
     key: PartKey
@@ -64,6 +91,15 @@ class PartDef:
     dims_mm: Dict[str, float] = field(default_factory=dict)
     edge_banding: Dict[EdgeSide, EdgeBandKey] = field(default_factory=dict)
     material_override_key: MaterialKey = ""
+    # Kierunek uslojenia: "vertical" | "horizontal" | "none"
+    grain_direction: str = ""
+
+    def effective_grain(self) -> str:
+        """Zwraca faktyczny kierunek uslojenia (z domyslnym dla klucza czesci)."""
+        gd = str(self.grain_direction or "").strip()
+        if gd in (GRAIN_VERTICAL, GRAIN_HORIZONTAL, GRAIN_NONE):
+            return gd
+        return default_grain_for_part(self.key)
 
     def to_dict(self) -> dict:
         return {
@@ -73,6 +109,7 @@ class PartDef:
             "material_override_key": self.material_override_key,
             "dims_mm": dict(self.dims_mm),
             "edge_banding": dict(self.edge_banding),
+            "grain_direction": self.grain_direction,
         }
 
     @staticmethod
@@ -84,6 +121,7 @@ class PartDef:
             dims_mm={k: float(v) for k, v in (d.get("dims_mm", {}) or {}).items()},
             edge_banding={k: str(v) for k, v in (d.get("edge_banding", {}) or {}).items()},
             material_override_key=str(d.get("material_override_key", "")),
+            grain_direction=str(d.get("grain_direction", "")),
         )
 
 
