@@ -35,7 +35,45 @@ class DrawingSettings:
 @dataclass(frozen=True)
 class UiThemeSettings:
     mode: str = "day"      # "day" | "night"
-    motif: str = "cream"   # "cream" | "blue" | "gray" | "green"
+    motif: str = "cream"   # "cream" | "blue" | "gray" | "green" | "contrast"
+
+
+@dataclass(frozen=True)
+class GmailOAuthSettings:
+    """Przechowuje tylko client_id i client_secret — tokeny są w data/gmail_token.json."""
+    enabled: bool = False
+    client_id: str = ""
+    client_secret: str = ""
+    max_fetch: int = 20
+
+
+@dataclass(frozen=True)
+class WhatsAppSettings:
+    enabled: bool = False
+    account_sid: str = ""
+    auth_token: str = ""
+    # Twój numer WhatsApp w Twilio (format: whatsapp:+48...)
+    # Sandbox: whatsapp:+14155238886
+    to_number: str = ""
+    max_fetch: int = 20  # max wiadomości do pobrania
+
+
+@dataclass(frozen=True)
+class EmailSettings:
+    enabled: bool = False
+    host: str = "imap.gmail.com"
+    port: int = 993
+    username: str = ""
+    password: str = ""
+    folder: str = "INBOX"
+    max_fetch: int = 20  # max unprzeczytanych do pobrania
+
+
+@dataclass(frozen=True)
+class TelegramSettings:
+    enabled: bool = False
+    bot_token: str = ""
+    chat_id: str = ""
 
 
 def _project_root() -> Path:
@@ -315,10 +353,212 @@ def load_ui_theme_settings() -> UiThemeSettings:
         mode = "day"
 
     motif = str(ui.get("theme_motif", "cream")).strip().lower()
-    if motif not in ("cream", "blue", "gray", "green"):
+    if motif not in ("cream", "blue", "gray", "green", "contrast"):
         motif = "cream"
 
     return UiThemeSettings(mode=mode, motif=motif)
+
+
+def load_ui_font_scale(default: float = 1.0) -> float:
+    data = _load_settings_data()
+    ui = data.get("ui") or {}
+    raw = ui.get("font_scale")
+    if raw is None:
+        return float(default)
+    try:
+        val = float(raw)
+        return max(0.5, min(2.0, val))
+    except Exception:
+        return float(default)
+
+
+def save_ui_font_scale(scale: float) -> None:
+    data = _load_settings_data()
+    ui = dict(data.get("ui") or {})
+    ui["font_scale"] = float(max(0.5, min(2.0, scale)))
+    data["ui"] = ui
+    _save_settings_data(data)
+
+
+def load_gmail_oauth_settings() -> GmailOAuthSettings:
+    data = _load_settings_data()
+    g = data.get("gmail_oauth") or {}
+    try:
+        return GmailOAuthSettings(
+            enabled=bool(g.get("enabled", False)),
+            client_id=str(g.get("client_id", "")),
+            client_secret=str(g.get("client_secret", "")),
+            max_fetch=int(g.get("max_fetch", 20)),
+        )
+    except Exception:
+        return GmailOAuthSettings()
+
+
+def save_gmail_oauth_settings(s: GmailOAuthSettings) -> None:
+    data = _load_settings_data()
+    data["gmail_oauth"] = {
+        "enabled": bool(s.enabled),
+        "client_id": str(s.client_id),
+        "client_secret": str(s.client_secret),
+        "max_fetch": int(s.max_fetch),
+    }
+    _save_settings_data(data)
+
+
+def load_whatsapp_settings() -> WhatsAppSettings:
+    data = _load_settings_data()
+    w = data.get("whatsapp") or {}
+    try:
+        return WhatsAppSettings(
+            enabled=bool(w.get("enabled", False)),
+            account_sid=str(w.get("account_sid", "")),
+            auth_token=str(w.get("auth_token", "")),
+            to_number=str(w.get("to_number", "")),
+            max_fetch=int(w.get("max_fetch", 20)),
+        )
+    except Exception:
+        return WhatsAppSettings()
+
+
+def save_whatsapp_settings(s: WhatsAppSettings) -> None:
+    data = _load_settings_data()
+    data["whatsapp"] = {
+        "enabled": bool(s.enabled),
+        "account_sid": str(s.account_sid),
+        "auth_token": str(s.auth_token),
+        "to_number": str(s.to_number),
+        "max_fetch": int(s.max_fetch),
+    }
+    _save_settings_data(data)
+
+
+def load_email_settings() -> EmailSettings:
+    data = _load_settings_data()
+    e = data.get("email") or {}
+    try:
+        return EmailSettings(
+            enabled=bool(e.get("enabled", False)),
+            host=str(e.get("host", "imap.gmail.com")),
+            port=int(e.get("port", 993)),
+            username=str(e.get("username", "")),
+            password=str(e.get("password", "")),
+            folder=str(e.get("folder", "INBOX")),
+            max_fetch=int(e.get("max_fetch", 20)),
+        )
+    except Exception:
+        return EmailSettings()
+
+
+def save_email_settings(s: EmailSettings) -> None:
+    data = _load_settings_data()
+    data["email"] = {
+        "enabled": bool(s.enabled),
+        "host": str(s.host),
+        "port": int(s.port),
+        "username": str(s.username),
+        "password": str(s.password),
+        "folder": str(s.folder),
+        "max_fetch": int(s.max_fetch),
+    }
+    _save_settings_data(data)
+
+
+def load_telegram_settings() -> TelegramSettings:
+    data = _load_settings_data()
+    t = data.get("telegram") or {}
+    try:
+        return TelegramSettings(
+            enabled=bool(t.get("enabled", False)),
+            bot_token=str(t.get("bot_token", "")),
+            chat_id=str(t.get("chat_id", "")),
+        )
+    except Exception:
+        return TelegramSettings()
+
+
+def save_telegram_settings(s: TelegramSettings) -> None:
+    data = _load_settings_data()
+    data["telegram"] = {
+        "enabled": bool(s.enabled),
+        "bot_token": str(s.bot_token),
+        "chat_id": str(s.chat_id),
+    }
+    _save_settings_data(data)
+
+
+@dataclass(frozen=True)
+class DefaultMaterialSettings:
+    """Domyslne materialy, grubosc i obrzeza dla nowych modulow."""
+    # Materialy (klucze z katalogu CatalogStoreJson)
+    carcass_material_key: str = ""      # korpus (boki, wiencce)
+    carcass_thickness_mm: float = 18.0
+    front_material_key: str = ""        # fronty
+    front_thickness_mm: float = 18.0
+    shelf_material_key: str = ""        # polki (puste = jak korpus)
+    shelf_thickness_mm: float = 18.0
+    back_material_key: str = ""         # plecy (puste = HDF)
+    back_thickness_mm: float = 3.0
+
+    # Obrzeza (klucze z katalogu)
+    carcass_edgeband_key: str = ""      # obrzeze korpusu
+    front_edgeband_key: str = ""        # obrzeze frontu
+
+    # Nozki / cokol
+    default_leg_height_mm: float = 100.0
+    default_carcass_joint: str = "type1"  # typ polaczenia korpusu
+
+    # Profil materialowy (klucz presetu)
+    material_profile_key: str = ""
+
+
+def load_default_material_settings() -> DefaultMaterialSettings:
+    data = _load_settings_data()
+    d = data.get("default_materials") or {}
+
+    def _s(key: str, default: str) -> str:
+        return str(d.get(key, default) or default)
+
+    def _f(key: str, default: float) -> float:
+        try:
+            return float(d.get(key, default))
+        except Exception:
+            return default
+
+    return DefaultMaterialSettings(
+        carcass_material_key=_s("carcass_material_key", ""),
+        carcass_thickness_mm=_f("carcass_thickness_mm", 18.0),
+        front_material_key=_s("front_material_key", ""),
+        front_thickness_mm=_f("front_thickness_mm", 18.0),
+        shelf_material_key=_s("shelf_material_key", ""),
+        shelf_thickness_mm=_f("shelf_thickness_mm", 18.0),
+        back_material_key=_s("back_material_key", ""),
+        back_thickness_mm=_f("back_thickness_mm", 3.0),
+        carcass_edgeband_key=_s("carcass_edgeband_key", ""),
+        front_edgeband_key=_s("front_edgeband_key", ""),
+        default_leg_height_mm=_f("default_leg_height_mm", 100.0),
+        default_carcass_joint=_s("default_carcass_joint", "type1"),
+        material_profile_key=_s("material_profile_key", ""),
+    )
+
+
+def save_default_material_settings(s: DefaultMaterialSettings) -> None:
+    data = _load_settings_data()
+    data["default_materials"] = {
+        "carcass_material_key": str(s.carcass_material_key),
+        "carcass_thickness_mm": float(s.carcass_thickness_mm),
+        "front_material_key": str(s.front_material_key),
+        "front_thickness_mm": float(s.front_thickness_mm),
+        "shelf_material_key": str(s.shelf_material_key),
+        "shelf_thickness_mm": float(s.shelf_thickness_mm),
+        "back_material_key": str(s.back_material_key),
+        "back_thickness_mm": float(s.back_thickness_mm),
+        "carcass_edgeband_key": str(s.carcass_edgeband_key),
+        "front_edgeband_key": str(s.front_edgeband_key),
+        "default_leg_height_mm": float(s.default_leg_height_mm),
+        "default_carcass_joint": str(s.default_carcass_joint),
+        "material_profile_key": str(s.material_profile_key),
+    }
+    _save_settings_data(data)
 
 
 def save_ui_theme_settings(mode: str, motif: str) -> None:
@@ -327,7 +567,7 @@ def save_ui_theme_settings(mode: str, motif: str) -> None:
         mode_norm = "day"
 
     motif_norm = str(motif or "cream").strip().lower()
-    if motif_norm not in ("cream", "blue", "gray", "green"):
+    if motif_norm not in ("cream", "blue", "gray", "green", "contrast"):
         motif_norm = "cream"
 
     data = _load_settings_data()

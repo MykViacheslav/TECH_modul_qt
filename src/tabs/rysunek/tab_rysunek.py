@@ -16,11 +16,14 @@ from PyQt6.QtWidgets import (
 from src.app.app_settings import (
     DrawingSettings,
     load_drawing_settings,
+    load_ui_font_scale,
     load_ui_theme_settings,
     save_drawing_settings,
+    save_ui_font_scale,
     save_ui_theme_settings,
 )
 from src.tabs.rysunek.drawing_settings_block import DrawingSettingsBlock
+from src.tabs.rysunek.default_materials_block import DefaultMaterialsBlock
 from src.widgets.network_settings import NetworkSettingsWidget
 
 
@@ -88,6 +91,19 @@ class TabRysunek(QWidget):
         separator.setFrameShadow(QFrame.Shadow.Sunken)
         content_layout.addWidget(separator)
         
+        # === DOMYSLNE MATERIALY ===
+        separator2 = QFrame()
+        separator2.setFrameShape(QFrame.Shape.HLine)
+        separator2.setFrameShadow(QFrame.Shadow.Sunken)
+        content_layout.addWidget(separator2)
+
+        mat_title = QLabel("Domyslne materialy dla nowych modulow")
+        mat_title.setObjectName("rysunek_title")
+        content_layout.addWidget(mat_title)
+
+        self.default_materials = DefaultMaterialsBlock(self)
+        content_layout.addWidget(self.default_materials)
+
         # === SIEĆ (PRACA ZESPOŁOWA) ===
         network_title = QLabel("Sieć - praca zespołowa")
         network_title.setObjectName("rysunek_title")
@@ -110,6 +126,13 @@ class TabRysunek(QWidget):
         self.btn_save.clicked.connect(self._save_ui_to_settings)
         self.btn_apply_theme.clicked.connect(self._apply_theme_from_ui)
         self.draw_settings.sig_changed.connect(self._on_ui_changed)
+
+        self.btn_load.setAccessibleName("settings_load")
+        self.btn_save.setAccessibleName("settings_save")
+        self.cb_mode.setAccessibleName("theme_mode")
+        self.cb_motif.setAccessibleName("theme_motif")
+        self.cb_font_scale.setAccessibleName("theme_font_scale")
+        self.btn_apply_theme.setAccessibleName("theme_apply")
 
         self._load_settings_to_ui()
 
@@ -158,6 +181,15 @@ class TabRysunek(QWidget):
         self.cb_motif.addItem("Niebieski", "blue")
         self.cb_motif.addItem("Szary", "gray")
         self.cb_motif.addItem("Zielony", "green")
+        self.cb_motif.addItem("Kontrastowy", "contrast")
+
+        lbl_font_scale = QLabel("Skala czcionki:", panel)
+        self.cb_font_scale = QComboBox(panel)
+        self.cb_font_scale.addItem("85%", 0.85)
+        self.cb_font_scale.addItem("90%", 0.90)
+        self.cb_font_scale.addItem("100%", 1.00)
+        self.cb_font_scale.addItem("110%", 1.10)
+        self.cb_font_scale.addItem("120%", 1.20)
 
         self.btn_apply_theme = QPushButton("Zastosuj motyw", panel)
 
@@ -166,6 +198,9 @@ class TabRysunek(QWidget):
         row.addSpacing(8)
         row.addWidget(lbl_motif, 0)
         row.addWidget(self.cb_motif, 0)
+        row.addSpacing(8)
+        row.addWidget(lbl_font_scale, 0)
+        row.addWidget(self.cb_font_scale, 0)
         row.addStretch(1)
         row.addWidget(self.btn_apply_theme, 0)
         return panel
@@ -183,9 +218,34 @@ class TabRysunek(QWidget):
         motif = str(self.cb_motif.currentData() or "cream")
         return mode, motif
 
+    def _set_font_scale_to_ui(self, value: float) -> None:
+        normalized = max(0.85, min(1.20, float(value)))
+        best_idx = 0
+        best_diff = 999.0
+        for idx in range(self.cb_font_scale.count()):
+            item_val = self.cb_font_scale.itemData(idx)
+            try:
+                diff = abs(float(item_val) - normalized)
+            except Exception:
+                continue
+            if diff < best_diff:
+                best_diff = diff
+                best_idx = idx
+        self.cb_font_scale.setCurrentIndex(best_idx)
+
+    def _font_scale_from_ui(self) -> float:
+        raw = self.cb_font_scale.currentData()
+        try:
+            value = float(raw)
+        except Exception:
+            value = 1.0
+        return max(0.85, min(1.20, value))
+
     def _apply_theme_from_ui(self) -> None:
         mode, motif = self._theme_from_ui()
+        font_scale = self._font_scale_from_ui()
         save_ui_theme_settings(mode, motif)
+        save_ui_font_scale(font_scale)
         self.sig_ui_theme_changed.emit(mode, motif)
         self.lbl_status.setText("Zastosowano motyw")
 
@@ -196,6 +256,7 @@ class TabRysunek(QWidget):
 
         self.draw_settings.set_from_settings(data)
         self._set_theme_to_ui(ui_theme.mode, ui_theme.motif)
+        self._set_font_scale_to_ui(load_ui_font_scale(default=1.0))
         self.lbl_status.setText("Wczytano ustawienia")
 
     def _save_ui_to_settings(self) -> None:
@@ -204,7 +265,9 @@ class TabRysunek(QWidget):
         settings_obj = DrawingSettings(**values)
         save_drawing_settings(settings_obj)
         mode, motif = self._theme_from_ui()
+        font_scale = self._font_scale_from_ui()
         save_ui_theme_settings(mode, motif)
+        save_ui_font_scale(font_scale)
         self.sig_ui_theme_changed.emit(mode, motif)
 
         self.lbl_status.setText("Zapisano ustawienia")
