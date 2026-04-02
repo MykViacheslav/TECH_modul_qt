@@ -21,7 +21,9 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QPushButton,
+    QToolButton,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -30,16 +32,25 @@ from PyQt6.QtWidgets import (
     QWidget,
     QDialog,
     QDialogButtonBox,
+    QMessageBox,
 )
 
 from src.app.app_settings import load_ui_string_list, save_ui_string_list
-from src.domain.wall_models import WallLayoutDef, WallObstacleDef, WallPhotoDef, new_wall_id
+from src.domain.wall_models import (
+    WallLayoutDef,
+    WallMeasurementDef,
+    WallObstacleDef,
+    WallPhotoDef,
+    new_wall_id,
+)
 from src.storage.client_store_json import ClientStoreJson
 from src.storage.order_store_json import OrderStoreJson
 from src.storage.wall_store_json import WallStoreJson
 from src.storage.worker_store_json import WorkerStoreJson
+from src.tabs.sciana.dialog_photo_measure import PhotoMeasureDialog
 from src.tabs.sciana.dialog_load_wall import LoadWallDialog
 from src.ui.collapsible_block import CollapsibleBlock
+from src.ui.ui_polish import mark_ui_card, set_ui_variant
 
 
 LAYOUT_TYPE_ITEMS: tuple[tuple[str, str], ...] = (
@@ -79,6 +90,12 @@ SCIANA_DEPTH_MM_MAX = 10000.0
 SCIANA_HEIGHT_MM_MAX = 10000.0
 
 _IMAGE_ATTACHMENT_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
+MEASUREMENT_KIND_ITEMS: tuple[tuple[str, str], ...] = (
+    ("distance", "Odleglosc"),
+    ("width", "Szerokosc"),
+    ("height", "Wysokosc"),
+    ("depth", "Glebokosc"),
+)
 
 
 def _wall_side_label(side: str) -> str:
@@ -189,6 +206,14 @@ def _obstacle_summary_line(obstacle: WallObstacleDef) -> str | None:
 
 def _obstacle_preview_label(obstacle: WallObstacleDef) -> str:
     return _obstacle_kind_label(getattr(obstacle, "kind", ""))
+
+
+def _measurement_kind_label(kind: str) -> str:
+    key = str(kind or "distance").strip().lower()
+    for item_key, item_label in MEASUREMENT_KIND_ITEMS:
+        if item_key == key:
+            return item_label
+    return str(kind or "Odleglosc")
 
 
 class WallPreviewView(QGraphicsView):
@@ -881,6 +906,7 @@ class WallPreviewView(QGraphicsView):
 
 class TabScianaLayout(QWidget):
     sig_open_komplet_requested = pyqtSignal(dict)
+    sig_open_order_requested = pyqtSignal(dict)
 
     def __init__(
         self,
@@ -904,6 +930,8 @@ class TabScianaLayout(QWidget):
         self._loaded_wall_name = ""
         self._startup_visibility_applied_once = False
         self._order_id_context = ""
+        self._left_zone_visible = True
+        self._left_zone_last_width = 390
         self._right_zone_visible = True
         self._right_zone_last_width = 380
 
@@ -911,25 +939,35 @@ class TabScianaLayout(QWidget):
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(8)
 
-        self.right_zone_toggle = QPushButton("▶ Panel informacyjny", self)
+        self.left_zone_toggle = QPushButton("Pokaz lewy panel", self)
+        self.left_zone_toggle.setStyleSheet(
+            "QPushButton { border: none; background: transparent; color: #555; font-weight: 600; padding: 4px; text-align: left; }"
+        )
+        self.left_zone_toggle.clicked.connect(self._toggle_left_zone)
+        # Hide root vertical toggle to reclaim horizontal workspace.
+        self.left_zone_toggle.hide()
+
+        self.right_zone_toggle = QPushButton("Panel informacyjny >", self)
         self.right_zone_toggle.setStyleSheet("QPushButton { border: none; background: transparent; color: #555; font-weight: 600; padding: 4px; text-align: left; }")
         self.right_zone_toggle.clicked.connect(self._toggle_right_zone)
-        root.addWidget(self.right_zone_toggle, 0)
+        # Hide root vertical toggle to reclaim horizontal workspace.
+        self.right_zone_toggle.hide()
 
-        splitter = QSplitter(Qt.Orientation.Horizontal, self)
-        root.addWidget(splitter, 1)
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        root.addWidget(self.main_splitter, 1)
 
         self.left_zone = self._build_left_zone()
         self.center_zone = self._build_center_zone()
         self.right_zone = self._build_right_zone()
 
-        splitter.addWidget(self.left_zone)
-        splitter.addWidget(self.center_zone)
-        splitter.addWidget(self.right_zone)
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 1)
-        splitter.setStretchFactor(2, 0)
-        splitter.setSizes([390, 860, 380])
+        self.main_splitter.addWidget(self.left_zone)
+        self.main_splitter.addWidget(self.center_zone)
+        self.main_splitter.addWidget(self.right_zone)
+        self.main_splitter.setStretchFactor(0, 0)
+        self.main_splitter.setStretchFactor(1, 1)
+        self.main_splitter.setStretchFactor(2, 0)
+        self.main_splitter.setSizes([390, 860, 380])
+        self.left_zone.show()
 
         self._apply_block_startup_visibility()
         self._reload_client_choices()
@@ -947,6 +985,7 @@ class TabScianaLayout(QWidget):
             "focus_name": ("Ctrl+F", self._shortcut_focus_wall_name),
         }
         self._setup_shortcuts_from_settings()
+        self._refresh_left_zone_toggle_button()
 
     def _build_left_zone(self) -> QWidget:
         panel = QWidget(self)
@@ -1095,9 +1134,22 @@ class TabScianaLayout(QWidget):
         self.btn_save = QPushButton("Zapisz")
         self.btn_load = QPushButton("Wczytaj")
         self.btn_overwrite = QPushButton("Nadpisz")
+        self.btn_back_to_order = QPushButton("Wroc: Zamowienie")
         self.btn_go_to_komplet = QPushButton("Dalej: Komplet")
         self.btn_go_to_komplet.setMinimumHeight(32)
-        self.btn_go_to_komplet.setStyleSheet("font-weight:600;")
+        set_ui_variant(self.btn_save, "primary")
+        set_ui_variant(self.btn_load, "ghost")
+        set_ui_variant(self.btn_overwrite, "ghost")
+        set_ui_variant(self.btn_back_to_order, "ghost")
+        set_ui_variant(self.btn_go_to_komplet, "success")
+        for button in (
+            self.btn_save,
+            self.btn_load,
+            self.btn_overwrite,
+            self.btn_back_to_order,
+            self.btn_go_to_komplet,
+        ):
+            button.setMinimumHeight(32)
 
         self.lab_store_status = QLabel("")
         self.lab_store_status.setWordWrap(True)
@@ -1119,7 +1171,12 @@ class TabScianaLayout(QWidget):
         store_btns.addWidget(self.btn_overwrite)
         store_btns.addStretch(1)
         store_panel_layout.addLayout(store_btns)
-        store_panel_layout.addWidget(self.btn_go_to_komplet)
+        nav_btns = QHBoxLayout()
+        nav_btns.setContentsMargins(0, 0, 0, 0)
+        nav_btns.setSpacing(6)
+        nav_btns.addWidget(self.btn_back_to_order)
+        nav_btns.addWidget(self.btn_go_to_komplet)
+        store_panel_layout.addLayout(nav_btns)
         store_panel_layout.addWidget(self.lab_store_status)
         self.blk_store.content_layout().addWidget(store_body)
         layout.addWidget(self.blk_store)
@@ -1178,12 +1235,23 @@ class TabScianaLayout(QWidget):
         obs_form.addRow("Szerokosc", self.sp_obstacle_w)
         obs_form.addRow("Wysokosc", self.sp_obstacle_h)
         obs_form.addRow("Glebokosc", self.sp_obstacle_d)
+        self._ensure_form_label_widget(obs_form, self.sp_obstacle_x, "Offset")
+        self._ensure_form_label_widget(obs_form, self.sp_obstacle_bottom, "Od podlogi")
+        self._ensure_form_label_widget(obs_form, self.sp_obstacle_w, "Szerokosc")
+        self._ensure_form_label_widget(obs_form, self.sp_obstacle_h, "Wysokosc")
+        self._ensure_form_label_widget(obs_form, self.sp_obstacle_d, "Glebokosc")
+        self._ensure_form_label_widget(obs_form, self.cb_obstacle_opening, "Kierunek otwierania")
         obs_layout.addLayout(obs_form)
 
         obs_btns = QHBoxLayout()
         self.btn_add_obstacle = QPushButton("Dodaj przeszkode")
         self.btn_apply_obstacle = QPushButton("Zastosuj do zaznaczonej")
         self.btn_remove_obstacle = QPushButton("Usun zaznaczona")
+        set_ui_variant(self.btn_add_obstacle, "primary")
+        set_ui_variant(self.btn_apply_obstacle, "success")
+        set_ui_variant(self.btn_remove_obstacle, "danger")
+        for button in (self.btn_add_obstacle, self.btn_apply_obstacle, self.btn_remove_obstacle):
+            button.setMinimumHeight(30)
         obs_btns.addWidget(self.btn_add_obstacle)
         obs_btns.addWidget(self.btn_apply_obstacle)
         obs_btns.addWidget(self.btn_remove_obstacle)
@@ -1214,6 +1282,10 @@ class TabScianaLayout(QWidget):
         photo_btns = QHBoxLayout()
         self.btn_add_photo = QPushButton("Dodaj sciezke")
         self.btn_remove_photo = QPushButton("Usun zaznaczone")
+        set_ui_variant(self.btn_add_photo, "primary")
+        set_ui_variant(self.btn_remove_photo, "danger")
+        self.btn_add_photo.setMinimumHeight(30)
+        self.btn_remove_photo.setMinimumHeight(30)
         photo_btns.addWidget(self.btn_add_photo)
         photo_btns.addWidget(self.btn_remove_photo)
         photos_layout.addLayout(photo_btns)
@@ -1228,6 +1300,65 @@ class TabScianaLayout(QWidget):
         photos_layout.addWidget(self.tbl_photos)
         self.blk_photos.content_layout().addWidget(photos_body)
         layout.addWidget(self.blk_photos)
+
+        self.blk_measurements = CollapsibleBlock("Pomiary (MVP)", panel)
+        measurements_body = QWidget(self.blk_measurements)
+        measurements_layout = QVBoxLayout(measurements_body)
+        measurements_form = QFormLayout()
+
+        self.ed_quote_reference = QLineEdit()
+        self.ed_quote_reference.setPlaceholderText("Powiazanie z wycena, np. WSTEPNA-001 / Szafa 1")
+        measurements_form.addRow("Ref. wyceny", self.ed_quote_reference)
+
+        self.ed_measure_name = QLineEdit()
+        self.ed_measure_name.setPlaceholderText("np. sciana A netto")
+        measurements_form.addRow("Nazwa", self.ed_measure_name)
+
+        self.cb_measure_kind = QComboBox()
+        for item_key, item_label in MEASUREMENT_KIND_ITEMS:
+            self.cb_measure_kind.addItem(item_label, item_key)
+        measurements_form.addRow("Typ", self.cb_measure_kind)
+
+        self.sp_measure_value = QDoubleSpinBox()
+        self.sp_measure_value.setRange(0.0, SCIANA_MM_MAX)
+        self.sp_measure_value.setDecimals(1)
+        self.sp_measure_value.setSuffix(" mm")
+        measurements_form.addRow("Wartosc", self.sp_measure_value)
+
+        self.ed_measure_photo_path = QLineEdit()
+        self.ed_measure_photo_path.setPlaceholderText("Opcjonalnie: sciezka do zdjecia")
+        measurements_form.addRow("Zdjecie", self.ed_measure_photo_path)
+
+        self.ed_measure_note = QLineEdit()
+        self.ed_measure_note.setPlaceholderText("Uwagi")
+        measurements_form.addRow("Notatka", self.ed_measure_note)
+
+        measurements_layout.addLayout(measurements_form)
+
+        measurement_btns = QHBoxLayout()
+        self.btn_add_measurement = QPushButton("Dodaj pomiar")
+        self.btn_remove_measurement = QPushButton("Usun zaznaczony")
+        self.btn_measure_from_photo = QPushButton("Pomiar ze zdjecia")
+        set_ui_variant(self.btn_add_measurement, "primary")
+        set_ui_variant(self.btn_remove_measurement, "danger")
+        set_ui_variant(self.btn_measure_from_photo, "success")
+        for button in (self.btn_add_measurement, self.btn_remove_measurement, self.btn_measure_from_photo):
+            button.setMinimumHeight(30)
+        measurement_btns.addWidget(self.btn_add_measurement)
+        measurement_btns.addWidget(self.btn_remove_measurement)
+        measurement_btns.addWidget(self.btn_measure_from_photo)
+        measurements_layout.addLayout(measurement_btns)
+
+        self.tbl_measurements = QTableWidget(0, 5, measurements_body)
+        self.tbl_measurements.setHorizontalHeaderLabels(["Nazwa", "Typ", "Wartosc", "Zdjecie", "Notatka"])
+        self.tbl_measurements.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tbl_measurements.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.tbl_measurements.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl_measurements.verticalHeader().setVisible(False)
+        self.tbl_measurements.horizontalHeader().setStretchLastSection(True)
+        measurements_layout.addWidget(self.tbl_measurements)
+        self.blk_measurements.content_layout().addWidget(measurements_body)
+        layout.addWidget(self.blk_measurements)
 
         self.ed_notes = QTextEdit()
         self.ed_notes.setPlaceholderText("Uwagi o scianie, oknach, drzwiach, rurach, zdjeciach i montazu...")
@@ -1264,6 +1395,7 @@ class TabScianaLayout(QWidget):
         self.sp_island_d.valueChanged.connect(self._on_any_change)
         self.sp_island_x.valueChanged.connect(self._on_any_change)
         self.sp_island_y.valueChanged.connect(self._on_any_change)
+        self.ed_quote_reference.textChanged.connect(self._on_any_change)
         self.ed_notes.textChanged.connect(self._on_any_change)
 
         self.btn_add_obstacle.clicked.connect(self._on_add_obstacle)
@@ -1271,9 +1403,13 @@ class TabScianaLayout(QWidget):
         self.btn_remove_obstacle.clicked.connect(self._on_remove_obstacle)
         self.btn_add_photo.clicked.connect(self._on_add_photo)
         self.btn_remove_photo.clicked.connect(self._on_remove_photo)
+        self.btn_add_measurement.clicked.connect(self._on_add_measurement)
+        self.btn_remove_measurement.clicked.connect(self._on_remove_measurement)
+        self.btn_measure_from_photo.clicked.connect(self._on_measurement_from_photo)
         self.btn_save.clicked.connect(self._on_save_new)
         self.btn_load.clicked.connect(self._on_load)
         self.btn_overwrite.clicked.connect(self._on_overwrite)
+        self.btn_back_to_order.clicked.connect(self._on_back_to_order)
         self.btn_go_to_komplet.clicked.connect(self._on_go_to_komplet)
         self.tbl_obstacles.itemSelectionChanged.connect(self._on_obstacle_selection_changed)
         self.cb_obstacle_kind.currentIndexChanged.connect(self._on_selected_obstacle_editor_changed)
@@ -1285,6 +1421,7 @@ class TabScianaLayout(QWidget):
         self.sp_obstacle_w.valueChanged.connect(self._on_selected_obstacle_editor_changed)
         self.sp_obstacle_h.valueChanged.connect(self._on_selected_obstacle_editor_changed)
         self.sp_obstacle_d.valueChanged.connect(self._on_selected_obstacle_editor_changed)
+        self.tbl_measurements.itemSelectionChanged.connect(self._on_measurement_selection_changed)
 
         return panel
 
@@ -1305,44 +1442,113 @@ class TabScianaLayout(QWidget):
 
         self.quick_actions_bar = QFrame(panel)
         self.quick_actions_bar.setObjectName("sciana_layout_quick_bar")
-        self.quick_actions_bar.setStyleSheet(
-            "QFrame#sciana_layout_quick_bar {"
-            "border: 1px solid #d8d8d8;"
-            "border-radius: 6px;"
-            "background: #fafafa;"
-            "}"
-        )
+        mark_ui_card(self.quick_actions_bar, elevated=False)
         quick_layout = QHBoxLayout(self.quick_actions_bar)
-        quick_layout.setContentsMargins(8, 6, 8, 6)
-        quick_layout.setSpacing(6)
+        quick_layout.setContentsMargins(10, 8, 10, 8)
+        quick_layout.setSpacing(10)
 
         self.btn_q_save = QPushButton("Zapisz")
         self.btn_q_save.clicked.connect(self._shortcut_save_wall)
+        set_ui_variant(self.btn_q_save, "primary")
+        self.btn_q_save.setMinimumHeight(30)
         quick_layout.addWidget(self.btn_q_save)
 
         self.btn_q_overwrite = QPushButton("Nadpisz")
         self.btn_q_overwrite.clicked.connect(self._on_overwrite)
+        set_ui_variant(self.btn_q_overwrite, "ghost")
+        self.btn_q_overwrite.setMinimumHeight(30)
         quick_layout.addWidget(self.btn_q_overwrite)
 
         self.btn_q_load = QPushButton("Wczytaj")
         self.btn_q_load.clicked.connect(self._on_load)
+        set_ui_variant(self.btn_q_load, "ghost")
+        self.btn_q_load.setMinimumHeight(30)
         quick_layout.addWidget(self.btn_q_load)
 
         self.btn_q_new = QPushButton("Nowa")
         self.btn_q_new.clicked.connect(self.start_new_wall)
+        set_ui_variant(self.btn_q_new, "ghost")
+        self.btn_q_new.setMinimumHeight(30)
         quick_layout.addWidget(self.btn_q_new)
 
         self.btn_q_focus_name = QPushButton("Nazwa")
         self.btn_q_focus_name.clicked.connect(self._shortcut_focus_wall_name)
+        set_ui_variant(self.btn_q_focus_name, "ghost")
+        self.btn_q_focus_name.setMinimumHeight(30)
         quick_layout.addWidget(self.btn_q_focus_name)
+
+        self.btn_q_order = QPushButton("Zamowienie")
+        self.btn_q_order.clicked.connect(self._on_back_to_order)
+        set_ui_variant(self.btn_q_order, "ghost")
+        self.btn_q_order.setMinimumHeight(30)
+        quick_layout.addWidget(self.btn_q_order)
 
         self.btn_q_next = QPushButton("Dalej")
         self.btn_q_next.clicked.connect(self._on_go_to_komplet)
+        set_ui_variant(self.btn_q_next, "success")
+        self.btn_q_next.setMinimumHeight(30)
         quick_layout.addWidget(self.btn_q_next)
 
         self.btn_q_shortcuts = QPushButton("Skroty")
         self.btn_q_shortcuts.clicked.connect(self._open_shortcuts_dialog)
+        set_ui_variant(self.btn_q_shortcuts, "ghost")
+        self.btn_q_shortcuts.setMinimumHeight(30)
         quick_layout.addWidget(self.btn_q_shortcuts)
+
+        self.btn_q_more = QToolButton(self.quick_actions_bar)
+        self.btn_q_more.setText("Wiecej")
+        self.btn_q_more.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        set_ui_variant(self.btn_q_more, "ghost")
+        self.btn_q_more.setMinimumHeight(30)
+        self._quick_more_menu = QMenu(self.btn_q_more)
+        self._quick_more_menu.addAction("Nadpisz", self._on_overwrite)
+        self._quick_more_menu.addAction("Wczytaj", self._on_load)
+        self._quick_more_menu.addAction("Nowa sciana", self.start_new_wall)
+        self._quick_more_menu.addAction("Nazwa", self._shortcut_focus_wall_name)
+        self._quick_more_menu.addAction("Zamowienie", self._on_back_to_order)
+        self._quick_more_menu.addAction("Skroty", self._open_shortcuts_dialog)
+        self.btn_q_more.setMenu(self._quick_more_menu)
+        quick_layout.addWidget(self.btn_q_more)
+
+        for btn, min_w, max_w in (
+            (self.btn_q_save, 96, 124),
+            (self.btn_q_overwrite, 102, 132),
+            (self.btn_q_load, 96, 124),
+            (self.btn_q_new, 90, 114),
+            (self.btn_q_focus_name, 92, 116),
+            (self.btn_q_order, 126, 162),
+            (self.btn_q_next, 92, 116),
+            (self.btn_q_shortcuts, 98, 126),
+        ):
+            btn.setMinimumWidth(min_w)
+            btn.setMaximumWidth(max_w)
+        self.btn_q_more.setMinimumWidth(90)
+        self.btn_q_more.setMaximumWidth(120)
+        for btn in (
+            self.btn_q_save,
+            self.btn_q_overwrite,
+            self.btn_q_load,
+            self.btn_q_new,
+            self.btn_q_focus_name,
+            self.btn_q_order,
+            self.btn_q_next,
+            self.btn_q_shortcuts,
+            self.btn_q_more,
+        ):
+            btn.setMinimumHeight(36)
+            btn.setMaximumHeight(36)
+
+        # Desktop-first: keep all key actions visible.
+        for btn in (
+            self.btn_q_overwrite,
+            self.btn_q_load,
+            self.btn_q_new,
+            self.btn_q_focus_name,
+            self.btn_q_order,
+            self.btn_q_shortcuts,
+        ):
+            btn.show()
+        self.btn_q_more.hide()
 
         quick_layout.addStretch(1)
         layout.addWidget(self.quick_actions_bar, 0)
@@ -1625,6 +1831,15 @@ class TabScianaLayout(QWidget):
             self.sp_island_d.setValue(float(getattr(self._wall, "island_depth_mm", 900.0) or 900.0))
             self.sp_island_x.setValue(float(getattr(self._wall, "island_offset_x_mm", 1200.0) or 1200.0))
             self.sp_island_y.setValue(float(getattr(self._wall, "island_offset_y_mm", 1400.0) or 1400.0))
+            quote_ref = str(getattr(self._wall, "quote_item_reference", "") or "").strip()
+            if not quote_ref and (
+                str(getattr(self._wall, "quote_item_name", "") or "").strip()
+                or str(getattr(self._wall, "quote_item_kind", "") or "").strip()
+            ):
+                quote_name = str(getattr(self._wall, "quote_item_name", "") or "").strip()
+                quote_kind = str(getattr(self._wall, "quote_item_kind", "") or "").strip()
+                quote_ref = f"{quote_name} ({quote_kind})".strip() if quote_kind else quote_name
+            self.ed_quote_reference.setText(quote_ref)
             self.ed_notes.setPlainText(str(getattr(self._wall, "notes", "") or ""))
         finally:
             self._is_pushing_ui = False
@@ -1654,7 +1869,103 @@ class TabScianaLayout(QWidget):
         self._wall.island_depth_mm = float(self.sp_island_d.value())
         self._wall.island_offset_x_mm = float(self.sp_island_x.value())
         self._wall.island_offset_y_mm = float(self.sp_island_y.value())
+        self._wall.quote_item_reference = str(self.ed_quote_reference.text().strip())
         self._wall.notes = str(self.ed_notes.toPlainText().strip())
+
+        self._validate_wall_offsets_and_island()
+
+    def _validate_wall_offsets_and_island(self) -> None:
+        """Clamp base/upper offsets so they don't exceed wall width, and island to room bounds."""
+        adjustments: list[str] = []
+        wall_a = float(self._wall.wall_a_width_mm or 0.0)
+
+        # --- base offsets ---
+        base_left = float(self._wall.base_offset_left_mm or 0.0)
+        base_right = float(self._wall.base_offset_right_mm or 0.0)
+        if wall_a > 0 and base_left + base_right >= wall_a:
+            ratio = base_left / (base_left + base_right) if (base_left + base_right) > 0 else 0.5
+            max_total = wall_a - 1.0
+            new_left = round(max_total * ratio, 1)
+            new_right = round(max_total - new_left, 1)
+            adjustments.append(
+                f"Odsunięcie podstawy L+R ({base_left:.0f}+{base_right:.0f}) >= sciana A ({wall_a:.0f}) — przycieto do {new_left:.0f}+{new_right:.0f}"
+            )
+            self._wall.base_offset_left_mm = new_left
+            self._wall.base_offset_right_mm = new_right
+
+        # --- upper offsets ---
+        upper_left = float(self._wall.upper_offset_left_mm or 0.0)
+        upper_right = float(self._wall.upper_offset_right_mm or 0.0)
+        if wall_a > 0 and upper_left + upper_right >= wall_a:
+            ratio = upper_left / (upper_left + upper_right) if (upper_left + upper_right) > 0 else 0.5
+            max_total = wall_a - 1.0
+            new_left = round(max_total * ratio, 1)
+            new_right = round(max_total - new_left, 1)
+            adjustments.append(
+                f"Odsunięcie gornych L+R ({upper_left:.0f}+{upper_right:.0f}) >= sciana A ({wall_a:.0f}) — przycieto do {new_left:.0f}+{new_right:.0f}"
+            )
+            self._wall.upper_offset_left_mm = new_left
+            self._wall.upper_offset_right_mm = new_right
+
+        # --- island bounds ---
+        if self._wall.has_island:
+            layout_type = str(self._wall.layout_type or "line")
+            room_width = wall_a
+            room_depth = float(self._wall.wall_b_width_mm or 0.0) if layout_type in ("l", "c") else SCIANA_DEPTH_MM_MAX
+            island_x = float(self._wall.island_offset_x_mm or 0.0)
+            island_y = float(self._wall.island_offset_y_mm or 0.0)
+            island_w = float(self._wall.island_width_mm or 0.0)
+            island_d = float(self._wall.island_depth_mm or 0.0)
+
+            if island_w > room_width and room_width > 0:
+                adjustments.append(
+                    f"Szerokosc wyspy ({island_w:.0f}) > sciana A ({room_width:.0f}) — przycieto"
+                )
+                self._wall.island_width_mm = room_width
+                island_w = room_width
+
+            if room_depth < SCIANA_DEPTH_MM_MAX and island_d > room_depth and room_depth > 0:
+                adjustments.append(
+                    f"Glebokosc wyspy ({island_d:.0f}) > sciana B ({room_depth:.0f}) — przycieto"
+                )
+                self._wall.island_depth_mm = room_depth
+                island_d = room_depth
+
+            if room_width > 0 and island_x + island_w > room_width:
+                new_x = max(0.0, room_width - island_w)
+                adjustments.append(
+                    f"Wyspa X ({island_x:.0f}) wychodzi poza sciane A — przycieto do {new_x:.0f}"
+                )
+                self._wall.island_offset_x_mm = new_x
+
+            if room_depth < SCIANA_DEPTH_MM_MAX and room_depth > 0 and island_y + island_d > room_depth:
+                new_y = max(0.0, room_depth - island_d)
+                adjustments.append(
+                    f"Wyspa Y ({island_y:.0f}) wychodzi poza sciane B — przycieto do {new_y:.0f}"
+                )
+                self._wall.island_offset_y_mm = new_y
+
+        if adjustments:
+            # Update spinboxes to reflect clamped values without triggering recursive changes
+            self._is_pushing_ui = True
+            try:
+                self.sp_base_offset_left.setValue(float(self._wall.base_offset_left_mm))
+                self.sp_base_offset_right.setValue(float(self._wall.base_offset_right_mm))
+                self.sp_upper_offset_left.setValue(float(self._wall.upper_offset_left_mm))
+                self.sp_upper_offset_right.setValue(float(self._wall.upper_offset_right_mm))
+                if self._wall.has_island:
+                    self.sp_island_w.setValue(float(self._wall.island_width_mm))
+                    self.sp_island_d.setValue(float(self._wall.island_depth_mm))
+                    self.sp_island_x.setValue(float(self._wall.island_offset_x_mm))
+                    self.sp_island_y.setValue(float(self._wall.island_offset_y_mm))
+            finally:
+                self._is_pushing_ui = False
+
+            QMessageBox.warning(
+                self,
+                "Korekta wartosci",
+                "Wartosci zostaly skorygowane:\n\n" + "\n".join(adjustments),
+            )
 
     def _on_any_change(self) -> None:
         if self._is_pushing_ui:
@@ -1710,8 +2021,18 @@ class TabScianaLayout(QWidget):
 
     def _set_form_row_label(self, form: QFormLayout, field: QWidget, label_text: str) -> None:
         label = form.labelForField(field)
-        if label is not None:
+        if label is not None and hasattr(label, "setText"):
             label.setText(str(label_text))
+
+    def _ensure_form_label_widget(self, form: QFormLayout, field: QWidget, label_text: str) -> None:
+        label = form.labelForField(field)
+        if label is not None and hasattr(label, "text") and hasattr(label, "setText"):
+            return
+        row, _role = form.getWidgetPosition(field)
+        if row < 0:
+            return
+        replacement = QLabel(str(label_text or ""))
+        form.setWidget(row, QFormLayout.ItemRole.LabelRole, replacement)
 
     def _set_store_status(self, message_pl: str, ok: bool = True) -> None:
         if not hasattr(self, "lab_store_status"):
@@ -1719,13 +2040,25 @@ class TabScianaLayout(QWidget):
         self.lab_store_status.setText(str(message_pl or ""))
         self.lab_store_status.setStyleSheet("color:#0f6a2f;" if ok else "color:#a61b1b;")
 
+    def _show_storage_operation_error(self, action_label: str, exc: Exception) -> None:
+        action = str(action_label or "wykonac operacje na scianie").strip()
+        message = f"Nie udalo sie {action}.\n\nSzczegoly: {exc}"
+        self._set_store_status(message, ok=False)
+        try:
+            QMessageBox.critical(self, "Blad zapisu/odczytu", message)
+        except Exception:
+            pass
+
     def _shortcut_save_wall(self) -> None:
-        name = str(self.ed_name.text().strip() or "")
-        existing = self._store.get(name) if name else None
-        if existing is not None:
-            self._on_overwrite()
-        else:
-            self._on_save_new()
+        try:
+            name = str(self.ed_name.text().strip() or "")
+            existing = self._store.get(name) if name else None
+            if existing is not None:
+                self._on_overwrite()
+            else:
+                self._on_save_new()
+        except Exception as exc:
+            self._show_storage_operation_error("sprawdzic sciane przed zapisem", exc)
 
     def _shortcut_focus_wall_name(self) -> None:
         self.ed_name.setFocus()
@@ -1871,13 +2204,31 @@ class TabScianaLayout(QWidget):
         front_side = str(getattr(wall, "front_view_wall_side", "A") or "A")
         order_name = str(getattr(wall, "order_name", "") or "").strip()
         order_def = self._order_store.get(order_name) if order_name else None
+        linear_kinds = {"distance", "width", "height", "depth"}
+        linear_total_mm = sum(
+            float(getattr(item, "value_mm", 0.0) or 0.0)
+            for item in (list(getattr(wall, "measurements", []) or []))
+            if str(getattr(item, "kind", "distance") or "distance").strip().lower() in linear_kinds
+        )
         return {
             "wall_name": str(getattr(wall, "name", "") or "").strip(),
             "client_name": str(getattr(wall, "client_name", "") or "").strip(),
+            "order_code": order_name,
             "order_name": order_name,
+            "order_id": str(getattr(order_def, "order_id", "") or "").strip(),
             "worker_name": str(getattr(wall, "worker_name", "") or "").strip(),
             "order_status": str(getattr(order_def, "status", "") or "").strip(),
+            "order_progress_percent": float(getattr(order_def, "progress_percent", 0.0) or 0.0),
+            "order_calendar_stage": str(getattr(order_def, "calendar_stage", "") or "").strip(),
+            "order_calendar_date": str(getattr(order_def, "calendar_date", "") or "").strip(),
+            "date_montaz": str(getattr(order_def, "date_montaz", "") or "").strip(),
+            "date_montaz_end": str(getattr(order_def, "date_montaz_end", "") or "").strip(),
             "site_address": str(getattr(order_def, "site_address", "") or "").strip(),
+            "quote_item_name": str(getattr(wall, "quote_item_name", "") or "").strip(),
+            "quote_item_kind": str(getattr(wall, "quote_item_kind", "") or "").strip(),
+            "quote_item_reference": str(getattr(wall, "quote_item_reference", "") or "").strip(),
+            "measurements_count": len(list(getattr(wall, "measurements", []) or [])),
+            "measurements_linear_total_mm": float(linear_total_mm),
             "width_mm": float(self._wall_width_for_side(wall, front_side)),
             "height_mm": float(getattr(wall, "room_height_mm", 2500.0) or 2500.0),
             "depth_mm": float(getattr(wall, "base_depth_mm", 560.0) or 560.0),
@@ -1936,6 +2287,7 @@ class TabScianaLayout(QWidget):
         self._set_collapsible_block_body_visible(getattr(self, "blk_store", None), True)
         self._set_collapsible_block_body_visible(getattr(self, "blk_obstacles", None), True)
         self._set_collapsible_block_body_visible(getattr(self, "blk_photos", None), False)
+        self._set_collapsible_block_body_visible(getattr(self, "blk_measurements", None), True)
         self._set_collapsible_block_body_visible(getattr(self, "blk_notes", None), False)
         self._set_collapsible_block_body_visible(getattr(self, "blk_summary", None), True)
         self._set_collapsible_block_body_visible(getattr(self, "blk_obstacle_details", None), False)
@@ -2084,7 +2436,54 @@ class TabScianaLayout(QWidget):
             min(float(getattr(obstacle, "bottom_offset_mm", 0.0) or 0.0), max_bottom),
         )
 
-    def _write_editor_to_obstacle(self, row: int) -> bool:
+    def _clamp_obstacle_to_wall_with_warning(self, obstacle: WallObstacleDef) -> bool:
+        """Clamp obstacle to wall boundaries and show a warning if values were adjusted.
+
+        Returns True if any value was clamped.
+        """
+        wall_width = self._wall_width_for_side(self._wall, obstacle.wall_side)
+        room_height = float(getattr(self._wall, "room_height_mm", 2600.0) or 2600.0)
+
+        original_x = float(getattr(obstacle, "x_mm", 0.0) or 0.0)
+        original_bottom = float(getattr(obstacle, "bottom_offset_mm", 0.0) or 0.0)
+        original_w = float(getattr(obstacle, "width_mm", 0.0) or 0.0)
+        original_h = float(getattr(obstacle, "height_mm", 0.0) or 0.0)
+
+        adjustments: list[str] = []
+
+        if original_w > wall_width:
+            obstacle.width_mm = wall_width
+            adjustments.append(
+                f"Szerokosc ({original_w:.0f}) przekracza szerokosc sciany ({wall_width:.0f}) — przycieto do {wall_width:.0f} mm"
+            )
+
+        if original_h > room_height:
+            obstacle.height_mm = room_height
+            adjustments.append(
+                f"Wysokosc ({original_h:.0f}) przekracza wysokosc pomieszczenia ({room_height:.0f}) — przycieto do {room_height:.0f} mm"
+            )
+
+        self._clamp_obstacle_to_wall(obstacle)
+
+        if obstacle.x_mm != original_x:
+            adjustments.append(
+                f"Pozycja X ({original_x:.0f}) przycieta do {obstacle.x_mm:.0f} mm (sciana: {wall_width:.0f} mm)"
+            )
+        if obstacle.bottom_offset_mm != original_bottom:
+            adjustments.append(
+                f"Offset dolny ({original_bottom:.0f}) przyciety do {obstacle.bottom_offset_mm:.0f} mm (wysokosc: {room_height:.0f} mm)"
+            )
+
+        if adjustments:
+            QMessageBox.warning(
+                self,
+                "Korekta przeszkody",
+                "Wartosci przeszkody zostaly skorygowane:\n\n" + "\n".join(adjustments),
+            )
+            return True
+        return False
+
+    def _write_editor_to_obstacle(self, row: int, show_warning: bool = False) -> bool:
         if row < 0 or row >= len(self._wall.obstacles):
             return False
 
@@ -2098,7 +2497,10 @@ class TabScianaLayout(QWidget):
         obstacle.width_mm = float(self.sp_obstacle_w.value())
         obstacle.height_mm = float(self.sp_obstacle_h.value())
         obstacle.depth_mm = float(self.sp_obstacle_d.value())
-        self._clamp_obstacle_to_wall(obstacle)
+        if show_warning:
+            self._clamp_obstacle_to_wall_with_warning(obstacle)
+        else:
+            self._clamp_obstacle_to_wall(obstacle)
         return True
 
     def _on_selected_obstacle_editor_changed(self) -> None:
@@ -2128,6 +2530,7 @@ class TabScianaLayout(QWidget):
             height_mm=float(self.sp_obstacle_h.value()),
             depth_mm=float(self.sp_obstacle_d.value()),
         )
+        clamped = self._clamp_obstacle_to_wall_with_warning(obstacle)
         self._wall.obstacles.append(obstacle)
         self.ed_obstacle_name.clear()
         self._selected_obstacle_index = len(self._wall.obstacles) - 1
@@ -2136,7 +2539,7 @@ class TabScianaLayout(QWidget):
 
     def _on_apply_obstacle(self) -> None:
         row = self._selected_obstacle_row()
-        if not self._write_editor_to_obstacle(row):
+        if not self._write_editor_to_obstacle(row, show_warning=True):
             return
 
         self._selected_obstacle_index = row
@@ -2170,6 +2573,55 @@ class TabScianaLayout(QWidget):
         if 0 <= row < len(self._wall.photos):
             self._wall.photos.pop(row)
         self._refresh_all(fit=False)
+
+    def _selected_photo_row(self) -> int:
+        rows = self.tbl_photos.selectionModel().selectedRows() if self.tbl_photos.selectionModel() is not None else []
+        if not rows:
+            return -1
+        return int(rows[0].row())
+
+    def _guess_measure_photo_path(self) -> str:
+        direct_path = str(self.ed_measure_photo_path.text().strip())
+        if direct_path:
+            return direct_path
+        selected_photo_row = self._selected_photo_row()
+        if 0 <= selected_photo_row < len(self._wall.photos):
+            candidate = str(getattr(self._wall.photos[selected_photo_row], "path", "") or "").strip()
+            if candidate:
+                return candidate
+        if self._wall.photos:
+            candidate = str(getattr(self._wall.photos[0], "path", "") or "").strip()
+            if candidate:
+                return candidate
+        return ""
+
+    def _on_measurement_from_photo(self) -> None:
+        photo_path = self._guess_measure_photo_path()
+        dlg = PhotoMeasureDialog(
+            self,
+            photo_path=photo_path,
+            quote_reference=str(getattr(self._wall, "quote_item_reference", "") or "").strip(),
+        )
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        payload = dlg.measurement_payload()
+        if not isinstance(payload, dict):
+            return
+
+        self.ed_measure_name.setText(str(payload.get("name", "") or "Pomiar ze zdjecia"))
+        kind_key = str(payload.get("kind", "distance") or "distance").strip().lower()
+        kind_index = self.cb_measure_kind.findData(kind_key)
+        if kind_index >= 0:
+            self.cb_measure_kind.setCurrentIndex(kind_index)
+        self.sp_measure_value.setValue(float(payload.get("value_mm", 0.0) or 0.0))
+        self.ed_measure_photo_path.setText(str(payload.get("photo_path", "") or "").strip())
+        self.ed_measure_note.setText(str(payload.get("note", "") or "").strip())
+
+        quote_ref = str(payload.get("quote_reference", "") or "").strip()
+        if quote_ref and not str(self.ed_quote_reference.text().strip()):
+            self.ed_quote_reference.setText(quote_ref)
+
+        self._on_add_measurement()
 
     def _on_obstacle_selection_changed(self) -> None:
         row = self._selected_obstacle_row()
@@ -2240,6 +2692,59 @@ class TabScianaLayout(QWidget):
         for row, photo in enumerate(self._wall.photos):
             self.tbl_photos.setItem(row, 0, QTableWidgetItem(photo.path))
             self.tbl_photos.setItem(row, 1, QTableWidgetItem(photo.caption))
+
+    def _selected_measurement_row(self) -> int:
+        rows = (
+            self.tbl_measurements.selectionModel().selectedRows()
+            if self.tbl_measurements.selectionModel() is not None
+            else []
+        )
+        if not rows:
+            return -1
+        return int(rows[0].row())
+
+    def _on_measurement_selection_changed(self) -> None:
+        self._refresh_ui_state()
+
+    def _on_add_measurement(self) -> None:
+        name = str(self.ed_measure_name.text().strip() or self.cb_measure_kind.currentText())
+        measurement = WallMeasurementDef(
+            name=name,
+            kind=str(self.cb_measure_kind.currentData() or "distance"),
+            value_mm=float(self.sp_measure_value.value()),
+            photo_path=str(self.ed_measure_photo_path.text().strip()),
+            note=str(self.ed_measure_note.text().strip()),
+        )
+        self._wall.measurements.append(measurement)
+        self.ed_measure_name.clear()
+        self.sp_measure_value.setValue(0.0)
+        self.ed_measure_photo_path.clear()
+        self.ed_measure_note.clear()
+        self._refresh_all(fit=False)
+        if self.tbl_measurements.rowCount() > 0:
+            self.tbl_measurements.selectRow(self.tbl_measurements.rowCount() - 1)
+
+    def _on_remove_measurement(self) -> None:
+        row = self._selected_measurement_row()
+        if row < 0 or row >= len(self._wall.measurements):
+            return
+        self._wall.measurements.pop(row)
+        self._refresh_all(fit=False)
+        if self.tbl_measurements.rowCount() > 0:
+            self.tbl_measurements.selectRow(min(row, self.tbl_measurements.rowCount() - 1))
+
+    def _refresh_measurements_table(self) -> None:
+        self.tbl_measurements.setRowCount(len(self._wall.measurements))
+        for row, item in enumerate(self._wall.measurements):
+            values = [
+                str(getattr(item, "name", "") or ""),
+                _measurement_kind_label(str(getattr(item, "kind", "distance") or "distance")),
+                f"{float(getattr(item, 'value_mm', 0.0) or 0.0):.1f} mm",
+                str(getattr(item, "photo_path", "") or ""),
+                str(getattr(item, "note", "") or ""),
+            ]
+            for col, value in enumerate(values):
+                self.tbl_measurements.setItem(row, col, QTableWidgetItem(value))
 
     def _is_visual_attachment_entry(self, entry: dict | None) -> bool:
         if not isinstance(entry, dict):
@@ -2321,12 +2826,20 @@ class TabScianaLayout(QWidget):
         layout_label = self.cb_layout_type.currentText()
         island_txt = "tak" if bool(getattr(self._wall, "has_island", False)) else "nie"
         technical_count = sum(1 for obstacle in self._wall.obstacles if _is_technical_obstacle_kind(getattr(obstacle, "kind", "")))
+        linear_kinds = {"distance", "width", "height", "depth"}
+        measurements = list(getattr(self._wall, "measurements", []) or [])
+        measurements_linear_total_mm = sum(
+            float(getattr(item, "value_mm", 0.0) or 0.0)
+            for item in measurements
+            if str(getattr(item, "kind", "distance") or "distance").strip().lower() in linear_kinds
+        )
         order_status, site_address = self._selected_order_details()
         lines = [
             f"Nazwa: {self._wall.name}",
             f"Klient: {getattr(self._wall, 'client_name', '') or '-'}",
             f"Zamowienie: {getattr(self._wall, 'order_name', '') or '-'}",
             f"Pracownik: {getattr(self._wall, 'worker_name', '') or '-'}",
+            f"Ref. wyceny: {getattr(self._wall, 'quote_item_reference', '') or '-'}",
             f"Typ ukladu: {layout_label}",
             f"Widok z przodu: {_wall_side_label(getattr(self._wall, 'front_view_wall_side', 'A'))}",
             f"Wyspa: {island_txt}",
@@ -2353,6 +2866,8 @@ class TabScianaLayout(QWidget):
                 f"Przeszkody: {len(self._wall.obstacles)}",
                 f"Elementy techniczne: {technical_count}",
                 f"Zdjecia: {len(self._wall.photos)}",
+                f"Pomiary: {len(measurements)}",
+                f"Suma pomiarow liniowych: {measurements_linear_total_mm:.0f} mm",
             ]
         )
 
@@ -2380,6 +2895,7 @@ class TabScianaLayout(QWidget):
         has_c = layout_type == "c"
         has_island = bool(self.chk_island.isChecked())
         has_selected_obstacle = 0 <= self._selected_obstacle_index < len(self._wall.obstacles)
+        has_selected_measurement = 0 <= self._selected_measurement_row() < len(self._wall.measurements)
 
         self._refresh_obstacle_field_context()
         self._set_form_row_visible(self._layout_form, self.sp_wall_b, has_corner)
@@ -2390,6 +2906,7 @@ class TabScianaLayout(QWidget):
         self._set_form_row_visible(self._layout_form, self.sp_island_y, has_island)
         self.btn_apply_obstacle.setEnabled(has_selected_obstacle)
         self.btn_remove_obstacle.setEnabled(has_selected_obstacle)
+        self.btn_remove_measurement.setEnabled(has_selected_measurement)
 
     def _refresh_all(self, fit: bool = True) -> None:
         self._reload_wall_side_combos()
@@ -2397,62 +2914,76 @@ class TabScianaLayout(QWidget):
         self._refresh_ui_state()
         self._refresh_obstacles_table()
         self._refresh_photos_table()
+        self._refresh_measurements_table()
         self._refresh_summary()
         self._render_previews(fit=fit)
 
     def _on_save_new(self) -> None:
-        name = self._ensure_name_for_save()
-        wall = self._wall_snapshot_for_store()
-        wall.name = name
-        result = self._store.save_new(wall)
-        if result.ok:
-            self._loaded_wall_name = wall.name
-        self._set_store_status(result.message_pl, ok=result.ok)
+        try:
+            name = self._ensure_name_for_save()
+            wall = self._wall_snapshot_for_store()
+            wall.name = name
+            result = self._store.save_new(wall)
+            if result.ok:
+                self._loaded_wall_name = wall.name
+            self._set_store_status(result.message_pl, ok=result.ok)
+        except Exception as exc:
+            self._show_storage_operation_error("zapisac nowa sciane", exc)
 
     def _on_overwrite(self) -> None:
-        name = self._ensure_name_for_save()
-        wall = self._wall_snapshot_for_store()
-        wall.name = name
-        result = self._store.overwrite(wall)
-        if result.ok:
-            self._loaded_wall_name = wall.name
-        self._set_store_status(result.message_pl, ok=result.ok)
+        try:
+            name = self._ensure_name_for_save()
+            wall = self._wall_snapshot_for_store()
+            wall.name = name
+            result = self._store.overwrite(wall)
+            if result.ok:
+                self._loaded_wall_name = wall.name
+            self._set_store_status(result.message_pl, ok=result.ok)
+        except Exception as exc:
+            self._show_storage_operation_error("nadpisac sciane", exc)
 
     def _on_load(self) -> None:
-        dlg = LoadWallDialog(self, self._store)
-        if dlg.exec() != dlg.DialogCode.Accepted:
-            return
+        try:
+            dlg = LoadWallDialog(self, self._store)
+            if dlg.exec() != dlg.DialogCode.Accepted:
+                return
 
-        wall = dlg.selected_wall()
-        if wall is None:
-            self._set_store_status("Nie wybrano sciany do wczytania.", ok=False)
-            return
+            wall = dlg.selected_wall()
+            if wall is None:
+                self._set_store_status("Nie wybrano sciany do wczytania.", ok=False)
+                return
 
-        self._wall = WallLayoutDef.from_dict(wall.to_dict())
-        self._selected_obstacle_index = -1
-        self._set_selected_obstacle_index_on_previews(-1)
-        self._push_wall_to_ui()
-        self._refresh_all()
-        self._loaded_wall_name = str(getattr(self._wall, "name", "") or "").strip()
-        self._set_store_status(f'Wczytano sciane: "{self._wall.name}".', ok=True)
+            self._wall = WallLayoutDef.from_dict(wall.to_dict())
+            self._selected_obstacle_index = -1
+            self._set_selected_obstacle_index_on_previews(-1)
+            self._push_wall_to_ui()
+            self._refresh_all()
+            self._loaded_wall_name = str(getattr(self._wall, "name", "") or "").strip()
+            self._set_store_status(f'Wczytano sciane: "{self._wall.name}".', ok=True)
+        except Exception as exc:
+            self._show_storage_operation_error("wczytac sciane", exc)
 
     def load_wall_from_store_name(self, name: str) -> bool:
-        wall_name = str(name or "").strip()
-        if not wall_name:
-            return False
+        try:
+            wall_name = str(name or "").strip()
+            if not wall_name:
+                return False
 
-        wall = self._store.get(wall_name) if hasattr(self._store, "get") else None
-        if wall is None:
-            return False
+            wall = self._store.get(wall_name) if hasattr(self._store, "get") else None
+            if wall is None:
+                return False
 
-        self._wall = WallLayoutDef.from_dict(wall.to_dict())
-        self._selected_obstacle_index = -1
-        self._set_selected_obstacle_index_on_previews(-1)
-        self._push_wall_to_ui()
-        self._refresh_all()
-        self._loaded_wall_name = str(getattr(self._wall, "name", "") or "").strip()
-        self._set_store_status(f'Wczytano sciane: "{self._wall.name}".', ok=True)
-        return True
+            self._wall = WallLayoutDef.from_dict(wall.to_dict())
+            self._selected_obstacle_index = -1
+            self._set_selected_obstacle_index_on_previews(-1)
+            self._push_wall_to_ui()
+            self._refresh_all()
+            self._loaded_wall_name = str(getattr(self._wall, "name", "") or "").strip()
+            self._set_store_status(f'Wczytano sciane: "{self._wall.name}".', ok=True)
+            return True
+        except Exception as exc:
+            self._set_store_status(f"Nie udalo sie wczytac sciany: {exc}", ok=False)
+            return False
 
     def _build_wall_notes_from_order_context(self, payload: dict[str, object], order_def: object | None) -> str:
         sections: list[str] = []
@@ -2502,6 +3033,10 @@ class TabScianaLayout(QWidget):
             name=quote_item_name or "Sciana 1",
             client_name=client_name,
             order_name=order_name,
+            quote_item_name=quote_item_name,
+            quote_item_kind=quote_item_kind,
+            quote_item_reference=str(payload.get("quote_item_reference", "") or "").strip()
+            or (f"{quote_item_name} ({quote_item_kind})" if quote_item_name and quote_item_kind else quote_item_name),
             worker_name=worker_name,
             notes=self._build_wall_notes_from_order_context(payload, order_def),
         )
@@ -2529,14 +3064,46 @@ class TabScianaLayout(QWidget):
         else:
             self._set_store_status("Gotowa nowa sciana.", ok=True)
 
+    def _refresh_left_zone_toggle_button(self) -> None:
+        if not hasattr(self, "left_zone_toggle"):
+            return
+        if self._left_zone_visible:
+            self.left_zone_toggle.setText("Ukryj lewy panel")
+        else:
+            self.left_zone_toggle.setText("Pokaz lewy panel")
+
+    def _toggle_left_zone(self) -> None:
+        if not hasattr(self, "main_splitter"):
+            return
+        sizes = list(self.main_splitter.sizes())
+        if len(sizes) < 3:
+            return
+
+        left, center, right = int(sizes[0]), int(sizes[1]), int(sizes[2])
+        total_main = max(600, left + center)
+        if self._left_zone_visible:
+            if left > 0:
+                self._left_zone_last_width = max(220, left)
+            self._left_zone_visible = False
+            self.left_zone.hide()
+            self.main_splitter.setSizes([0, total_main, right])
+        else:
+            target_left = max(220, int(self._left_zone_last_width or 390))
+            target_left = min(target_left, max(220, total_main - 300))
+            restored_center = max(300, total_main - target_left)
+            self._left_zone_visible = True
+            self.left_zone.show()
+            self.main_splitter.setSizes([target_left, restored_center, right])
+        self._refresh_left_zone_toggle_button()
+
     def _toggle_right_zone(self) -> None:
         self._right_zone_visible = not self._right_zone_visible
-        splitter = self.right_zone.parent()
+        splitter = getattr(self, "main_splitter", None)
         if splitter is None:
             return
         if self._right_zone_visible:
             self.right_zone.setVisible(True)
-            self.right_zone_toggle.setText("▶ Panel informacyjny")
+            self.right_zone_toggle.setText("Panel informacyjny >")
             sizes = list(splitter.sizes())
             if len(sizes) >= 3:
                 sizes[2] = self._right_zone_last_width
@@ -2548,7 +3115,7 @@ class TabScianaLayout(QWidget):
                 sizes[2] = 0
                 splitter.setSizes(sizes)
             self.right_zone.setVisible(False)
-            self.right_zone_toggle.setText("◀ Panel informacyjny")
+            self.right_zone_toggle.setText("< Panel informacyjny")
 
     def start_new_wall(self) -> None:
         self._wall = WallLayoutDef(wall_id=new_wall_id())
@@ -2565,3 +3132,7 @@ class TabScianaLayout(QWidget):
         if not ok or wall is None:
             return
         self.sig_open_komplet_requested.emit(self._context_payload_from_wall(wall))
+
+    def _on_back_to_order(self) -> None:
+        self.sig_open_order_requested.emit(self._context_payload_from_wall(self._wall))
+

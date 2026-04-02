@@ -5,7 +5,7 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta
 from typing import Callable
 
-from PyQt6.QtCore import QDate, QMimeData, Qt, QTimer
+from PyQt6.QtCore import QDate, QMimeData, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QDrag
 from PyQt6.QtWidgets import (
     QApplication,
@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -38,6 +39,11 @@ from src.domain.calendar_event import (
 )
 from src.storage.calendar_event_store_json import CalendarEventStoreJson
 from src.storage.order_store_json import OrderStoreJson
+from src.widgets.pdf_reports import (
+    ProductionCalendarData, 
+    export_production_calendar,
+    get_default_export_dir,
+)
 from src.storage.service_store_json import ServiceStoreJson
 from src.storage.worker_store_json import WorkerStoreJson
 
@@ -47,11 +53,52 @@ MONTHS_PL = [
 ]
 
 
+ORDER_STAGE_DATE_RANGES: tuple[tuple[str, str], ...] = (
+    ("date_wycena", "date_wycena_end"),
+    ("date_projekt", "date_projekt_end"),
+    ("date_probki", "date_probki_end"),
+    ("date_zakup_mat", "date_zakup_mat_end"),
+    ("date_produkcja", "date_produkcja_end"),
+    ("date_lakiernia", ""),
+    ("date_montaz", "date_montaz_end"),
+    ("date_poprawki", "date_poprawki_end"),
+)
+
+
 def _parse_date(value: str) -> date | None:
     try:
         return date.fromisoformat(str(value or "").strip())
     except (ValueError, AttributeError):
         return None
+
+
+def _event_date_range(event: CalendarEvent) -> tuple[date, date] | None:
+    start = _parse_date(str(getattr(event, "date", "") or ""))
+    if start is None:
+        return None
+    end_raw = str(getattr(event, "date_end", "") or "").strip()
+    end = _parse_date(end_raw) if end_raw else start
+    if end is None:
+        end = start
+    if end < start:
+        end = start
+    return start, end
+
+
+def _event_spans_day(event: CalendarEvent, day: date) -> bool:
+    rng = _event_date_range(event)
+    if rng is None:
+        return False
+    start, end = rng
+    return start <= day <= end
+
+
+def _event_overlaps_period(event: CalendarEvent, period_start: date, period_end: date) -> bool:
+    rng = _event_date_range(event)
+    if rng is None:
+        return False
+    start, end = rng
+    return start <= period_end and end >= period_start
 
 
 def _is_virtual_service_event(event: CalendarEvent) -> bool:
@@ -86,6 +133,15 @@ def _build_service_calendar_events() -> list[CalendarEvent]:
             )
         )
     return events
+
+
+def _chip_label(text: str, bg: str, fg: str = "#ffffff") -> QLabel:
+    label = QLabel(text)
+    label.setStyleSheet(
+        f"QLabel{{background:{bg};color:{fg};padding:3px 10px;border-radius:999px;"
+        "font-size:10px;font-weight:800;}}"
+    )
+    return label
 
 
 # ---------------------------------------------------------------------------
@@ -246,12 +302,28 @@ class EventDialog(QDialog):
                 event_type=ev_type, station=station, title=title, date=date_str,
                 date_end=date_end_str, worker_name=worker, order_code=order, notes=notes,
             )
-        self._store.save(ev)
+        try:
+            self._store.save(ev)
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Blad zapisu danych",
+                f"Nie udalo sie zapisac wydarzenia.\n\nSzczegoly: {exc}",
+            )
+            return
         self.accept()
 
     def _on_delete(self) -> None:
         if self._event is not None:
-            self._store.delete(self._event.id)
+            try:
+                self._store.delete(self._event.id)
+            except Exception as exc:
+                QMessageBox.critical(
+                    self,
+                    "Blad zapisu danych",
+                    f"Nie udalo sie usunac wydarzenia.\n\nSzczegoly: {exc}",
+                )
+                return
         self.accept()
 
 
@@ -279,10 +351,11 @@ class EventBlock(QFrame):
 
         if compact:
             self.setStyleSheet(
-                f"QFrame{{background:{color};border-radius:3px;border:none;}}"
+                f"QFrame{{background:qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 {color},stop:1 {color}cc);"
+                f"border-radius:8px;border:1px solid {color}99;}}"
             )
             layout = QHBoxLayout(self)
-            layout.setContentsMargins(4, 1, 4, 1)
+            layout.setContentsMargins(6, 3, 6, 3)
             text = f"{type_label}: {event.title}"
             if event.date_end:
                 text += f"  ({event.date} - {event.date_end})"
@@ -290,18 +363,19 @@ class EventBlock(QFrame):
                 text += f"  [{event.worker_name}]"
             lab = QLabel(text, self)
             lab.setStyleSheet(
-                "color:white;font-size:10px;background:transparent;"
+                "color:white;font-size:10px;background:transparent;font-weight:700;"
             )
-            lab.setFixedHeight(18)
+            lab.setFixedHeight(19)
             layout.addWidget(lab)
-            self.setFixedHeight(22)
+            self.setFixedHeight(26)
         else:
             self.setStyleSheet(
-                f"QFrame{{background:{color};border-radius:5px;border:none;}}"
+                f"QFrame{{background:qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 {color},stop:1 {color}d6);"
+                f"border-radius:10px;border:1px solid {color}99;}}"
             )
             layout = QVBoxLayout(self)
-            layout.setContentsMargins(5, 4, 5, 4)
-            layout.setSpacing(1)
+            layout.setContentsMargins(7, 5, 7, 5)
+            layout.setSpacing(3)
 
             title_lab = QLabel(event.title, self)
             title_lab.setStyleSheet(
@@ -315,7 +389,7 @@ class EventBlock(QFrame):
                 parts.append(event.worker_name)
             if event.order_code:
                 parts.append(f"#{event.order_code}")
-            sub = QLabel(" · ".join(parts), self)
+            sub = QLabel(" | ".join(parts), self)
             sub.setStyleSheet(
                 "color:rgba(255,255,255,0.85);font-size:10px;background:transparent;"
             )
@@ -354,8 +428,9 @@ class EventBlock(QFrame):
 # Droppable calendar cell
 # ---------------------------------------------------------------------------
 
-_STYLE_DEFAULT = "QFrame{{background:{bg};border:1px solid #e2e8f0;}}"
-_STYLE_HOVER = "QFrame{background:#dbeafe;border:2px dashed #3b82f6;}"
+_STYLE_DEFAULT = "QFrame{{background:{bg};border:1px solid #dbe4ef;border-radius:14px;}}"
+_STYLE_HOVER = "QFrame{background:#e6f0ff;border:2px dashed #2563eb;border-radius:14px;}"
+_STYLE_SELECTED = "QFrame{{background:{bg};border:2px solid #1d4ed8;border-radius:14px;}}"
 
 
 class CalendarCell(QFrame):
@@ -366,9 +441,11 @@ class CalendarCell(QFrame):
         store: CalendarEventStoreJson,
         on_change: Callable[[], None],
         on_add: Callable[[date, str], None],
+        on_select: Callable[[date], None] | None = None,
         parent: QWidget | None = None,
         is_today: bool = False,
         compact: bool = False,
+        selected: bool = False,
     ) -> None:
         super().__init__(parent)
         self._date = cell_date
@@ -376,29 +453,32 @@ class CalendarCell(QFrame):
         self._store = store
         self._on_change = on_change
         self._on_add = on_add
+        self._on_select = on_select
         self._compact = compact
+        self._is_selected = bool(selected)
         self.setAcceptDrops(True)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         if is_today:
-            bg = "#eff6ff"
+            bg = "#eef4ff"
         elif compact and cell_date.month != date.today().month:
             bg = "#f8fafc"
         else:
             bg = "#ffffff"
-        self._default_style = _STYLE_DEFAULT.format(bg=bg)
+        self._base_bg = bg
+        self._default_style = self._build_default_style()
         self.setStyleSheet(self._default_style)
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(3, 3, 3, 3)
-        outer.setSpacing(2)
+        outer.setContentsMargins(4, 4, 4, 4)
+        outer.setSpacing(3)
 
         if compact:
             day_lab = QLabel(str(cell_date.day), self)
             day_lab.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
             if is_today:
                 day_lab.setStyleSheet(
-                    "font-weight:800;color:#2563eb;background:transparent;font-size:12px;"
+                    "font-weight:800;color:#1d4ed8;background:transparent;font-size:12px;"
                 )
             else:
                 day_lab.setStyleSheet(
@@ -415,9 +495,9 @@ class CalendarCell(QFrame):
         outer.addStretch()
 
         if not compact:
-            self.setMinimumHeight(100)
+            self.setMinimumHeight(106)
         else:
-            self.setMinimumHeight(90)
+            self.setMinimumHeight(96)
 
     def set_events(
         self,
@@ -436,6 +516,21 @@ class CalendarCell(QFrame):
             more = QLabel(f"+{len(events) - limit}", self._events_widget)
             more.setStyleSheet("color:#64748b;font-size:10px;background:transparent;")
             self._events_layout.addWidget(more)
+
+    def _build_default_style(self) -> str:
+        if self._is_selected:
+            return _STYLE_SELECTED.format(bg=self._base_bg)
+        return _STYLE_DEFAULT.format(bg=self._base_bg)
+
+    def set_selected(self, selected: bool) -> None:
+        self._is_selected = bool(selected)
+        self._default_style = self._build_default_style()
+        self.setStyleSheet(self._default_style)
+
+    def mousePressEvent(self, e) -> None:
+        if e.button() == Qt.MouseButton.LeftButton and self._on_select is not None:
+            self._on_select(self._date)
+        super().mousePressEvent(e)
 
     def mouseDoubleClickEvent(self, e) -> None:
         self._on_add(self._date, self._station)
@@ -457,7 +552,15 @@ class CalendarCell(QFrame):
         ev = self._store.get(event_id)
         if ev is not None:
             updated = replace(ev, date=self._date.isoformat(), station=self._station)
-            self._store.save(updated)
+            try:
+                self._store.save(updated)
+            except Exception as exc:
+                QMessageBox.critical(
+                    self,
+                    "Blad zapisu danych",
+                    f"Nie udalo sie przeniesc wydarzenia.\n\nSzczegoly: {exc}",
+                )
+                return
             QTimer.singleShot(0, self._on_change)
         e.acceptProposedAction()
 
@@ -475,6 +578,8 @@ class WeekGrid(QScrollArea):
         store: CalendarEventStoreJson,
         worker_store: WorkerStoreJson | None,
         on_change: Callable[[], None],
+        on_day_selected: Callable[[date], None] | None = None,
+        selected_date: date | None = None,
         service_events_provider: Callable[[], list[CalendarEvent]] | None = None,
         parent: QWidget | None = None,
     ) -> None:
@@ -482,6 +587,8 @@ class WeekGrid(QScrollArea):
         self._store = store
         self._worker_store = worker_store
         self._on_change = on_change
+        self._on_day_selected = on_day_selected
+        self._selected_day = selected_date
         self._service_events_provider = service_events_provider or (lambda: [])
         self._filter_worker = ""
         self._filter_station = ""
@@ -502,6 +609,16 @@ class WeekGrid(QScrollArea):
         self._filter_event_type = str(event_type or "").strip()
         self._rebuild()
 
+    def set_selected_day(self, selected_day: date | None) -> None:
+        self._selected_day = selected_day
+        self._rebuild()
+
+    def _handle_day_selected(self, selected_day: date) -> None:
+        self._selected_day = selected_day
+        self._rebuild()
+        if self._on_day_selected is not None:
+            self._on_day_selected(selected_day)
+
     def _event_matches_filters(self, event: CalendarEvent) -> bool:
         if self._filter_station and str(event.station or "") != self._filter_station:
             return False
@@ -513,8 +630,9 @@ class WeekGrid(QScrollArea):
 
     def _rebuild(self) -> None:
         container = QWidget()
+        container.setStyleSheet("background:transparent;")
         grid = QGridLayout(container)
-        grid.setSpacing(0)
+        grid.setSpacing(2)
         grid.setContentsMargins(0, 0, 0, 0)
 
         today = date.today()
@@ -529,7 +647,7 @@ class WeekGrid(QScrollArea):
         # Corner
         corner = QLabel("", container)
         corner.setFixedHeight(46)
-        corner.setStyleSheet("background:#f1f5f9;border:1px solid #e2e8f0;")
+        corner.setStyleSheet("background:#eef3fb;border:1px solid #d3dfef;border-radius:8px;")
         grid.addWidget(corner, 0, 0)
 
         # Day headers
@@ -539,28 +657,28 @@ class WeekGrid(QScrollArea):
             lab = QLabel(text, container)
             lab.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lab.setFixedHeight(46)
+            is_weekend = d.weekday() >= 5
             if is_today:
                 lab.setStyleSheet(
-                    "background:#dbeafe;font-weight:800;color:#1d4ed8;border:1px solid #93c5fd;"
+                    "background:#dbeafe;font-weight:900;color:#1d4ed8;border:1px solid #93c5fd;border-radius:8px;"
+                )
+            elif is_weekend:
+                lab.setStyleSheet(
+                    "background:#fef3c7;font-weight:800;color:#92400e;border:1px solid #fcd34d;border-radius:8px;"
                 )
             else:
                 lab.setStyleSheet(
-                    "background:#f1f5f9;font-weight:600;color:#374151;border:1px solid #e2e8f0;"
+                    "background:#eef3fb;font-weight:700;color:#334155;border:1px solid #d3dfef;border-radius:8px;"
                 )
             grid.addWidget(lab, 0, col)
 
         # Load events once for the whole week
         all_events = self._store.list_events() + list(self._service_events_provider())
-        week_dates = {d.isoformat() for d in days}
+        week_start = days[0]
+        week_end = days[-1]
 
         def event_in_week(ev: CalendarEvent) -> bool:
-            if ev.date in week_dates and self._event_matches_filters(ev):
-                return True
-            if ev.date_end:
-                de = _parse_date(ev.date_end)
-                if de and ev.date <= de.isoformat() and self._event_matches_filters(ev):
-                    return True
-            return False
+            return self._event_matches_filters(ev) and _event_overlaps_period(ev, week_start, week_end)
 
         week_events = [ev for ev in all_events if event_in_week(ev)]
 
@@ -572,7 +690,7 @@ class WeekGrid(QScrollArea):
             lab.setMinimumHeight(100)
             lab.setWordWrap(True)
             lab.setStyleSheet(
-                "background:#e2e8f0;font-weight:700;border:1px solid #cbd5e1;color:#1e293b;"
+                "background:#e6edf7;font-weight:800;border:1px solid #ccd8e8;color:#1e293b;border-radius:8px;"
             )
             grid.addWidget(lab, row, 0)
             grid.setRowMinimumHeight(row, 100)
@@ -582,18 +700,15 @@ class WeekGrid(QScrollArea):
                 is_today = d == today
 
                 def event_on_day(ev: CalendarEvent, day: date) -> bool:
-                    if ev.date == day.isoformat() and ev.station == station:
-                        return True
-                    if ev.date_end:
-                        de = _parse_date(ev.date_end)
-                        if de and ev.date <= day.isoformat() <= ev.date_end and ev.station == station:
-                            return True
-                    return False
+                    if ev.station != station:
+                        return False
+                    return _event_spans_day(ev, day)
 
                 cell_events = [ev for ev in week_events if event_on_day(ev, d)]
                 cell = CalendarCell(
                     d, station, self._store, self._on_change,
-                    self._open_add, container, is_today=is_today, compact=False,
+                    self._open_add, self._handle_day_selected, container,
+                    is_today=is_today, compact=False, selected=(self._selected_day == d),
                 )
                 cell.set_events(cell_events, self._open_edit)
                 grid.addWidget(cell, row, col)
@@ -623,6 +738,8 @@ class MonthGrid(QScrollArea):
         store: CalendarEventStoreJson,
         worker_store: WorkerStoreJson | None,
         on_change: Callable[[], None],
+        on_day_selected: Callable[[date], None] | None = None,
+        selected_date: date | None = None,
         service_events_provider: Callable[[], list[CalendarEvent]] | None = None,
         parent: QWidget | None = None,
     ) -> None:
@@ -630,6 +747,8 @@ class MonthGrid(QScrollArea):
         self._store = store
         self._worker_store = worker_store
         self._on_change = on_change
+        self._on_day_selected = on_day_selected
+        self._selected_day = selected_date
         self._service_events_provider = service_events_provider or (lambda: [])
         self._filter_worker = ""
         self._filter_station = ""
@@ -668,6 +787,16 @@ class MonthGrid(QScrollArea):
         self._filter_event_type = str(event_type or "").strip()
         self._rebuild()
 
+    def set_selected_day(self, selected_day: date | None) -> None:
+        self._selected_day = selected_day
+        self._rebuild()
+
+    def _handle_day_selected(self, selected_day: date) -> None:
+        self._selected_day = selected_day
+        self._rebuild()
+        if self._on_day_selected is not None:
+            self._on_day_selected(selected_day)
+
     def _event_matches_filters(self, event: CalendarEvent) -> bool:
         if self._filter_station and str(event.station or "") != self._filter_station:
             return False
@@ -679,8 +808,9 @@ class MonthGrid(QScrollArea):
 
     def _rebuild(self) -> None:
         container = QWidget()
+        container.setStyleSheet("background:transparent;")
         grid = QGridLayout(container)
-        grid.setSpacing(0)
+        grid.setSpacing(2)
         grid.setContentsMargins(0, 0, 0, 0)
 
         # Day-of-week header
@@ -688,25 +818,31 @@ class MonthGrid(QScrollArea):
             lab = QLabel(name, container)
             lab.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lab.setFixedHeight(36)
-            lab.setStyleSheet(
-                "background:#f1f5f9;font-weight:700;border:1px solid #e2e8f0;"
-            )
+            if col >= 5:
+                lab.setStyleSheet(
+                    "background:#fef3c7;font-weight:800;color:#92400e;border:1px solid #fcd34d;border-radius:8px;"
+                )
+            else:
+                lab.setStyleSheet(
+                    "background:#eef3fb;font-weight:800;color:#334155;border:1px solid #d3dfef;border-radius:8px;"
+                )
             grid.addWidget(lab, 0, col)
             grid.setColumnStretch(col, 1)
-
-        # Events for this month
-        all_events = self._store.list_events() + list(self._service_events_provider())
-        month_prefix = f"{self._year:04d}-{self._month:02d}"
-        month_events = [
-            ev
-            for ev in all_events
-            if ev.date.startswith(month_prefix) and self._event_matches_filters(ev)
-        ]
 
         first_day = date(self._year, self._month, 1)
         offset = first_day.weekday()
         today = date.today()
-        cell_date = first_day - timedelta(days=offset)
+        first_visible_day = first_day - timedelta(days=offset)
+        last_visible_day = first_visible_day + timedelta(days=41)
+        cell_date = first_visible_day
+
+        # Events shown in visible 6x7 month grid, including ranges that started in another month.
+        all_events = self._store.list_events() + list(self._service_events_provider())
+        month_events = [
+            ev
+            for ev in all_events
+            if self._event_matches_filters(ev) and _event_overlaps_period(ev, first_visible_day, last_visible_day)
+        ]
 
         for week_row in range(6):
             any_in_month = False
@@ -717,21 +853,17 @@ class MonthGrid(QScrollArea):
                 is_today = cell_date == today
 
                 def event_in_range(ev: CalendarEvent) -> bool:
-                    if ev.date == cell_date.isoformat():
-                        return True
-                    if ev.date_end:
-                        de = _parse_date(ev.date_end)
-                        if de and ev.date <= cell_date.isoformat() <= ev.date_end:
-                            return True
-                    return False
+                    return _event_spans_day(ev, cell_date)
 
                 cell_events = [ev for ev in month_events if event_in_range(ev)]
                 cell = CalendarCell(
                     cell_date, "", self._store, self._on_change,
-                    self._open_add, container, is_today=is_today, compact=True,
+                    self._open_add, self._handle_day_selected, container,
+                    is_today=is_today, compact=True, selected=(self._selected_day == cell_date),
                 )
                 if not is_cur_month:
-                    cell.setStyleSheet("QFrame{background:#f4f4f5;border:1px solid #e4e4e7;}")
+                    cell._base_bg = "#f4f4f5"
+                    cell.set_selected(self._selected_day == cell_date)
                 cell.set_events(cell_events, self._open_edit)
                 grid.addWidget(cell, week_row + 1, day_col)
                 grid.setRowMinimumHeight(week_row + 1, 100)
@@ -762,6 +894,8 @@ class MonthGrid(QScrollArea):
 # ---------------------------------------------------------------------------
 
 class TabKalendarz(QWidget):
+    sig_return_to_order_requested = pyqtSignal()
+
     def __init__(
         self,
         parent: QWidget | None = None,
@@ -774,15 +908,29 @@ class TabKalendarz(QWidget):
         self._worker_store = worker_store or WorkerStoreJson()
         self._order_store = order_store or OrderStoreJson()
         self._current_view = "week"
+        self._selected_order_day: date | None = None
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(12, 12, 12, 12)
-        root.setSpacing(8)
+        root.setContentsMargins(16, 16, 16, 18)
+        root.setSpacing(14)
+        self.setObjectName("tab_calendar_root")
+        self.setStyleSheet(
+            "QWidget#tab_calendar_root{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #eef3fb,stop:1 #f8fbff);}"
+            "QComboBox, QLineEdit, QListWidget{background:#ffffff;border:1px solid #cfdced;"
+            "border-radius:10px;padding:6px 10px;color:#0f172a;font-size:12px;}"
+            "QComboBox::drop-down{border:none;width:22px;}"
+            "QListWidget{padding:4px;}"
+            "QListWidget::item{padding:8px 9px;border-bottom:1px solid #eef2f7;}"
+            "QListWidget::item:selected{background:#dbeafe;color:#0f172a;border-radius:8px;}"
+            "QPushButton{background:#ffffff;border:1px solid #c9d6e8;border-radius:10px;"
+            "padding:7px 12px;color:#12243b;font-size:12px;font-weight:700;}"
+            "QPushButton:hover{background:#edf4fd;}"
+        )
 
         # ── Header ──────────────────────────────────────────────────────────
         header = QHBoxLayout()
         title = QLabel("KALENDARZ")
-        title.setStyleSheet("font-size:22px;font-weight:800;letter-spacing:0.5px;")
+        title.setStyleSheet("font-size:27px;font-weight:900;color:#0b1220;letter-spacing:0.2px;")
         header.addWidget(title)
         header.addStretch()
 
@@ -790,9 +938,10 @@ class TabKalendarz(QWidget):
         self._btn_month = QPushButton("Miesiąc")
         for btn in (self._btn_week, self._btn_month):
             btn.setCheckable(True)
+            btn.setFixedHeight(34)
             btn.setStyleSheet(
-                "QPushButton{padding:4px 14px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;}"
-                "QPushButton:checked{background:#2563eb;color:#fff;border-color:#2563eb;font-weight:700;}"
+                "QPushButton{padding:6px 16px;border:1px solid #c6d5ea;border-radius:999px;background:#f8fbff;}"
+                "QPushButton:checked{background:#0b3a6e;color:#fff;border-color:#0b3a6e;font-weight:900;}"
             )
         self._btn_week.setChecked(True)
         header.addWidget(self._btn_week)
@@ -800,39 +949,71 @@ class TabKalendarz(QWidget):
         root.addLayout(header)
 
         # ── Navigation bar ───────────────────────────────────────────────────
-        nav = QHBoxLayout()
-        self._btn_prev = QPushButton("◀")
+        nav_frame = QFrame(self)
+        nav_frame.setObjectName("calendar_nav_frame")
+        nav_frame.setStyleSheet(
+            "QFrame#calendar_nav_frame{background:qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 #ffffff,stop:1 #f7faff);"
+            "border:1px solid #cad9ec;border-radius:18px;}"
+        )
+        nav = QHBoxLayout(nav_frame)
+        nav.setContentsMargins(14, 11, 14, 11)
+        nav.setSpacing(10)
+        self._btn_prev = QPushButton("<")
         self._btn_prev.setFixedWidth(36)
-        self._btn_next = QPushButton("▶")
+        self._btn_next = QPushButton(">")
         self._btn_next.setFixedWidth(36)
-        self._btn_today = QPushButton("Dziś")
+        self._btn_today = QPushButton("Dzis")
+        self._btn_return_to_order = QPushButton("Wroc do zamowienia")
+        self._btn_return_to_order.setVisible(False)
+        self._btn_return_to_order.setEnabled(False)
         self._lab_period = QLabel("")
-        self._lab_period.setStyleSheet("font-weight:700;font-size:15px;padding:0 10px;")
+        self._lab_period.setStyleSheet("font-weight:900;font-size:16px;color:#0f172a;padding:0 12px;")
 
         self._btn_add = QPushButton("+ Dodaj zdarzenie")
         self._btn_add.setStyleSheet(
-            "QPushButton{background:#2563eb;color:white;font-weight:700;"
-            "padding:5px 16px;border-radius:7px;border:none;}"
-            "QPushButton:hover{background:#1d4ed8;}"
+            "QPushButton{background:#0b3a6e;color:white;font-weight:900;"
+            "padding:8px 16px;border-radius:10px;border:1px solid #082f57;}"
+            "QPushButton:hover{background:#124a87;}"
         )
         
-        self._btn_sync_orders = QPushButton("🔄 Z zamówień")
+        self._btn_sync_orders = QPushButton("Z zamowien")
         self._btn_sync_orders.setToolTip("Synchronizuj kalendarz z zamówieniami")
         self._btn_sync_orders.setStyleSheet(
-            "QPushButton{background:#16a34a;color:white;font-weight:700;"
-            "padding:5px 12px;border-radius:7px;border:none;}"
-            "QPushButton:hover{background:#15803d;}"
+            "QPushButton{background:#198754;color:white;font-weight:800;"
+            "padding:8px 12px;border-radius:10px;border:1px solid #146c43;}"
+            "QPushButton:hover{background:#157347;}"
         )
+
+        self._btn_export_pdf = QPushButton("PDF")
+        self._btn_export_pdf.setToolTip("Eksportuj harmonogram do PDF")
+        self._btn_export_pdf.setStyleSheet(
+            "QPushButton{background:#0f766e;color:white;font-weight:800;"
+            "padding:8px 12px;border-radius:10px;border:1px solid #115e59;}"
+            "QPushButton:hover{background:#0d9488;}"
+        )
+        self._btn_export_pdf.clicked.connect(self._on_export_pdf)
 
         nav.addWidget(self._btn_prev)
         nav.addWidget(self._btn_today)
         nav.addWidget(self._btn_next)
+        nav.addWidget(self._btn_return_to_order)
         nav.addWidget(self._lab_period, 1)
         nav.addWidget(self._btn_sync_orders)
+        nav.addWidget(self._btn_export_pdf)
         nav.addWidget(self._btn_add)
-        root.addLayout(nav)
+        root.addWidget(nav_frame)
 
         # ── Event filters ───────────────────────────────────────────────────────
+        filters_frame = QFrame(self)
+        filters_frame.setObjectName("calendar_filters_frame")
+        filters_frame.setStyleSheet(
+            "QFrame#calendar_filters_frame{background:qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 #ffffff,stop:1 #f8fbff);"
+            "border:1px solid #cad9ec;border-radius:18px;}"
+        )
+        filters_frame_lay = QVBoxLayout(filters_frame)
+        filters_frame_lay.setContentsMargins(14, 12, 14, 12)
+        filters_frame_lay.setSpacing(9)
+
         filters = QHBoxLayout()
         filters.setSpacing(8)
 
@@ -851,17 +1032,19 @@ class TabKalendarz(QWidget):
 
         self._btn_filter_clear = QPushButton("Wyczysc filtry")
         self._btn_clear_all_filters = QPushButton("Wyczysc wszystko")
+        self._btn_filter_clear.setFixedHeight(34)
+        self._btn_clear_all_filters.setFixedHeight(34)
 
         filters.addWidget(self._cb_filter_type)
         filters.addWidget(self._cb_filter_station)
         filters.addWidget(self._ed_filter_worker, 1)
         filters.addWidget(self._btn_filter_clear)
         filters.addWidget(self._btn_clear_all_filters)
-        root.addLayout(filters)
+        filters_frame_lay.addLayout(filters)
 
         self._lab_event_filter_chips = QLabel("")
-        self._lab_event_filter_chips.setStyleSheet("color:#334155;font-size:12px;")
-        root.addWidget(self._lab_event_filter_chips)
+        self._lab_event_filter_chips.setStyleSheet("color:#2f425a;font-size:12px;font-weight:700;background:transparent;")
+        filters_frame_lay.addWidget(self._lab_event_filter_chips)
 
         # ── Legend ───────────────────────────────────────────────────────────
         legend = QHBoxLayout()
@@ -870,12 +1053,13 @@ class TabKalendarz(QWidget):
             color = EVENT_COLORS[et]
             lbl = QLabel(EVENT_TYPE_LABELS[et])
             lbl.setStyleSheet(
-                f"background:{color};color:white;padding:2px 8px;"
-                "border-radius:4px;font-size:10px;font-weight:600;"
+                f"background:{color};color:white;padding:4px 11px;"
+                "border-radius:999px;font-size:10px;font-weight:800;"
             )
             legend.addWidget(lbl)
         legend.addStretch()
-        root.addLayout(legend)
+        filters_frame_lay.addLayout(legend)
+        root.addWidget(filters_frame)
 
         # ── Stacked views ────────────────────────────────────────────────────
         self._stack = QStackedWidget()
@@ -883,12 +1067,16 @@ class TabKalendarz(QWidget):
             self._calendar_store,
             self._worker_store,
             self._on_data_change,
+            on_day_selected=self._on_calendar_day_selected,
+            selected_date=self._selected_order_day,
             service_events_provider=_build_service_calendar_events,
         )
         self._month_view = MonthGrid(
             self._calendar_store,
             self._worker_store,
             self._on_data_change,
+            on_day_selected=self._on_calendar_day_selected,
+            selected_date=self._selected_order_day,
             service_events_provider=_build_service_calendar_events,
         )
         self._stack.addWidget(self._week_view)
@@ -897,13 +1085,17 @@ class TabKalendarz(QWidget):
 
         # ── Order status panel ─────────────────────────────────────────────────
         status_frame = QFrame(self)
-        status_frame.setStyleSheet("QFrame{border:1px solid #dbe3ee;border-radius:8px;background:#fafcff;}")
+        status_frame.setObjectName("calendar_status_frame")
+        status_frame.setStyleSheet(
+            "QFrame#calendar_status_frame{border:1px solid #cad9ec;border-radius:18px;"
+            "background:qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 #ffffff,stop:1 #f8fbff);}"
+        )
         status_layout = QVBoxLayout(status_frame)
-        status_layout.setContentsMargins(10, 8, 10, 8)
-        status_layout.setSpacing(6)
+        status_layout.setContentsMargins(14, 12, 14, 12)
+        status_layout.setSpacing(9)
 
         status_title = QLabel("Statusy zamowien i historia zmian")
-        status_title.setStyleSheet("font-size:14px;font-weight:700;color:#1f2937;")
+        status_title.setStyleSheet("font-size:16px;font-weight:900;color:#0f172a;")
         status_layout.addWidget(status_title)
 
         status_filters = QHBoxLayout()
@@ -914,6 +1106,7 @@ class TabKalendarz(QWidget):
         self._ed_order_worker = QLineEdit(self)
         self._ed_order_worker.setPlaceholderText("Pracownik zamowienia")
         self._btn_order_filter_clear = QPushButton("Wyczysc")
+        self._btn_order_filter_clear.setFixedHeight(34)
         status_filters.addWidget(self._cb_order_status)
         status_filters.addWidget(self._cb_order_stage)
         status_filters.addWidget(self._ed_order_worker, 1)
@@ -921,26 +1114,30 @@ class TabKalendarz(QWidget):
         status_layout.addLayout(status_filters)
 
         self._lab_order_filter_chips = QLabel("")
-        self._lab_order_filter_chips.setStyleSheet("color:#334155;font-size:12px;")
+        self._lab_order_filter_chips.setStyleSheet("color:#2f425a;font-size:12px;font-weight:700;background:transparent;")
         status_layout.addWidget(self._lab_order_filter_chips)
 
         self._lab_order_stats = QLabel("-")
-        self._lab_order_stats.setStyleSheet("color:#475569;font-size:12px;")
+        self._lab_order_stats.setStyleSheet("color:#475569;font-size:12px;font-weight:600;")
         status_layout.addWidget(self._lab_order_stats)
 
         lists_row = QHBoxLayout()
         lists_row.setSpacing(10)
 
         col_left = QVBoxLayout()
-        col_left.addWidget(QLabel("Zamowienia (po filtrach)"))
+        left_title = QLabel("Zamowienia (po filtrach)")
+        left_title.setStyleSheet("font-size:11px;font-weight:800;color:#475569;")
+        col_left.addWidget(left_title)
         self._lst_order_status = QListWidget(self)
-        self._lst_order_status.setMinimumHeight(110)
+        self._lst_order_status.setMinimumHeight(120)
         col_left.addWidget(self._lst_order_status)
 
         col_right = QVBoxLayout()
-        col_right.addWidget(QLabel("Ostatnie zmiany statusu"))
+        right_title = QLabel("Ostatnie zmiany statusu")
+        right_title.setStyleSheet("font-size:11px;font-weight:800;color:#475569;")
+        col_right.addWidget(right_title)
         self._lst_order_history = QListWidget(self)
-        self._lst_order_history.setMinimumHeight(110)
+        self._lst_order_history.setMinimumHeight(120)
         col_right.addWidget(self._lst_order_history)
 
         lists_row.addLayout(col_left, 1)
@@ -955,6 +1152,7 @@ class TabKalendarz(QWidget):
         self._btn_prev.clicked.connect(self._navigate_prev)
         self._btn_next.clicked.connect(self._navigate_next)
         self._btn_today.clicked.connect(self._navigate_today)
+        self._btn_return_to_order.clicked.connect(self.sig_return_to_order_requested.emit)
         self._btn_sync_orders.clicked.connect(self._sync_from_orders)
         self._btn_add.clicked.connect(self._add_event)
         self._cb_filter_type.currentIndexChanged.connect(self._on_event_filters_changed)
@@ -971,6 +1169,11 @@ class TabKalendarz(QWidget):
         self._refresh_order_filter_choices()
         self._refresh_order_status_panel()
         self._refresh_filter_chip_labels()
+
+    def set_return_to_order_enabled(self, enabled: bool) -> None:
+        is_enabled = bool(enabled)
+        self._btn_return_to_order.setVisible(is_enabled)
+        self._btn_return_to_order.setEnabled(is_enabled)
 
     # ── View switching ───────────────────────────────────────────────────────
 
@@ -1061,6 +1264,51 @@ class TabKalendarz(QWidget):
     def _clear_all_filters(self) -> None:
         self._clear_event_filters()
         self._clear_order_filters()
+        self._clear_selected_calendar_day()
+
+    def _on_calendar_day_selected(self, selected_day: date) -> None:
+        if self._selected_order_day == selected_day:
+            self._selected_order_day = None
+        else:
+            self._selected_order_day = selected_day
+        self._week_view.set_selected_day(self._selected_order_day)
+        self._month_view.set_selected_day(self._selected_order_day)
+        self._refresh_order_status_panel()
+
+    def _clear_selected_calendar_day(self) -> None:
+        if self._selected_order_day is None:
+            return
+        self._selected_order_day = None
+        self._week_view.set_selected_day(None)
+        self._month_view.set_selected_day(None)
+
+    def _order_matches_selected_day(self, order, selected_day: date | None) -> bool:
+        if selected_day is None:
+            return True
+        selected_iso = selected_day.isoformat()
+
+        direct_date = str(getattr(order, "calendar_date", "") or "").strip()
+        if direct_date == selected_iso:
+            return True
+
+        for start_field, end_field in ORDER_STAGE_DATE_RANGES:
+            start_raw = str(getattr(order, start_field, "") or "").strip()
+            if not start_raw:
+                continue
+            start = _parse_date(start_raw)
+            if start is None:
+                continue
+            end = start
+            if end_field:
+                end_raw = str(getattr(order, end_field, "") or "").strip()
+                end_parsed = _parse_date(end_raw) if end_raw else None
+                if end_parsed is not None:
+                    end = end_parsed
+            if end < start:
+                end = start
+            if start <= selected_day <= end:
+                return True
+        return False
 
     def _refresh_order_filter_choices(self) -> None:
         try:
@@ -1117,12 +1365,15 @@ class TabKalendarz(QWidget):
         order_status = str(self._cb_order_status.currentData() or "").strip()
         order_stage = str(self._cb_order_stage.currentData() or "").strip()
         order_worker = self._ed_order_worker.text().strip()
+        selected_day = self._selected_order_day.isoformat() if self._selected_order_day else ""
         if order_status:
             order_parts.append(f"Status: {order_status}")
         if order_stage:
             order_parts.append(f"Etap: {order_stage}")
         if order_worker:
             order_parts.append(f"Pracownik: {order_worker}")
+        if selected_day:
+            order_parts.append(f"Dzien: {selected_day}")
         self._lab_order_filter_chips.setText(
             "Aktywne filtry zamowien: " + (" | ".join(order_parts) if order_parts else "brak")
         )
@@ -1146,6 +1397,7 @@ class TabKalendarz(QWidget):
         status_filter = str(self._cb_order_status.currentData() or "").strip()
         stage_filter = str(self._cb_order_stage.currentData() or "").strip()
         worker_filter = self._ed_order_worker.text().strip().lower()
+        selected_day = self._selected_order_day
 
         filtered_orders = []
         for order in orders:
@@ -1158,11 +1410,18 @@ class TabKalendarz(QWidget):
                 continue
             if worker_filter and worker_filter not in worker.lower():
                 continue
+            if not self._order_matches_selected_day(order, selected_day):
+                continue
             filtered_orders.append(order)
 
         self._lst_order_status.clear()
         if not filtered_orders:
-            self._lst_order_status.addItem(QListWidgetItem("Brak zamowien dla wybranych filtrow."))
+            if selected_day is not None:
+                self._lst_order_status.addItem(
+                    QListWidgetItem(f"Brak zamowien dla dnia {selected_day.isoformat()} i wybranych filtrow.")
+                )
+            else:
+                self._lst_order_status.addItem(QListWidgetItem("Brak zamowien dla wybranych filtrow."))
         else:
             for order in sorted(filtered_orders, key=lambda item: str(getattr(item, "code", "") or "")):
                 code = str(getattr(order, "code", "") or "-")
@@ -1202,8 +1461,9 @@ class TabKalendarz(QWidget):
             for _changed_at, line in history_rows[:30]:
                 self._lst_order_history.addItem(QListWidgetItem(line))
 
+        day_part = f" | Dzien: {selected_day.isoformat()}" if selected_day is not None else ""
         self._lab_order_stats.setText(
-            f"Zamowienia: {len(filtered_orders)} / {len(orders)} | Zmiany statusu: {len(history_rows)}"
+            f"Zamowienia: {len(filtered_orders)} / {len(orders)} | Zmiany statusu: {len(history_rows)}{day_part}"
         )
         self._refresh_filter_chip_labels()
 
@@ -1233,5 +1493,69 @@ class TabKalendarz(QWidget):
         if dlg.exec():
             self._on_data_change()
 
+    def _on_export_pdf(self) -> None:
+        """Export current calendar view to PDF."""
+        from PyQt6.QtWidgets import QFileDialog
+        
+        # Get current week/month range
+        if self._current_view == "week":
+            start_date = self._current_week_start
+            end_date = start_date + timedelta(days=6)
+        else:
+            start_date = self._current_month_start
+            end_date = self._get_next_month_start() - timedelta(days=1)
+        
+        # Get events for the period
+        all_events = self._calendar_store.list_events()
+        period_events = []
+        for event in all_events:
+            event_date = QDate.fromString(event.date, "yyyy-MM-dd").toPyDate()
+            if start_date <= event_date <= end_date:
+                period_events.append({
+                    "day": self._get_day_name(event_date),
+                    "order_code": event.order_code,
+                    "client_name": getattr(event, "client_name", ""),
+                    "station": event.station,
+                    "status": event.status,
+                })
+        
+        # Build data
+        data = ProductionCalendarData(
+            week_start=start_date.strftime("%Y-%m-%d"),
+            week_end=end_date.strftime("%Y-%m-%d"),
+            events=period_events,
+        )
+        
+        # Export
+        default_path = get_default_export_dir() / f"kalendarz_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Eksport kalendarza PDF",
+            str(default_path),
+            "Pliki PDF (*.pdf);;Wszystkie pliki (*.*)",
+        )
+        
+        if file_path:
+            try:
+                export_production_calendar(data, Path(file_path).name)
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.information(self, "Eksport", f"Kalendarz wyeksportowany do:\n{file_path}")
+            except Exception as e:
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.warning(self, "Błąd", f"Nie udało się wyeksportować:\n{str(e)}")
+
+    def _get_day_name(self, d: date) -> str:
+        """Get Polish day name."""
+        days = ["Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota", "Niedziela"]
+        return days[d.weekday()]
+
+    def _get_next_month_start(self) -> date:
+        """Get first day of next month."""
+        first = self._current_month_start
+        if first.month == 12:
+            return date(first.year + 1, 1, 1)
+        return date(first.year, first.month + 1, 1)
+
     def refresh_data(self) -> None:
         self._on_data_change()
+

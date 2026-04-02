@@ -151,7 +151,7 @@ class TabInsights(QWidget):
         "Komplet — biblioteka modulow, presety materialow, dekorow, szybka edycja grupowa.",
         "Czas pracy — tabele miesieczne, tryby rozliczenia, podstawy kosztu robocizny.",
         "Kalendarz wizualny — widok tygodniowy i miesieczny na wzor Google Calendar.",
-        "Kalendarz — 4 stanowiska: Lakiernia, CNC, Skladanie, Biuro — kazde jako osobny rzad w siatce.",
+        "Kalendarz — 5 stanowisk: Biuro glowne, Lakiernia, CNC, Skladanie, Biuro — kazde jako osobny rzad w siatce.",
         "Kalendarz — 9 typow zdarzen z kolorami: Zlecenie, Montaz, Pomiary, Wstepna wycena, Zam. materialow, Poprawki, Badania, BHP, Inne.",
         "Drag & drop — przeciaganie blokow miedzy dniami i stanowiskami myszka.",
         "Zdarzenia niezwiazane z zamowieniem (Badania, BHP) jako osobne wpisy w kalendarzu.",
@@ -326,3 +326,5 @@ class TabInsights(QWidget):
             }
             """
         )
+
+
