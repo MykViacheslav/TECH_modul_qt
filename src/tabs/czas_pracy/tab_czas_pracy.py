@@ -374,11 +374,54 @@ class TabCzasPracy(QWidget):
         sheet_layout.addWidget(self.tbl_hours, 1)
         root.addWidget(sheet_box, 1)
 
+        # ── Zestawienie projektow: planowane vs realne ─────────────────────
+        proj_box, proj_layout = self._make_panel(
+            "Zestawienie projektow — planowane vs realne",
+            "Godziny zarejestrowane w tym miesiacu z podzialem na kody projektow."
+            " W kolumnie 'Plan h' wpisz planowane godziny — tabela policzy roznice.",
+        )
+        proj_hdr_row = QHBoxLayout()
+        proj_hdr_row.setSpacing(8)
+        self.btn_proj_refresh = QPushButton("Odswiez", self)
+        self.btn_proj_refresh.setMaximumWidth(110)
+        proj_hdr_row.addStretch(1)
+        proj_hdr_row.addWidget(self.btn_proj_refresh)
+        proj_layout.addLayout(proj_hdr_row)
+
+        self.tbl_proj = QTableWidget(0, 6, self)
+        self.tbl_proj.setHorizontalHeaderLabels(
+            ["Projekt / kod", "Typ pracy", "Realne h", "Plan h", "Roznica h", "Koszt zl"]
+        )
+        self.tbl_proj.setAlternatingRowColors(True)
+        self.tbl_proj.verticalHeader().setVisible(False)
+        self.tbl_proj.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        proj_hdr = self.tbl_proj.horizontalHeader()
+        proj_hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        proj_hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        proj_hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        proj_hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        proj_hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        proj_hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_proj.setMinimumHeight(140)
+        self.tbl_proj.setMaximumHeight(260)
+        # kolumna Plan h jest edytowalna
+        self.tbl_proj.cellChanged.connect(self._on_proj_plan_changed)
+        proj_layout.addWidget(self.tbl_proj, 1)
+
+        self.lab_proj_total = QLabel("Lacznie: 0.0 h  |  koszt: 0.00 zl", self)
+        self.lab_proj_total.setStyleSheet("font-weight:700; color:#0f172a; font-size:12px;")
+        proj_layout.addWidget(self.lab_proj_total)
+        root.addWidget(proj_box)
+
+        # ── przechowuje plan [projekt][typ] -> float ───────────────────────
+        self._proj_plan_hours: dict[str, float] = {}
+
         # Połączenia sygnałów
         self.cb_worker.currentTextChanged.connect(self._load_selected_month)
         self.cb_month.currentIndexChanged.connect(self._load_selected_month)
         self.sp_year.valueChanged.connect(self._load_selected_month)
         self.btn_refresh.clicked.connect(self._load_selected_month)
+        self.btn_proj_refresh.clicked.connect(self._refresh_proj_table)
         self.btn_save_rate.clicked.connect(self._save_hourly_rate)
         self.btn_save_sheet.clicked.connect(self._save_sheet)
         self.cb_pay_mode.currentTextChanged.connect(lambda _: self._refresh_summary())
@@ -677,6 +720,7 @@ class TabCzasPracy(QWidget):
             f"Dodatki etapow: {_format_pln(breakdown.stage_extra_total)}  |  "
             f"Dodatki reczne: {_format_pln(breakdown.manual_extra_total)}"
         )
+        self._refresh_proj_table()
 
     # ------------------------------------------------------------------
     # Zapis
@@ -722,6 +766,89 @@ class TabCzasPracy(QWidget):
         result = self._work_time_store.save_sheet(sheet)
         self._refresh_summary()
         self._set_status(result.message_pl, ok=result.ok)
+
+    # ------------------------------------------------------------------
+    # Zestawienie projektow: planowane vs realne
+    # ------------------------------------------------------------------
+
+    def _refresh_proj_table(self) -> None:
+        """Grupuje wpisy z tabeli godzin po kodzie projektu + typie pracy."""
+        if not hasattr(self, "tbl_proj"):
+            return
+        entries = self._collect_entries()
+
+        # hourly cost for a single hour — simplified: use hourly_rate
+        hourly = float(self.sp_hourly_rate.value()) if hasattr(self, "sp_hourly_rate") else 0.0
+
+        # agreguj: (projekt, typ_pracy) -> realne_godziny
+        agg: dict[tuple[str, str], float] = {}
+        for e in entries:
+            code = str(e.project_code or "").strip() or "(brak kodu)"
+            wtype = str(e.work_type or "").strip() or "—"
+            key = (code, wtype)
+            agg[key] = agg.get(key, 0.0) + float(e.hours or 0.0)
+
+        self.tbl_proj.blockSignals(True)
+        self.tbl_proj.setRowCount(0)
+        total_real = 0.0
+        total_cost = 0.0
+        for (code, wtype), real_h in sorted(agg.items()):
+            r = self.tbl_proj.rowCount()
+            self.tbl_proj.insertRow(r)
+            plan_h = self._proj_plan_hours.get(f"{code}|{wtype}", 0.0)
+            diff_h = real_h - plan_h
+            cost = real_h * hourly
+            total_real += real_h
+            total_cost += cost
+
+            self.tbl_proj.setItem(r, 0, QTableWidgetItem(code))
+            self.tbl_proj.setItem(r, 1, QTableWidgetItem(wtype))
+
+            item_real = QTableWidgetItem(f"{real_h:.2f}")
+            item_real.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item_real.setFlags(item_real.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.tbl_proj.setItem(r, 2, item_real)
+
+            item_plan = QTableWidgetItem(f"{plan_h:.2f}" if plan_h else "")
+            item_plan.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self.tbl_proj.setItem(r, 3, item_plan)
+
+            item_diff = QTableWidgetItem(f"{diff_h:+.2f}" if plan_h else "—")
+            item_diff.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item_diff.setFlags(item_diff.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            if plan_h:
+                color = QColor("#15803d") if diff_h <= 0 else QColor("#b91c1c")
+                item_diff.setForeground(color)
+            self.tbl_proj.setItem(r, 4, item_diff)
+
+            item_cost = QTableWidgetItem(f"{cost:,.2f}")
+            item_cost.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item_cost.setFlags(item_cost.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.tbl_proj.setItem(r, 5, item_cost)
+
+        self.tbl_proj.blockSignals(False)
+        self.lab_proj_total.setText(
+            f"Lacznie: {total_real:.2f} h  |  koszt: {total_cost:,.2f} zl"
+        )
+
+    def _on_proj_plan_changed(self, row: int, col: int) -> None:
+        """Zapisuje reczne wpisanie planowanych godzin i odswieza roznice."""
+        if col != 3:
+            return
+        item_code = self.tbl_proj.item(row, 0)
+        item_type = self.tbl_proj.item(row, 1)
+        item_plan = self.tbl_proj.item(row, 3)
+        if item_code is None or item_plan is None:
+            return
+        code = item_code.text().strip()
+        wtype = (item_type.text().strip() if item_type else "")
+        raw = item_plan.text().replace(",", ".").strip()
+        try:
+            plan_h = max(0.0, float(raw)) if raw else 0.0
+        except ValueError:
+            plan_h = 0.0
+        self._proj_plan_hours[f"{code}|{wtype}"] = plan_h
+        self._refresh_proj_table()
 
     def _set_status(self, message: str, ok: bool) -> None:
         color = "#2d6a4f" if ok else "#b42318"
