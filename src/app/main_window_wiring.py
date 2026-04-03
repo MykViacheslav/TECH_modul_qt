@@ -9,6 +9,9 @@ def wire_cross_tab_signals(window) -> None:
     tab_komplet = window._tabs_by_title.get("Komplet")
     tab_sciana = window._tabs_by_title.get("Sciana")
     tab_bazy = window._tabs_by_title.get("Bazy")
+    tab_quote_base = window._tabs_by_title.get("Baza szybkich wycen")
+    tab_grafika = window._tabs_by_title.get("Grafika")
+    tab_tech_modul = window._tabs_by_title.get("TECH_modul")
 
     if tab_start is not None:
         if hasattr(tab_start, "sig_new_order_requested"):
@@ -33,26 +36,33 @@ def wire_cross_tab_signals(window) -> None:
             tab_start.sig_open_bazy_requested.connect(window._open_bazy)
         if hasattr(tab_start, "sig_open_settings_requested"):
             tab_start.sig_open_settings_requested.connect(window._open_settings)
+        if hasattr(tab_start, "sig_theme_profile_requested"):
+            tab_start.sig_theme_profile_requested.connect(window._apply_theme_profile)
 
     if tab_nowe_zamowienie is not None:
         if hasattr(tab_nowe_zamowienie, "sig_open_clients_base_requested"):
             tab_nowe_zamowienie.sig_open_clients_base_requested.connect(window._open_clients_in_bazy)
         if hasattr(tab_nowe_zamowienie, "sig_open_orders_base_requested"):
             tab_nowe_zamowienie.sig_open_orders_base_requested.connect(window._open_orders_in_bazy)
-        if hasattr(tab_nowe_zamowienie, "sig_open_workers_base_requested"):
-            tab_nowe_zamowienie.sig_open_workers_base_requested.connect(window._open_workers_in_bazy)
         if hasattr(tab_nowe_zamowienie, "sig_open_sciana_requested"):
             tab_nowe_zamowienie.sig_open_sciana_requested.connect(window._open_new_wall)
         if hasattr(tab_nowe_zamowienie, "sig_open_komplet_requested"):
             tab_nowe_zamowienie.sig_open_komplet_requested.connect(window._open_new_assembly)
         if hasattr(tab_nowe_zamowienie, "sig_open_existing_sciana_requested"):
             tab_nowe_zamowienie.sig_open_existing_sciana_requested.connect(window._open_wall_in_sciana)
+        if hasattr(tab_nowe_zamowienie, "sig_calendar_events_changed"):
+            tab_kalendarz = window._tabs_by_title.get("Kalendarz")
+            if tab_kalendarz is not None and hasattr(tab_kalendarz, "refresh_data"):
+                tab_nowe_zamowienie.sig_calendar_events_changed.connect(tab_kalendarz.refresh_data)
 
     if tab_sciana is not None and hasattr(tab_sciana, "sig_open_komplet_requested"):
         tab_sciana.sig_open_komplet_requested.connect(window._open_new_assembly)
 
     if tab_komplet is not None and hasattr(tab_komplet, "sig_open_order_requested"):
         tab_komplet.sig_open_order_requested.connect(window._open_new_order)
+
+    if tab_komplet is not None and hasattr(tab_komplet, "sig_open_wycena_requested"):
+        tab_komplet.sig_open_wycena_requested.connect(window._open_assembly_in_wycena)
 
     if (
         tab_modul is not None
@@ -97,3 +107,12 @@ def wire_cross_tab_signals(window) -> None:
 
     if tab_bazy is not None and hasattr(tab_bazy, "sig_new_assembly_requested"):
         tab_bazy.sig_new_assembly_requested.connect(window._open_new_assembly)
+
+    if tab_quote_base is not None and hasattr(tab_quote_base, "sig_open_order_requested"):
+        tab_quote_base.sig_open_order_requested.connect(window._open_orders_in_bazy_code)
+
+    if tab_grafika is not None and hasattr(tab_grafika, "sig_open_tab_requested"):
+        tab_grafika.sig_open_tab_requested.connect(window._navigate_to_tab)
+
+    if tab_tech_modul is not None and hasattr(tab_tech_modul, "sig_open_tab_requested"):
+        tab_tech_modul.sig_open_tab_requested.connect(window._navigate_to_tab)

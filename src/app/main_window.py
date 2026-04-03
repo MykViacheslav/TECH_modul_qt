@@ -1594,6 +1594,12 @@ class MainWindow(QMainWindow):
     def _open_quote(self) -> None:
         self._navigate_to_tab("Wycena")
 
+    def _open_assembly_in_wycena(self, assembly_name: str) -> None:
+        tab = self._tabs_by_title.get("Wycena")
+        if tab is not None and hasattr(tab, "open_assembly_for_pricing"):
+            tab.open_assembly_for_pricing(str(assembly_name or ""))
+        self._navigate_to_tab("Wycena")
+
     def _open_work_time(self) -> None:
         self._navigate_to_tab("Czas pracy")
 

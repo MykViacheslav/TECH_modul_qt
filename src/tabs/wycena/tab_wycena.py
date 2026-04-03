@@ -1381,6 +1381,21 @@ class TabWycena(QWidget):
         }
         return compute_work_time_cost(self._work_time_store.list_sheets(), workers_by_name, project_codes)
 
+    def open_assembly_for_pricing(self, assembly_name: str) -> None:
+        """Przełącza na tryb 'Komplety' i zaznacza komplet o podanej nazwie."""
+        # upewnij się że jesteśmy w trybie "assemblies"
+        idx = self.cb_quote_mode.findData("assemblies")
+        if idx >= 0:
+            self.cb_quote_mode.setCurrentIndex(idx)
+        self.refresh_data()
+        # znajdź wiersz w tabeli i zaznacz
+        for row in range(self.tbl_assemblies.rowCount()):
+            item = self.tbl_assemblies.item(row, 0)
+            if item is not None and item.text().strip() == assembly_name.strip():
+                self.tbl_assemblies.selectRow(row)
+                self._on_selection_changed()
+                break
+
     def refresh_data(self) -> None:
         if self._mode() == "quick":
             quotes = self._load_quick_quotes()

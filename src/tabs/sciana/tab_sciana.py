@@ -2376,6 +2376,7 @@ class AssemblyPreviewView(QGraphicsView):
 
 class TabSciana(QWidget):
     sig_open_order_requested = pyqtSignal(dict)
+    sig_open_wycena_requested = pyqtSignal(str)  # assembly name
 
     def __init__(
         self,
@@ -3663,6 +3664,20 @@ class TabSciana(QWidget):
         trade_form.addRow("Netto:", self.lab_trade_netto)
         trade_form.addRow("Brutto (23%):", self.lab_trade_brutto)
         trade_form.addRow("Narost:", self.lab_trade_profit)
+
+        self.btn_open_wycena = QPushButton("Wyslij do Wyceny →")
+        self.btn_open_wycena.setToolTip(
+            "Otwiera karte Wycena z tym kompletem zaznaczonym na liscie"
+        )
+        self.btn_open_wycena.setMinimumHeight(28)
+        self.btn_open_wycena.setStyleSheet(
+            "QPushButton{background:#1d4ed8;color:#fff;border-radius:4px;"
+            "font-weight:700;font-size:11px;padding:4px 10px;}"
+            "QPushButton:hover{background:#2563eb;}"
+            "QPushButton:pressed{background:#1e40af;}"
+        )
+        self.btn_open_wycena.clicked.connect(self._on_open_in_wycena)
+        trade_form.addRow(self.btn_open_wycena)
 
         summary_layout.addWidget(box_trade)
 
@@ -6148,6 +6163,13 @@ class TabSciana(QWidget):
         self.lab_trade_profit.setText(f"{profit:,.2f} zl")
         color = "#15803d" if profit >= 0 else "#b91c1c"
         self.lab_trade_profit.setStyleSheet(f"font-weight:600; color:{color};")
+
+    def _on_open_in_wycena(self) -> None:
+        """Emituje sygnał żeby MainWindow otworzył ten komplet w karcie Wycena."""
+        name = str(getattr(self._assembly, "name", "") or "").strip()
+        if not name:
+            return
+        self.sig_open_wycena_requested.emit(name)
 
     def _refresh_summary(self) -> None:
         used_width = 0.0
