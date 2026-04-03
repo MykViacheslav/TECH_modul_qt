@@ -6204,7 +6204,10 @@ class TabSciana(QWidget):
         if not self._resolved_items:
             self._set_store_status("Brak modulow w komplecie.", ok=False)
             return
-        # zbierz material_key -> (area_m2, label) ze wszystkich cost_breakdown
+
+        assembly_name = str(getattr(self._assembly, "name", "") or "Komplet")
+        order_id = str(getattr(self._assembly, "order_id", "") or "")
+
         mat_agg: dict[str, list] = {}  # key -> [area_m2, label]
         edge_agg: dict[str, float] = {}  # key -> length_m
         hw_agg: dict[str, list] = {}  # key -> [count, label]
@@ -6238,6 +6241,8 @@ class TabSciana(QWidget):
                     material_name=str(label or key),
                     quantity=round(area, 4),
                     unit="m2",
+                    project_name=assembly_name,
+                    order_id=order_id,
                 )
                 added += 1
             except Exception:
@@ -6252,6 +6257,8 @@ class TabSciana(QWidget):
                     material_name=f"Okleina {key}",
                     quantity=round(length_m, 2),
                     unit="mb",
+                    project_name=assembly_name,
+                    order_id=order_id,
                 )
                 added += 1
             except Exception:
@@ -6266,12 +6273,13 @@ class TabSciana(QWidget):
                     material_name=str(label or key),
                     quantity=float(count),
                     unit="szt",
+                    project_name=assembly_name,
+                    order_id=order_id,
                 )
                 added += 1
             except Exception:
                 pass
 
-        assembly_name = str(getattr(self._assembly, "name", "") or "Komplet")
         self._set_store_status(
             f'Dodano {added} pozycji z "{assembly_name}" do listy zakupow.', ok=True
         )
