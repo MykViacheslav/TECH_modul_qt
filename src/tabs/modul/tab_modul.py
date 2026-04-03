@@ -898,9 +898,8 @@ class TabModul(QWidget):
         if hasattr(self.canvas, "sig_rail_offset_handle_dragged"):
             self.canvas.sig_rail_offset_handle_dragged.connect(self._on_rail_offset_handle_dragged)
 
-        # CRUD bazy modu'ow
-        self.dim.sig_new.connect(self.start_new_module)
-        self.dim.sig_clear.connect(self._on_clear_current_module)
+        # CRUD bazy modulow
+        # sig_new / sig_clear nie istnieja w DimensionsBlock - pomijamy
         self.dim.sig_save.connect(self._on_dim_save_clicked)
         self.dim.sig_overwrite.connect(self._on_dim_overwrite_clicked)
         self.dim.sig_load.connect(self._on_load_from_base_preview)

@@ -93,7 +93,13 @@ class ModuleStoreJson:
         try:
             txt = self._path.read_text(encoding="utf-8")
             data = json.loads(txt) if txt.strip() else {}
-            return data if isinstance(data, dict) else {}
+            if not isinstance(data, dict):
+                return {}
+            # Obsługa nowego formatu wersjonowanego: {"schema_version": N, "items": {...}}
+            if "schema_version" in data and "items" in data:
+                items = data.get("items", {})
+                return items if isinstance(items, dict) else {}
+            return data
         except Exception:
             return {}
 
