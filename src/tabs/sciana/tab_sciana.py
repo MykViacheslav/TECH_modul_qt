@@ -1080,7 +1080,9 @@ class AssemblyPreviewView(QGraphicsView):
         current_depth = float(current_item.depth_mm)
         current_top = self._wall_depth_offset_for_index(index) if current_wall_offset_mm is None else float(current_wall_offset_mm)
         current_bottom = current_top + current_depth
-        candidates = [0.0]
+        # snap do lewej i prawej krawedzi sciany
+        wall_width = max(0.0, float(self._last_assembly.width_mm if self._last_assembly is not None else 0.0))
+        candidates = [0.0, max(0.0, wall_width - current_width) - base_x]
 
         for other_index, other in enumerate(self._last_resolved_items):
             if other_index == index:
@@ -5127,6 +5129,17 @@ class TabSciana(QWidget):
                 initial_offset_mm = 0.0
         wall_width = max(0.0, float(getattr(self._assembly, "width_mm", 0.0) or 0.0))
         max_left = max(0.0, wall_width - float(getattr(cloned, "width_mm", 0.0) or 0.0))
+        # jesli brak explicit offset i nie ma poprzedniego, szukaj ostatniego modulu
+        # tego samego cabinet_kind zeby nie nakladac modulow inna strefą
+        if initial_offset_mm == 0.0 and target_index == len(items):
+            new_kind = str(getattr(cloned, "cabinet_kind", "lower") or "lower").strip()
+            rightmost = 0.0
+            for resolved in self._resolved_items:
+                kind = str(getattr(resolved.module, "cabinet_kind", "lower") or "lower").strip()
+                if kind == new_kind:
+                    rightmost = max(rightmost, float(resolved.x_mm) + float(resolved.width_mm))
+            if rightmost > 0.0:
+                initial_offset_mm = rightmost
         initial_offset_mm = max(0.0, min(float(initial_offset_mm or 0.0), max_left))
         item.offset_mm = float(initial_offset_mm or 0.0)
         items.insert(target_index, item)
