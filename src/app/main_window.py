@@ -141,6 +141,19 @@ def _theme_palette(mode: str, motif: str) -> dict[str, str]:
             "scroll_bg": "#e2e8f0",
             "scroll_handle": "#1d4ed8",
         },
+        "tech": {
+            "window_bg": "#e8eef8",
+            "pane_bg": "#f4f7fd",
+            "tab_bg": "#e1e9f7",
+            "tab_hover": "#d7e2f5",
+            "text": "#12243e",
+            "btn_bg": "#f7faff",
+            "input_bg": "#ffffff",
+            "table_bg": "#ffffff",
+            "header_bg": "#e4ecfa",
+            "scroll_bg": "#dfe8f8",
+            "scroll_handle": "#2f6feb",
+        },
     }
 
     night_by_motif = {
@@ -209,47 +222,61 @@ def _theme_palette(mode: str, motif: str) -> dict[str, str]:
             "scroll_bg": "#0b1220",
             "scroll_handle": "#f59e0b",
         },
+        "tech": {
+            "window_bg": "#0b1120",
+            "pane_bg": "#10172a",
+            "tab_bg": "#15213a",
+            "tab_hover": "#1c2c49",
+            "text": "#e8efff",
+            "btn_bg": "#16223a",
+            "input_bg": "#0f1a2f",
+            "table_bg": "#0d172a",
+            "header_bg": "#1a2843",
+            "scroll_bg": "#0a1324",
+            "scroll_handle": "#2f6feb",
+        },
     }
 
     palettes = night_by_motif if mode_norm == "night" else day_by_motif
-    return palettes.get(motif_norm, palettes["cream"])
+    return palettes.get(motif_norm, palettes.get("tech", palettes["cream"]))
 
 
 def _build_app_stylesheet(mode: str, motif: str, ui_scale: float = 1.0) -> str:
     p = _theme_palette(mode, motif)
     is_night = str(mode).strip().lower() == "night"
     is_contrast = str(motif).strip().lower() == "contrast"
+    is_tech = str(motif).strip().lower() == "tech"
     scale = max(0.68, min(1.0, float(ui_scale or 1.0)))
 
     def px(value: float, floor: int = 1) -> int:
         return max(int(floor), int(round(float(value) * scale)))
 
-    text_selected = "#0f172a" if is_contrast else "#10233f"
-    selection_bg = "#f59e0b" if (is_contrast and is_night) else ("#93c5fd" if is_contrast else ("#c8d8f0" if is_night else "#d7e7ff"))
-    border_main = "#64748b" if is_contrast else ("#9aa7b8" if is_night else "#d8d1c4")
-    border_soft = "#64748b" if is_contrast else ("#bcc6d3" if is_night else "#ddd5c8")
-    button_border = "#94a3b8" if is_contrast else ("#a9b4c2" if is_night else "#d0c5b4")
+    text_selected = "#0f172a" if is_contrast else ("#e8efff" if is_tech else "#10233f")
+    selection_bg = "#f59e0b" if (is_contrast and is_night) else ("#93c5fd" if is_contrast else ("#244f99" if is_tech else ("#c8d8f0" if is_night else "#d7e7ff")))
+    border_main = "#64748b" if is_contrast else ("#31527e" if is_tech else ("#9aa7b8" if is_night else "#d8d1c4"))
+    border_soft = "#64748b" if is_contrast else ("#2a4368" if is_tech else ("#bcc6d3" if is_night else "#ddd5c8"))
+    button_border = "#94a3b8" if is_contrast else ("#355b8f" if is_tech else ("#a9b4c2" if is_night else "#d0c5b4"))
     disabled_bg = "#e5e9ef" if is_night else "#f5f5f5"
     disabled_text = "#9aa4af"
-    focus_ring = "#f59e0b" if is_night else "#1d4ed8"
+    focus_ring = "#f59e0b" if is_contrast else ("#5fa4ff" if is_tech else ("#f59e0b" if is_night else "#1d4ed8"))
     tab_selected_bg = _blend_hex(p["pane_bg"], p["scroll_handle"], 0.22 if is_night else 0.16)
     tab_selected_border = _blend_hex(border_soft, p["scroll_handle"], 0.58 if is_night else 0.45)
     tab_selected_bottom = _blend_hex(p["scroll_handle"], p["text"], 0.2 if is_night else 0.1)
-    sidebar_bg = _blend_hex(p["window_bg"], p["tab_bg"], 0.85)
+    sidebar_bg = _blend_hex(p["window_bg"], p["tab_bg"], 0.88 if is_tech else 0.85)
     sidebar_text = p["text"]
     sidebar_text_muted = p["text"]
-    group_btn_hover_bg = _blend_hex(sidebar_bg, p["scroll_handle"], 0.22)
-    group_btn_active_bg = _blend_hex(sidebar_bg, p["scroll_handle"], 0.50)
+    group_btn_hover_bg = _blend_hex(sidebar_bg, p["scroll_handle"], 0.28 if is_tech else 0.22)
+    group_btn_active_bg = _blend_hex(sidebar_bg, p["scroll_handle"], 0.56 if is_tech else 0.50)
     group_btn_active_border = _blend_hex(p["scroll_handle"], p["text"], 0.35)
     group_btn_active_text = p["text"]
     sidebar_title_font = px(15, 8)
     sidebar_title_pad_top = px(4, 1)
     sidebar_title_pad_bottom = px(8, 2)
-    group_btn_pad_v = px(9, 2)
-    group_btn_pad_h = px(14, 3)
+    group_btn_pad_v = px(8, 2)
+    group_btn_pad_h = px(4, 2)
     group_btn_border_left = px(4, 1)
-    group_btn_font = px(13, 7)
-    group_btn_min_h = px(40, 18)
+    group_btn_font = px(10, 6)
+    group_btn_min_h = px(64, 36)
     tab_min_h = px(36, 18)
     tab_min_w = px(70, 30)
     tab_pad_v = px(4, 1)
@@ -276,9 +303,9 @@ def _build_app_stylesheet(mode: str, motif: str, ui_scale: float = 1.0) -> str:
     scroll_margin = px(2, 1)
     scroll_handle_h = px(24, 10)
     scroll_handle_radius = px(6, 2)
-    card_bg = _blend_hex(p["pane_bg"], p["btn_bg"], 0.65 if is_night else 0.78)
-    card_border = _blend_hex(border_soft, p["scroll_handle"], 0.28 if is_night else 0.18)
-    primary_bg = _blend_hex(p["scroll_handle"], "#2f6feb", 0.58)
+    card_bg = _blend_hex(p["pane_bg"], p["btn_bg"], 0.72 if is_tech else (0.65 if is_night else 0.78))
+    card_border = _blend_hex(border_soft, p["scroll_handle"], 0.34 if is_tech else (0.28 if is_night else 0.18))
+    primary_bg = _blend_hex(p["scroll_handle"], "#2f6feb", 0.68 if is_tech else 0.58)
     primary_hover = _blend_hex(primary_bg, "#ffffff", 0.14 if is_night else 0.10)
     success_bg = _blend_hex(p["scroll_handle"], "#1f9d66", 0.62)
     success_hover = _blend_hex(success_bg, "#ffffff", 0.10)
@@ -308,9 +335,9 @@ def _build_app_stylesheet(mode: str, motif: str, ui_scale: float = 1.0) -> str:
             max-height: 1px;
             min-height: 1px;
         }}
-        QPushButton#GroupBtn {{
-            text-align: left;
-            padding: {group_btn_pad_v}px {group_btn_pad_h}px;
+        QToolButton#GroupBtn {{
+            text-align: center;
+            padding: {group_btn_pad_v}px 2px;
             border: none;
             border-left: {group_btn_border_left}px solid transparent;
             border-radius: 0px;
@@ -318,18 +345,37 @@ def _build_app_stylesheet(mode: str, motif: str, ui_scale: float = 1.0) -> str:
             font-weight: 500;
             font-size: {group_btn_font}px;
             min-height: {group_btn_min_h}px;
+            min-width: 72px;
             color: {sidebar_text_muted};
         }}
-        QPushButton#GroupBtn:hover {{
+        QToolButton#GroupBtn:hover {{
             background: {group_btn_hover_bg};
             color: {sidebar_text};
         }}
-        QPushButton#GroupBtn:checked {{
+        QToolButton#GroupBtn:checked {{
             background: {group_btn_active_bg};
             font-weight: 700;
             font-size: {group_btn_font}px;
             border-left: {group_btn_border_left}px solid {group_btn_active_border};
             color: {group_btn_active_text};
+        }}
+        QToolButton#SidebarSwitchUser,
+        QWidget#Sidebar QToolButton {{
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            color: {sidebar_text_muted};
+            font-size: {group_btn_font}px;
+            padding: 2px 4px;
+        }}
+        QToolButton#SidebarSwitchUser:hover,
+        QWidget#Sidebar QToolButton:hover {{
+            background: {group_btn_hover_bg};
+            color: {sidebar_text};
+        }}
+        QToolButton#SidebarSwitchUser:pressed,
+        QWidget#Sidebar QToolButton:pressed {{
+            background: {group_btn_active_bg};
         }}
         /* ---- Zakładki w grupach ---- */
         QTabWidget::tab-bar {{
@@ -592,7 +638,7 @@ def _build_app_stylesheet(mode: str, motif: str, ui_scale: float = 1.0) -> str:
     """
 
 
-def _apply_accessible_ui_scale(mode: str = "day", motif: str = "cream") -> None:
+def _apply_accessible_ui_scale(mode: str = "night", motif: str = "tech") -> None:
     app = QApplication.instance()
     if app is None:
         return
@@ -1733,14 +1779,16 @@ class MainWindow(QMainWindow):
         key = str(profile_key or "").strip().lower()
         if key in {"contrast", "kontrast", "kontrastowy", "contrast_desktop", "high_contrast"}:
             mode, motif = ("day", "contrast")
+        elif key in {"tech", "tech_dark", "docelowy", "target"}:
+            mode, motif = ("night", "tech")
         else:
-            mode, motif = ("day", "cream")
+            mode, motif = ("night", "tech")
         save_ui_theme_settings(mode, motif)
         self._apply_ui_theme(mode, motif)
 
     def _apply_ui_theme(self, mode: str, motif: str) -> None:
-        self._theme_mode = str(mode or "day")
-        self._theme_motif = str(motif or "cream")
+        self._theme_mode = str(mode or "night")
+        self._theme_motif = str(motif or "tech")
         _apply_accessible_ui_scale(self._theme_mode, self._theme_motif)
         self._refresh_sidebar_button_colors()
         tab_start = self._tabs_by_title.get("Start")
@@ -1828,7 +1876,7 @@ class MainWindow(QMainWindow):
                 else:
                     # Przywróć normalny kolor
                     tabBar.setTabText(local_idx, tab_title)
-                    tabBar.setTabTextColor(local_idx, QColor("#000000"))
+                    tabBar.setTabTextColor(local_idx, QColor(_theme_palette(self._theme_mode, self._theme_motif)["text"]))
         
         # Odśwież też główny sidebar - aktualizuj stan przycisków
         self._refresh_sidebar_permissions()
