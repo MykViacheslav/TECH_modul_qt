@@ -3,10 +3,11 @@ from __future__ import annotations
 from typing import Dict, Tuple
 
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from src.storage.catalog_store_json import CatalogStoreJson
-from src.tabs.modul.edge_preview_widget import EdgePreviewWidget
+from src.tabs.modul.edge_preview_widget import EdgePreviewWidget, _key_to_color
 
 
 EDGE_SIDES_PL: Dict[str, str] = {
@@ -49,6 +50,11 @@ class EdgeBandingBlock(QWidget):
 
         self.preview = EdgePreviewWidget(self)
         lay.addWidget(self.preview)
+
+        self.lbl_legend = QLabel("", self)
+        self.lbl_legend.setWordWrap(True)
+        self.lbl_legend.setStyleSheet("font-size:9px; color:#374151;")
+        lay.addWidget(self.lbl_legend)
 
         self.chk_all = QCheckBox("Wszystkie strony")
         self.chk_all.setTristate(True)
@@ -98,7 +104,11 @@ class EdgeBandingBlock(QWidget):
                 self.sig_changed.emit()
 
             cb.stateChanged.connect(on_cb_changed)
-            combo.currentIndexChanged.connect(lambda _i: self.sig_changed.emit())
+            def on_combo_changed(_i: int, _side=side_key) -> None:
+                self._sync_preview_from_rows()
+                self.sig_changed.emit()
+
+            combo.currentIndexChanged.connect(on_combo_changed)
 
             row_lay.addWidget(cb, 0)
             row_lay.addWidget(combo, 1)
@@ -275,8 +285,36 @@ class EdgeBandingBlock(QWidget):
         self._sync_all_checkbox()
 
     def _sync_preview_from_rows(self) -> None:
-        selected = {side for side, (cb, _combo) in self._rows.items() if cb.isChecked()}
-        self.preview.set_selected_edges(selected)
+        bands: dict[str, str] = {}
+        labels: dict[str, str] = {}
+        full_names: dict[str, str] = {}  # key -> pelna nazwa z combo
+        for side, (cb, combo) in self._rows.items():
+            if cb.isChecked():
+                key = str(combo.currentData() or "").strip()
+                if key:
+                    bands[side] = key
+                    if key not in labels:
+                        labels[key] = key[:7]
+                    if key not in full_names:
+                        full_names[key] = combo.currentText()
+        self.preview.set_edge_banding(bands, labels)
+        self._update_legend(full_names)
+
+    def _update_legend(self, full_names: dict[str, str]) -> None:
+        if not full_names:
+            self.lbl_legend.setText("")
+            return
+        parts: list[str] = []
+        for key, name in full_names.items():
+            color = _key_to_color(key)
+            luma = 0.299 * color.red() + 0.587 * color.green() + 0.114 * color.blue()
+            fg = "#fff" if luma < 160 else "#1f2937"
+            short = name[:30] + ("..." if len(name) > 30 else "")
+            parts.append(
+                f'<span style="background:{color.name()};color:{fg};'
+                f'padding:1px 4px;border-radius:3px;">&nbsp;{short}&nbsp;</span>'
+            )
+        self.lbl_legend.setText("  ".join(parts))
 
     def _toggle_side_from_preview(self, side_key: str) -> None:
         if side_key not in self._rows:
