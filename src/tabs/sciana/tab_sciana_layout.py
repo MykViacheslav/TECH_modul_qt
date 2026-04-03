@@ -918,6 +918,7 @@ class TabScianaLayout(QWidget):
     ) -> None:
         super().__init__(parent)
 
+        self.setObjectName("sciana_layout_root")
         self._wall = WallLayoutDef(wall_id=new_wall_id())
         self._store = store if store is not None else WallStoreJson()
         self._client_store = client_store if client_store is not None else ClientStoreJson()
@@ -936,8 +937,8 @@ class TabScianaLayout(QWidget):
         self._right_zone_last_width = 380
 
         root = QHBoxLayout(self)
-        root.setContentsMargins(8, 8, 8, 8)
-        root.setSpacing(8)
+        root.setContentsMargins(10, 10, 10, 10)
+        root.setSpacing(10)
 
         self.left_zone_toggle = QPushButton("Pokaz lewy panel", self)
         self.left_zone_toggle.setStyleSheet(
@@ -954,11 +955,15 @@ class TabScianaLayout(QWidget):
         self.right_zone_toggle.hide()
 
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        self.main_splitter.setObjectName("sciana_main_splitter")
+        self.main_splitter.setHandleWidth(10)
         root.addWidget(self.main_splitter, 1)
 
         self.left_zone = self._build_left_zone()
         self.center_zone = self._build_center_zone()
         self.right_zone = self._build_right_zone()
+        self.left_zone.setMinimumWidth(320)
+        self.right_zone.setMinimumWidth(320)
 
         self.main_splitter.addWidget(self.left_zone)
         self.main_splitter.addWidget(self.center_zone)
@@ -966,8 +971,9 @@ class TabScianaLayout(QWidget):
         self.main_splitter.setStretchFactor(0, 0)
         self.main_splitter.setStretchFactor(1, 1)
         self.main_splitter.setStretchFactor(2, 0)
-        self.main_splitter.setSizes([390, 860, 380])
+        self.main_splitter.setSizes([360, 980, 360])
         self.left_zone.show()
+        self._apply_desktop_visual_styles()
 
         self._apply_block_startup_visibility()
         self._reload_client_choices()
@@ -987,14 +993,121 @@ class TabScianaLayout(QWidget):
         self._setup_shortcuts_from_settings()
         self._refresh_left_zone_toggle_button()
 
+    def _apply_desktop_visual_styles(self) -> None:
+        self.setStyleSheet(
+            """
+            QWidget#sciana_layout_root {
+                background: #f3f6fb;
+            }
+            QWidget#sciana_zone_left,
+            QWidget#sciana_zone_center,
+            QWidget#sciana_zone_right {
+                border: 1px solid #d8e1ee;
+                border-radius: 14px;
+                background: #f7f9fc;
+            }
+            QLabel#sciana_zone_title {
+                font-size: 11px;
+                letter-spacing: 0.08em;
+                font-weight: 700;
+                color: #64748b;
+                padding: 2px 4px 4px 4px;
+            }
+            QFrame#sciana_layout_quick_bar {
+                background: #edf3fb;
+                border: 1px solid #d5e1f1;
+                border-radius: 14px;
+            }
+            QGroupBox#sciana_view_card,
+            QGroupBox#sciana_top_card {
+                border: 1px solid #d8e1ee;
+                border-radius: 12px;
+                margin-top: 10px;
+                background: #ffffff;
+                font-weight: 700;
+                color: #334155;
+            }
+            QGroupBox#sciana_view_card::title,
+            QGroupBox#sciana_top_card::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                top: -1px;
+                padding: 0 4px;
+                color: #475569;
+                font-size: 12px;
+            }
+            QTableWidget {
+                border: 1px solid #d8e1ee;
+                border-radius: 10px;
+                background: #ffffff;
+                gridline-color: #e5e7eb;
+                selection-background-color: #dbeafe;
+                selection-color: #0f172a;
+            }
+            QHeaderView::section {
+                background: #edf2f8;
+                color: #334155;
+                padding: 6px 8px;
+                border: 0;
+                border-right: 1px solid #dbe3ee;
+                border-bottom: 1px solid #dbe3ee;
+                font-weight: 700;
+            }
+            QLabel#sciana_side_note {
+                color: #334155;
+                line-height: 1.35;
+            }
+            """
+        )
+        self._style_collapsible_blocks()
+
+    def _style_collapsible_blocks(self) -> None:
+        block_style = """
+            QToolButton {
+                padding: 8px 12px;
+                font-size: 13px;
+                font-weight: 700;
+                text-align: left;
+                border: 1px solid #d4deed;
+                border-radius: 11px;
+                background: #f0f5fd;
+                color: #1f2f45;
+            }
+            QToolButton:hover {
+                background: #e8effa;
+                border-color: #c4d3e8;
+            }
+            QFrame#contentPanel {
+                border: 1px solid #dbe4f0;
+                border-top: 0px;
+                border-bottom-left-radius: 11px;
+                border-bottom-right-radius: 11px;
+                background: #f9fbff;
+            }
+        """
+        for block in (
+            getattr(self, "blk_main", None),
+            getattr(self, "blk_store", None),
+            getattr(self, "blk_obstacles", None),
+            getattr(self, "blk_photos", None),
+            getattr(self, "blk_measurements", None),
+            getattr(self, "blk_notes", None),
+            getattr(self, "blk_summary", None),
+            getattr(self, "blk_obstacle_details", None),
+            getattr(self, "blk_suggestions", None),
+        ):
+            if block is not None:
+                block.setStyleSheet(block_style)
+
     def _build_left_zone(self) -> QWidget:
         panel = QWidget(self)
+        panel.setObjectName("sciana_zone_left")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
 
-        title = QLabel("STREFA LEWA")
-        title.setStyleSheet("font-weight:700;")
+        title = QLabel("PARAMETRY")
+        title.setObjectName("sciana_zone_title")
         layout.addWidget(title)
 
         self.blk_main = CollapsibleBlock("Uklad sciany", panel)
@@ -1432,12 +1545,13 @@ class TabScianaLayout(QWidget):
 
     def _build_center_zone(self) -> QWidget:
         panel = QWidget(self)
+        panel.setObjectName("sciana_zone_center")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
 
-        title = QLabel("STREFA SRODKOWA")
-        title.setStyleSheet("font-weight:700;")
+        title = QLabel("SCIANA KONSTRUKTORSKA")
+        title.setObjectName("sciana_zone_title")
         layout.addWidget(title)
 
         self.quick_actions_bar = QFrame(panel)
@@ -1554,6 +1668,8 @@ class TabScianaLayout(QWidget):
         layout.addWidget(self.quick_actions_bar, 0)
 
         grp_front = QGroupBox("Widok z przodu", panel)
+        grp_front.setObjectName("sciana_view_card")
+        mark_ui_card(grp_front, elevated=False)
         grp_front_layout = QVBoxLayout(grp_front)
         grp_front_layout.setContentsMargins(8, 12, 8, 8)
         self.preview = WallPreviewView(grp_front, view_mode="front")
@@ -1566,6 +1682,8 @@ class TabScianaLayout(QWidget):
         layout.addWidget(grp_front, 3)
 
         grp_top = QGroupBox("Widok z gory", panel)
+        grp_top.setObjectName("sciana_top_card")
+        mark_ui_card(grp_top, elevated=False)
         grp_top_layout = QVBoxLayout(grp_top)
         grp_top_layout.setContentsMargins(8, 12, 8, 8)
         self.preview_top = WallPreviewView(grp_top, view_mode="top")
@@ -1592,18 +1710,20 @@ class TabScianaLayout(QWidget):
 
     def _build_right_zone(self) -> QWidget:
         panel = QWidget(self)
+        panel.setObjectName("sciana_zone_right")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
 
-        title = QLabel("STREFA PRAWA")
-        title.setStyleSheet("font-weight:700;")
+        title = QLabel("PODSUMOWANIE")
+        title.setObjectName("sciana_zone_title")
         layout.addWidget(title)
 
         self.blk_summary = CollapsibleBlock("Podsumowanie sciany", panel)
         summary_body = QWidget(self.blk_summary)
         summary_layout = QVBoxLayout(summary_body)
         self.lab_summary = QLabel("-")
+        self.lab_summary.setObjectName("sciana_side_note")
         self.lab_summary.setWordWrap(True)
         summary_layout.addWidget(self.lab_summary)
         self.blk_summary.content_layout().addWidget(summary_body)
@@ -1613,6 +1733,7 @@ class TabScianaLayout(QWidget):
         obstacle_details_body = QWidget(self.blk_obstacle_details)
         obstacle_details_layout = QVBoxLayout(obstacle_details_body)
         self.lab_obstacle_details = QLabel("-")
+        self.lab_obstacle_details.setObjectName("sciana_side_note")
         self.lab_obstacle_details.setWordWrap(True)
         obstacle_details_layout.addWidget(self.lab_obstacle_details)
         self.blk_obstacle_details.content_layout().addWidget(obstacle_details_body)
@@ -1629,10 +1750,38 @@ class TabScianaLayout(QWidget):
             "- montaz AGD stalego\n"
             "- powiazanie ze zdjeciami i pomiarami z miejsca"
         )
+        self.lab_suggestions.setObjectName("sciana_side_note")
         self.lab_suggestions.setWordWrap(True)
         suggestions_layout.addWidget(self.lab_suggestions)
         self.blk_suggestions.content_layout().addWidget(suggestions_body)
         layout.addWidget(self.blk_suggestions)
+
+        # -- PANEL POMIESZCZENIA --
+        self.blk_room = CollapsibleBlock("Panel pomieszczenia", panel)
+        room_body = QWidget(self.blk_room)
+        room_vbox = QVBoxLayout(room_body)
+        room_vbox.setContentsMargins(4, 4, 4, 4)
+        room_vbox.setSpacing(3)
+        self.lab_room_info = QLabel("-")
+        self.lab_room_info.setObjectName("sciana_side_note")
+        self.lab_room_info.setWordWrap(True)
+        room_vbox.addWidget(self.lab_room_info)
+        self.blk_room.content_layout().addWidget(room_body)
+        layout.addWidget(self.blk_room)
+
+        # -- KOLIZJE --
+        self.blk_collisions = CollapsibleBlock("Kolizje i ostrzezenia", panel)
+        coll_body = QWidget(self.blk_collisions)
+        coll_vbox = QVBoxLayout(coll_body)
+        coll_vbox.setContentsMargins(4, 4, 4, 4)
+        coll_vbox.setSpacing(3)
+        self.lab_collisions = QLabel("-")
+        self.lab_collisions.setObjectName("sciana_side_note")
+        self.lab_collisions.setWordWrap(True)
+        self.lab_collisions.setStyleSheet("font-size:11px;")
+        coll_vbox.addWidget(self.lab_collisions)
+        self.blk_collisions.content_layout().addWidget(coll_body)
+        layout.addWidget(self.blk_collisions)
 
         layout.addStretch(1)
         return panel
@@ -1888,7 +2037,7 @@ class TabScianaLayout(QWidget):
             new_left = round(max_total * ratio, 1)
             new_right = round(max_total - new_left, 1)
             adjustments.append(
-                f"Odsunięcie podstawy L+R ({base_left:.0f}+{base_right:.0f}) >= sciana A ({wall_a:.0f}) — przycieto do {new_left:.0f}+{new_right:.0f}"
+                f"Odsuniecie podstawy L+R ({base_left:.0f}+{base_right:.0f}) >= sciana A ({wall_a:.0f}) - przycieto do {new_left:.0f}+{new_right:.0f}"
             )
             self._wall.base_offset_left_mm = new_left
             self._wall.base_offset_right_mm = new_right
@@ -1902,7 +2051,7 @@ class TabScianaLayout(QWidget):
             new_left = round(max_total * ratio, 1)
             new_right = round(max_total - new_left, 1)
             adjustments.append(
-                f"Odsunięcie gornych L+R ({upper_left:.0f}+{upper_right:.0f}) >= sciana A ({wall_a:.0f}) — przycieto do {new_left:.0f}+{new_right:.0f}"
+                f"Odsuniecie gornych L+R ({upper_left:.0f}+{upper_right:.0f}) >= sciana A ({wall_a:.0f}) - przycieto do {new_left:.0f}+{new_right:.0f}"
             )
             self._wall.upper_offset_left_mm = new_left
             self._wall.upper_offset_right_mm = new_right
@@ -1919,14 +2068,14 @@ class TabScianaLayout(QWidget):
 
             if island_w > room_width and room_width > 0:
                 adjustments.append(
-                    f"Szerokosc wyspy ({island_w:.0f}) > sciana A ({room_width:.0f}) — przycieto"
+                    f"Szerokosc wyspy ({island_w:.0f}) > sciana A ({room_width:.0f}) - przycieto"
                 )
                 self._wall.island_width_mm = room_width
                 island_w = room_width
 
             if room_depth < SCIANA_DEPTH_MM_MAX and island_d > room_depth and room_depth > 0:
                 adjustments.append(
-                    f"Glebokosc wyspy ({island_d:.0f}) > sciana B ({room_depth:.0f}) — przycieto"
+                    f"Glebokosc wyspy ({island_d:.0f}) > sciana B ({room_depth:.0f}) - przycieto"
                 )
                 self._wall.island_depth_mm = room_depth
                 island_d = room_depth
@@ -1934,14 +2083,14 @@ class TabScianaLayout(QWidget):
             if room_width > 0 and island_x + island_w > room_width:
                 new_x = max(0.0, room_width - island_w)
                 adjustments.append(
-                    f"Wyspa X ({island_x:.0f}) wychodzi poza sciane A — przycieto do {new_x:.0f}"
+                    f"Wyspa X ({island_x:.0f}) wychodzi poza sciane A - przycieto do {new_x:.0f}"
                 )
                 self._wall.island_offset_x_mm = new_x
 
             if room_depth < SCIANA_DEPTH_MM_MAX and room_depth > 0 and island_y + island_d > room_depth:
                 new_y = max(0.0, room_depth - island_d)
                 adjustments.append(
-                    f"Wyspa Y ({island_y:.0f}) wychodzi poza sciane B — przycieto do {new_y:.0f}"
+                    f"Wyspa Y ({island_y:.0f}) wychodzi poza sciane B - przycieto do {new_y:.0f}"
                 )
                 self._wall.island_offset_y_mm = new_y
 
@@ -2454,13 +2603,13 @@ class TabScianaLayout(QWidget):
         if original_w > wall_width:
             obstacle.width_mm = wall_width
             adjustments.append(
-                f"Szerokosc ({original_w:.0f}) przekracza szerokosc sciany ({wall_width:.0f}) — przycieto do {wall_width:.0f} mm"
+                f"Szerokosc ({original_w:.0f}) przekracza szerokosc sciany ({wall_width:.0f}) - przycieto do {wall_width:.0f} mm"
             )
 
         if original_h > room_height:
             obstacle.height_mm = room_height
             adjustments.append(
-                f"Wysokosc ({original_h:.0f}) przekracza wysokosc pomieszczenia ({room_height:.0f}) — przycieto do {room_height:.0f} mm"
+                f"Wysokosc ({original_h:.0f}) przekracza wysokosc pomieszczenia ({room_height:.0f}) - przycieto do {room_height:.0f} mm"
             )
 
         self._clamp_obstacle_to_wall(obstacle)
@@ -2822,6 +2971,151 @@ class TabScianaLayout(QWidget):
             )
         return photos
 
+    # =====================================================================
+    # PANEL POMIESZCZENIA + KOLIZJE
+    # =====================================================================
+
+    def _compute_room_metrics(self) -> dict:
+        w = self._wall
+        wall_a = max(1.0, float(w.wall_a_width_mm or 4000))
+        wall_b = max(1.0, float(w.wall_b_width_mm or 2600))
+        wall_c = max(1.0, float(w.wall_c_width_mm or 2600))
+        room_h = max(1.0, float(w.room_height_mm or 2600))
+        base_depth = max(1.0, float(w.base_depth_mm or 600))
+        plinth = max(0.0, float(w.base_plinth_mm or 0))
+        upper_cl = max(0.0, float(w.upper_clearance_mm or 0))
+        top_off = max(0.0, float(w.top_offset_mm or 0))
+        bot_off = max(0.0, float(w.bottom_offset_mm or 0))
+        left_off_base = max(0.0, float(w.base_offset_left_mm or 0))
+        right_off_base = max(0.0, float(w.base_offset_right_mm or 0))
+        left_off_upper = max(0.0, float(w.upper_offset_left_mm or 0))
+        right_off_upper = max(0.0, float(w.upper_offset_right_mm or 0))
+        layout = str(w.layout_type or "line")
+        base_zone_h = max(0.0, room_h - plinth - upper_cl - top_off - bot_off)
+        total_wall_mm = wall_a
+        if layout in ("l", "c"):
+            total_wall_mm += wall_b
+        if layout == "c":
+            total_wall_mm += wall_c
+        base_avail_w = max(0.0, wall_a - left_off_base - right_off_base)
+        upper_avail_w = max(0.0, wall_a - left_off_upper - right_off_upper)
+        area_a_m2 = wall_a * room_h / 1_000_000
+        obstacles = list(w.obstacles or [])
+        obs_count = len(obstacles)
+        obs_area_m2 = sum(
+            float(getattr(o, "width_mm", 0) or 0) * float(getattr(o, "height_mm", 0) or 0)
+            for o in obstacles
+        ) / 1_000_000
+        fill_pct = (obs_area_m2 / area_a_m2 * 100.0) if area_a_m2 > 0 else 0.0
+        return {
+            "wall_a": wall_a, "wall_b": wall_b, "wall_c": wall_c,
+            "room_h": room_h, "base_depth": base_depth, "plinth": plinth,
+            "upper_cl": upper_cl, "top_off": top_off, "bot_off": bot_off,
+            "base_zone_h": base_zone_h, "layout": layout,
+            "total_wall_mm": total_wall_mm,
+            "base_avail_w": base_avail_w, "upper_avail_w": upper_avail_w,
+            "area_a_m2": area_a_m2,
+            "obs_count": obs_count, "obs_area_m2": obs_area_m2,
+            "fill_pct": fill_pct,
+        }
+
+    def _refresh_room_panel(self) -> None:
+        if not hasattr(self, "lab_room_info"):
+            return
+        m = self._compute_room_metrics()
+        layout_label = {"line": "Prosta", "l": "L", "c": "C"}.get(m["layout"], m["layout"])
+        lines = [f"Uklad: {layout_label}", f"Sciana A: {m['wall_a']:.0f} mm"]
+        if m["layout"] in ("l", "c"):
+            lines.append(f"Sciana B: {m['wall_b']:.0f} mm")
+        if m["layout"] == "c":
+            lines.append(f"Sciana C: {m['wall_c']:.0f} mm")
+        lines += [
+            f"Lacznie scian: {m['total_wall_mm']:.0f} mm",
+            f"Wysokosc pomieszczenia: {m['room_h']:.0f} mm",
+            f"Glebokosc zabudowy: {m['base_depth']:.0f} mm",
+            "",
+            f"Cokol: {m['plinth']:.0f} mm",
+            f"Gorny odstep: {m['upper_cl']:.0f} mm",
+            f"Strefa zabudowy (wys.): {m['base_zone_h']:.0f} mm",
+            f"Szerokosc dolnej zabudowy: {m['base_avail_w']:.0f} mm",
+            f"Szerokosc gornej zabudowy: {m['upper_avail_w']:.0f} mm",
+            "",
+            f"Powierzchnia sciany A: {m['area_a_m2']:.2f} m2",
+            f"Przeszkody ({m['obs_count']}): {m['obs_area_m2']:.2f} m2",
+            f"Wypelnienie: {m['fill_pct']:.1f}%",
+        ]
+        self.lab_room_info.setText("\n".join(lines))
+
+    def _detect_collisions(self) -> list[str]:
+        warnings: list[str] = []
+        obstacles = list(self._wall.obstacles or [])
+        room_h = max(1.0, float(self._wall.room_height_mm or 2600))
+        wall_a = max(1.0, float(self._wall.wall_a_width_mm or 4000))
+        plinth = max(0.0, float(self._wall.base_plinth_mm or 0))
+        # -- 1. Nakładanie przeszkod na tej samej scianie --
+        by_side: dict[str, list] = {}
+        for obs in obstacles:
+            side = str(getattr(obs, "wall_side", "A") or "A").strip().upper()
+            by_side.setdefault(side, []).append(obs)
+        for side, obs_list in by_side.items():
+            for i, a in enumerate(obs_list):
+                ax1 = float(getattr(a, "x_mm", 0) or 0)
+                ax2 = ax1 + max(0.0, float(getattr(a, "width_mm", 0) or 0))
+                ay1 = float(getattr(a, "bottom_offset_mm", 0) or 0)
+                ay2 = ay1 + max(0.0, float(getattr(a, "height_mm", 0) or 0))
+                for j, b in enumerate(obs_list):
+                    if j <= i:
+                        continue
+                    bx1 = float(getattr(b, "x_mm", 0) or 0)
+                    bx2 = bx1 + max(0.0, float(getattr(b, "width_mm", 0) or 0))
+                    by1 = float(getattr(b, "bottom_offset_mm", 0) or 0)
+                    by2 = by1 + max(0.0, float(getattr(b, "height_mm", 0) or 0))
+                    if ax1 < bx2 and ax2 > bx1 and ay1 < by2 and ay2 > by1:
+                        na = str(getattr(a, "name", "") or f"#{i+1}").strip() or f"#{i+1}"
+                        nb = str(getattr(b, "name", "") or f"#{j+1}").strip() or f"#{j+1}"
+                        warnings.append(f"[{side}] Nakladanie: {na} <-> {nb}")
+        # -- 2. Przeszkody poza granicami sciany --
+        for obs in obstacles:
+            side = str(getattr(obs, "wall_side", "A") or "A").strip().upper()
+            x1 = float(getattr(obs, "x_mm", 0) or 0)
+            x2 = x1 + max(0.0, float(getattr(obs, "width_mm", 0) or 0))
+            y1 = float(getattr(obs, "bottom_offset_mm", 0) or 0)
+            y2 = y1 + max(0.0, float(getattr(obs, "height_mm", 0) or 0))
+            name = str(getattr(obs, "name", "") or getattr(obs, "kind", "?")).strip() or "?"
+            if side == "A" and x2 > wall_a:
+                warnings.append(f"[A] {name}: wystaje poza sciane o {x2 - wall_a:.0f} mm")
+            if y2 > room_h:
+                warnings.append(f"[{side}] {name}: wykracza poza sufit o {y2 - room_h:.0f} mm")
+            if y1 < 0:
+                warnings.append(f"[{side}] {name}: y < 0 (ponizej podlogi)")
+        # -- 3. Przeszkody techniczne w strefie cokolu --
+        technical = {"pipe", "socket", "plumbing"}
+        for obs in obstacles:
+            kind = str(getattr(obs, "kind", "") or "").strip()
+            if kind not in technical:
+                continue
+            name = str(getattr(obs, "name", "") or kind).strip() or kind
+            y1 = float(getattr(obs, "bottom_offset_mm", 0) or 0)
+            y2 = y1 + max(0.0, float(getattr(obs, "height_mm", 0) or 0))
+            if plinth > 0 and y1 < plinth:
+                warnings.append(f"{name}: srodek w strefie cokolu ({plinth:.0f} mm)")
+        return warnings
+
+    def _refresh_collisions(self) -> None:
+        if not hasattr(self, "lab_collisions"):
+            return
+        warnings = self._detect_collisions()
+        if not warnings:
+            self.lab_collisions.setStyleSheet(
+                "font-size:11px; color:#15803d; font-weight:600;"
+            )
+            self.lab_collisions.setText("Brak kolizji")
+        else:
+            self.lab_collisions.setStyleSheet(
+                "font-size:11px; color:#b91c1c; font-weight:600;"
+            )
+            self.lab_collisions.setText("\n".join(f"[!] {w}" for w in warnings))
+
     def _refresh_summary(self) -> None:
         layout_label = self.cb_layout_type.currentText()
         island_txt = "tak" if bool(getattr(self._wall, "has_island", False)) else "nie"
@@ -2889,6 +3183,8 @@ class TabScianaLayout(QWidget):
         if hasattr(self, "lab_obstacle_details"):
             self.lab_obstacle_details.setText("\n".join(detail_lines) if detail_lines else "-")
 
+        self._refresh_room_panel()
+        self._refresh_collisions()
     def _refresh_ui_state(self) -> None:
         layout_type = str(self.cb_layout_type.currentData() or "line")
         has_corner = layout_type in ("l", "c")
@@ -3135,4 +3431,3 @@ class TabScianaLayout(QWidget):
 
     def _on_back_to_order(self) -> None:
         self.sig_open_order_requested.emit(self._context_payload_from_wall(self._wall))
-
