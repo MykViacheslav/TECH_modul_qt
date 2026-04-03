@@ -1075,6 +1075,45 @@ class TabNoweZamowienie(QWidget):
         btn_open_calendar.clicked.connect(self._on_open_calendar_for_montaz)
         layout.addWidget(btn_open_calendar)
 
+        # ── HISTORIA STATUSOW ─────────────────────────────────────
+        self.blk_status_history = CollapsibleBlock("Historia statusow", self.grp_order)
+        self.blk_status_history.set_expanded(False)
+        hist_content = QWidget()
+        hist_vbox = QVBoxLayout(hist_content)
+        hist_vbox.setContentsMargins(0, 4, 0, 4)
+        hist_vbox.setSpacing(4)
+
+        hist_filter_row = QHBoxLayout()
+        hist_filter_row.setSpacing(6)
+        hist_filter_row.addWidget(QLabel("Filtr:"))
+        self.cb_history_filter = QComboBox()
+        self.cb_history_filter.addItem("Wszystkie statusy", "")
+        for _st in ORDER_STATUS_ITEMS:
+            self.cb_history_filter.addItem(_st, _st)
+        self.cb_history_filter.setMinimumWidth(160)
+        hist_filter_row.addWidget(self.cb_history_filter, 1)
+        hist_vbox.addLayout(hist_filter_row)
+
+        self.tbl_status_history = QTableWidget(0, 4)
+        self.tbl_status_history.setHorizontalHeaderLabels(["Data", "Z", "Na", "Notatka"])
+        self.tbl_status_history.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl_status_history.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tbl_status_history.setAlternatingRowColors(True)
+        self.tbl_status_history.verticalHeader().setVisible(False)
+        hist_hdr = self.tbl_status_history.horizontalHeader()
+        hist_hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        hist_hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        hist_hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        hist_hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.tbl_status_history.setMinimumHeight(120)
+        self.tbl_status_history.setMaximumHeight(220)
+        hist_vbox.addWidget(self.tbl_status_history)
+
+        self.blk_status_history.content_layout().addWidget(hist_content)
+        self.cb_history_filter.currentIndexChanged.connect(self._refresh_status_history_table)
+        layout.addWidget(self.blk_status_history)
+        self._status_history_data: list[dict] = []
+
     def _build_actions_group(self) -> None:
         layout = self.grp_actions.content_layout()
 
@@ -3206,6 +3245,7 @@ class TabNoweZamowienie(QWidget):
             self._set_quote_items(list(getattr(order, "quote_items", []) or []))
             self._set_material_choices(list(getattr(order, "material_choices", []) or []))
             self._set_customer_payments(list(getattr(order, "customer_payments", []) or []))
+            self._set_status_history(list(getattr(order, "status_history", []) or []))
         finally:
             self._is_restoring_draft = False
 
@@ -4685,6 +4725,42 @@ class TabNoweZamowienie(QWidget):
         self.sig_calendar_events_changed.emit()
         return "Kalendarz: zaktualizowano terminy zamowienia."
 
+    def _set_status_history(self, history: list[dict]) -> None:
+        """Zachowuje liste wpisow historii i odswieża tabelę."""
+        self._status_history_data = list(history or [])
+        self._refresh_status_history_table()
+
+    def _refresh_status_history_table(self) -> None:
+        """Wypelnia tbl_status_history z _status_history_data z uwzglednieniem filtra."""
+        if not hasattr(self, "tbl_status_history"):
+            return
+        filt = str(self.cb_history_filter.currentData() or "").strip()
+        rows = self._status_history_data
+        if filt:
+            rows = [r for r in rows if str(r.get("to_status", "") or "").strip() == filt
+                    or str(r.get("from_status", "") or "").strip() == filt]
+        # sortuj od najnowszego
+        rows = sorted(rows, key=lambda r: str(r.get("changed_at", "") or ""), reverse=True)
+        self.tbl_status_history.setRowCount(0)
+        for row in rows:
+            r = self.tbl_status_history.rowCount()
+            self.tbl_status_history.insertRow(r)
+            ts = str(row.get("changed_at", "") or "").replace("T", " ")[:16]
+            frm = str(row.get("from_status", "") or "-")
+            to = str(row.get("to_status", "") or "-")
+            note = str(row.get("note", "") or "")
+            self.tbl_status_history.setItem(r, 0, QTableWidgetItem(ts))
+            self.tbl_status_history.setItem(r, 1, QTableWidgetItem(frm))
+            item_to = QTableWidgetItem(to)
+            item_to.setForeground(QColor("#1d4ed8"))
+            self.tbl_status_history.setItem(r, 2, item_to)
+            self.tbl_status_history.setItem(r, 3, QTableWidgetItem(note))
+        # wyswietl liczbe wpisow w naglowku bloku
+        if hasattr(self, "blk_status_history"):
+            total = len(self._status_history_data)
+            label = f"Historia statusow ({total})" if total else "Historia statusow"
+            self.blk_status_history._btn.setText(label)
+
     def _with_status_history(self, order: OrderDef, previous: OrderDef | None) -> OrderDef:
         base_history = list(getattr(previous, "status_history", []) or []) if previous is not None else []
 
@@ -4820,6 +4896,7 @@ class TabNoweZamowienie(QWidget):
         self._set_quote_items(list(getattr(order, "quote_items", []) or []))
         self._set_material_choices(list(getattr(order, "material_choices", []) or []))
         self._set_customer_payments(list(getattr(order, "customer_payments", []) or []))
+        self._set_status_history(list(getattr(order, "status_history", []) or []))
         self._set_status(f'Wczytano zamowienie "{order.code}".', ok=True)
 
     def _ensure_context_saved_for_next_step(self) -> tuple[bool, str]:
