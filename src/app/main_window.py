@@ -398,7 +398,7 @@ def _build_app_stylesheet(mode: str, motif: str, ui_scale: float = 1.0) -> str:
             border: 1px solid {border_soft};
             border-bottom: {tab_bottom_border}px solid transparent;
             border-radius: {tab_radius}px;
-            background: {p["pane_bg"]};
+            background: {p["tab_bg"]};
             color: {p["text"]};
             font-weight: 500;
         }}
@@ -963,22 +963,21 @@ class MainWindow(QMainWindow):
         return (self._current_worker, self._current_role)
     
     def _apply_role_permissions(self) -> None:
-        """Hide/disable tabs and buttons based on user role."""
-        # Hide tabs that user cannot access
-        for tab_title, group_idx in self._tab_title_to_group.items():
-            local_idx = self._tab_title_to_local_idx.get(tab_title, -1)
-            if local_idx < 0:
-                continue
-            
-            gtw = self._group_tabwidgets[group_idx]
-            if local_idx < gtw.count():
-                can_access = can_access_tab(self._current_role, tab_title, self._current_worker)
-                # We can't hide tabs easily in QTabWidget, so we'll disable them
-                widget = gtw.widget(local_idx)
-                if widget:
-                    widget.setEnabled(can_access)
+        """Apply role-based access.
         
-        # Update sidebar buttons visibility
+        Indywidualne blokowanie zakładek przez setEnabled powoduje na Windows
+        ukrywanie kart z paska QTabBar. Zamiast tego uprawnienia sa egzekwowane
+        tylko na poziomie grup sidebaru — grupy niedostepne dla roli maja
+        wyszarzone przyciski w pasku bocznym.
+        """
+        # Upewnij sie ze wszystkie karty sa aktywne (widoczne w pasku)
+        for group_idx, gtw in enumerate(self._group_tabwidgets):
+            for local_idx in range(gtw.count()):
+                widget = gtw.widget(local_idx)
+                if widget is not None:
+                    widget.setEnabled(True)
+        
+        # Ogranicz dostep tylko na poziomie grup w sidebarze
         self._refresh_sidebar_permissions()
     
     def _refresh_sidebar_permissions(self) -> None:
