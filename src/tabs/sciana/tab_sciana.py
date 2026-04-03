@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMenu,
     QPushButton,
+    QToolButton,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -36,6 +37,8 @@ from PyQt6.QtWidgets import (
     QTreeWidgetItem,
     QDialog,
     QDialogButtonBox,
+    QMessageBox,
+    QProgressBar,
 )
 
 from src.app.app_settings import load_drawing_settings, load_ui_string_list, save_ui_string_list
@@ -58,6 +61,7 @@ from src.storage.wall_store_json import WallStoreJson
 from src.storage.worker_store_json import WorkerStoreJson
 from src.tabs.sciana.dialog_load_assembly import LoadAssemblyDialog
 from src.ui.collapsible_block import CollapsibleBlock
+from src.ui.ui_polish import mark_ui_card, set_ui_variant
 
 
 SAVED_MODULE_MIME = "application/x-tech-modul-saved-module"
@@ -2411,10 +2415,11 @@ class TabSciana(QWidget):
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(8)
 
-        self.right_zone_toggle = QPushButton("▶ Panel informacyjny", self)
+        self.right_zone_toggle = QPushButton("Panel informacyjny >", self)
         self.right_zone_toggle.setStyleSheet("QPushButton { border: none; background: transparent; color: #555; font-weight: 600; padding: 4px; text-align: left; }")
         self.right_zone_toggle.clicked.connect(self._toggle_right_zone)
-        root.addWidget(self.right_zone_toggle, 0)
+        # Hide root vertical toggle to reclaim horizontal workspace.
+        self.right_zone_toggle.hide()
 
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal, self)
         root.addWidget(self.main_splitter, 1)
@@ -2472,6 +2477,7 @@ class TabSciana(QWidget):
         self.main_splitter.setStretchFactor(1, 1)
         self.main_splitter.setStretchFactor(2, 0)
         self.main_splitter.setSizes([330, 1080, 300])
+        self.left_zone.show()
 
         self._reload_profiles()
         self._reload_quick_material_presets()
@@ -2611,18 +2617,39 @@ class TabSciana(QWidget):
         self.btn_save = QPushButton("Zapisz")
         self.btn_load = QPushButton("Wczytaj")
         self.btn_overwrite = QPushButton("Nadpisz")
+        set_ui_variant(self.btn_save, "primary")
+        set_ui_variant(self.btn_load, "ghost")
+        set_ui_variant(self.btn_overwrite, "ghost")
         store_btns.addWidget(self.btn_save)
         store_btns.addWidget(self.btn_load)
         store_btns.addWidget(self.btn_overwrite)
         form.addRow("", self._wrap_row_widget(self.box_setup, store_btns))
 
         self.btn_back_to_order = QPushButton("Powrot do zamowienia")
+        set_ui_variant(self.btn_back_to_order, "ghost")
         form.addRow("", self.btn_back_to_order)
 
         self.lab_store_status = QLabel("")
         self.lab_store_status.setWordWrap(True)
         self.lab_store_status.setStyleSheet("color:#666666;")
         form.addRow("", self.lab_store_status)
+        set_ui_variant(self.btn_refresh_walls, "ghost")
+        set_ui_variant(self.btn_apply_company_collection, "success")
+        set_ui_variant(self.btn_apply_material_preset, "success")
+        set_ui_variant(self.btn_clear_decor_labels, "danger")
+        set_ui_variant(self.btn_clear_material_overrides, "danger")
+        for button in (
+            self.btn_refresh_walls,
+            self.btn_save,
+            self.btn_load,
+            self.btn_overwrite,
+            self.btn_back_to_order,
+            self.btn_apply_company_collection,
+            self.btn_apply_material_preset,
+            self.btn_clear_decor_labels,
+            self.btn_clear_material_overrides,
+        ):
+            button.setMinimumHeight(30)
 
         for field in (
             self.sp_width,
@@ -2665,13 +2692,15 @@ class TabSciana(QWidget):
 
         self.block_materials = CollapsibleBlock("Materialy kompletu", panel)
         self.block_materials.content_layout().addWidget(self.box_materials)
-        self.block_materials.set_expanded(False)
+        self.block_materials.set_expanded(True)
         layout.addWidget(self.block_materials)
 
         box_store = QGroupBox("", panel)
         store_layout = QVBoxLayout(box_store)
         store_row = QHBoxLayout()
         self.btn_refresh_saved = QPushButton("Odswiez")
+        set_ui_variant(self.btn_refresh_saved, "ghost")
+        self.btn_refresh_saved.setMinimumHeight(30)
         store_row.addStretch(1)
         store_row.addWidget(self.btn_refresh_saved, 0)
         store_layout.addLayout(store_row)
@@ -2681,6 +2710,8 @@ class TabSciana(QWidget):
         for key, label in NAMED_LIBRARY_SET_LABELS.items():
             self.cb_saved_named_set.addItem(label, key)
         self.btn_apply_saved_named_set = QPushButton("Zastosuj zestaw")
+        set_ui_variant(self.btn_apply_saved_named_set, "success")
+        self.btn_apply_saved_named_set.setMinimumHeight(30)
         named_set_row.addWidget(QLabel("Zestaw:", box_store), 0)
         named_set_row.addWidget(self.cb_saved_named_set, 1)
         named_set_row.addWidget(self.btn_apply_saved_named_set, 0)
@@ -2736,7 +2767,21 @@ class TabSciana(QWidget):
 
         self.btn_add_saved = QPushButton("Dodaj do kompletu")
         self.btn_add_saved.setEnabled(False)
+        set_ui_variant(self.btn_add_saved, "primary")
+        self.btn_add_saved.setMinimumHeight(30)
         store_layout.addWidget(self.btn_add_saved)
+
+        quick_presets_row = QHBoxLayout()
+        self.btn_add_front_only = QPushButton("+ Front")
+        self.btn_add_shelf_only = QPushButton("+ Polka")
+        self.btn_add_wall_panel = QPushButton("+ Panel")
+        set_ui_variant(self.btn_add_front_only, "success")
+        set_ui_variant(self.btn_add_shelf_only, "success")
+        set_ui_variant(self.btn_add_wall_panel, "ghost")
+        for button in (self.btn_add_front_only, self.btn_add_shelf_only, self.btn_add_wall_panel):
+            button.setMinimumHeight(30)
+            quick_presets_row.addWidget(button, 1)
+        store_layout.addLayout(quick_presets_row)
 
         self.lab_saved_hint = QLabel("Moduly sa pobierane z bazy zakladki Modul. Mozesz kliknac i przeciagnac modul na sciane.")
         self.lab_saved_hint.setWordWrap(True)
@@ -2786,6 +2831,9 @@ class TabSciana(QWidget):
         self.ed_saved_search.textChanged.connect(self._reload_saved_modules)
         self.ed_saved_search.returnPressed.connect(self._on_add_saved_module)
         self.btn_add_saved.clicked.connect(self._on_add_saved_module)
+        self.btn_add_front_only.clicked.connect(lambda: self._add_quick_preset_module("front_only"))
+        self.btn_add_shelf_only.clicked.connect(lambda: self._add_quick_preset_module("shelf_only"))
+        self.btn_add_wall_panel.clicked.connect(lambda: self._add_quick_preset_module("wall_panel"))
         self.tree_saved_modules.currentItemChanged.connect(self._on_saved_module_selection_changed)
         self.tree_saved_modules.itemDoubleClicked.connect(self._on_saved_module_item_double_clicked)
         self.cb_active_view.currentIndexChanged.connect(self._on_active_view_changed)
@@ -2878,7 +2926,7 @@ class TabSciana(QWidget):
         self._right_zone_visible = not self._right_zone_visible
         if self._right_zone_visible:
             self.right_zone.setVisible(True)
-            self.right_zone_toggle.setText("▶ Panel informacyjny")
+            self.right_zone_toggle.setText("Panel informacyjny >")
             sizes = list(self.main_splitter.sizes())
             if len(sizes) >= 3:
                 sizes[2] = self._right_zone_last_width
@@ -2890,7 +2938,7 @@ class TabSciana(QWidget):
                 sizes[2] = 0
                 self.main_splitter.setSizes(sizes)
             self.right_zone.setVisible(False)
-            self.right_zone_toggle.setText("◀ Panel informacyjny")
+            self.right_zone_toggle.setText("< Panel informacyjny")
 
     def _toggle_snap_grid(self, _checked: bool | None = None) -> None:
         self._snap_grid_enabled = not self._snap_grid_enabled
@@ -2923,17 +2971,19 @@ class TabSciana(QWidget):
             return
 
         left, center, right = int(sizes[0]), int(sizes[1]), int(sizes[2])
+        total_main = max(600, left + center)
         if self._left_zone_visible:
             if left > 0:
                 self._left_zone_last_width = max(220, left)
-            self.left_zone.setVisible(False)
             self._left_zone_visible = False
-            self.main_splitter.setSizes([0, max(300, center + left), right])
+            self.left_zone.hide()
+            self.main_splitter.setSizes([0, total_main, right])
         else:
             target_left = max(220, int(self._left_zone_last_width or 330))
-            self.left_zone.setVisible(True)
+            target_left = min(target_left, max(220, total_main - 300))
+            restored_center = max(300, total_main - target_left)
             self._left_zone_visible = True
-            restored_center = max(300, center - target_left)
+            self.left_zone.show()
             self.main_splitter.setSizes([target_left, restored_center, right])
 
         self._refresh_left_zone_toggle_button()
@@ -3092,13 +3142,7 @@ class TabSciana(QWidget):
         layout.addWidget(title)
 
         self.preview_info_box = QWidget(panel)
-        self.preview_info_box.setStyleSheet(
-            "QWidget {"
-            " background: #fbfaf7;"
-            " border: 1px solid #d9d1c5;"
-            " border-radius: 6px;"
-            "}"
-        )
+        mark_ui_card(self.preview_info_box, elevated=False)
         info_layout = QVBoxLayout(self.preview_info_box)
         info_layout.setContentsMargins(10, 8, 10, 8)
         info_layout.setSpacing(6)
@@ -3119,30 +3163,20 @@ class TabSciana(QWidget):
 
         self.btn_view_front = QPushButton("Przod", view_switch)
         self.btn_view_front.setCheckable(True)
-        self.btn_view_front.setStyleSheet(
-            "QPushButton {"
-            " padding: 4px 10px;"
-            " border: 1px solid #d5c8b7;"
-            " border-radius: 5px;"
-            " background: #fffdfa;"
-            "}"
-            "QPushButton:checked {"
-            " background: #8f6a46;"
-            " color: #ffffff;"
-            " border-color: #8f6a46;"
-            " font-weight: 700;"
-            "}"
-        )
+        set_ui_variant(self.btn_view_front, "ghost")
+        self.btn_view_front.setMinimumHeight(30)
         self.btn_view_top = QPushButton("Gora", view_switch)
         self.btn_view_top.setCheckable(True)
-        self.btn_view_top.setStyleSheet(self.btn_view_front.styleSheet())
+        set_ui_variant(self.btn_view_top, "ghost")
+        self.btn_view_top.setMinimumHeight(30)
         view_switch_layout.addWidget(QLabel("Widok:", view_switch), 0)
         view_switch_layout.addWidget(self.btn_view_front, 0)
         view_switch_layout.addWidget(self.btn_view_top, 0)
         self.btn_snap_grid = QPushButton("Snap 50mm: OFF", view_switch)
         self.btn_snap_grid.setCheckable(True)
         self.btn_snap_grid.setChecked(False)
-        self.btn_snap_grid.setStyleSheet(self.btn_view_front.styleSheet())
+        set_ui_variant(self.btn_snap_grid, "success")
+        self.btn_snap_grid.setMinimumHeight(30)
         view_switch_layout.addWidget(self.btn_snap_grid, 0)
         self.cb_snap_step = QComboBox(view_switch)
         self.cb_snap_step.addItem("10 mm", 10)
@@ -3152,7 +3186,8 @@ class TabSciana(QWidget):
         self.cb_snap_step.setCurrentIndex(2)
         view_switch_layout.addWidget(self.cb_snap_step, 0)
         self.btn_toggle_left_zone = QPushButton("Ukryj lewy panel", view_switch)
-        self.btn_toggle_left_zone.setStyleSheet(self.btn_view_front.styleSheet())
+        set_ui_variant(self.btn_toggle_left_zone, "ghost")
+        self.btn_toggle_left_zone.setMinimumHeight(30)
         view_switch_layout.addWidget(self.btn_toggle_left_zone, 0)
         info_top_row.addWidget(view_switch, 0)
         info_layout.addLayout(info_top_row)
@@ -3161,39 +3196,113 @@ class TabSciana(QWidget):
         quick_actions.setStyleSheet("QWidget { background: transparent; border: 0; }")
         quick_actions_layout = QHBoxLayout(quick_actions)
         quick_actions_layout.setContentsMargins(0, 0, 0, 0)
-        quick_actions_layout.setSpacing(6)
+        quick_actions_layout.setSpacing(10)
 
         self.btn_q_save = QPushButton("Zapisz", quick_actions)
         self.btn_q_save.clicked.connect(self._shortcut_save_assembly)
+        set_ui_variant(self.btn_q_save, "primary")
+        self.btn_q_save.setMinimumHeight(30)
         quick_actions_layout.addWidget(self.btn_q_save, 0)
 
         self.btn_q_overwrite = QPushButton("Nadpisz", quick_actions)
         self.btn_q_overwrite.clicked.connect(self._on_overwrite)
+        set_ui_variant(self.btn_q_overwrite, "ghost")
+        self.btn_q_overwrite.setMinimumHeight(30)
         quick_actions_layout.addWidget(self.btn_q_overwrite, 0)
 
         self.btn_q_load = QPushButton("Wczytaj", quick_actions)
         self.btn_q_load.clicked.connect(self._on_load)
+        set_ui_variant(self.btn_q_load, "ghost")
+        self.btn_q_load.setMinimumHeight(30)
         quick_actions_layout.addWidget(self.btn_q_load, 0)
 
         self.btn_q_new = QPushButton("Nowy", quick_actions)
         self.btn_q_new.clicked.connect(self.start_new_assembly)
+        set_ui_variant(self.btn_q_new, "ghost")
+        self.btn_q_new.setMinimumHeight(30)
         quick_actions_layout.addWidget(self.btn_q_new, 0)
 
         self.btn_q_search = QPushButton("Szukaj", quick_actions)
         self.btn_q_search.clicked.connect(self._shortcut_focus_saved_search)
+        set_ui_variant(self.btn_q_search, "ghost")
+        self.btn_q_search.setMinimumHeight(30)
         quick_actions_layout.addWidget(self.btn_q_search, 0)
 
         self.btn_q_duplicate = QPushButton("Duplikuj", quick_actions)
         self.btn_q_duplicate.clicked.connect(self._on_duplicate_selected_item)
+        set_ui_variant(self.btn_q_duplicate, "success")
+        self.btn_q_duplicate.setMinimumHeight(30)
         quick_actions_layout.addWidget(self.btn_q_duplicate, 0)
 
         self.btn_q_snap = QPushButton("Snap", quick_actions)
         self.btn_q_snap.clicked.connect(self._toggle_snap_grid)
+        set_ui_variant(self.btn_q_snap, "success")
+        self.btn_q_snap.setMinimumHeight(30)
         quick_actions_layout.addWidget(self.btn_q_snap, 0)
 
         self.btn_q_shortcuts = QPushButton("Skroty", quick_actions)
         self.btn_q_shortcuts.clicked.connect(self._open_shortcuts_dialog)
+        set_ui_variant(self.btn_q_shortcuts, "ghost")
+        self.btn_q_shortcuts.setMinimumHeight(30)
         quick_actions_layout.addWidget(self.btn_q_shortcuts, 0)
+
+        self.btn_q_more = QToolButton(quick_actions)
+        self.btn_q_more.setText("Wiecej")
+        self.btn_q_more.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        set_ui_variant(self.btn_q_more, "ghost")
+        self.btn_q_more.setMinimumHeight(30)
+        self._quick_more_menu = QMenu(self.btn_q_more)
+        self._quick_more_menu.addAction("Nadpisz", self._on_overwrite)
+        self._quick_more_menu.addAction("Wczytaj", self._on_load)
+        self._quick_more_menu.addAction("Nowy komplet", self.start_new_assembly)
+        self._quick_more_menu.addAction("Szukaj", self._shortcut_focus_saved_search)
+        self._quick_more_menu.addAction("Duplikuj", self._on_duplicate_selected_item)
+        self._quick_more_menu.addAction("Snap ON/OFF", self._toggle_snap_grid)
+        self._quick_more_menu.addAction("Pokaz/ukryj lewy panel", self._toggle_left_zone_visibility)
+        self._quick_more_menu.addAction("Skroty", self._open_shortcuts_dialog)
+        self.btn_q_more.setMenu(self._quick_more_menu)
+        quick_actions_layout.addWidget(self.btn_q_more, 0)
+
+        for btn, min_w, max_w in (
+            (self.btn_q_save, 96, 124),
+            (self.btn_q_overwrite, 102, 132),
+            (self.btn_q_load, 96, 124),
+            (self.btn_q_new, 90, 114),
+            (self.btn_q_search, 94, 120),
+            (self.btn_q_duplicate, 102, 132),
+            (self.btn_q_snap, 88, 112),
+            (self.btn_q_shortcuts, 98, 126),
+        ):
+            btn.setMinimumWidth(min_w)
+            btn.setMaximumWidth(max_w)
+        self.btn_q_more.setMinimumWidth(90)
+        self.btn_q_more.setMaximumWidth(120)
+        for btn in (
+            self.btn_q_save,
+            self.btn_q_overwrite,
+            self.btn_q_load,
+            self.btn_q_new,
+            self.btn_q_search,
+            self.btn_q_duplicate,
+            self.btn_q_snap,
+            self.btn_q_shortcuts,
+            self.btn_q_more,
+        ):
+            btn.setMinimumHeight(36)
+            btn.setMaximumHeight(36)
+
+        # Desktop-first: keep all key actions visible.
+        for btn in (
+            self.btn_q_overwrite,
+            self.btn_q_load,
+            self.btn_q_new,
+            self.btn_q_search,
+            self.btn_q_duplicate,
+            self.btn_q_snap,
+            self.btn_q_shortcuts,
+        ):
+            btn.show()
+        self.btn_q_more.hide()
 
         quick_actions_layout.addStretch(1)
         info_layout.addWidget(quick_actions, 0)
@@ -3241,6 +3350,7 @@ class TabSciana(QWidget):
         self.btn_snap_grid.clicked.connect(self._toggle_snap_grid)
         self.cb_snap_step.currentIndexChanged.connect(self._on_snap_step_combo_changed)
         self.btn_toggle_left_zone.clicked.connect(self._toggle_left_zone_visibility)
+        self.btn_toggle_left_zone.hide()
         return panel
 
     def _build_right_zone(self) -> QWidget:
@@ -3292,6 +3402,27 @@ class TabSciana(QWidget):
         self.btn_align_bottom = QPushButton("Wyrownaj dol")
         self.btn_distribute = QPushButton("Rozstaw")
         self.btn_remove = QPushButton("Usun")
+        set_ui_variant(self.btn_move_up, "ghost")
+        set_ui_variant(self.btn_move_down, "ghost")
+        set_ui_variant(self.btn_duplicate, "success")
+        set_ui_variant(self.btn_align_left, "ghost")
+        set_ui_variant(self.btn_align_right, "ghost")
+        set_ui_variant(self.btn_align_top, "ghost")
+        set_ui_variant(self.btn_align_bottom, "ghost")
+        set_ui_variant(self.btn_distribute, "success")
+        set_ui_variant(self.btn_remove, "danger")
+        for button in (
+            self.btn_move_up,
+            self.btn_move_down,
+            self.btn_duplicate,
+            self.btn_align_left,
+            self.btn_align_right,
+            self.btn_align_top,
+            self.btn_align_bottom,
+            self.btn_distribute,
+            self.btn_remove,
+        ):
+            button.setMinimumHeight(30)
         btn_row.addWidget(self.btn_move_up)
         btn_row.addWidget(self.btn_move_down)
         btn_row.addWidget(self.btn_duplicate)
@@ -3385,6 +3516,8 @@ class TabSciana(QWidget):
         self.bulk_form.addRow("Mat. plecow", self.cb_bulk_material_back)
         box_bulk_layout.addLayout(self.bulk_form)
         self.btn_apply_bulk_modules = QPushButton("Zastosuj do zaznaczonych", box_bulk)
+        set_ui_variant(self.btn_apply_bulk_modules, "success")
+        self.btn_apply_bulk_modules.setMinimumHeight(30)
         box_bulk_layout.addWidget(self.btn_apply_bulk_modules)
         self.block_bulk_modules = CollapsibleBlock("Zaznaczone moduly", scroll_content)
         self.block_bulk_modules.content_layout().addWidget(box_bulk)
@@ -3467,6 +3600,74 @@ class TabSciana(QWidget):
         quick_costs_layout.addWidget(card_hardware, 1, 0)
         quick_costs_layout.addWidget(card_total, 1, 1)
         summary_layout.addWidget(quick_costs)
+
+        # ── PASEK WYPELNIENIA ─────────────────────────────────────
+        fill_row = QHBoxLayout()
+        fill_row.setSpacing(6)
+        fill_row.addWidget(QLabel("Wypelnienie:"))
+        self.fill_bar = QProgressBar(scroll_content)
+        self.fill_bar.setRange(0, 100)
+        self.fill_bar.setValue(0)
+        self.fill_bar.setTextVisible(True)
+        self.fill_bar.setFixedHeight(16)
+        self.fill_bar.setStyleSheet(
+            "QProgressBar{border:1px solid #d1d5db;border-radius:8px;background:#f3f4f6;text-align:center;font-size:10px;}"
+            "QProgressBar::chunk{border-radius:8px;background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #22c55e,stop:0.75 #f59e0b,stop:1 #ef4444);}"
+        )
+        fill_row.addWidget(self.fill_bar, 1)
+        self.lab_fill_info = QLabel("0 / 0 mm")
+        self.lab_fill_info.setStyleSheet("font-size:10px; color:#6b7280;")
+        fill_row.addWidget(self.lab_fill_info)
+        summary_layout.addLayout(fill_row)
+
+        # ── SZYBKA KALKULACJA HANDLOWA ────────────────────────────
+        box_trade = QGroupBox("Kalkulacja handlowa", scroll_content)
+        trade_form = QFormLayout(box_trade)
+        trade_form.setSpacing(4)
+        trade_form.setContentsMargins(8, 6, 8, 6)
+
+        def _sp_trade(suffix: str, max_val: float = 100000.0) -> QDoubleSpinBox:
+            sb = QDoubleSpinBox()
+            sb.setRange(0.0, max_val)
+            sb.setDecimals(2)
+            sb.setSingleStep(100.0)
+            sb.setSuffix(f" {suffix}")
+            sb.setFixedHeight(24)
+            return sb
+
+        self.sp_trade_labor = _sp_trade("zl")
+        self.sp_trade_transport = _sp_trade("zl")
+        self.sp_trade_montage = _sp_trade("zl")
+        self.sp_trade_margin = QDoubleSpinBox()
+        self.sp_trade_margin.setRange(0.0, 200.0)
+        self.sp_trade_margin.setDecimals(1)
+        self.sp_trade_margin.setSuffix(" %")
+        self.sp_trade_margin.setValue(30.0)
+        self.sp_trade_margin.setFixedHeight(24)
+
+        self.lab_trade_netto = QLabel("0.00 zl")
+        self.lab_trade_netto.setStyleSheet("font-weight:700; color:#1f2937; font-size:13px;")
+        self.lab_trade_brutto = QLabel("0.00 zl")
+        self.lab_trade_brutto.setStyleSheet("font-weight:800; color:#0f172a; font-size:14px;")
+        self.lab_trade_profit = QLabel("0.00 zl")
+        self.lab_trade_profit.setStyleSheet("font-weight:600; color:#15803d;")
+
+        trade_form.addRow("Robocizna:", self.sp_trade_labor)
+        trade_form.addRow("Transport:", self.sp_trade_transport)
+        trade_form.addRow("Montaz:", self.sp_trade_montage)
+        trade_form.addRow("Marza:", self.sp_trade_margin)
+        sep_t = QFrame()
+        sep_t.setFrameShape(QFrame.Shape.HLine)
+        sep_t.setFrameShadow(QFrame.Shadow.Sunken)
+        trade_form.addRow(sep_t)
+        trade_form.addRow("Netto:", self.lab_trade_netto)
+        trade_form.addRow("Brutto (23%):", self.lab_trade_brutto)
+        trade_form.addRow("Narost:", self.lab_trade_profit)
+
+        summary_layout.addWidget(box_trade)
+
+        for sp in (self.sp_trade_labor, self.sp_trade_transport, self.sp_trade_montage, self.sp_trade_margin):
+            sp.valueChanged.connect(self._refresh_trade_calc)
 
         self.lab_summary = QLabel("-")
         self.lab_summary.setWordWrap(True)
@@ -4293,12 +4494,15 @@ class TabSciana(QWidget):
         self._add_saved_module_by_name(source_name)
 
     def _shortcut_save_assembly(self) -> None:
-        name = str(getattr(self._assembly, "name", "") or "").strip()
-        existing = self._assembly_store.get(name) if name else None
-        if existing is not None:
-            self._on_overwrite()
-        else:
-            self._on_save_new()
+        try:
+            name = str(getattr(self._assembly, "name", "") or "").strip()
+            existing = self._assembly_store.get(name) if name else None
+            if existing is not None:
+                self._on_overwrite()
+            else:
+                self._on_save_new()
+        except Exception as exc:
+            self._show_storage_operation_error("sprawdzic komplet przed zapisem", exc)
 
     def _shortcut_focus_saved_search(self) -> None:
         self.ed_saved_search.setFocus()
@@ -4552,6 +4756,15 @@ class TabSciana(QWidget):
         self.lab_store_status.setText(str(message_pl or ""))
         self.lab_store_status.setStyleSheet("color:#0f6a2f;" if ok else "color:#a61b1b;")
 
+    def _show_storage_operation_error(self, action_label: str, exc: Exception) -> None:
+        action = str(action_label or "wykonac operacje na komplecie").strip()
+        message = f"Nie udalo sie {action}.\n\nSzczegoly: {exc}"
+        self._set_store_status(message, ok=False)
+        try:
+            QMessageBox.critical(self, "Blad zapisu/odczytu", message)
+        except Exception:
+            pass
+
     def _ensure_name_for_save(self) -> str:
         name = str(self.ed_name.text().strip() or getattr(self._assembly, "name", "") or "Komplet 1")
         self.ed_name.setText(name)
@@ -4584,6 +4797,7 @@ class TabSciana(QWidget):
 
         return {
             "client_name": client_name,
+            "order_code": order_name,
             "order_name": order_name,
             "worker_name": worker_name,
             "order_status": order_status,
@@ -4591,34 +4805,43 @@ class TabSciana(QWidget):
         }
 
     def _on_save_new(self) -> None:
-        name = self._ensure_name_for_save()
-        assembly = self._assembly_snapshot_for_store()
-        assembly.name = name
-        result = self._assembly_store.save_new(assembly)
-        self._set_store_status(result.message_pl, ok=result.ok)
+        try:
+            name = self._ensure_name_for_save()
+            assembly = self._assembly_snapshot_for_store()
+            assembly.name = name
+            result = self._assembly_store.save_new(assembly)
+            self._set_store_status(result.message_pl, ok=result.ok)
+        except Exception as exc:
+            self._show_storage_operation_error("zapisac nowy komplet", exc)
 
     def _on_back_to_order(self) -> None:
         self.sig_open_order_requested.emit(self.current_order_context())
 
     def _on_overwrite(self) -> None:
-        name = self._ensure_name_for_save()
-        assembly = self._assembly_snapshot_for_store()
-        assembly.name = name
-        result = self._assembly_store.overwrite(assembly)
-        self._set_store_status(result.message_pl, ok=result.ok)
+        try:
+            name = self._ensure_name_for_save()
+            assembly = self._assembly_snapshot_for_store()
+            assembly.name = name
+            result = self._assembly_store.overwrite(assembly)
+            self._set_store_status(result.message_pl, ok=result.ok)
+        except Exception as exc:
+            self._show_storage_operation_error("nadpisac komplet", exc)
 
     def _on_load(self) -> None:
-        dlg = LoadAssemblyDialog(self, self._assembly_store)
-        if dlg.exec() != dlg.DialogCode.Accepted:
-            return
+        try:
+            dlg = LoadAssemblyDialog(self, self._assembly_store)
+            if dlg.exec() != dlg.DialogCode.Accepted:
+                return
 
-        assembly = dlg.selected_assembly()
-        if assembly is None:
-            self._set_store_status("Nie udalo sie wczytac kompletu.", ok=False)
-            return
+            assembly = dlg.selected_assembly()
+            if assembly is None:
+                self._set_store_status("Nie udalo sie wczytac kompletu.", ok=False)
+                return
 
-        self._apply_loaded_assembly(assembly)
-        self._set_store_status(f'Wczytano komplet: "{getattr(self._assembly, "name", "") or ""}".', ok=True)
+            self._apply_loaded_assembly(assembly)
+            self._set_store_status(f'Wczytano komplet: "{getattr(self._assembly, "name", "") or ""}".', ok=True)
+        except Exception as exc:
+            self._show_storage_operation_error("wczytac komplet", exc)
 
     def _apply_loaded_assembly(self, assembly: FurnitureAssemblyDef) -> None:
         self._assembly = FurnitureAssemblyDef.from_dict(assembly.to_dict())
@@ -4629,19 +4852,23 @@ class TabSciana(QWidget):
         self._rebuild_assembly()
 
     def load_assembly_from_store_name(self, name: str) -> bool:
-        assembly_name = str(name or "").strip()
-        if not assembly_name:
-            self._set_store_status("Nie podano nazwy kompletu.", ok=False)
-            return False
+        try:
+            assembly_name = str(name or "").strip()
+            if not assembly_name:
+                self._set_store_status("Nie podano nazwy kompletu.", ok=False)
+                return False
 
-        assembly = self._assembly_store.get(assembly_name)
-        if assembly is None:
-            self._set_store_status(f'Nie ma kompletu "{assembly_name}" w bazie.', ok=False)
-            return False
+            assembly = self._assembly_store.get(assembly_name)
+            if assembly is None:
+                self._set_store_status(f'Nie ma kompletu "{assembly_name}" w bazie.', ok=False)
+                return False
 
-        self._apply_loaded_assembly(assembly)
-        self._set_store_status(f'Wczytano komplet: "{assembly_name}".', ok=True)
-        return True
+            self._apply_loaded_assembly(assembly)
+            self._set_store_status(f'Wczytano komplet: "{assembly_name}".', ok=True)
+            return True
+        except Exception as exc:
+            self._set_store_status(f"Nie udalo sie wczytac kompletu: {exc}", ok=False)
+            return False
 
     def start_new_assembly(self) -> None:
         self._assembly = FurnitureAssemblyDef(assembly_id=new_assembly_id())
@@ -4738,6 +4965,109 @@ class TabSciana(QWidget):
             if abs(offset_mm - float(closest)) <= 12.0:
                 offset_mm = float(closest)
         return offset_mm
+
+    def _current_material_defaults(self) -> dict[str, str]:
+        overrides = dict(getattr(self._assembly, "material_overrides", {}) or {})
+        return {
+            "carcass": str(overrides.get("carcass", "") or "PB18").strip() or "PB18",
+            "front": str(overrides.get("front", "") or "MDF19").strip() or "MDF19",
+            "back": str(overrides.get("back", "") or "HDF2.5").strip() or "HDF2.5",
+        }
+
+    def _build_quick_preset_module(self, preset_key: str) -> ModuleDef | None:
+        key = str(preset_key or "").strip().lower()
+        if key not in {"front_only", "shelf_only", "wall_panel"}:
+            return None
+
+        assembly_height = max(100.0, float(getattr(self._assembly, "height_mm", 2500.0) or 2500.0))
+        assembly_depth = max(100.0, float(getattr(self._assembly, "depth_mm", 560.0) or 560.0))
+        materials = self._current_material_defaults()
+
+        if key == "front_only":
+            module = ModuleDef(
+                module_id=new_module_id(),
+                name="Front",
+                width_mm=600.0,
+                depth_mm=19.0,
+                height_mm=min(assembly_height, 720.0),
+                shelf_count=0,
+                divider_count=0,
+                visible_parts={"front"},
+                materials=materials,
+                module_family="kitchen_upper",
+                cabinet_kind="upper",
+            )
+        elif key == "shelf_only":
+            module = ModuleDef(
+                module_id=new_module_id(),
+                name="Polka",
+                width_mm=600.0,
+                depth_mm=assembly_depth,
+                height_mm=18.0,
+                shelf_count=1,
+                divider_count=0,
+                visible_parts={"shelf"},
+                materials=materials,
+                module_family="kitchen_lower",
+                cabinet_kind="lower",
+            )
+        else:
+            module = ModuleDef(
+                module_id=new_module_id(),
+                name="Panel scienny",
+                width_mm=600.0,
+                depth_mm=18.0,
+                height_mm=assembly_height,
+                shelf_count=0,
+                divider_count=0,
+                visible_parts={"back"},
+                materials=materials,
+                module_family="kitchen_lower",
+                cabinet_kind="lower",
+            )
+
+        module.parts = build_module_parts(module, self._catalog)
+        return module
+
+    def _add_quick_preset_module(
+        self,
+        preset_key: str,
+        insert_index: int | None = None,
+        initial_offset_mm: float | None = None,
+    ) -> bool:
+        module = self._build_quick_preset_module(preset_key)
+        if module is None:
+            self._set_store_status("Nieznany preset szybkiego elementu.", ok=False)
+            return False
+
+        source_name = f"[preset] {module.name}"
+        item = AssemblyModuleItemDef(
+            source_name=source_name,
+            instance_name=self._next_instance_name(module.name),
+            offset_ref_mode="wall_left",
+            offset_mm=0.0,
+            wall_depth_offset_mm=0.0,
+            module=module,
+        )
+
+        items = self._assembly.items
+        target_index = len(items) if insert_index is None else int(insert_index)
+        target_index = max(0, min(target_index, len(items)))
+        if initial_offset_mm is None:
+            if target_index > 0 and target_index - 1 < len(self._resolved_items):
+                previous = self._resolved_items[target_index - 1]
+                gap_mm = max(0.0, float(getattr(self._assembly, "gap_mm", 0.0) or 0.0))
+                initial_offset_mm = float(previous.x_mm) + float(previous.width_mm) + gap_mm
+            else:
+                initial_offset_mm = 0.0
+        wall_width = max(0.0, float(getattr(self._assembly, "width_mm", 0.0) or 0.0))
+        max_left = max(0.0, wall_width - float(getattr(module, "width_mm", 0.0) or 0.0))
+        initial_offset_mm = max(0.0, min(float(initial_offset_mm or 0.0), max_left))
+        item.offset_mm = float(initial_offset_mm or 0.0)
+        items.insert(target_index, item)
+        self._rebuild_assembly(select_index=target_index)
+        self._set_store_status(f'Dodano preset "{module.name}" do kompletu.', ok=True)
+        return True
 
     def _add_saved_module_by_name(
         self,
@@ -5304,11 +5634,51 @@ class TabSciana(QWidget):
         index = self._selected_index()
         if index < 0 or index >= len(self._assembly.items):
             return
+        old_resolved = list(self._resolved_items or [])
         module = self._assembly.items[index].module
-        module.width_mm = float(self.sp_selected_width.value())
+        old_width = (
+            float(getattr(old_resolved[index], "width_mm", 0.0) or 0.0)
+            if index < len(old_resolved)
+            else float(getattr(module, "width_mm", 0.0) or 0.0)
+        )
+        new_width = float(self.sp_selected_width.value())
+        delta_width = float(new_width - old_width)
+        module.width_mm = new_width
         module.height_mm = float(self.sp_selected_height.value())
         module.depth_mm = float(self.sp_selected_depth.value())
+        self._shift_touching_wall_left_modules_after_width_change(index, old_resolved, delta_width)
         self._rebuild_assembly(select_index=index)
+
+    def _shift_touching_wall_left_modules_after_width_change(
+        self,
+        index: int,
+        old_resolved: list[ResolvedAssemblyItem],
+        delta_width_mm: float,
+    ) -> None:
+        if abs(float(delta_width_mm or 0.0)) < 0.01:
+            return
+        if index < 0 or index + 1 >= len(self._assembly.items):
+            return
+        if len(old_resolved) < len(self._assembly.items):
+            return
+
+        tolerance_mm = 0.2
+        for next_index in range(index + 1, len(self._assembly.items)):
+            item = self._assembly.items[next_index]
+            if (
+                normalize_assembly_offset_ref_mode(getattr(item, "offset_ref_mode", "wall_left"))
+                != "wall_left"
+            ):
+                break
+
+            previous_old = old_resolved[next_index - 1]
+            current_old = old_resolved[next_index]
+            expected_left = float(previous_old.x_mm) + float(previous_old.width_mm)
+            current_left = float(current_old.x_mm)
+            if abs(current_left - expected_left) > tolerance_mm:
+                break
+
+            item.offset_mm = float(getattr(item, "offset_mm", 0.0) or 0.0) + float(delta_width_mm)
 
     def _on_selected_module_materials_changed(self, _index: int) -> None:
         if self._is_syncing_offset_ui:
@@ -5757,6 +6127,28 @@ class TabSciana(QWidget):
         site_address = str(self._site_address_context or getattr(order_def, "site_address", "") or "").strip()
         return status, site_address
 
+    def _refresh_trade_calc(self) -> None:
+        """Szybka kalkulacja handlowa w panelu podsumowania kompletu."""
+        if not hasattr(self, "sp_trade_labor"):
+            return
+        material_total = sum(
+            item.cost_breakdown.grand_total_pln
+            for item in self._resolved_items
+        ) if self._resolved_items else 0.0
+        labor = float(self.sp_trade_labor.value())
+        transport = float(self.sp_trade_transport.value())
+        montage = float(self.sp_trade_montage.value())
+        margin = float(self.sp_trade_margin.value())
+        base = material_total + labor + transport + montage
+        netto = base * (1.0 + margin / 100.0)
+        brutto = netto * 1.23
+        profit = netto - base
+        self.lab_trade_netto.setText(f"{netto:,.2f} zl")
+        self.lab_trade_brutto.setText(f"{brutto:,.2f} zl")
+        self.lab_trade_profit.setText(f"{profit:,.2f} zl")
+        color = "#15803d" if profit >= 0 else "#b91c1c"
+        self.lab_trade_profit.setStyleSheet(f"font-weight:600; color:{color};")
+
     def _refresh_summary(self) -> None:
         used_width = 0.0
         if self._resolved_items:
@@ -5775,6 +6167,17 @@ class TabSciana(QWidget):
         self.lab_summary_edgeband_total.setText(f"{edgeband_total:.2f} zl")
         self.lab_summary_hardware_total.setText(f"{hardware_total:.2f} zl")
         self.lab_summary_grand_total.setText(f"{grand_total:.2f} zl")
+
+        # pasek wypelnienia
+        if hasattr(self, "fill_bar"):
+            fill_pct = int(round(used_width / wall_width * 100.0)) if wall_width > 0 else 0
+            fill_pct = max(0, min(100, fill_pct))
+            self.fill_bar.setValue(fill_pct)
+            self.fill_bar.setFormat(f"{fill_pct}%")
+            self.lab_fill_info.setText(f"{used_width:.0f} / {wall_width:.0f} mm")
+
+        # aktualizuj kalkulacje handlowa
+        self._refresh_trade_calc()
 
         profile_key = str(getattr(self._assembly, "material_profile_key", "STD_WHITE") or "STD_WHITE")
         force_hw_txt = "tak" if bool(getattr(self._assembly, "force_hardware_from_profile", True)) else "nie"
@@ -5853,3 +6256,4 @@ class TabSciana(QWidget):
         else:
             self.lab_layout_alert.clear()
             self.lab_layout_alert.hide()
+
