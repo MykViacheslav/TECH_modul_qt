@@ -18,6 +18,7 @@ from src.tabs.wydatki_zmienne.tab_wydatki_zmienne import TabWydatkiZmienne
 from src.tabs.dashboard.tab_dashboard import TabDashboard
 from src.tabs.alarmy.tab_alarmy import TabAlarmy
 from src.tabs.uslugi.tab_uslugi import TabUslugi
+from src.tabs.zakupy.tab_zakupy import TabZakupy
 
 
 def build_tabs():
@@ -40,6 +41,7 @@ def build_tabs():
         ("Sciana", TabScianaLayout()),
         ("Bazy", TabBazy()),
         ("Pracownik", TabPracownicy()),
+        ("Zakupy", TabZakupy()),
         ("Ustawienia", TabRysunek()),
         ("ALARMY", TabAlarmy()),
     ]

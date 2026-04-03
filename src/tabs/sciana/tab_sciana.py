@@ -57,6 +57,7 @@ from src.storage.assembly_store_json import AssemblyStoreJson
 from src.storage.catalog_store_json import CatalogStoreJson
 from src.storage.module_store_json import ModuleStoreJson
 from src.storage.order_store_json import OrderStoreJson
+from src.storage.shopping_list_store_json import ShoppingListStoreJson
 from src.storage.wall_store_json import WallStoreJson
 from src.storage.worker_store_json import WorkerStoreJson
 from src.tabs.sciana.dialog_load_assembly import LoadAssemblyDialog
@@ -3681,6 +3682,20 @@ class TabSciana(QWidget):
         self.btn_open_wycena.clicked.connect(self._on_open_in_wycena)
         trade_form.addRow(self.btn_open_wycena)
 
+        self.btn_send_shopping = QPushButton("Wyslij do listy zakupow →")
+        self.btn_send_shopping.setToolTip(
+            "Agreguje materialy ze wszystkich modulow i dodaje do listy zakupow"
+        )
+        self.btn_send_shopping.setMinimumHeight(28)
+        self.btn_send_shopping.setStyleSheet(
+            "QPushButton{background:#15803d;color:#fff;border-radius:4px;"
+            "font-weight:700;font-size:11px;padding:4px 10px;}"
+            "QPushButton:hover{background:#16a34a;}"
+            "QPushButton:pressed{background:#166534;}"
+        )
+        self.btn_send_shopping.clicked.connect(self._on_send_to_shopping_list)
+        trade_form.addRow(self.btn_send_shopping)
+
         summary_layout.addWidget(box_trade)
 
         for sp in (self.sp_trade_labor, self.sp_trade_transport, self.sp_trade_montage, self.sp_trade_margin):
@@ -6183,6 +6198,83 @@ class TabSciana(QWidget):
         if not name:
             return
         self.sig_open_wycena_requested.emit(name)
+
+    def _on_send_to_shopping_list(self) -> None:
+        """Agreguje materialy ze wszystkich modulow kompletu i wrzuca do listy zakupow."""
+        if not self._resolved_items:
+            self._set_store_status("Brak modulow w komplecie.", ok=False)
+            return
+        # zbierz material_key -> (area_m2, label) ze wszystkich cost_breakdown
+        mat_agg: dict[str, list] = {}  # key -> [area_m2, label]
+        edge_agg: dict[str, float] = {}  # key -> length_m
+        hw_agg: dict[str, list] = {}  # key -> [count, label]
+
+        for item in self._resolved_items:
+            bd = item.cost_breakdown
+            for line in bd.material_lines:
+                if line.key not in mat_agg:
+                    mat_agg[line.key] = [0.0, line.label]
+                mat_agg[line.key][0] += float(line.area_m2 or 0.0)
+            for line in bd.edgeband_lines:
+                edge_agg[line.key] = edge_agg.get(line.key, 0.0) + float(line.length_m or 0.0)
+            for line in bd.hardware_lines:
+                if line.key not in hw_agg:
+                    hw_agg[line.key] = [0, line.label]
+                hw_agg[line.key][0] += int(line.count or 0)
+
+        try:
+            store = ShoppingListStoreJson()
+        except Exception as exc:
+            self._set_store_status(f"Blad otwarcia listy zakupow: {exc}", ok=False)
+            return
+
+        added = 0
+        for key, (area, label) in mat_agg.items():
+            if area <= 0.0:
+                continue
+            try:
+                store.add_shopping_item(
+                    material_id=key,
+                    material_name=str(label or key),
+                    quantity=round(area, 4),
+                    unit="m2",
+                )
+                added += 1
+            except Exception:
+                pass
+
+        for key, length_m in edge_agg.items():
+            if length_m <= 0.0:
+                continue
+            try:
+                store.add_shopping_item(
+                    material_id=f"edge_{key}",
+                    material_name=f"Okleina {key}",
+                    quantity=round(length_m, 2),
+                    unit="mb",
+                )
+                added += 1
+            except Exception:
+                pass
+
+        for key, (count, label) in hw_agg.items():
+            if count <= 0:
+                continue
+            try:
+                store.add_shopping_item(
+                    material_id=f"hw_{key}",
+                    material_name=str(label or key),
+                    quantity=float(count),
+                    unit="szt",
+                )
+                added += 1
+            except Exception:
+                pass
+
+        assembly_name = str(getattr(self._assembly, "name", "") or "Komplet")
+        self._set_store_status(
+            f'Dodano {added} pozycji z "{assembly_name}" do listy zakupow.', ok=True
+        )
 
     def _refresh_summary(self) -> None:
         used_width = 0.0
