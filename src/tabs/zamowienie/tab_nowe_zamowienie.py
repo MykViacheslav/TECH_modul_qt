@@ -53,7 +53,7 @@ from src.domain.assembly_resolution_service import resolve_assembly_items
 from src.domain.calendar_event import CalendarEvent
 from src.domain.client_models import ClientDef
 from src.domain.order_models import OrderDef
-from src.domain.worker_models import WorkerDef
+
 from src.storage.assembly_store_json import AssemblyStoreJson
 from src.storage.calendar_event_store_json import CalendarEventStoreJson
 from src.storage.catalog_store_json import CatalogStoreJson
@@ -61,7 +61,6 @@ from src.storage.client_store_json import ClientStoreJson
 from src.storage.order_draft_store_json import OrderDraftStoreJson
 from src.storage.order_store_json import OrderStoreJson
 from src.storage.wall_store_json import WallStoreJson
-from src.storage.worker_store_json import WorkerStoreJson
 from src.ui.collapsible_block import CollapsibleBlock
 
 # Alarm integration
@@ -70,6 +69,34 @@ from src.services.alarm_rules import check_material_stock_for_order, check_deadl
 
 # Calendar integration
 from src.services.order_calendar_sync import sync_single_order
+
+
+def _make_summary_card(title: str, value: str) -> tuple[QFrame, QLabel]:
+    card = QFrame()
+    card.setStyleSheet(
+        "QFrame{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #ffffff,stop:1 #f7fbff);"
+        "border:1px solid #d8e3ef;border-radius:16px;border-bottom:3px solid #2563eb;}"
+    )
+    layout = QVBoxLayout(card)
+    layout.setContentsMargins(12, 10, 12, 10)
+    layout.setSpacing(3)
+    title_label = QLabel(title, card)
+    title_label.setStyleSheet("color:#64748b;font-size:10px;font-weight:800;")
+    value_label = QLabel(value, card)
+    value_label.setStyleSheet("color:#0f172a;font-size:18px;font-weight:900;")
+    layout.addWidget(title_label)
+    layout.addWidget(value_label)
+    card.value_label = value_label  # type: ignore[attr-defined]
+    return card, value_label
+
+
+def _make_pill(text: str, bg: str, fg: str, border: str | None = None) -> QLabel:
+    pill = QLabel(text)
+    pill.setStyleSheet(
+        f"QLabel{{background:{bg};color:{fg};border:1px solid {border or bg};"
+        "border-radius:999px;padding:4px 10px;font-size:10px;font-weight:800;}}"
+    )
+    return pill
 
 
 ORDER_STATUS_ITEMS: tuple[str, ...] = (
@@ -84,6 +111,68 @@ ORDER_STATUS_ITEMS: tuple[str, ...] = (
     "Poprawki",
     "Zakonczone",
 )
+
+# Kolory etapow (indeks odpowiada ORDER_STATUS_ITEMS)
+_STATUS_COLORS: tuple[str, ...] = (
+    "#94a3b8",  # Nowe — szary
+    "#60a5fa",  # Wycena — jasnoniebieski
+    "#3b82f6",  # Wycena gotowa — niebieski
+    "#22c55e",  # Zaakceptowane — zielony
+    "#f59e0b",  # Zakup materialow — zolty
+    "#f97316",  # W produkcji — pomaranczowy
+    "#a78bfa",  # Lakiernia — fioletowy
+    "#06b6d4",  # Montaz — cyan
+    "#ef4444",  # Poprawki — czerwony
+    "#10b981",  # Zakonczone — ciemnozielony
+)
+
+
+class OrderStatusBar(QWidget):
+    """Wizualny pasek etapow zamowienia — pigulki z aktywnym podswietleniem."""
+
+    sig_clicked = pyqtSignal(str)  # kliknieto etap -> emituje status_name
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 4, 0, 4)
+        lay.setSpacing(2)
+        self._buttons: list[QPushButton] = []
+        for i, status in enumerate(ORDER_STATUS_ITEMS):
+            color = _STATUS_COLORS[i] if i < len(_STATUS_COLORS) else "#94a3b8"
+            btn = QPushButton(status, self)
+            btn.setFixedHeight(22)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setToolTip(f"Ustaw status: {status}")
+            btn.setProperty("status_name", status)
+            btn.setProperty("status_color", color)
+            btn.setStyleSheet(self._style(color, active=False))
+            btn.clicked.connect(lambda _c=False, s=status: self.sig_clicked.emit(s))
+            lay.addWidget(btn)
+            self._buttons.append(btn)
+        lay.addStretch(1)
+
+    def set_status(self, status_name: str) -> None:
+        for btn in self._buttons:
+            name = btn.property("status_name")
+            color = btn.property("status_color")
+            active = (name == status_name)
+            btn.setStyleSheet(self._style(color, active=active))
+
+    @staticmethod
+    def _style(color: str, active: bool) -> str:
+        if active:
+            return (
+                f"QPushButton{{background:{color};color:#fff;border:2px solid {color};"
+                "border-radius:11px;padding:1px 7px;font-size:10px;font-weight:700;}}"
+                f"QPushButton:hover{{background:{color};color:#fff;}}"
+            )
+        return (
+            "QPushButton{background:transparent;color:#64748b;"
+            f"border:1px solid #cbd5e1;border-radius:11px;padding:1px 7px;"
+            "font-size:10px;font-weight:400;}"
+            "QPushButton:hover{background:#f1f5f9;color:#1e293b;}"
+        )
 
 QUOTE_ITEM_TYPES: tuple[str, ...] = (
     "Kuchnia",
@@ -333,10 +422,10 @@ class ClientFieldCell(QFrame):
 class TabNoweZamowienie(QWidget):
     sig_open_clients_base_requested = pyqtSignal()
     sig_open_orders_base_requested = pyqtSignal()
-    sig_open_workers_base_requested = pyqtSignal()
     sig_open_sciana_requested = pyqtSignal(dict)
     sig_open_komplet_requested = pyqtSignal(dict)
     sig_open_existing_sciana_requested = pyqtSignal(str)
+    sig_calendar_events_changed = pyqtSignal()
 
     _ORDER_STAGE_CALENDAR_MAP: tuple[tuple[str, str, str, str], ...] = (
         ("wycena", "date_wycena", "wstepna_wycena", "Biuro"),
@@ -353,7 +442,7 @@ class TabNoweZamowienie(QWidget):
         parent: QWidget | None = None,
         client_store: ClientStoreJson | None = None,
         order_store: OrderStoreJson | None = None,
-        worker_store: WorkerStoreJson | None = None,
+
         wall_store: WallStoreJson | None = None,
         assembly_store: AssemblyStoreJson | None = None,
         catalog: CatalogStoreJson | None = None,
@@ -365,7 +454,7 @@ class TabNoweZamowienie(QWidget):
         self._testing_mode = str(os.environ.get("TECH_MODUL_TESTING", "")).strip() == "1"
         self._client_store = client_store if client_store is not None else ClientStoreJson()
         self._order_store = order_store if order_store is not None else OrderStoreJson()
-        self._worker_store = worker_store if worker_store is not None else WorkerStoreJson()
+
         self._wall_store = wall_store if wall_store is not None else WallStoreJson()
         self._assembly_store = assembly_store if assembly_store is not None else AssemblyStoreJson()
         self._catalog = catalog if catalog is not None else CatalogStoreJson()
@@ -383,31 +472,86 @@ class TabNoweZamowienie(QWidget):
         self._current_order_calendar_note = ""
         self._customer_payments: list[dict[str, object]] = []
         self._is_syncing_order_address = False
-        self._is_syncing_worker_name = False
         self._generated_order_ids: set[str] = set()
         self._entry_editor_visible = True
 
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 18, 18, 18)
         root.setSpacing(14)
+        self.setStyleSheet("background:#f4f7fb;")
 
         title = QLabel("NOWE ZAMOWIENIE")
-        title.setStyleSheet("font-size: 22px; font-weight: 800; letter-spacing: 0.5px;")
+        title.setStyleSheet("font-size: 24px; font-weight: 900; letter-spacing: 0.2px; color:#0f172a;")
         root.addWidget(title, 0, Qt.AlignmentFlag.AlignLeft)
 
         subtitle = QLabel("Start projektu: klient, zamowienie, pracownik i pozycje do wyceny.")
         subtitle.setWordWrap(True)
-        subtitle.setStyleSheet("color:#555555;")
+        subtitle.setStyleSheet("color:#526174;")
         root.addWidget(subtitle, 0, Qt.AlignmentFlag.AlignLeft)
+
+        hero = QFrame(self)
+        hero.setStyleSheet(
+            "QFrame{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #ffffff,stop:1 #eef4ff);"
+            "border:1px solid #d7e1ef;border-radius:20px;}"
+        )
+        hero_layout = QHBoxLayout(hero)
+        hero_layout.setContentsMargins(16, 14, 16, 14)
+        hero_layout.setSpacing(12)
+        hero_text = QVBoxLayout()
+        hero_text.setSpacing(4)
+        hero_title = QLabel("Premium order workspace")
+        hero_title.setStyleSheet("font-size:14px;font-weight:900;color:#10263d;")
+        hero_desc = QLabel("Najpierw klient i status, potem szczegoly. Formularz ma byc czytelny, nie ciężki.")
+        hero_desc.setWordWrap(True)
+        hero_desc.setStyleSheet("font-size:12px;color:#526174;")
+        hero_text.addWidget(hero_title)
+        hero_text.addWidget(hero_desc)
+        chip_row = QHBoxLayout()
+        chip_row.setSpacing(8)
+        for text, bg, fg in (
+            ("Klient", "#dbeafe", "#1d4ed8"),
+            ("Status", "#eef2ff", "#4338ca"),
+            ("Start projektu", "#ecfdf5", "#047857"),
+        ):
+            chip_row.addWidget(_make_pill(text, bg, fg))
+        hero_text.addLayout(chip_row)
+        hero_layout.addLayout(hero_text, 1)
+        self._hero_status_chip = QLabel("Robocze / testowe")
+        self._hero_status_chip.setStyleSheet(
+            "QLabel{background:#0f172a;color:#ffffff;border:1px solid #0f172a;border-radius:999px;"
+            "padding:8px 12px;font-size:10px;font-weight:900;}"
+        )
+        hero_layout.addWidget(self._hero_status_chip)
+        root.addWidget(hero)
+
+        summary_strip = QFrame(self)
+        summary_strip.setStyleSheet(
+            "QFrame{background:rgba(255,255,255,0.96);border:1px solid #d7e1ef;border-radius:18px;}"
+        )
+        summary_layout = QHBoxLayout(summary_strip)
+        summary_layout.setContentsMargins(12, 10, 12, 10)
+        summary_layout.setSpacing(10)
+        self.card_client_summary, self.lab_client_summary = _make_summary_card("Klient", "—")
+        self.card_order_summary, self.lab_order_summary = _make_summary_card("Zamowienie", "—")
+        self.card_status_summary, self.lab_status_summary = _make_summary_card("Status", "Nowe")
+        self.card_progress_summary, self.lab_progress_summary = _make_summary_card("Postep", "0%")
+        for card in (
+            self.card_client_summary,
+            self.card_order_summary,
+            self.card_status_summary,
+            self.card_progress_summary,
+        ):
+            summary_layout.addWidget(card)
+        root.addWidget(summary_strip)
 
         self.start_entry_bar = QFrame(self)
         self.start_entry_bar.setObjectName("newOrderEntryBar")
         self.start_entry_bar.setStyleSheet(
             """
             QFrame#newOrderEntryBar {
-                border: 1px solid #ddd3c1;
-                border-radius: 14px;
-                background: #fcfaf6;
+                border: 1px solid #d7e1ef;
+                border-radius: 16px;
+                background: rgba(255,255,255,0.96);
             }
             """
         )
@@ -440,7 +584,6 @@ class TabNoweZamowienie(QWidget):
 
         self.grp_client = CollapsibleBlock("Klient", self)
         self.grp_order = CollapsibleBlock("Zamowienie", self)
-        self.grp_worker = CollapsibleBlock("Pracownik", self)
         self.grp_actions = CollapsibleBlock("Akcje", self)
         self.grp_architect = CollapsibleBlock("Zalaczniki od architekta", self)
         self.grp_quote_items = CollapsibleBlock("Pozycje do wyceny", self)
@@ -451,7 +594,6 @@ class TabNoweZamowienie(QWidget):
 
         body.addWidget(self.grp_client)
         body.addWidget(self.grp_order)
-        body.addWidget(self.grp_worker)
         body.addWidget(self.grp_quote_items)
         body.addWidget(self.grp_actions)
         body.addWidget(self.grp_architect)
@@ -464,7 +606,6 @@ class TabNoweZamowienie(QWidget):
         for block in (
             self.grp_client,
             self.grp_order,
-            self.grp_worker,
             self.grp_quote_items,
             self.grp_actions,
             self.grp_architect,
@@ -478,7 +619,6 @@ class TabNoweZamowienie(QWidget):
 
         self._build_client_group()
         self._build_order_group()
-        self._build_worker_group()
         self._build_actions_group()
         self._build_architect_group()
         self._build_quote_items_group()
@@ -501,13 +641,11 @@ class TabNoweZamowienie(QWidget):
         page_root.addStretch(1)
 
         self.cb_client_name.currentTextChanged.connect(self._on_client_name_changed)
-        self.cb_worker_name.currentTextChanged.connect(self._on_worker_name_changed)
-        self.ed_worker_name_input.textChanged.connect(self._on_worker_name_input_changed)
-        self.ed_worker_first_name.textChanged.connect(self._on_worker_name_parts_changed)
-        self.ed_worker_last_name.textChanged.connect(self._on_worker_name_parts_changed)
         self.ed_order_id.textChanged.connect(self._refresh_summary)
         self.ed_order_code.textChanged.connect(self._refresh_summary)
         self.cb_order_status.currentTextChanged.connect(self._refresh_summary)
+        self.cb_order_status.currentTextChanged.connect(self.order_status_bar.set_status)
+        self.order_status_bar.sig_clicked.connect(self._on_status_bar_clicked)
         self.sp_order_progress.valueChanged.connect(self._refresh_summary)
         self.ed_order_address.textChanged.connect(self._on_order_address_text_changed)
         self.ed_order_address.textChanged.connect(self._refresh_summary)
@@ -526,23 +664,14 @@ class TabNoweZamowienie(QWidget):
         self.ed_client_apartment_number.textChanged.connect(self._refresh_summary)
         self.ed_client_postal_code.textChanged.connect(self._refresh_summary)
         self.ed_client_city.textChanged.connect(self._refresh_summary)
-        self.ed_worker_id.textChanged.connect(self._refresh_summary)
-        self.ed_worker_first_name.textChanged.connect(self._refresh_summary)
-        self.ed_worker_last_name.textChanged.connect(self._refresh_summary)
-        self.ed_worker_role.textChanged.connect(self._refresh_summary)
-        self.ed_worker_phone.textChanged.connect(self._refresh_summary)
-        self.ed_worker_email.textChanged.connect(self._refresh_summary)
 
         self.btn_pick_client.clicked.connect(self._on_pick_client_from_base)
         self.btn_save_client.clicked.connect(self._on_save_client_to_base)
         self.btn_start_new_order.clicked.connect(self._on_start_new_order_clicked)
         self.btn_pick_order.clicked.connect(self._on_pick_order_from_base)
         self.btn_save_order.clicked.connect(self._on_save_order_to_base)
-        self.btn_pick_worker.clicked.connect(self._on_pick_worker_from_base)
-        self.btn_save_worker.clicked.connect(self._on_save_worker_to_base)
         self.btn_open_clients_base.clicked.connect(self.sig_open_clients_base_requested.emit)
         self.btn_open_orders_base.clicked.connect(self.sig_open_orders_base_requested.emit)
-        self.btn_open_workers_base.clicked.connect(self.sig_open_workers_base_requested.emit)
         self.btn_go_to_sciana.clicked.connect(self._on_go_to_sciana)
         self.btn_export_offer.clicked.connect(self._on_export_offer)
         self.btn_export_offer_pdf.clicked.connect(self._on_export_offer_pdf)
@@ -787,6 +916,8 @@ class TabNoweZamowienie(QWidget):
             self.cb_order_status.addItem(item)
         self.cb_order_status.setMinimumWidth(140)
 
+        self.order_status_bar = OrderStatusBar(self.grp_order)
+
         self.sp_order_progress = QSpinBox(self.grp_order)
         self.sp_order_progress.setRange(0, 100)
         self.sp_order_progress.setSingleStep(5)
@@ -908,6 +1039,8 @@ class TabNoweZamowienie(QWidget):
         self.order_rows_layout.addWidget(self.order_address_row)
         self._save_order_field_orders()
 
+        layout.addWidget(self.order_status_bar)
+
         order_form = QFormLayout()
         order_form.addRow("Notatki", self.ed_order_notes)
         layout.addLayout(order_form)
@@ -941,113 +1074,6 @@ class TabNoweZamowienie(QWidget):
         btn_open_calendar.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_open_calendar.clicked.connect(self._on_open_calendar_for_montaz)
         layout.addWidget(btn_open_calendar)
-
-    def _build_worker_group(self) -> None:
-        layout = self.grp_worker.content_layout()
-        content_parent = layout.parentWidget() or self.grp_worker
-
-        self.cb_worker_name = QComboBox(self.grp_worker)
-        self.cb_worker_name.setEditable(True)
-        self.btn_pick_worker = QPushButton("Wybierz z bazy", self.grp_worker)
-        self.btn_save_worker = QPushButton("Dodaj do bazy", self.grp_worker)
-        self.btn_open_workers_base = QPushButton("Bazy", self.grp_worker)
-        self._make_compact_button(self.btn_pick_worker, min_width=120, max_width=150)
-        self._make_compact_button(self.btn_save_worker, min_width=120, max_width=150)
-        self._make_compact_button(self.btn_open_workers_base, min_width=70, max_width=90)
-        self.cb_worker_name.setMinimumWidth(260)
-        if self.cb_worker_name.lineEdit() is not None:
-            self.cb_worker_name.lineEdit().setPlaceholderText("[wybierz pracownika albo wpisz nowego]")
-        worker_picker_row = QHBoxLayout()
-        worker_picker_row.setSpacing(8)
-        worker_picker_row.addWidget(QLabel("Pracownik:", self.grp_worker), 0)
-        worker_picker_row.addWidget(self.cb_worker_name, 1)
-        worker_picker_row.addWidget(self.btn_pick_worker, 0)
-        worker_picker_row.addWidget(self.btn_save_worker, 0)
-        worker_picker_row.addWidget(self.btn_open_workers_base, 0)
-        worker_picker_row.addStretch(1)
-        layout.addLayout(worker_picker_row)
-
-        self.ed_worker_id = QLineEdit(self.grp_worker)
-        self.ed_worker_id.setPlaceholderText("ID")
-        self.ed_worker_id.setMinimumWidth(70)
-        self.ed_worker_id.setReadOnly(True)
-        self.ed_worker_id.setToolTip("ID nadaje sie automatycznie.")
-        self.ed_worker_first_name = QLineEdit(self.grp_worker)
-        self.ed_worker_first_name.setPlaceholderText("Imie")
-        self.ed_worker_first_name.setMinimumWidth(120)
-        self.ed_worker_last_name = QLineEdit(self.grp_worker)
-        self.ed_worker_last_name.setPlaceholderText("Nazwisko")
-        self.ed_worker_last_name.setMinimumWidth(140)
-        self.ed_worker_name_input = QLineEdit(self.grp_worker)
-        self.ed_worker_name_input.setPlaceholderText("Imie i nazwisko")
-        self.ed_worker_name_input.setMinimumWidth(140)
-        self.ed_worker_name_input.hide()
-        self.ed_worker_role = QLineEdit(self.grp_worker)
-        self.ed_worker_role.setPlaceholderText("Rola")
-        self.ed_worker_role.setMinimumWidth(120)
-        self.ed_worker_phone = QLineEdit(self.grp_worker)
-        self.ed_worker_phone.setMinimumWidth(120)
-        self.ed_worker_email = QLineEdit(self.grp_worker)
-        self.ed_worker_email.setMinimumWidth(140)
-        self.ed_worker_notes = QTextEdit(self.grp_worker)
-        self.ed_worker_notes.setMaximumHeight(90)
-
-        self._worker_field_cells: dict[str, QWidget] = {}
-        self._worker_primary_defaults = ["worker_id", "role", "worker_first_name", "worker_last_name"]
-
-        self.worker_primary_splitter = QSplitter(Qt.Orientation.Horizontal, content_parent)
-        self.worker_primary_splitter.setChildrenCollapsible(False)
-        self.worker_primary_splitter.setHandleWidth(8)
-        self._worker_field_cells["worker_id"] = self._make_client_field_cell(
-            "worker_id", "ID", self.ed_worker_id, self.grp_worker, self._on_worker_field_dropped
-        )
-        self._worker_field_cells["worker_first_name"] = self._make_client_field_cell(
-            "worker_first_name", "Imie", self.ed_worker_first_name, self.grp_worker, self._on_worker_field_dropped
-        )
-        self._worker_field_cells["worker_last_name"] = self._make_client_field_cell(
-            "worker_last_name", "Nazwisko", self.ed_worker_last_name, self.grp_worker, self._on_worker_field_dropped
-        )
-        self._worker_field_cells["role"] = self._make_client_field_cell(
-            "role", "Rola", self.ed_worker_role, self.grp_worker, self._on_worker_field_dropped
-        )
-        self._worker_field_cells["phone"] = self._make_client_field_cell(
-            "phone", "Telefon", self.ed_worker_phone, self.grp_worker, self._on_worker_field_dropped
-        )
-        self._worker_field_cells["email"] = self._make_client_field_cell(
-            "email", "E-mail", self.ed_worker_email, self.grp_worker, self._on_worker_field_dropped
-        )
-        self._apply_field_order(
-            self.worker_primary_splitter,
-            load_ui_string_list("order_worker_primary_order", self._worker_primary_defaults),
-            self._worker_primary_defaults,
-            self._worker_field_cells,
-        )
-        self._restore_splitter_widths(
-            self.worker_primary_splitter,
-            "order_worker_primary_fields",
-            [90, 180, 180, 210],
-        )
-        self.worker_primary_splitter.splitterMoved.connect(
-            lambda _pos, _idx: self._save_splitter_widths(self.worker_primary_splitter, "order_worker_primary_fields")
-        )
-
-        self.worker_rows_layout = QVBoxLayout()
-        self.worker_rows_layout.setContentsMargins(0, 2, 0, 2)
-        self.worker_rows_layout.setSpacing(8)
-        layout.addLayout(self.worker_rows_layout)
-
-        self.worker_primary_row = QWidget(content_parent)
-        worker_primary_row_layout = QHBoxLayout(self.worker_primary_row)
-        worker_primary_row_layout.setContentsMargins(0, 0, 0, 0)
-        worker_primary_row_layout.setSpacing(6)
-        worker_primary_row_layout.addWidget(self.worker_primary_splitter, 1)
-        self.worker_rows_layout.addWidget(self.worker_primary_row)
-        self._save_worker_field_orders()
-
-        note = QLabel("Wybierz pracownika z bazy albo wpisz nowego i przypisz role do zamowienia.")
-        note.setWordWrap(True)
-        note.setStyleSheet("color:#666666;")
-        layout.addWidget(note)
 
     def _build_actions_group(self) -> None:
         layout = self.grp_actions.content_layout()
@@ -2801,9 +2827,6 @@ class TabNoweZamowienie(QWidget):
         save_ui_string_list("order_order_primary_order", self._splitter_keys(self.order_primary_splitter))
         save_ui_string_list("order_order_address_order", self._splitter_keys(self.order_address_splitter))
 
-    def _save_worker_field_orders(self) -> None:
-        save_ui_string_list("order_worker_primary_order", self._splitter_keys(self.worker_primary_splitter))
-
     @staticmethod
     def _splitter_index_of(splitter: QSplitter, widget: QWidget) -> int:
         for idx in range(splitter.count()):
@@ -2878,16 +2901,6 @@ class TabNoweZamowienie(QWidget):
             (self.order_primary_splitter, self.order_address_splitter),
             ("order_order_primary_fields", "order_order_address_fields"),
             self._save_order_field_orders,
-        )
-
-    def _on_worker_field_dropped(self, source_key: str, target_key: str) -> None:
-        self._handle_field_dropped(
-            source_key,
-            target_key,
-            self._worker_field_cells,
-            (self.worker_primary_splitter,),
-            ("order_worker_primary_fields",),
-            self._save_worker_field_orders,
         )
 
     def _set_client_rows_swapped(self, swapped: bool) -> None:
@@ -3042,7 +3055,6 @@ class TabNoweZamowienie(QWidget):
             self._draft_store.clear()
 
         self._reload_client_choices()
-        self._reload_worker_choices()
 
         self.cb_client_name.setCurrentText("")
         self.ed_client_id.clear()
@@ -3078,16 +3090,6 @@ class TabNoweZamowienie(QWidget):
         self._set_date_edit_from_text(self.ed_date_poprawki, "")
         self._set_date_edit_from_text(self.ed_date_projekt, "")
         self._set_date_edit_from_text(self.ed_date_probki, "")
-
-        self.ed_worker_id.clear()
-        self.cb_worker_name.setCurrentText("")
-        self.ed_worker_first_name.clear()
-        self.ed_worker_last_name.clear()
-        self.ed_worker_name_input.clear()
-        self.ed_worker_role.clear()
-        self.ed_worker_phone.clear()
-        self.ed_worker_email.clear()
-        self.ed_worker_notes.clear()
 
         self.ed_architect_file.clear()
         self.cb_architect_kind.setCurrentIndex(0)
@@ -3126,7 +3128,6 @@ class TabNoweZamowienie(QWidget):
         client_name = str(payload.get("client_name", "") or "").strip()
         order_id = str(payload.get("order_id", "") or "").strip()
         order_name = str(payload.get("order_name", "") or "").strip()
-        worker_name = str(payload.get("worker_name", "") or "").strip()
         order_status = str(payload.get("order_status", "") or "").strip()
         order_progress_percent = int(float(payload.get("order_progress_percent", 0.0) or 0.0))
         order_calendar_stage = str(payload.get("order_calendar_stage", "") or "").strip()
@@ -3139,10 +3140,8 @@ class TabNoweZamowienie(QWidget):
         site_city = str(payload.get("site_city", "") or "").strip()
 
         self._reload_client_choices()
-        self._reload_worker_choices()
 
         client = self._client_store.get(client_name) if client_name else None
-        worker = self._worker_store.get(worker_name) if worker_name else None
         order_code = str(payload.get("order_code", "") or "").strip()
         order = self._order_store.get(order_code) if order_code else None
 
@@ -3203,16 +3202,6 @@ class TabNoweZamowienie(QWidget):
             self._set_date_edit_from_text(self.ed_date_projekt, str(getattr(order, "date_projekt", "") or ""))
             self._set_date_edit_from_text(self.ed_date_probki, str(getattr(order, "date_probki", "") or ""))
 
-            worker_first_name, worker_last_name = self._split_full_name(worker_name)
-            self.ed_worker_id.setText(str(getattr(worker, "worker_id", "") or ""))
-            self.cb_worker_name.setCurrentText(worker_name)
-            self.ed_worker_first_name.setText(worker_first_name)
-            self.ed_worker_last_name.setText(worker_last_name)
-            self.ed_worker_name_input.setText(worker_name)
-            self.ed_worker_role.setText(str(getattr(worker, "role", "") or ""))
-            self.ed_worker_phone.setText(str(getattr(worker, "phone", "") or ""))
-            self.ed_worker_email.setText(str(getattr(worker, "email", "") or ""))
-            self.ed_worker_notes.setPlainText(str(getattr(worker, "notes", "") or ""))
             self._set_architect_attachments(list(getattr(order, "attachments", []) or []))
             self._set_quote_items(list(getattr(order, "quote_items", []) or []))
             self._set_material_choices(list(getattr(order, "material_choices", []) or []))
@@ -3224,6 +3213,11 @@ class TabNoweZamowienie(QWidget):
         self._save_draft(show_status=False)
         self.ed_order_code.setFocus()
         self._set_status("Przywrocono dane zamowienia z kompletu.", ok=True)
+
+    def _on_status_bar_clicked(self, status_name: str) -> None:
+        idx = self.cb_order_status.findText(status_name)
+        if idx >= 0:
+            self.cb_order_status.setCurrentIndex(idx)
 
     def _refresh_summary(self) -> None:
         client_id = self.ed_client_id.text().strip()
@@ -3239,7 +3233,6 @@ class TabNoweZamowienie(QWidget):
         if client_full_name:
             client_name = f"{client_id} | {client_full_name}" if client_id else client_full_name
         order_code = self.ed_order_code.text().strip() or "-"
-        worker_name = self._worker_name_from_fields() or "-"
         status_name = self.cb_order_status.currentText().strip() or "-"
         progress_percent = int(self.sp_order_progress.value())
         calendar_stage = str(self._current_order_calendar_stage or "").strip()
@@ -3267,6 +3260,16 @@ class TabNoweZamowienie(QWidget):
             self.lab_metric_walls.setText(str(wall_count))
         if hasattr(self, "lab_metric_assemblies"):
             self.lab_metric_assemblies.setText(str(assembly_count))
+        if hasattr(self, "lab_client_summary"):
+            self.lab_client_summary.setText(client_name)
+        if hasattr(self, "lab_order_summary"):
+            self.lab_order_summary.setText(order_code)
+        if hasattr(self, "lab_status_summary"):
+            self.lab_status_summary.setText(status_name)
+        if hasattr(self, "lab_progress_summary"):
+            self.lab_progress_summary.setText(f"{progress_percent}%")
+        if hasattr(self, "_hero_status_chip"):
+            self._hero_status_chip.setText(f"{status_name} / {progress_percent}%")
         payments_total = sum(float(item.get("amount", 0.0) or 0.0) for item in self._customer_payments)
         payments_paid_total = sum(
             float(item.get("amount", 0.0) or 0.0)
@@ -3279,7 +3282,6 @@ class TabNoweZamowienie(QWidget):
             f"Zamowienie: {order_code}\n"
             f"Status: {status_name}\n"
             f"Zaawansowanie: {progress_percent}%\n"
-            f"Pracownik: {worker_name}\n"
             f"Zalaczniki od architekta: {attachment_count}\n"
             f"Pozycje do wyceny: {quote_item_count}\n"
             f"Probki / materialy: {material_choice_count}\n"
@@ -3586,7 +3588,6 @@ class TabNoweZamowienie(QWidget):
     def _build_offer_html(self) -> str:
         order_code = str(self.ed_order_code.text().strip() or "-")
         client_name = str(self.cb_client_name.currentText().strip() or "-")
-        worker_name = str(self._worker_name_from_fields() or "-")
         status_name = str(self.cb_order_status.currentText().strip() or "-")
         progress_percent = int(self.sp_order_progress.value())
         calendar_stage = str(self._current_order_calendar_stage or "").strip() or "-"
@@ -3759,7 +3760,6 @@ class TabNoweZamowienie(QWidget):
     <div class="meta">
       <div><strong>Klient:</strong> {escape(client_name)}</div>
       <div><strong>Zamowienie:</strong> {escape(order_code)}</div>
-      <div><strong>Pracownik:</strong> {escape(worker_name)}</div>
       <div><strong>Status:</strong> {escape(status_name)}</div>
       <div><strong>Zaawansowanie:</strong> {progress_percent}%</div>
       <div><strong>Etap kalendarza:</strong> {escape(calendar_stage)}</div>
@@ -4110,14 +4110,6 @@ class TabNoweZamowienie(QWidget):
             "order_date_poprawki": self._date_edit_to_text(self.ed_date_poprawki),
             "order_date_projekt": self._date_edit_to_text(self.ed_date_projekt),
             "order_date_probki": self._date_edit_to_text(self.ed_date_probki),
-            "worker_id": str(self.ed_worker_id.text().strip()),
-            "worker_name": str(self._worker_name_from_fields()),
-            "worker_first_name": str(self.ed_worker_first_name.text().strip()),
-            "worker_last_name": str(self.ed_worker_last_name.text().strip()),
-            "worker_role": str(self.ed_worker_role.text().strip()),
-            "worker_phone": str(self.ed_worker_phone.text().strip()),
-            "worker_email": str(self.ed_worker_email.text().strip()),
-            "worker_notes": str(self.ed_worker_notes.toPlainText().strip()),
             "architect_attachments": [dict(item) for item in self._architect_attachments],
             "quote_items": [dict(item) for item in self._quote_items],
             "material_choices": [dict(item) for item in self._material_choices],
@@ -4152,7 +4144,6 @@ class TabNoweZamowienie(QWidget):
         self._is_restoring_draft = True
         try:
             self._reload_client_choices()
-            self._reload_worker_choices()
             draft_client_name = str(payload.get("client_name", "") or "")
             self.cb_client_name.setCurrentText(draft_client_name)
             self.ed_client_id.setText(str(payload.get("client_id", "") or ""))
@@ -4210,20 +4201,6 @@ class TabNoweZamowienie(QWidget):
             self._set_date_edit_from_text(self.ed_date_projekt, str(payload.get("order_date_projekt", "") or ""))
             self._set_date_edit_from_text(self.ed_date_probki, str(payload.get("order_date_probki", "") or ""))
 
-            worker_name = str(payload.get("worker_name", "") or "")
-            worker_first_name = str(payload.get("worker_first_name", "") or "")
-            worker_last_name = str(payload.get("worker_last_name", "") or "")
-            if not worker_first_name and not worker_last_name:
-                worker_first_name, worker_last_name = self._split_full_name(worker_name)
-            self.ed_worker_id.setText(str(payload.get("worker_id", "") or ""))
-            self.cb_worker_name.setCurrentText(worker_name)
-            self.ed_worker_first_name.setText(worker_first_name)
-            self.ed_worker_last_name.setText(worker_last_name)
-            self.ed_worker_name_input.setText(worker_name)
-            self.ed_worker_role.setText(str(payload.get("worker_role", "") or ""))
-            self.ed_worker_phone.setText(str(payload.get("worker_phone", "") or ""))
-            self.ed_worker_email.setText(str(payload.get("worker_email", "") or ""))
-            self.ed_worker_notes.setPlainText(str(payload.get("worker_notes", "") or ""))
             self._set_architect_attachments(list(payload.get("architect_attachments", []) or []))
             self._set_quote_items(list(payload.get("quote_items", []) or []))
             self._set_material_choices(list(payload.get("material_choices", []) or []))
@@ -4252,18 +4229,6 @@ class TabNoweZamowienie(QWidget):
             self.cb_client_name.setCurrentText(current)
         finally:
             self.cb_client_name.blockSignals(False)
-
-    def _reload_worker_choices(self) -> None:
-        current = self._worker_name_from_fields()
-        self.cb_worker_name.blockSignals(True)
-        try:
-            self.cb_worker_name.clear()
-            self.cb_worker_name.addItem("")
-            for name in self._worker_store.list_names():
-                self.cb_worker_name.addItem(name)
-            self.cb_worker_name.setCurrentText(current)
-        finally:
-            self.cb_worker_name.blockSignals(False)
 
     @staticmethod
     def _split_client_key(value: str) -> tuple[str, str]:
@@ -4321,40 +4286,6 @@ class TabNoweZamowienie(QWidget):
             return full_name
         return str(fallback_name or "").strip()
 
-    def _worker_name_from_fields(self) -> str:
-        first = str(self.ed_worker_first_name.text().strip())
-        last = str(self.ed_worker_last_name.text().strip())
-        full_name = " ".join(part for part in (first, last) if part).strip()
-        if full_name:
-            return full_name
-        return str(self.ed_worker_name_input.text().strip() or self.cb_worker_name.currentText().strip())
-
-    def _set_worker_fields_from_full_name(self, full_name: str) -> None:
-        worker_name = str(full_name or "").strip()
-        first_name, last_name = self._split_full_name(worker_name)
-        self._is_syncing_worker_name = True
-        try:
-            self.ed_worker_first_name.blockSignals(True)
-            self.ed_worker_last_name.blockSignals(True)
-            self.ed_worker_name_input.blockSignals(True)
-            try:
-                self.ed_worker_first_name.setText(first_name)
-                self.ed_worker_last_name.setText(last_name)
-                self.ed_worker_name_input.setText(worker_name)
-            finally:
-                self.ed_worker_name_input.blockSignals(False)
-                self.ed_worker_last_name.blockSignals(False)
-                self.ed_worker_first_name.blockSignals(False)
-        finally:
-            self._is_syncing_worker_name = False
-
-    def _clear_worker_base_fields(self) -> None:
-        self.ed_worker_id.clear()
-        self.ed_worker_role.clear()
-        self.ed_worker_phone.clear()
-        self.ed_worker_email.clear()
-        self.ed_worker_notes.clear()
-
     def _generate_next_client_id(self) -> str:
         max_id = 0
         for client in self._client_store.list_clients():
@@ -4391,16 +4322,6 @@ class TabNoweZamowienie(QWidget):
         self._generated_order_ids.add(candidate)
         return candidate
 
-    def _generate_next_worker_id(self) -> str:
-        max_id = 0
-        for worker in self._worker_store.list_workers():
-            raw_id = str(getattr(worker, "worker_id", "") or "").strip()
-            match = re.search(r"(\d+)$", raw_id)
-            if match is None:
-                continue
-            max_id = max(max_id, int(match.group(1)))
-        return f"P{max_id + 1:04d}"
-
     def _on_client_name_changed(self, text: str) -> None:
         selected_name = str(text or "").strip()
         client = self._client_store.get(selected_name)
@@ -4428,61 +4349,6 @@ class TabNoweZamowienie(QWidget):
         self.ed_client_notes.setPlainText(client.notes)
         self._refresh_summary()
 
-    def _on_worker_name_changed(self, text: str) -> None:
-        worker_name = str(text or "").strip()
-        self._set_worker_fields_from_full_name(worker_name)
-        worker = self._worker_store.get(worker_name)
-        if worker is None:
-            if not self._is_restoring_draft:
-                self._clear_worker_base_fields()
-            self._refresh_summary()
-            return
-        self._set_worker_fields_from_full_name(
-            " ".join(
-                part
-                for part in (
-                    str(getattr(worker, "first_name", "") or worker.get_first_name()).strip(),
-                    str(getattr(worker, "last_name", "") or worker.get_last_name()).strip(),
-                )
-                if part
-            ).strip()
-            or worker_name
-        )
-        self.ed_worker_id.setText(str(getattr(worker, "worker_id", "") or ""))
-        self.ed_worker_role.setText(worker.role)
-        self.ed_worker_phone.setText(worker.phone)
-        self.ed_worker_email.setText(worker.email)
-        self.ed_worker_notes.setPlainText(worker.notes)
-        self._refresh_summary()
-
-    def _on_worker_name_input_changed(self, text: str) -> None:
-        worker_name = str(text or "").strip()
-        if self.cb_worker_name.currentText().strip() != worker_name:
-            self.cb_worker_name.blockSignals(True)
-            try:
-                self.cb_worker_name.setCurrentText(worker_name)
-            finally:
-                self.cb_worker_name.blockSignals(False)
-        self._on_worker_name_changed(worker_name)
-
-    def _on_worker_name_parts_changed(self, _text: str) -> None:
-        if self._is_syncing_worker_name:
-            return
-        worker_name = self._worker_name_from_fields()
-        self._is_syncing_worker_name = True
-        try:
-            self.ed_worker_name_input.blockSignals(True)
-            self.cb_worker_name.blockSignals(True)
-            try:
-                self.ed_worker_name_input.setText(worker_name)
-                self.cb_worker_name.setCurrentText(worker_name)
-            finally:
-                self.cb_worker_name.blockSignals(False)
-                self.ed_worker_name_input.blockSignals(False)
-        finally:
-            self._is_syncing_worker_name = False
-        self._on_worker_name_changed(worker_name)
-
     def _client_from_form(self) -> ClientDef:
         client_id = str(self.ed_client_id.text().strip())
         first_name = str(self.ed_client_first_name.text().strip())
@@ -4509,23 +4375,6 @@ class TabNoweZamowienie(QWidget):
             last_name=last_name,
         )
 
-    def _worker_from_form(self) -> WorkerDef:
-        worker_name = str(self._worker_name_from_fields())
-        worker_first_name = str(self.ed_worker_first_name.text().strip())
-        worker_last_name = str(self.ed_worker_last_name.text().strip())
-        if not worker_first_name and not worker_last_name:
-            worker_first_name, worker_last_name = self._split_full_name(worker_name)
-        return WorkerDef(
-            name=worker_name,
-            first_name=worker_first_name,
-            last_name=worker_last_name,
-            worker_id=str(self.ed_worker_id.text().strip()),
-            role=str(self.ed_worker_role.text().strip()),
-            phone=str(self.ed_worker_phone.text().strip()),
-            email=str(self.ed_worker_email.text().strip()),
-            notes=str(self.ed_worker_notes.toPlainText().strip()),
-        )
-
     def _order_from_form(self) -> OrderDef:
         client_name = self._build_client_key(
             client_id=self.ed_client_id.text().strip(),
@@ -4539,7 +4388,6 @@ class TabNoweZamowienie(QWidget):
             order_name=str(self.ed_order_name.text().strip()),
             order_id=str(self.ed_order_id.text().strip()),
             client_name=client_name,
-            worker_name=str(self._worker_name_from_fields()),
             status=str(self.cb_order_status.currentText().strip() or "Nowe"),
             progress_percent=float(self.sp_order_progress.value()),
             calendar_stage=str(self._current_order_calendar_stage or ""),
@@ -4571,7 +4419,6 @@ class TabNoweZamowienie(QWidget):
             "client_name": str(order.client_name or "").strip(),
             "order_id": str(order.order_id or "").strip(),
             "order_name": str(order.code or "").strip(),
-            "worker_name": str(order.worker_name or "").strip(),
             "order_status": str(order.status or "").strip(),
             "order_progress_percent": float(order.progress_percent or 0.0),
             "order_calendar_stage": str(order.calendar_stage or "").strip(),
@@ -4605,22 +4452,6 @@ class TabNoweZamowienie(QWidget):
             result = self._client_store.overwrite(client) if existing is not None else self._client_store.save_new(client)
         self._reload_client_choices()
         self.cb_client_name.setCurrentText(client.name)
-        return result.ok, result.message_pl
-
-    def _save_worker(self, overwrite: bool) -> tuple[bool, str]:
-        if not str(self.ed_worker_id.text().strip()):
-            self.ed_worker_id.setText(self._generate_next_worker_id())
-        worker = self._worker_from_form()
-        if not worker.name:
-            return False, "Podaj imie i nazwisko pracownika."
-        if overwrite:
-            result = self._worker_store.overwrite(worker)
-        else:
-            existing = self._worker_store.get(worker.name)
-            result = self._worker_store.overwrite(worker) if existing is not None else self._worker_store.save_new(worker)
-        self._reload_worker_choices()
-        self.cb_worker_name.setCurrentText(worker.name)
-        self.ed_worker_name_input.setText(worker.name)
         return result.ok, result.message_pl
 
     def _save_order(self, overwrite: bool) -> tuple[bool, str]:
@@ -4821,7 +4652,6 @@ class TabNoweZamowienie(QWidget):
 
             title = f"{order_code} - {stage_labels.get(stage_key, stage_key.title())}"
             notes = f"{marker_prefix}{stage_key}"
-            worker_name = str(getattr(order, "worker_name", "") or "").strip()
 
             existing = managed_events.get(stage_key)
             if existing is not None:
@@ -4832,7 +4662,6 @@ class TabNoweZamowienie(QWidget):
                         station=station,
                         title=title,
                         date=date_value,
-                        worker_name=worker_name,
                         order_code=order_code,
                         notes=notes,
                     )
@@ -4844,7 +4673,6 @@ class TabNoweZamowienie(QWidget):
                         station=station,
                         title=title,
                         date=date_value,
-                        worker_name=worker_name,
                         order_code=order_code,
                         notes=notes,
                     )
@@ -4854,6 +4682,7 @@ class TabNoweZamowienie(QWidget):
             if stage_key not in active_stage_keys:
                 self._calendar_store.delete(str(getattr(event, "id", "") or ""))
 
+        self.sig_calendar_events_changed.emit()
         return "Kalendarz: zaktualizowano terminy zamowienia."
 
     def _with_status_history(self, order: OrderDef, previous: OrderDef | None) -> OrderDef:
@@ -4892,7 +4721,7 @@ class TabNoweZamowienie(QWidget):
                 "changed_at": datetime.now().isoformat(timespec="seconds"),
                 "from_status": prev_status,
                 "to_status": new_status,
-                "changed_by": str(getattr(order, "worker_name", "") or self._worker_name_from_fields() or "").strip(),
+                "changed_by": "",
                 "note": " | ".join(note_parts),
             }
         )
@@ -4906,23 +4735,12 @@ class TabNoweZamowienie(QWidget):
         ok, message = self._save_client(overwrite=False)
         self._set_status(message, ok=ok)
 
-    def _on_save_worker_to_base(self) -> None:
-        ok, message = self._save_worker(overwrite=False)
-        self._set_status(message, ok=ok)
-
     def _on_save_order_to_base(self) -> None:
         client_ok, client_message = self._save_client(overwrite=False)
         if not client_ok:
             self._set_status(client_message, ok=False)
             return
-        worker_name = str(self._worker_name_from_fields())
         messages = [client_message]
-        if worker_name:
-            worker_ok, worker_message = self._save_worker(overwrite=False)
-            if not worker_ok:
-                self._set_status(worker_message, ok=False)
-                return
-            messages.append(worker_message)
         order_ok, order_message = self._save_order(overwrite=False)
         messages.append(order_message)
         self._set_status("\n".join(messages), ok=order_ok)
@@ -4943,24 +4761,6 @@ class TabNoweZamowienie(QWidget):
         if not ok:
             return
         self.cb_client_name.setCurrentText(str(picked or ""))
-
-    def _on_pick_worker_from_base(self) -> None:
-        names = self._worker_store.list_names()
-        if not names:
-            self._set_status("Baza pracownikow jest pusta.", ok=False)
-            return
-        picked, ok = QInputDialog.getItem(
-            self,
-            "Wybierz pracownika",
-            "Pracownik z bazy:",
-            names,
-            0,
-            False,
-        )
-        if not ok:
-            return
-        self.cb_worker_name.setCurrentText(str(picked or ""))
-        self.ed_worker_name_input.setText(str(picked or ""))
 
     def _on_pick_order_from_base(self) -> None:
         self._set_entry_editor_visible(True)
@@ -4986,8 +4786,6 @@ class TabNoweZamowienie(QWidget):
         self.ed_order_code.setText(order.code)
         self.ed_order_name.setText(str(getattr(order, "order_name", "") or ""))
         self.cb_client_name.setCurrentText(order.client_name)
-        self.cb_worker_name.setCurrentText(order.worker_name)
-        self.ed_worker_name_input.setText(order.worker_name)
         idx = self.cb_order_status.findText(order.status)
         self.cb_order_status.setCurrentIndex(idx if idx >= 0 else 0)
         self.sp_order_progress.setValue(max(0, min(100, int(round(float(getattr(order, "progress_percent", 0.0) or 0.0))))))
@@ -5026,19 +4824,12 @@ class TabNoweZamowienie(QWidget):
 
     def _ensure_context_saved_for_next_step(self) -> tuple[bool, str]:
         client_name = self._client_from_form().name
-        worker_name = str(self._worker_name_from_fields())
         order_code = self.ed_order_code.text().strip()
 
         messages: list[str] = []
 
         if client_name:
             ok, message = self._save_client(overwrite=False)
-            if not ok:
-                return False, message
-            messages.append(message)
-
-        if worker_name:
-            ok, message = self._save_worker(overwrite=False)
             if not ok:
                 return False, message
             messages.append(message)
@@ -5083,7 +4874,6 @@ class TabNoweZamowienie(QWidget):
             return
 
         client = self._client_from_form()
-        worker = self._worker_from_form()
         order = self._order_from_form()
         order = self._with_status_history(order, self._order_store.get(order.code))
 
@@ -5103,16 +4893,6 @@ class TabNoweZamowienie(QWidget):
             else:
                 messages.append(f'Klient "{client.name}" zostal powiazany z wpisem z bazy.')
 
-        if worker.name:
-            if self._worker_store.get(worker.name) is None:
-                result = self._worker_store.save_new(worker)
-                if not result.ok:
-                    self._set_status(result.message_pl, ok=False)
-                    return
-                messages.append(result.message_pl)
-            else:
-                messages.append(f'Pracownik "{worker.name}" zostal powiazany z wpisem z bazy.')
-
         result = self._order_store.save_new(order)
         if not result.ok:
             self._set_status(result.message_pl, ok=False)
@@ -5121,7 +4901,6 @@ class TabNoweZamowienie(QWidget):
         messages.append(self._sync_calendar_events_for_order(order))
 
         self._reload_client_choices()
-        self._reload_worker_choices()
         self._save_draft(show_status=False)
         
         # Run alarm checks for the new order
@@ -5144,7 +4923,6 @@ class TabNoweZamowienie(QWidget):
             return
 
         client = self._client_from_form()
-        worker = self._worker_from_form()
         order = self._order_from_form()
         order = self._with_status_history(order, self._order_store.get(order.code))
 
@@ -5152,13 +4930,6 @@ class TabNoweZamowienie(QWidget):
 
         if client.name:
             result = self._client_store.overwrite(client)
-            if not result.ok:
-                self._set_status(result.message_pl, ok=False)
-                return
-            messages.append(result.message_pl)
-
-        if worker.name:
-            result = self._worker_store.overwrite(worker)
             if not result.ok:
                 self._set_status(result.message_pl, ok=False)
                 return
@@ -5172,7 +4943,6 @@ class TabNoweZamowienie(QWidget):
         messages.append(self._sync_calendar_events_for_order(order))
 
         self._reload_client_choices()
-        self._reload_worker_choices()
         self._save_draft(show_status=False)
         
         # Run alarm checks for the order

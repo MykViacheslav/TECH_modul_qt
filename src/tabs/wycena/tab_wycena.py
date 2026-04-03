@@ -44,6 +44,7 @@ from src.storage.wall_store_json import WallStoreJson
 from src.storage.work_time_store_json import WorkTimeStoreJson
 from src.storage.worker_store_json import WorkerStoreJson
 from src.storage.quote_pricing_store_json import QuotePricingStoreJson
+from src.storage.quote_pricing_preset_store_json import QuotePricingPresetStoreJson
 from src.storage.receptura_store_json import RecepturaStoreJson
 from src.storage.safe_json_io import write_json_atomic
 from src.services.quote_pricing_service import QuotePricingService
@@ -76,6 +77,31 @@ def _make_pill(text: str, bg: str, fg: str, border: str | None = None) -> QLabel
     return pill
 
 
+def _ask_preset_name(parent: QWidget) -> tuple[str, bool]:
+    dlg = QDialog(parent)
+    dlg.setWindowTitle("Nowy szablon")
+    layout = QVBoxLayout(dlg)
+    layout.setSpacing(10)
+    layout.addWidget(QLabel("Nazwa szablonu:"))
+    ed = QLineEdit(dlg)
+    ed.setPlaceholderText("np. Kuchnia standard")
+    layout.addWidget(ed)
+    btn_row = QHBoxLayout()
+    btn_ok = QPushButton("Zapisz", dlg)
+    btn_cancel = QPushButton("Anuluj", dlg)
+    set_ui_variant(btn_ok, "primary")
+    btn_ok.setMinimumHeight(32)
+    btn_cancel.setMinimumHeight(32)
+    btn_row.addWidget(btn_ok)
+    btn_row.addWidget(btn_cancel)
+    layout.addLayout(btn_row)
+    btn_ok.clicked.connect(dlg.accept)
+    btn_cancel.clicked.connect(dlg.reject)
+    ed.returnPressed.connect(dlg.accept)
+    result = dlg.exec()
+    return ed.text(), result == QDialog.DialogCode.Accepted
+
+
 class _FastSpinBox(QDoubleSpinBox):
     def focusInEvent(self, event) -> None:  # type: ignore[override]
         super().focusInEvent(event)
@@ -105,6 +131,7 @@ class TabWycena(QWidget):
         self._worker_store = worker_store if worker_store is not None else WorkerStoreJson()
         self._work_time_store = work_time_store if work_time_store is not None else WorkTimeStoreJson()
         self._pricing_store = QuotePricingStoreJson()
+        self._preset_store = QuotePricingPresetStoreJson()
         self._pricing_service = QuotePricingService()
         self._library_store = ProducerLibraryStoreJson()
         self._receptura_store = RecepturaStoreJson()
@@ -253,17 +280,20 @@ class TabWycena(QWidget):
         self.btn_quick_from_receptura = QPushButton("Dodaj z Receptury", self)
         self.btn_quick_remove = QPushButton("- Usun", self)
         self.btn_quick_export_pdf = QPushButton("Eksport PDF", self)
+        self.btn_quick_preview = QPushButton("Podglad", self)
         self.lab_quick_pick.setVisible(False)
         self.cb_quick_pick.setVisible(False)
         self.btn_quick_add.setVisible(False)
         self.btn_quick_from_receptura.setVisible(False)
         self.btn_quick_remove.setVisible(False)
         self.btn_quick_export_pdf.setVisible(False)
+        self.btn_quick_preview.setVisible(False)
         toolbar_layout.addWidget(self.lab_quick_pick, 0)
         toolbar_layout.addWidget(self.cb_quick_pick, 0)
         toolbar_layout.addWidget(self.btn_quick_add, 0)
         toolbar_layout.addWidget(self.btn_quick_from_receptura, 0)
         toolbar_layout.addWidget(self.btn_quick_remove, 0)
+        toolbar_layout.addWidget(self.btn_quick_preview, 0)
         toolbar_layout.addWidget(self.btn_quick_export_pdf, 0)
         toolbar_layout.addWidget(self.btn_refresh, 0)
         set_ui_variant(self.btn_refresh, "ghost")
@@ -271,12 +301,14 @@ class TabWycena(QWidget):
         set_ui_variant(self.btn_quick_from_receptura, "success")
         set_ui_variant(self.btn_quick_remove, "danger")
         set_ui_variant(self.btn_quick_export_pdf, "ghost")
+        set_ui_variant(self.btn_quick_preview, "ghost")
         for button in (
             self.btn_refresh,
             self.btn_quick_add,
             self.btn_quick_from_receptura,
             self.btn_quick_remove,
             self.btn_quick_export_pdf,
+            self.btn_quick_preview,
         ):
             button.setMinimumHeight(32)
         root.addWidget(self.toolbar_container, 0)
@@ -491,6 +523,35 @@ class TabWycena(QWidget):
         form.addRow("Narost", self.lab_profit_total)
         editor_layout.addLayout(form)
 
+        # ── SZABLONY WYCENY ───────────────────────────────────────
+        preset_frame = QFrame(editor)
+        mark_ui_card(preset_frame, elevated=False)
+        preset_layout = QVBoxLayout(preset_frame)
+        preset_layout.setContentsMargins(10, 8, 10, 8)
+        preset_layout.setSpacing(6)
+        preset_title = QLabel("Szablony (transport + montaz + marza)", preset_frame)
+        preset_title.setStyleSheet("font-weight: 700; font-size: 11px; color: #374151;")
+        preset_layout.addWidget(preset_title)
+        preset_row = QHBoxLayout()
+        preset_row.setSpacing(6)
+        self.cb_preset = QComboBox(preset_frame)
+        self.cb_preset.setMinimumWidth(180)
+        self.cb_preset.setPlaceholderText("Wybierz szablon...")
+        self.btn_preset_load = QPushButton("Wczytaj", preset_frame)
+        self.btn_preset_save = QPushButton("Zapisz nowy", preset_frame)
+        self.btn_preset_delete = QPushButton("Usun", preset_frame)
+        set_ui_variant(self.btn_preset_load, "primary")
+        set_ui_variant(self.btn_preset_save, "success")
+        set_ui_variant(self.btn_preset_delete, "danger")
+        for _btn in (self.btn_preset_load, self.btn_preset_save, self.btn_preset_delete):
+            _btn.setMinimumHeight(28)
+        preset_row.addWidget(self.cb_preset, 1)
+        preset_row.addWidget(self.btn_preset_load, 0)
+        preset_row.addWidget(self.btn_preset_save, 0)
+        preset_row.addWidget(self.btn_preset_delete, 0)
+        preset_layout.addLayout(preset_row)
+        editor_layout.addWidget(preset_frame)
+
         actions = QHBoxLayout()
         self.btn_save = QPushButton("Zapisz wycene", editor)
         self.btn_clear = QPushButton("Wyczysc dodatki", editor)
@@ -658,6 +719,7 @@ class TabWycena(QWidget):
         self.btn_quick_from_receptura.clicked.connect(self._on_quick_add_from_receptura_clicked)
         self.btn_quick_remove.clicked.connect(self._on_quick_remove_clicked)
         self.btn_quick_export_pdf.clicked.connect(self._on_quick_export_pdf)
+        self.btn_quick_preview.clicked.connect(self._on_quick_preview)
         self.btn_refresh.clicked.connect(self.refresh_data)
         self.tbl_assemblies.itemSelectionChanged.connect(self._on_selection_changed)
         self.tbl_assemblies.cellClicked.connect(self._on_table_cell_clicked)
@@ -669,6 +731,9 @@ class TabWycena(QWidget):
         self.tbl_quick_extras.itemChanged.connect(self._on_quick_extras_item_changed)
         self.btn_extra_add.clicked.connect(self._on_quick_extra_add)
         self.btn_extra_remove.clicked.connect(self._on_quick_extra_remove)
+        self.btn_preset_save.clicked.connect(self._on_preset_save)
+        self.btn_preset_load.clicked.connect(self._on_preset_load)
+        self.btn_preset_delete.clicked.connect(self._on_preset_delete)
         self.btn_save.clicked.connect(self._on_save)
         self.btn_clear.clicked.connect(self._on_clear)
         self.btn_export_purchase.clicked.connect(self._on_export_purchase_csv)
@@ -692,6 +757,7 @@ class TabWycena(QWidget):
         self._set_default_quote_mode()
         self._load_pricing_controls()
         self._apply_role_visibility()
+        self._refresh_preset_combo()
 
         self.refresh_data()
 
@@ -1246,6 +1312,7 @@ class TabWycena(QWidget):
             self.btn_quick_from_receptura.setVisible(True)
             self.btn_quick_remove.setVisible(True)
             self.btn_quick_export_pdf.setVisible(True)
+            self.btn_quick_preview.setVisible(True)
             self._set_metric(self.card_count, "0")
             self._set_editor_enabled(False)
         else:
@@ -1267,6 +1334,7 @@ class TabWycena(QWidget):
             self.btn_quick_from_receptura.setVisible(False)
             self.btn_quick_remove.setVisible(False)
             self.btn_quick_export_pdf.setVisible(False)
+            self.btn_quick_preview.setVisible(False)
             self._set_editor_enabled(True)
         self.refresh_data()
 
@@ -1945,6 +2013,58 @@ class TabWycena(QWidget):
         self._refresh_table()
         self._set_status("Wyczyszczono kalkulacje handlowa." if result.ok else result.message_pl, ok=result.ok)
 
+    # ── SZABLONY ─────────────────────────────────────────────────
+
+    def _refresh_preset_combo(self) -> None:
+        self.cb_preset.blockSignals(True)
+        self.cb_preset.clear()
+        for preset in self._preset_store.load():
+            label = str(preset.get("name") or "")
+            self.cb_preset.addItem(label, preset)
+        self.cb_preset.blockSignals(False)
+
+    def _on_preset_save(self) -> None:
+        name, ok = _ask_preset_name(self)
+        if not ok or not name.strip():
+            return
+        self._preset_store.save_preset(
+            name=name.strip(),
+            transport_flat=float(self.sp_transport.value()),
+            montage_flat=float(self.sp_montage.value()),
+            margin_percent=float(self.sp_margin.value()),
+        )
+        self._refresh_preset_combo()
+        self._set_status(f"Zapisano szablon \"{name.strip()}\".", ok=True)
+
+    def _on_preset_load(self) -> None:
+        preset = self.cb_preset.currentData()
+        if not isinstance(preset, dict):
+            self._set_status("Wybierz szablon z listy.", ok=False)
+            return
+        self.sp_transport.setValue(float(preset.get("transport_flat", 0.0) or 0.0))
+        self.sp_montage.setValue(float(preset.get("montage_flat", 0.0) or 0.0))
+        self.sp_margin.setValue(float(preset.get("margin_percent", 0.0) or 0.0))
+        self._set_status(f"Wczytano szablon \"{preset.get('name', '')}\".", ok=True)
+
+    def _on_preset_delete(self) -> None:
+        preset = self.cb_preset.currentData()
+        if not isinstance(preset, dict):
+            self._set_status("Wybierz szablon do usuniecia.", ok=False)
+            return
+        preset_id = str(preset.get("id") or "")
+        name = str(preset.get("name") or "")
+        reply = QMessageBox.question(
+            self,
+            "Usun szablon",
+            f"Usunac szablon \"{name}\"?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._preset_store.delete_preset(preset_id)
+        self._refresh_preset_combo()
+        self._set_status(f"Usunieto szablon \"{name}\".", ok=True)
+
     def _on_load_labor_from_time(self) -> None:
         if self._mode() == "quick":
             self._set_status("Dla wyceny wstepnej robocizna nie jest pobierana z Czas pracy.", ok=False)
@@ -2080,101 +2200,140 @@ class TabWycena(QWidget):
     def _build_quick_pdf_html(self, entry: dict, row: dict) -> str:
         quick_id = str(entry.get("id", "") or "-").strip()
         client_name = str(entry.get("client", "") or "-").strip()
+        description = str(entry.get("name", entry.get("description", "")) or "").strip()
         vat = str(entry.get("vat", "") or "23").strip()
         margin = float(row.get("margin_percent", 0.0) or 0.0)
         material_value = float(row.get("sale_total", 0.0) or 0.0)
-        
+
         try:
             vat_percent = float(vat) if vat else 23.0
         except ValueError:
             vat_percent = 23.0
-        
-        base_price = material_value
-        sale_net = base_price * (1 + margin / 100.0)
-        sale_brut = sale_net * (1 + vat_percent / 100.0)
-        
-        now = datetime.now().strftime("%d.%m.%Y %H:%M")
-        
+
+        totals = self._compute_quick_totals(
+            material_value=material_value,
+            margin_percent=margin,
+            vat_percent=vat_percent,
+            quick_id=quick_id,
+        )
         adj = self._quick_adjustment_for(quick_id)
         transport = float(adj.get("transport", 0.0) or 0.0)
         hours = float(adj.get("hours", 0.0) or 0.0)
         montage = float(adj.get("montage", 0.0) or 0.0)
-        
-        html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-        <meta charset="utf-8">
-        <style>
-            body {{ font-family: Arial, sans-serif; margin: 30px; color: #333; }}
-            h1 {{ color: #1a365d; border-bottom: 3px solid #2b6cb0; padding-bottom: 10px; margin-bottom: 20px; }}
-            .header-info {{ background: #edf2f7; padding: 15px; border-radius: 8px; margin-bottom: 20px; }}
-            .header-info p {{ margin: 5px 0; }}
-            .summary-box {{ background: #ebf8ff; border: 2px solid #3182ce; border-radius: 8px; padding: 15px; margin: 20px 0; }}
-            .summary-row {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed #cbd5e0; }}
-            .summary-row:last-child {{ border-bottom: none; }}
-            .total-row {{ font-weight: bold; font-size: 1.1em; color: #1a365d; }}
-            .profit {{ color: #276749; font-weight: bold; }}
-            .footer {{ margin-top: 30px; padding-top: 15px; border-top: 2px solid #e2e8f0; color: #718096; font-size: 12px; }}
-        </style>
-        </head>
-        <body>
-            <h1>SZYBKA WYCENA</h1>
-            
-            <div class="header-info">
-                <p><strong>ID wyceny:</strong> {quick_id}</p>
-                <p><strong>Klient:</strong> {client_name}</p>
-                <p><strong>Data:</strong> {now}</p>
-                <p><strong>VAT:</strong> {vat}%</p>
-            </div>
+        extras_list = list(adj.get("extras", []) or [])
+        extras_total = float(totals.get("extras_total", 0.0) or 0.0)
+        labor_cost = float(totals.get("labor_cost", 0.0) or 0.0)
+        hour_rate = float(totals.get("hour_rate", 0.0) or 0.0)
+        base_total = float(totals.get("base_total", 0.0) or 0.0)
+        netto = float(totals.get("netto", 0.0) or 0.0)
+        brutto = float(totals.get("brutto", 0.0) or 0.0)
 
-            <h2>PODSUMOWANIE</h2>
-            <div class="summary-box">
-                <div class="summary-row">
-                    <span>Wartość materiałów:</span>
-                    <span>{material_value:,.2f} zł</span>
-                </div>
-                <div class="summary-row">
-                    <span>Transport:</span>
-                    <span>{transport:,.2f} zł</span>
-                </div>
-                <div class="summary-row">
-                    <span>Roboczo-godziny:</span>
-                    <span>{hours:.2f} h</span>
-                </div>
-                <div class="summary-row">
-                    <span>Montaż:</span>
-                    <span>{montage:,.2f} zł</span>
-                </div>
-                <div class="summary-row total-row">
-                    <span>SUMA:</span>
-                    <span>{material_value:,.2f} zł</span>
-                </div>
-            </div>
+        now = datetime.now().strftime("%d.%m.%Y %H:%M")
 
-            <h2>CENA</h2>
-            <div class="summary-box">
-                <div class="summary-row">
-                    <span>Marża:</span>
-                    <span>{margin:.1f}%</span>
-                </div>
-                <div class="summary-row total-row">
-                    <span>CENA NETTO:</span>
-                    <span>{sale_net:,.2f} zł</span>
-                </div>
-                <div class="summary-row total-row">
-                    <span>CENA BRUTTO (z {vat}% VAT):</span>
-                    <span>{sale_brut:,.2f} zł</span>
-                </div>
-            </div>
+        # Uslugi dodatkowe HTML
+        extras_html = ""
+        if extras_list:
+            rows_html = "".join(
+                f'<tr><td>{str(e.get("desc","") or "Usluga")}</td>'
+                f'<td style="text-align:right">{float(e.get("amount",0) or 0):.2f} zl</td></tr>'
+                for e in extras_list if isinstance(e, dict)
+            )
+            extras_html = f"""
+            <h3 style="margin-top:16px;">Uslugi dodatkowe</h3>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+              <thead><tr style="background:#edf2f7;">
+                <th style="text-align:left;padding:6px;">Opis</th>
+                <th style="text-align:right;padding:6px;">Kwota</th>
+              </tr></thead>
+              <tbody>{rows_html}</tbody>
+            </table>"""
 
-            <div class="footer">
-                <p>Wygenerowano: {now} | TECH_modul - System zarządzania projektami meblowymi</p>
-            </div>
-        </body>
-        </html>
-        """
+        html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body {{ font-family: Arial, sans-serif; margin: 30px; color: #1a202c; font-size: 14px; }}
+  h1 {{ color: #1a365d; border-bottom: 3px solid #2b6cb0; padding-bottom: 8px; margin-bottom: 16px; font-size: 22px; }}
+  h2 {{ color: #2d3748; font-size: 15px; margin: 18px 0 6px 0; }}
+  h3 {{ color: #4a5568; font-size: 13px; margin: 12px 0 4px 0; }}
+  .header-info {{ background: #edf2f7; padding: 12px 16px; border-radius: 6px; margin-bottom: 18px; line-height: 1.7; }}
+  .kv {{ display: flex; gap: 8px; }}
+  .kv b {{ min-width: 120px; }}
+  .box {{ border: 1px solid #bee3f8; border-radius: 6px; padding: 12px 16px; margin: 12px 0; background: #ebf8ff; }}
+  .row {{ display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dashed #c3dafe; font-size: 13px; }}
+  .row:last-child {{ border-bottom: none; }}
+  .bold {{ font-weight: 700; }}
+  .big {{ font-size: 16px; font-weight: 700; color: #1a365d; }}
+  .green {{ color: #276749; font-weight: 700; }}
+  .footer {{ margin-top: 28px; padding-top: 12px; border-top: 1px solid #e2e8f0; color: #718096; font-size: 11px; }}
+</style>
+</head>
+<body>
+  <h1>WYCENA</h1>
+  <div class="header-info">
+    <div class="kv"><b>ID wyceny:</b> {quick_id}</div>
+    <div class="kv"><b>Klient:</b> {client_name or "—"}</div>
+    {"<div class='kv'><b>Opis:</b> " + description + "</div>" if description else ""}
+    <div class="kv"><b>Data:</b> {now}</div>
+    <div class="kv"><b>VAT:</b> {vat}%</div>
+  </div>
+
+  <h2>Kosztorys</h2>
+  <div class="box">
+    <div class="row"><span>Wartość materiałów</span><span>{material_value:,.2f} zł</span></div>
+    <div class="row"><span>Transport</span><span>{transport:,.2f} zł</span></div>
+    <div class="row"><span>Robocizna ({hours:.2f} h × {hour_rate:.2f} zł/h)</span><span>{labor_cost:,.2f} zł</span></div>
+    <div class="row"><span>Montaż</span><span>{montage:,.2f} zł</span></div>
+    {"<div class='row'><span>Usługi dodatkowe</span><span>" + f"{extras_total:,.2f} zł</span></div>" if extras_total else ""}
+    <div class="row bold"><span>Koszt bazowy</span><span>{base_total:,.2f} zł</span></div>
+  </div>
+
+  {extras_html}
+
+  <h2>Cena końcowa</h2>
+  <div class="box">
+    <div class="row"><span>Marża</span><span>{margin:.1f}%</span></div>
+    <div class="row big"><span>NETTO</span><span>{netto:,.2f} zł</span></div>
+    <div class="row big green"><span>BRUTTO ({vat}% VAT)</span><span>{brutto:,.2f} zł</span></div>
+  </div>
+
+  <div class="footer">
+    Wygenerowano: {now} &nbsp;|&nbsp; TECH_modul
+  </div>
+</body>
+</html>"""
         return html
+
+    def _on_quick_preview(self) -> None:
+        """Podglad wyceny w oknie przed eksportem PDF."""
+        if self._mode() != "quick":
+            return
+        row = self._selected_quick_row()
+        if row is None:
+            self._set_status("Wybierz wpis z bazy szybkich wycen.", ok=False)
+            return
+        entry = dict(row.get("quick", {}))
+        html = self._build_quick_pdf_html(entry, row)
+
+        from PyQt6.QtWidgets import QTextBrowser
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Podglad wyceny")
+        dlg.resize(700, 600)
+        lay = QVBoxLayout(dlg)
+        browser = QTextBrowser(dlg)
+        browser.setHtml(html)
+        lay.addWidget(browser, 1)
+        btn_row = QHBoxLayout()
+        btn_pdf = QPushButton("Zapisz PDF...", dlg)
+        btn_close = QPushButton("Zamknij", dlg)
+        btn_row.addWidget(btn_pdf)
+        btn_row.addStretch(1)
+        btn_row.addWidget(btn_close)
+        lay.addLayout(btn_row)
+        btn_close.clicked.connect(dlg.reject)
+        btn_pdf.clicked.connect(lambda: (dlg.accept(), self._on_quick_export_pdf()))
+        dlg.exec()
 
     def _on_export_pdf(self) -> None:
         if self._mode() == "quick":
