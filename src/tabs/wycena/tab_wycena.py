@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import (
     QWidget,
     QDoubleSpinBox,
     QFileDialog,
+    QMessageBox,
 )
 
 from src.app.app_settings import load_drawing_settings
@@ -43,11 +44,16 @@ from src.storage.wall_store_json import WallStoreJson
 from src.storage.work_time_store_json import WorkTimeStoreJson
 from src.storage.worker_store_json import WorkerStoreJson
 from src.storage.quote_pricing_store_json import QuotePricingStoreJson
+from src.storage.receptura_store_json import RecepturaStoreJson
+from src.storage.safe_json_io import write_json_atomic
 from src.services.quote_pricing_service import QuotePricingService
+from src.services.receptura_bridge_service import build_quick_quote_entry_from_receptura
 from src.tabs.baza_szybkich_wycen.tab_baza_szybkich_wycen import (
     quick_quote_archive_path,
     sanitize_quick_quote_entries,
 )
+from src.tabs.receptura.receptura_picker import pick_receptura_rows
+from src.ui.ui_polish import mark_ui_card, set_ui_variant
 
 
 def _text_to_float(raw: str) -> float:
@@ -61,6 +67,15 @@ def _text_to_float(raw: str) -> float:
         return 0.0
 
 
+def _make_pill(text: str, bg: str, fg: str, border: str | None = None) -> QLabel:
+    pill = QLabel(text)
+    pill.setStyleSheet(
+        f"QLabel{{background:{bg};color:{fg};border:1px solid {border or bg};"
+        "border-radius:999px;padding:4px 10px;font-size:10px;font-weight:800;}}"
+    )
+    return pill
+
+
 class _FastSpinBox(QDoubleSpinBox):
     def focusInEvent(self, event) -> None:  # type: ignore[override]
         super().focusInEvent(event)
@@ -68,6 +83,8 @@ class _FastSpinBox(QDoubleSpinBox):
 
 
 class TabWycena(QWidget):
+    DEFAULT_QUOTE_MODE = "quick"
+
     def __init__(
         self,
         parent: QWidget | None = None,
@@ -90,6 +107,7 @@ class TabWycena(QWidget):
         self._pricing_store = QuotePricingStoreJson()
         self._pricing_service = QuotePricingService()
         self._library_store = ProducerLibraryStoreJson()
+        self._receptura_store = RecepturaStoreJson()
         self._rows: list[dict[str, object]] = []
         self._is_loading = False
         self._is_table_refresh = False
@@ -110,7 +128,7 @@ class TabWycena(QWidget):
         title_row.setSpacing(10)
 
         title = QLabel("WYCENA")
-        title.setStyleSheet("font-size: 22px; font-weight: 800; letter-spacing: 0.5px;")
+        title.setStyleSheet("font-size: 24px; font-weight: 900; letter-spacing: 0.2px; color:#0f172a;")
         title_row.addWidget(title, 0, Qt.AlignmentFlag.AlignLeft)
         title_row.addStretch(1)
 
@@ -140,20 +158,64 @@ class TabWycena(QWidget):
         self.cb_role.setMinimumWidth(140)
         title_row.addWidget(self.lab_role, 0)
         title_row.addWidget(self.cb_role, 0)
+        # Desktop-first: keep pricing controls visible in header.
+        self._show_header_pricing_controls = True
+        if not self._show_header_pricing_controls:
+            for widget in (
+                self.lab_mode,
+                self.cb_quote_mode,
+                self.lab_policy,
+                self.cb_policy,
+                self.lab_role,
+                self.cb_role,
+            ):
+                widget.setVisible(False)
 
         root.addLayout(title_row)
+
+        hero = QFrame(self)
+        hero.setStyleSheet(
+            "QFrame{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #ffffff,stop:1 #eef4ff);"
+            "border:1px solid #d7e1ef;border-radius:20px;}"
+        )
+        hero_layout = QHBoxLayout(hero)
+        hero_layout.setContentsMargins(16, 14, 16, 14)
+        hero_layout.setSpacing(12)
+        hero_text = QVBoxLayout()
+        hero_text.setSpacing(4)
+        hero_title = QLabel("Premium control room dla wyceny")
+        hero_title.setStyleSheet("font-size:14px;font-weight:900;color:#10263d;")
+        hero_desc = QLabel("Tryb, polityka i rola pozostaja widoczne, ale nie dominują formularza.")
+        hero_desc.setWordWrap(True)
+        hero_desc.setStyleSheet("font-size:12px;color:#526174;")
+        hero_text.addWidget(hero_title)
+        hero_text.addWidget(hero_desc)
+        pill_row = QHBoxLayout()
+        pill_row.setSpacing(8)
+        pill_row.addWidget(_make_pill("Desktop", "#dbeafe", "#1d4ed8", "#bfdbfe"))
+        pill_row.addWidget(_make_pill("Szybka decyzja", "#eef2ff", "#4338ca", "#c7d2fe"))
+        pill_row.addWidget(_make_pill("Spójny widok", "#ecfdf5", "#047857", "#a7f3d0"))
+        pill_row.addStretch(1)
+        hero_text.addLayout(pill_row)
+        hero_layout.addLayout(hero_text, 1)
+        hero_layout.addWidget(_make_pill("Tryb wyceny: " + self.cb_quote_mode.currentText(), "#0f172a", "#ffffff", "#0f172a"))
+        root.addWidget(hero)
 
         self.subtitle = QLabel(
             "Osobna karta handlowa dla kompletow. Tutaj liczysz robocizne, transport, montaz i marze bez obciazania karty Komplet."
         )
         self.subtitle.setWordWrap(True)
-        self.subtitle.setStyleSheet("color:#555555;")
+        self.subtitle.setStyleSheet("color:#526174;font-size:12px;")
         root.addWidget(self.subtitle, 0, Qt.AlignmentFlag.AlignLeft)
 
         self.stats_widget = QWidget(self)
+        mark_ui_card(self.stats_widget, elevated=True)
+        self.stats_widget.setStyleSheet(
+            "QWidget{background:rgba(255,255,255,0.96);border:1px solid #d7e1ef;border-radius:18px;}"
+        )
         stats_row = QHBoxLayout(self.stats_widget)
-        stats_row.setContentsMargins(0, 0, 0, 0)
-        stats_row.setSpacing(12)
+        stats_row.setContentsMargins(12, 10, 12, 10)
+        stats_row.setSpacing(10)
         self.card_count = self._make_metric_card("Komplety", "0")
         self.card_tech = self._make_metric_card("Koszt techniczny", "0.00 zl")
         self.card_sale = self._make_metric_card("Cena handlowa", "0.00 zl")
@@ -164,13 +226,14 @@ class TabWycena(QWidget):
         root.addWidget(self.stats_widget, 0)
 
         self.toolbar_toggle = QPushButton("Pasek narzędzi ▼", self)
-        self.toolbar_toggle.setStyleSheet("QPushButton { border: none; background: transparent; color: #555; font-weight: 600; padding: 4px; }")
+        set_ui_variant(self.toolbar_toggle, "ghost")
         self.toolbar_toggle.clicked.connect(self._toggle_toolbar)
         root.addWidget(self.toolbar_toggle, 0)
 
         self.toolbar_container = QWidget(self)
+        mark_ui_card(self.toolbar_container, elevated=False)
         toolbar_layout = QHBoxLayout(self.toolbar_container)
-        toolbar_layout.setContentsMargins(0, 0, 0, 0)
+        toolbar_layout.setContentsMargins(10, 8, 10, 8)
         toolbar_layout.setSpacing(10)
         self.lab_search = QLabel("Szukaj:", self)
         self.ed_search = QLineEdit(self)
@@ -187,19 +250,35 @@ class TabWycena(QWidget):
         self.cb_quick_pick = QComboBox(self)
         self.cb_quick_pick.setMinimumWidth(300)
         self.btn_quick_add = QPushButton("+ Dodaj", self)
+        self.btn_quick_from_receptura = QPushButton("Dodaj z Receptury", self)
         self.btn_quick_remove = QPushButton("- Usun", self)
         self.btn_quick_export_pdf = QPushButton("Eksport PDF", self)
         self.lab_quick_pick.setVisible(False)
         self.cb_quick_pick.setVisible(False)
         self.btn_quick_add.setVisible(False)
+        self.btn_quick_from_receptura.setVisible(False)
         self.btn_quick_remove.setVisible(False)
         self.btn_quick_export_pdf.setVisible(False)
         toolbar_layout.addWidget(self.lab_quick_pick, 0)
         toolbar_layout.addWidget(self.cb_quick_pick, 0)
         toolbar_layout.addWidget(self.btn_quick_add, 0)
+        toolbar_layout.addWidget(self.btn_quick_from_receptura, 0)
         toolbar_layout.addWidget(self.btn_quick_remove, 0)
         toolbar_layout.addWidget(self.btn_quick_export_pdf, 0)
         toolbar_layout.addWidget(self.btn_refresh, 0)
+        set_ui_variant(self.btn_refresh, "ghost")
+        set_ui_variant(self.btn_quick_add, "primary")
+        set_ui_variant(self.btn_quick_from_receptura, "success")
+        set_ui_variant(self.btn_quick_remove, "danger")
+        set_ui_variant(self.btn_quick_export_pdf, "ghost")
+        for button in (
+            self.btn_refresh,
+            self.btn_quick_add,
+            self.btn_quick_from_receptura,
+            self.btn_quick_remove,
+            self.btn_quick_export_pdf,
+        ):
+            button.setMinimumHeight(32)
         root.addWidget(self.toolbar_container, 0)
 
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal, self)
@@ -230,7 +309,7 @@ class TabWycena(QWidget):
         left_layout.addWidget(self.tbl_assemblies, 1)
 
         self.quick_calc_frame = QFrame(left)
-        self.quick_calc_frame.setStyleSheet("QFrame { border: 1px solid #d9e0ea; border-radius: 8px; background: #ffffff; }")
+        mark_ui_card(self.quick_calc_frame, elevated=False)
         quick_form = QFormLayout(self.quick_calc_frame)
         quick_form.setContentsMargins(10, 10, 10, 10)
         quick_form.setSpacing(6)
@@ -264,7 +343,33 @@ class TabWycena(QWidget):
         quick_form.addRow("Transport", self.sp_quick_transport)
         quick_form.addRow("Roboczo-godziny", self.sp_quick_hours)
         quick_form.addRow("Pracownik", self.cb_quick_worker)
-        quick_form.addRow("Montaż", self.sp_quick_montage)
+        quick_form.addRow("Montaz", self.sp_quick_montage)
+
+        # ── USLUGI DODATKOWE ──────────────────────────────────────
+        extras_widget = QWidget(self.quick_calc_frame)
+        extras_vbox = QVBoxLayout(extras_widget)
+        extras_vbox.setContentsMargins(0, 0, 0, 0)
+        extras_vbox.setSpacing(2)
+        self.tbl_quick_extras = QTableWidget(0, 2, extras_widget)
+        self.tbl_quick_extras.setHorizontalHeaderLabels(["Opis uslugi", "Kwota [zl]"])
+        self.tbl_quick_extras.verticalHeader().setVisible(False)
+        self.tbl_quick_extras.setMinimumHeight(60)
+        self.tbl_quick_extras.setMaximumHeight(160)
+        extras_hdr = self.tbl_quick_extras.horizontalHeader()
+        extras_hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        extras_hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        extras_vbox.addWidget(self.tbl_quick_extras)
+        extras_btn_row = QHBoxLayout()
+        self.btn_extra_add = QPushButton("+ Dodaj", extras_widget)
+        self.btn_extra_remove = QPushButton("- Usun", extras_widget)
+        self.btn_extra_add.setFixedHeight(24)
+        self.btn_extra_remove.setFixedHeight(24)
+        extras_btn_row.addWidget(self.btn_extra_add)
+        extras_btn_row.addWidget(self.btn_extra_remove)
+        extras_btn_row.addStretch(1)
+        extras_vbox.addLayout(extras_btn_row)
+        quick_form.addRow("Uslugi dod.:", extras_widget)
+
         quick_form.addRow("Stawka rob.-godz.", self.lab_quick_rate)
         quick_form.addRow("Zrodlo stawki", self.lab_quick_rate_source)
         quick_form.addRow("Koszt robocizny", self.lab_quick_labor_cost)
@@ -293,7 +398,7 @@ class TabWycena(QWidget):
         right_layout.setSpacing(12)
 
         editor = QFrame(right)
-        editor.setStyleSheet("QFrame { border: 1px solid #d9e0ea; border-radius: 8px; background: #fbfcfe; }")
+        mark_ui_card(editor, elevated=False)
         editor_layout = QVBoxLayout(editor)
         editor_layout.setContentsMargins(12, 12, 12, 12)
         editor_layout.setSpacing(10)
@@ -392,6 +497,19 @@ class TabWycena(QWidget):
         self.btn_export_purchase = QPushButton("Eksport zakupu CSV", editor)
         self.btn_export_report = QPushButton("Raport rentownosci", editor)
         self.btn_export_pdf = QPushButton("Eksport PDF", editor)
+        set_ui_variant(self.btn_save, "primary")
+        set_ui_variant(self.btn_clear, "danger")
+        set_ui_variant(self.btn_export_purchase, "ghost")
+        set_ui_variant(self.btn_export_report, "ghost")
+        set_ui_variant(self.btn_export_pdf, "ghost")
+        for button in (
+            self.btn_save,
+            self.btn_clear,
+            self.btn_export_purchase,
+            self.btn_export_report,
+            self.btn_export_pdf,
+        ):
+            button.setMinimumHeight(32)
         actions.addWidget(self.btn_save, 0)
         actions.addWidget(self.btn_clear, 0)
         actions.addWidget(self.btn_export_purchase, 0)
@@ -410,7 +528,7 @@ class TabWycena(QWidget):
         right_layout.addWidget(editor, 0)
 
         work_time_box = QFrame(right)
-        work_time_box.setStyleSheet("QFrame { border: 1px solid #d9e0ea; border-radius: 8px; background: #ffffff; }")
+        mark_ui_card(work_time_box, elevated=False)
         work_time_layout = QFormLayout(work_time_box)
         work_time_layout.setContentsMargins(12, 12, 12, 12)
         self.lab_time_days = QLabel("0", work_time_box)
@@ -420,6 +538,8 @@ class TabWycena(QWidget):
         self.lab_time_extra = QLabel("0.00 zl", work_time_box)
         self.lab_time_cost = QLabel("0.00 zl", work_time_box)
         self.btn_load_labor_from_time = QPushButton("Pobierz do robocizny", work_time_box)
+        set_ui_variant(self.btn_load_labor_from_time, "success")
+        self.btn_load_labor_from_time.setMinimumHeight(32)
         work_time_layout.addRow("Dni z czasu pracy", self.lab_time_days)
         work_time_layout.addRow("Godziny z czasu pracy", self.lab_time_hours)
         work_time_layout.addRow("Nadgodziny", self.lab_time_overtime)
@@ -430,7 +550,7 @@ class TabWycena(QWidget):
         right_layout.addWidget(work_time_box, 0)
 
         order_box = QFrame(right)
-        order_box.setStyleSheet("QFrame { border: 1px solid #d9e0ea; border-radius: 8px; background: #ffffff; }")
+        mark_ui_card(order_box, elevated=False)
         order_layout = QFormLayout(order_box)
         order_layout.setContentsMargins(12, 12, 12, 12)
         self.lab_order_tech = QLabel("0.00 zl", order_box)
@@ -535,6 +655,7 @@ class TabWycena(QWidget):
         self.cb_quick_pick.currentIndexChanged.connect(self._on_quick_pick_changed)
         self.cb_quote_mode.currentIndexChanged.connect(self._on_mode_changed)
         self.btn_quick_add.clicked.connect(self._on_quick_add_clicked)
+        self.btn_quick_from_receptura.clicked.connect(self._on_quick_add_from_receptura_clicked)
         self.btn_quick_remove.clicked.connect(self._on_quick_remove_clicked)
         self.btn_quick_export_pdf.clicked.connect(self._on_quick_export_pdf)
         self.btn_refresh.clicked.connect(self.refresh_data)
@@ -545,6 +666,9 @@ class TabWycena(QWidget):
         self.sp_quick_hours.valueChanged.connect(self._on_quick_adjustment_changed)
         self.sp_quick_montage.valueChanged.connect(self._on_quick_adjustment_changed)
         self.cb_quick_worker.currentIndexChanged.connect(self._on_quick_adjustment_changed)
+        self.tbl_quick_extras.itemChanged.connect(self._on_quick_extras_item_changed)
+        self.btn_extra_add.clicked.connect(self._on_quick_extra_add)
+        self.btn_extra_remove.clicked.connect(self._on_quick_extra_remove)
         self.btn_save.clicked.connect(self._on_save)
         self.btn_clear.clicked.connect(self._on_clear)
         self.btn_export_purchase.clicked.connect(self._on_export_purchase_csv)
@@ -565,6 +689,7 @@ class TabWycena(QWidget):
         self.cb_policy.currentIndexChanged.connect(self._on_policy_changed)
         self.cb_role.currentIndexChanged.connect(self._on_role_changed)
 
+        self._set_default_quote_mode()
         self._load_pricing_controls()
         self._apply_role_visibility()
 
@@ -572,14 +697,18 @@ class TabWycena(QWidget):
 
     def _make_metric_card(self, title: str, value: str) -> QFrame:
         frame = QFrame(self)
-        frame.setStyleSheet("QFrame { border: 1px solid #d8e2ec; border-radius: 10px; background: #ffffff; }")
+        mark_ui_card(frame, elevated=True)
+        frame.setStyleSheet(
+            "QFrame{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #ffffff,stop:1 #f7fbff);"
+            "border:1px solid #dbe4ef;border-radius:16px;border-bottom:3px solid #2563eb;}"
+        )
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(2)
+        layout.setSpacing(3)
         lab_title = QLabel(title, frame)
-        lab_title.setStyleSheet("color:#64748b; font-weight:600;")
+        lab_title.setStyleSheet("color:#64748b; font-size:10px; font-weight:800;")
         lab_value = QLabel(value, frame)
-        lab_value.setStyleSheet("font-size: 18px; font-weight: 800; color:#0f172a;")
+        lab_value.setStyleSheet("font-size: 18px; font-weight: 900; color:#0f172a;")
         lab_value.setObjectName("metricValue")
         layout.addWidget(lab_title)
         layout.addWidget(lab_value)
@@ -599,14 +728,21 @@ class TabWycena(QWidget):
             return 1.0
 
     def _save_pricing_config(self) -> None:
-        self._pricing_store.save(
-            {
-                "active_policy": self._active_policy,
-                "policy_multipliers": self._policy_multipliers,
-                "rules": self._pricing_rules,
-                "active_role": self._active_role,
-            }
-        )
+        try:
+            self._pricing_store.save(
+                {
+                    "active_policy": self._active_policy,
+                    "policy_multipliers": self._policy_multipliers,
+                    "rules": self._pricing_rules,
+                    "active_role": self._active_role,
+                }
+            )
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Blad zapisu danych",
+                f"Nie udalo sie zapisac ustawien wyceny.\n\nSzczegoly: {exc}",
+            )
 
     def _load_pricing_controls(self) -> None:
         idx_policy = self.cb_policy.findData(self._active_policy)
@@ -684,6 +820,12 @@ class TabWycena(QWidget):
     def _mode(self) -> str:
         return str(self.cb_quote_mode.currentData() or "assemblies")
 
+    def _set_default_quote_mode(self) -> None:
+        idx = self.cb_quote_mode.findData(self.DEFAULT_QUOTE_MODE)
+        if idx < 0:
+            return
+        self.cb_quote_mode.setCurrentIndex(idx)
+
     def _set_editor_enabled(self, enabled: bool) -> None:
         for widget in (self.sp_labor, self.sp_transport, self.sp_montage, self.sp_margin):
             widget.setEnabled(enabled)
@@ -705,10 +847,19 @@ class TabWycena(QWidget):
             return []
         return []
 
-    def _write_quick_quotes(self, entries: list[dict[str, Any]]) -> None:
+    def _write_quick_quotes(self, entries: list[dict[str, Any]]) -> bool:
         path = quick_quote_archive_path()
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(entries, indent=2, ensure_ascii=False), encoding="utf-8")
+        try:
+            write_json_atomic(path, entries, ensure_ascii=False, indent=2)
+            return True
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Blad zapisu danych",
+                f"Nie udalo sie zapisac bazy szybkich wycen.\n\nSzczegoly: {exc}",
+            )
+            return False
 
     def _next_quick_quote_id(self, entries: list[dict[str, Any]]) -> str:
         existing = {str(item.get("id", "") or "").strip() for item in entries if isinstance(item, dict)}
@@ -718,7 +869,7 @@ class TabWycena(QWidget):
                 return new_id
 
     def _quick_adjustment_defaults(self) -> dict[str, object]:
-        return {"transport": 0.0, "hours": 0.0, "worker": "", "montage": 0.0}
+        return {"transport": 0.0, "hours": 0.0, "worker": "", "montage": 0.0, "extras": []}
 
     def _quick_adjustment_for(self, quick_id: str) -> dict[str, object]:
         key = str(quick_id or "").strip()
@@ -835,9 +986,15 @@ class TabWycena(QWidget):
         transport = float(adj.get("transport", 0.0) or 0.0)
         hours = float(adj.get("hours", 0.0) or 0.0)
         montage = float(adj.get("montage", 0.0) or 0.0)
+        extras_list = list(adj.get("extras", []) or [])
+        extras_total = sum(
+            float(e.get("amount", 0.0) or 0.0)
+            for e in extras_list
+            if isinstance(e, dict)
+        )
         hour_rate, rate_source = self._effective_quick_hour_rate(quick_id)
         labor_cost = hours * hour_rate
-        base = float(material_value) + transport + labor_cost + montage
+        base = float(material_value) + transport + labor_cost + montage + extras_total
         adjusted_base = self._pricing_service.apply_rules(base, material_value, self._pricing_rules)
         netto = self._pricing_service.compute_sale(adjusted_base, margin_percent, self._policy_multiplier())
         brutto = netto * (1.0 + (float(vat_percent) / 100.0))
@@ -846,6 +1003,7 @@ class TabWycena(QWidget):
             "transport": transport,
             "hours": hours,
             "montage": montage,
+            "extras_total": extras_total,
             "hour_rate": float(hour_rate),
             "rate_source": rate_source,
             "labor_cost": labor_cost,
@@ -865,6 +1023,7 @@ class TabWycena(QWidget):
             ("Pracownik / zrodlo", source_label),
             ("Koszt robocizny", f"{float(values.get('labor_cost', 0.0) or 0.0):.2f} zl"),
             ("Montaz", f"{float(values.get('montage', 0.0) or 0.0):.2f} zl"),
+            ("Uslugi dodatkowe", f"{float(values.get('extras_total', 0.0) or 0.0):.2f} zl"),
             ("Koszt bazowy", f"{float(values.get('base_total', 0.0) or 0.0):.2f} zl"),
             ("Cena netto", f"{float(values.get('netto', 0.0) or 0.0):.2f} zl"),
             ("Cena brutto", f"{float(values.get('brutto', 0.0) or 0.0):.2f} zl"),
@@ -924,6 +1083,44 @@ class TabWycena(QWidget):
         else:
             self._set_status("Nie znaleziono wybranej wyceny w tabeli.", ok=False)
 
+    def _on_quick_add_from_receptura_clicked(self) -> None:
+        if self._mode() != "quick":
+            return
+        source_rows = self._receptura_store.list_for_quote()
+        if not source_rows:
+            self._set_status("Brak pozycji receptury oznaczonych 'Do wyceny'.", ok=False)
+            return
+        picked_rows = pick_receptura_rows(
+            self,
+            source_rows,
+            title="Wybierz pozycje z Receptury do szybkiej wyceny",
+            subtitle="Wybrane pozycje zostana dodane jako nowe wpisy bazy szybkich wycen.",
+            allow_multi=True,
+        )
+        if not picked_rows:
+            return
+
+        entries = self._load_quick_quotes()
+        existing_ids = {str(item.get("id", "") or "").strip() for item in entries if isinstance(item, dict)}
+        added_ids: list[str] = []
+        for row in picked_rows:
+            entry = build_quick_quote_entry_from_receptura(row, existing_ids=existing_ids)
+            quick_id = str(entry.get("id", "") or "").strip()
+            if not quick_id:
+                continue
+            existing_ids.add(quick_id)
+            entries.append(entry)
+            added_ids.append(quick_id)
+
+        if not added_ids:
+            self._set_status("Nie udalo sie przygotowac wpisow z Receptury.", ok=False)
+            return
+        if not self._write_quick_quotes(entries):
+            return
+        self.refresh_data()
+        self._select_quick_row_by_id(added_ids[0])
+        self._set_status(f"Dodano wpisy z Receptury: {len(added_ids)}.", ok=True)
+
     def _on_quick_remove_clicked(self) -> None:
         if self._mode() != "quick":
             return
@@ -941,7 +1138,8 @@ class TabWycena(QWidget):
         if len(after) == len(before):
             self._set_status("Nie znaleziono wpisu do usuniecia.", ok=False)
             return
-        self._write_quick_quotes(after)
+        if not self._write_quick_quotes(after):
+            return
         self.refresh_data()
         self._set_status("Usunieto wpis z bazy szybkich wycen.", ok=True)
 
@@ -998,7 +1196,8 @@ class TabWycena(QWidget):
             normalized = self._normalize_margin_text(item.text())
             entries[target_index]["margin"] = normalized
 
-        self._write_quick_quotes(entries)
+        if not self._write_quick_quotes(entries):
+            return
 
         was_blocked = self.tbl_assemblies.blockSignals(True)
         try:
@@ -1044,6 +1243,7 @@ class TabWycena(QWidget):
                 | QTableWidget.EditTrigger.SelectedClicked
             )
             self.btn_quick_add.setVisible(True)
+            self.btn_quick_from_receptura.setVisible(True)
             self.btn_quick_remove.setVisible(True)
             self.btn_quick_export_pdf.setVisible(True)
             self._set_metric(self.card_count, "0")
@@ -1064,6 +1264,7 @@ class TabWycena(QWidget):
             self.cb_quick_pick.setVisible(False)
             self.tbl_assemblies.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
             self.btn_quick_add.setVisible(False)
+            self.btn_quick_from_receptura.setVisible(False)
             self.btn_quick_remove.setVisible(False)
             self.btn_quick_export_pdf.setVisible(False)
             self._set_editor_enabled(True)
@@ -1361,6 +1562,9 @@ class TabWycena(QWidget):
                 self.sp_quick_hours.setValue(0.0)
                 self.cb_quick_worker.setCurrentIndex(0)
                 self.sp_quick_montage.setValue(0.0)
+                self.tbl_quick_extras.blockSignals(True)
+                self.tbl_quick_extras.setRowCount(0)
+                self.tbl_quick_extras.blockSignals(False)
                 self.lab_quick_material.setText("0.00 zl")
                 self.lab_quick_rate.setText("0.00 zl/h")
                 self.lab_quick_rate_source.setText("wg wydatkow firmy")
@@ -1379,6 +1583,7 @@ class TabWycena(QWidget):
             idx = self.cb_quick_worker.findData(str(adj.get("worker", "") or ""))
             self.cb_quick_worker.setCurrentIndex(idx if idx >= 0 else 0)
             self.sp_quick_montage.setValue(float(adj.get("montage", 0.0) or 0.0))
+            self._load_quick_extras_to_table(list(adj.get("extras", []) or []))
             quick_totals = self._compute_quick_totals(
                 material_value=float(row.get("sale_total", 0.0) or 0.0),
                 margin_percent=float(row.get("margin_percent", 0.0) or 0.0),
@@ -1414,10 +1619,72 @@ class TabWycena(QWidget):
             "hours": float(self.sp_quick_hours.value()),
             "worker": str(self.cb_quick_worker.currentData() or ""),
             "montage": float(self.sp_quick_montage.value()),
+            "extras": self._read_quick_extras_from_table(),
         }
         self._refresh_table()
         self._select_quick_row_by_id(quick_id)
         self._refresh_quick_adjustment_panel()
+
+    # ── USLUGI DODATKOWE helpers ───────────────────────────────────────────
+
+    def _read_quick_extras_from_table(self) -> list[dict[str, object]]:
+        extras: list[dict[str, object]] = []
+        for r in range(self.tbl_quick_extras.rowCount()):
+            desc_item = self.tbl_quick_extras.item(r, 0)
+            amt_item = self.tbl_quick_extras.item(r, 1)
+            desc = str(desc_item.text() if desc_item else "").strip()
+            try:
+                amount = float(
+                    (amt_item.text() if amt_item else "0")
+                    .replace(",", ".")
+                    .strip() or "0"
+                )
+            except Exception:
+                amount = 0.0
+            extras.append({"desc": desc, "amount": amount})
+        return extras
+
+    def _load_quick_extras_to_table(self, extras: list[dict]) -> None:
+        self.tbl_quick_extras.blockSignals(True)
+        try:
+            self.tbl_quick_extras.setRowCount(0)
+            for e in extras:
+                if not isinstance(e, dict):
+                    continue
+                r = self.tbl_quick_extras.rowCount()
+                self.tbl_quick_extras.insertRow(r)
+                self.tbl_quick_extras.setItem(r, 0, QTableWidgetItem(str(e.get("desc", "") or "")))
+                self.tbl_quick_extras.setItem(r, 1, QTableWidgetItem(f"{float(e.get('amount', 0.0) or 0.0):.2f}"))
+        finally:
+            self.tbl_quick_extras.blockSignals(False)
+
+    def _on_quick_extras_item_changed(self) -> None:
+        if not self._is_quick_adjustment_refresh:
+            self._on_quick_adjustment_changed()
+
+    def _on_quick_extra_add(self) -> None:
+        r = self.tbl_quick_extras.rowCount()
+        self.tbl_quick_extras.blockSignals(True)
+        self.tbl_quick_extras.insertRow(r)
+        self.tbl_quick_extras.setItem(r, 0, QTableWidgetItem(""))
+        self.tbl_quick_extras.setItem(r, 1, QTableWidgetItem("0.00"))
+        self.tbl_quick_extras.blockSignals(False)
+        self.tbl_quick_extras.editItem(self.tbl_quick_extras.item(r, 0))
+        self._on_quick_adjustment_changed()
+
+    def _on_quick_extra_remove(self) -> None:
+        selected = self.tbl_quick_extras.selectedItems()
+        rows = sorted({i.row() for i in selected}, reverse=True)
+        if not rows:
+            last = self.tbl_quick_extras.rowCount() - 1
+            if last < 0:
+                return
+            rows = [last]
+        self.tbl_quick_extras.blockSignals(True)
+        for r in rows:
+            self.tbl_quick_extras.removeRow(r)
+        self.tbl_quick_extras.blockSignals(False)
+        self._on_quick_adjustment_changed()
 
     def _on_selection_changed(self) -> None:
         if self._mode() == "quick":
@@ -1759,7 +2026,15 @@ class TabWycena(QWidget):
         if not target_path:
             self.lab_profit_report.setText(report_line)
             return
-        Path(target_path).write_text(report_text, encoding="utf-8")
+        try:
+            Path(target_path).write_text(report_text, encoding="utf-8")
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Blad zapisu danych",
+                f"Nie udalo sie zapisac raportu rentownosci.\n\nSzczegoly: {exc}",
+            )
+            return
         self.lab_profit_report.setText(report_line)
         self._set_status(f"Zapisano raport rentownosci: {target_path}", ok=True)
 
@@ -2133,7 +2408,7 @@ class TabWycena(QWidget):
                 </div>
             </div>
 
-            <h2>📋 SZCZEGÓŁY MODUŁÓW</h2>
+            <h2>📋 SZCZEGӣY MODUŁÓW</h2>
             <table>
                 <tr>
                     <th style="width:90px;">Zdjecie</th>
