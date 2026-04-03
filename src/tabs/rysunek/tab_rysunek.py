@@ -25,6 +25,7 @@ from src.app.app_settings import (
 from src.tabs.rysunek.drawing_settings_block import DrawingSettingsBlock
 from src.tabs.rysunek.default_materials_block import DefaultMaterialsBlock
 from src.widgets.network_settings import NetworkSettingsWidget
+from src.storage.catalog_store_json import CatalogStoreJson
 
 
 class TabRysunek(QWidget):
@@ -101,7 +102,11 @@ class TabRysunek(QWidget):
         mat_title.setObjectName("rysunek_title")
         content_layout.addWidget(mat_title)
 
-        self.default_materials = DefaultMaterialsBlock(self)
+        try:
+            _catalog = CatalogStoreJson()
+        except Exception:
+            _catalog = None
+        self.default_materials = DefaultMaterialsBlock(catalog=_catalog, parent=self)
         content_layout.addWidget(self.default_materials)
 
         # === SIEĆ (PRACA ZESPOŁOWA) ===

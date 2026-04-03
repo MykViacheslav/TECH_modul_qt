@@ -2,26 +2,29 @@
 DefaultMaterialsBlock — blok ustawien domyslnych materialow dla nowych modulow.
 
 Pozwala ustawic raz:
-- material korpusu (Plyta biala 18mm)
-- material frontu (Szary mat 16mm)
-- material polki (opcjonalnie, domyslnie = korpus)
-- material plecow (HDF 3mm)
+- material korpusu (boki, wiencce)
+- material frontu
+- material polki (puste = jak korpus)
+- material plecow
 - obrzeza korpusu i frontu
-- wysokosc nozek
-- typ laczenia korpusu
+- wysokosc nozek i typ laczenia korpusu
 
 Zapis / odczyt przez load_default_material_settings / save_default_material_settings.
 """
 from __future__ import annotations
 
-from PyQt6.QtCore import pyqtSignal
+from typing import Optional
+
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QFormLayout,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -34,56 +37,20 @@ from src.app.app_settings import (
 )
 
 
-# Predefiniowane profile materialowe (klucz: etykieta)
-MATERIAL_PROFILES: dict[str, dict] = {
-    "": "-- wlasne ustawienia --",
-    "kuchnia_biala": "Kuchnia biala (Plyta biala + HDF)",
-    "kuchnia_dab": "Kuchnia dab (Dab sonoma + HDF)",
-    "lazienka_szara": "Lazienka szara (Szary mat + HDF)",
-    "salon_antracyt": "Salon antracyt (Antracyt + HDF)",
-}
+# Predefiniowane profile (klucz: opis)
+MATERIAL_PROFILES: list[tuple[str, str]] = [
+    ("", "-- wlasne ustawienia --"),
+    ("kuchnia_biala",   "Kuchnia biala (Plyta biala + HDF)"),
+    ("kuchnia_dab",     "Kuchnia dab (Dab sonoma + HDF)"),
+    ("lazienka_szara",  "Lazienka szara (Szary mat + HDF)"),
+    ("salon_antracyt",  "Salon antracyt (Antracyt + HDF)"),
+]
 
 PROFILE_PRESETS: dict[str, dict] = {
-    "kuchnia_biala": {
-        "carcass_material_key": "plyta_biala",
-        "carcass_thickness_mm": 18.0,
-        "front_material_key": "plyta_biala",
-        "front_thickness_mm": 18.0,
-        "shelf_material_key": "",
-        "shelf_thickness_mm": 18.0,
-        "back_material_key": "hdf",
-        "back_thickness_mm": 3.0,
-    },
-    "kuchnia_dab": {
-        "carcass_material_key": "dab_sonoma",
-        "carcass_thickness_mm": 18.0,
-        "front_material_key": "dab_sonoma",
-        "front_thickness_mm": 18.0,
-        "shelf_material_key": "",
-        "shelf_thickness_mm": 18.0,
-        "back_material_key": "hdf",
-        "back_thickness_mm": 3.0,
-    },
-    "lazienka_szara": {
-        "carcass_material_key": "plyta_biala",
-        "carcass_thickness_mm": 18.0,
-        "front_material_key": "szary_mat",
-        "front_thickness_mm": 16.0,
-        "shelf_material_key": "",
-        "shelf_thickness_mm": 18.0,
-        "back_material_key": "hdf",
-        "back_thickness_mm": 3.0,
-    },
-    "salon_antracyt": {
-        "carcass_material_key": "plyta_biala",
-        "carcass_thickness_mm": 18.0,
-        "front_material_key": "antracyt_mat",
-        "front_thickness_mm": 18.0,
-        "shelf_material_key": "",
-        "shelf_thickness_mm": 18.0,
-        "back_material_key": "hdf",
-        "back_thickness_mm": 3.0,
-    },
+    "kuchnia_biala":  dict(carcass="PB18",      front="PB18",       back="HDF2.5", carcass_t=18.0, front_t=18.0, back_t=3.0),
+    "kuchnia_dab":    dict(carcass="dab_sonoma", front="dab_sonoma", back="HDF2.5", carcass_t=18.0, front_t=18.0, back_t=3.0),
+    "lazienka_szara": dict(carcass="PB18",       front="szary_mat",  back="HDF2.5", carcass_t=18.0, front_t=16.0, back_t=3.0),
+    "salon_antracyt": dict(carcass="PB18",       front="antracyt",   back="HDF2.5", carcass_t=18.0, front_t=18.0, back_t=3.0),
 }
 
 JOINT_TYPES: list[tuple[str, str]] = [
@@ -93,25 +60,75 @@ JOINT_TYPES: list[tuple[str, str]] = [
 ]
 
 
-def _spin(value: float, min_val: float, max_val: float, step: float = 1.0, suffix: str = " mm") -> QDoubleSpinBox:
+def _spin(value: float, mn: float, mx: float, step: float = 1.0) -> QDoubleSpinBox:
     sb = QDoubleSpinBox()
-    sb.setRange(min_val, max_val)
+    sb.setRange(mn, mx)
     sb.setSingleStep(step)
-    sb.setSuffix(suffix)
+    sb.setSuffix(" mm")
     sb.setDecimals(1)
     sb.setValue(value)
+    sb.setFixedWidth(90)
     return sb
 
 
+class _MaterialCombo(QWidget):
+    """QComboBox z materialami + fallback LineEdit gdy katalog jest pusty."""
+
+    def __init__(self, label: str, placeholder: str = "", parent=None) -> None:
+        super().__init__(parent)
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(4)
+
+        self.cb = QComboBox()
+        self.cb.setEditable(False)
+        self.cb.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self.le = QLineEdit()
+        self.le.setPlaceholderText(placeholder or label)
+        self.le.setFixedHeight(26)
+
+        lay.addWidget(self.cb, 1)
+        lay.addWidget(self.le, 1)
+
+        self._catalog_keys: list[str] = []
+        self._show_combo(False)
+
+    def populate(self, items: list[tuple[str, str]]) -> None:
+        """items: [(key, label), ...]"""
+        self.cb.clear()
+        self.cb.addItem("-- brak --", "")
+        for key, label in items:
+            self.cb.addItem(label, key)
+        self._catalog_keys = [k for k, _ in items]
+        has_items = bool(items)
+        self._show_combo(has_items)
+
+    def _show_combo(self, use_combo: bool) -> None:
+        self.cb.setVisible(use_combo)
+        self.le.setVisible(not use_combo)
+
+    def get_key(self) -> str:
+        if self.cb.isVisible():
+            return str(self.cb.currentData() or "")
+        return self.le.text().strip()
+
+    def set_key(self, key: str) -> None:
+        if self.cb.isVisible():
+            idx = self.cb.findData(key)
+            self.cb.setCurrentIndex(idx if idx >= 0 else 0)
+        else:
+            self.le.setText(key)
+
+
 class DefaultMaterialsBlock(QWidget):
-    """Panel ustawien domyslnych materialow i obrze zy."""
+    """Panel ustawien domyslnych materialow i obrze zy dla nowych modulow."""
 
     sig_saved = pyqtSignal()
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, catalog=None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._catalog = catalog
         self._settings = load_default_material_settings()
-        self._building = False
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -121,10 +138,11 @@ class DefaultMaterialsBlock(QWidget):
         grp_profile = QGroupBox("Profil materialowy (preset)")
         profile_lay = QHBoxLayout(grp_profile)
         self.cb_profile = QComboBox()
-        for key, label in MATERIAL_PROFILES.items():
+        for key, label in MATERIAL_PROFILES:
             self.cb_profile.addItem(label, key)
         self.btn_apply_profile = QPushButton("Zastosuj profil")
         self.btn_apply_profile.setFixedWidth(140)
+        self.btn_apply_profile.setToolTip("Autouzupelnia wszystkie pola ponizej")
         profile_lay.addWidget(QLabel("Profil:"))
         profile_lay.addWidget(self.cb_profile, 1)
         profile_lay.addWidget(self.btn_apply_profile)
@@ -133,78 +151,64 @@ class DefaultMaterialsBlock(QWidget):
         # ── MATERIALY ─────────────────────────────────────────────
         grp_mat = QGroupBox("Domyslne materialy")
         form = QFormLayout(grp_mat)
-        form.setLabelAlignment(__import__("PyQt6.QtCore", fromlist=["Qt"]).Qt.AlignmentFlag.AlignRight)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         form.setSpacing(6)
 
-        # Korpus
-        row_carcass = QHBoxLayout()
-        self.le_carcass_mat = _editable_line("plyta_biala")
-        self.sp_carcass_thick = _spin(18.0, 3.0, 50.0)
-        row_carcass.addWidget(self.le_carcass_mat, 1)
-        row_carcass.addWidget(QLabel("Grub.:"))
-        row_carcass.addWidget(self.sp_carcass_thick)
-        form.addRow("Korpus:", row_carcass)
+        self.mat_carcass = _MaterialCombo("Korpus", "np. PB18")
+        self.sp_carcass_t = _spin(18.0, 3.0, 50.0)
+        self.mat_front   = _MaterialCombo("Front",  "np. MDF19")
+        self.sp_front_t  = _spin(18.0, 3.0, 50.0)
+        self.mat_shelf   = _MaterialCombo("Polka",  "puste = jak korpus")
+        self.sp_shelf_t  = _spin(18.0, 3.0, 50.0)
+        self.mat_back    = _MaterialCombo("Plecy",  "np. HDF2.5")
+        self.sp_back_t   = _spin(3.0, 1.0, 18.0)
 
-        # Front
-        row_front = QHBoxLayout()
-        self.le_front_mat = _editable_line("szary_mat")
-        self.sp_front_thick = _spin(16.0, 3.0, 50.0)
-        row_front.addWidget(self.le_front_mat, 1)
-        row_front.addWidget(QLabel("Grub.:"))
-        row_front.addWidget(self.sp_front_thick)
-        form.addRow("Front:", row_front)
+        def _row(mat_widget, spin_widget) -> QHBoxLayout:
+            hl = QHBoxLayout()
+            hl.addWidget(mat_widget, 1)
+            hl.addWidget(QLabel("Gr.:"))
+            hl.addWidget(spin_widget)
+            return hl
 
-        # Polka
-        row_shelf = QHBoxLayout()
-        self.le_shelf_mat = _editable_line("")
-        self.le_shelf_mat.setPlaceholderText("puste = jak korpus")
-        self.sp_shelf_thick = _spin(18.0, 3.0, 50.0)
-        row_shelf.addWidget(self.le_shelf_mat, 1)
-        row_shelf.addWidget(QLabel("Grub.:"))
-        row_shelf.addWidget(self.sp_shelf_thick)
-        form.addRow("Polka:", row_shelf)
-
-        # Plecy
-        row_back = QHBoxLayout()
-        self.le_back_mat = _editable_line("hdf")
-        self.sp_back_thick = _spin(3.0, 1.0, 18.0)
-        row_back.addWidget(self.le_back_mat, 1)
-        row_back.addWidget(QLabel("Grub.:"))
-        row_back.addWidget(self.sp_back_thick)
-        form.addRow("Plecy:", row_back)
-
+        form.addRow("Korpus:", _row(self.mat_carcass, self.sp_carcass_t))
+        form.addRow("Front:", _row(self.mat_front, self.sp_front_t))
+        form.addRow("Polka:", _row(self.mat_shelf, self.sp_shelf_t))
+        form.addRow("Plecy:", _row(self.mat_back, self.sp_back_t))
         root.addWidget(grp_mat)
 
         # ── OBRZEZA ───────────────────────────────────────────────
         grp_eb = QGroupBox("Domyslne obrzeza")
         form_eb = QFormLayout(grp_eb)
         form_eb.setSpacing(6)
-        self.le_carcass_eb = _editable_line("")
-        self.le_carcass_eb.setPlaceholderText("klucz obrzeza z katalogu")
-        self.le_front_eb = _editable_line("")
-        self.le_front_eb.setPlaceholderText("klucz obrzeza z katalogu")
-        form_eb.addRow("Obrzeze korpusu:", self.le_carcass_eb)
-        form_eb.addRow("Obrzeze frontu:", self.le_front_eb)
+        self.eb_carcass = _MaterialCombo("Obrzeze korpusu", "klucz z katalogu")
+        self.eb_front   = _MaterialCombo("Obrzeze frontu",  "klucz z katalogu")
+        form_eb.addRow("Korpus:", self.eb_carcass)
+        form_eb.addRow("Front:", self.eb_front)
         root.addWidget(grp_eb)
 
         # ── MONTAZ ────────────────────────────────────────────────
         grp_mount = QGroupBox("Montaz i laczenia")
         form_mount = QFormLayout(grp_mount)
         form_mount.setSpacing(6)
-        self.sp_leg_height = _spin(100.0, 0.0, 300.0)
+        self.sp_leg = _spin(100.0, 0.0, 300.0)
         self.cb_joint = QComboBox()
         for key, label in JOINT_TYPES:
             self.cb_joint.addItem(label, key)
-        form_mount.addRow("Wys. nozek:", self.sp_leg_height)
+        form_mount.addRow("Wys. nozek:", self.sp_leg)
         form_mount.addRow("Typ laczenia:", self.cb_joint)
         root.addWidget(grp_mount)
 
-        # ── PRZYCISKI ─────────────────────────────────────────────
+        # ── STATUS + ZAPISZ ───────────────────────────────────────
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setFrameShadow(QFrame.Shadow.Sunken)
+        root.addWidget(sep)
+
         btn_row = QHBoxLayout()
         self.btn_save = QPushButton("Zapisz ustawienia materialow")
-        self.btn_save.setFixedHeight(34)
+        self.btn_save.setFixedHeight(32)
         self.lbl_status = QLabel("")
-        self.lbl_status.setStyleSheet("color: #22c55e; font-size: 11px;")
+        self.lbl_status.setStyleSheet("font-size:10px;")
         btn_row.addWidget(self.btn_save)
         btn_row.addWidget(self.lbl_status, 1)
         root.addLayout(btn_row)
@@ -215,15 +219,23 @@ class DefaultMaterialsBlock(QWidget):
         self.btn_apply_profile.clicked.connect(self._on_apply_profile)
         self.btn_save.clicked.connect(self._on_save)
 
-        # laduj biezace ustawienia
+        # wypelnij katalog jesli podany
+        if catalog is not None:
+            self._populate_from_catalog(catalog)
+
         self._load_to_ui()
 
     # ─────────────────────────────────────────────────────────────
     # PUBLIC
     # ─────────────────────────────────────────────────────────────
 
+    def set_catalog(self, catalog) -> None:
+        """Podaj CatalogStoreJson — wypelni QComboBox-y materialami i obrze zami."""
+        self._catalog = catalog
+        self._populate_from_catalog(catalog)
+        self._load_to_ui()
+
     def reload(self) -> None:
-        """Przeladuj z dysku."""
         self._settings = load_default_material_settings()
         self._load_to_ui()
 
@@ -234,85 +246,84 @@ class DefaultMaterialsBlock(QWidget):
     # PRIVATE
     # ─────────────────────────────────────────────────────────────
 
+    def _populate_from_catalog(self, catalog) -> None:
+        try:
+            mats = [(m.key, f"{m.name_pl} ({m.thickness_mm:g}mm)") for m in (catalog.list_materials() or [])]
+            for w in (self.mat_carcass, self.mat_front, self.mat_shelf, self.mat_back):
+                w.populate(mats)
+        except Exception:
+            pass
+
+        try:
+            ebs = [(e.key, e.name_pl) for e in (catalog.list_edgebands() or [])]
+            for w in (self.eb_carcass, self.eb_front):
+                w.populate(ebs)
+        except Exception:
+            pass
+
     def _load_to_ui(self) -> None:
         s = self._settings
-        self._building = True
-        try:
-            self.le_carcass_mat.setText(s.carcass_material_key)
-            self.sp_carcass_thick.setValue(s.carcass_thickness_mm)
-            self.le_front_mat.setText(s.front_material_key)
-            self.sp_front_thick.setValue(s.front_thickness_mm)
-            self.le_shelf_mat.setText(s.shelf_material_key)
-            self.sp_shelf_thick.setValue(s.shelf_thickness_mm)
-            self.le_back_mat.setText(s.back_material_key)
-            self.sp_back_thick.setValue(s.back_thickness_mm)
-            self.le_carcass_eb.setText(s.carcass_edgeband_key)
-            self.le_front_eb.setText(s.front_edgeband_key)
-            self.sp_leg_height.setValue(s.default_leg_height_mm)
-            # joint type
-            for i in range(self.cb_joint.count()):
-                if self.cb_joint.itemData(i) == s.default_carcass_joint:
-                    self.cb_joint.setCurrentIndex(i)
-                    break
-            # profil
-            for i in range(self.cb_profile.count()):
-                if self.cb_profile.itemData(i) == s.material_profile_key:
-                    self.cb_profile.setCurrentIndex(i)
-                    break
-        finally:
-            self._building = False
+        self.mat_carcass.set_key(s.carcass_material_key)
+        self.sp_carcass_t.setValue(s.carcass_thickness_mm)
+        self.mat_front.set_key(s.front_material_key)
+        self.sp_front_t.setValue(s.front_thickness_mm)
+        self.mat_shelf.set_key(s.shelf_material_key)
+        self.sp_shelf_t.setValue(s.shelf_thickness_mm)
+        self.mat_back.set_key(s.back_material_key)
+        self.sp_back_t.setValue(s.back_thickness_mm)
+        self.eb_carcass.set_key(s.carcass_edgeband_key)
+        self.eb_front.set_key(s.front_edgeband_key)
+        self.sp_leg.setValue(s.default_leg_height_mm)
+        for i in range(self.cb_joint.count()):
+            if self.cb_joint.itemData(i) == s.default_carcass_joint:
+                self.cb_joint.setCurrentIndex(i)
+                break
+        for i in range(self.cb_profile.count()):
+            if self.cb_profile.itemData(i) == s.material_profile_key:
+                self.cb_profile.setCurrentIndex(i)
+                break
 
     def _read_from_ui(self) -> DefaultMaterialSettings:
+        joint = self.cb_joint.currentData() or "type1"
+        profile = self.cb_profile.currentData() or ""
         return DefaultMaterialSettings(
-            carcass_material_key=self.le_carcass_mat.text().strip(),
-            carcass_thickness_mm=self.sp_carcass_thick.value(),
-            front_material_key=self.le_front_mat.text().strip(),
-            front_thickness_mm=self.sp_front_thick.value(),
-            shelf_material_key=self.le_shelf_mat.text().strip(),
-            shelf_thickness_mm=self.sp_shelf_thick.value(),
-            back_material_key=self.le_back_mat.text().strip(),
-            back_thickness_mm=self.sp_back_thick.value(),
-            carcass_edgeband_key=self.le_carcass_eb.text().strip(),
-            front_edgeband_key=self.le_front_eb.text().strip(),
-            default_leg_height_mm=self.sp_leg_height.value(),
-            default_carcass_joint=self.cb_joint.currentData() or "type1",
-            material_profile_key=self.cb_profile.currentData() or "",
+            carcass_material_key=self.mat_carcass.get_key(),
+            carcass_thickness_mm=self.sp_carcass_t.value(),
+            front_material_key=self.mat_front.get_key(),
+            front_thickness_mm=self.sp_front_t.value(),
+            shelf_material_key=self.mat_shelf.get_key(),
+            shelf_thickness_mm=self.sp_shelf_t.value(),
+            back_material_key=self.mat_back.get_key(),
+            back_thickness_mm=self.sp_back_t.value(),
+            carcass_edgeband_key=self.eb_carcass.get_key(),
+            front_edgeband_key=self.eb_front.get_key(),
+            default_leg_height_mm=self.sp_leg.value(),
+            default_carcass_joint=joint,
+            material_profile_key=profile,
         )
 
     def _on_apply_profile(self) -> None:
-        profile_key = self.cb_profile.currentData() or ""
-        preset = PROFILE_PRESETS.get(profile_key)
+        key = self.cb_profile.currentData() or ""
+        preset = PROFILE_PRESETS.get(key)
         if not preset:
-            self.lbl_status.setText("Brak presetu dla wybranego profilu.")
-            self.lbl_status.setStyleSheet("color: #f59e0b; font-size: 11px;")
+            self._set_status("Brak presetu dla tego profilu.", ok=False)
             return
-        self._building = True
-        try:
-            self.le_carcass_mat.setText(preset.get("carcass_material_key", ""))
-            self.sp_carcass_thick.setValue(preset.get("carcass_thickness_mm", 18.0))
-            self.le_front_mat.setText(preset.get("front_material_key", ""))
-            self.sp_front_thick.setValue(preset.get("front_thickness_mm", 18.0))
-            self.le_shelf_mat.setText(preset.get("shelf_material_key", ""))
-            self.sp_shelf_thick.setValue(preset.get("shelf_thickness_mm", 18.0))
-            self.le_back_mat.setText(preset.get("back_material_key", "hdf"))
-            self.sp_back_thick.setValue(preset.get("back_thickness_mm", 3.0))
-        finally:
-            self._building = False
-        self.lbl_status.setText(f"Zaladowano profil: {self.cb_profile.currentText()}")
-        self.lbl_status.setStyleSheet("color: #3b82f6; font-size: 11px;")
+        self.mat_carcass.set_key(preset.get("carcass", ""))
+        self.sp_carcass_t.setValue(float(preset.get("carcass_t", 18.0)))
+        self.mat_front.set_key(preset.get("front", ""))
+        self.sp_front_t.setValue(float(preset.get("front_t", 18.0)))
+        self.mat_back.set_key(preset.get("back", ""))
+        self.sp_back_t.setValue(float(preset.get("back_t", 3.0)))
+        self._set_status(f"Zaladowano: {self.cb_profile.currentText()}", ok=True)
 
     def _on_save(self) -> None:
         s = self._read_from_ui()
         save_default_material_settings(s)
         self._settings = s
-        self.lbl_status.setText("Zapisano ustawienia materialow.")
-        self.lbl_status.setStyleSheet("color: #22c55e; font-size: 11px;")
+        self._set_status("Zapisano.", ok=True)
         self.sig_saved.emit()
 
-
-def _editable_line(default_text: str) -> "QLineEditCompat":
-    from PyQt6.QtWidgets import QLineEdit
-    le = QLineEdit()
-    le.setText(default_text)
-    le.setFixedHeight(26)
-    return le
+    def _set_status(self, msg: str, ok: bool = True) -> None:
+        color = "#22c55e" if ok else "#f59e0b"
+        self.lbl_status.setStyleSheet(f"font-size:10px; color:{color};")
+        self.lbl_status.setText(msg)
