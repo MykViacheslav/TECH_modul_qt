@@ -1,12 +1,16 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 from PyQt6.QtCore import Qt, pyqtSignal, QRectF, QPointF, QEvent
-from PyQt6.QtGui import QBrush, QPen, QPainter, QColor, QPolygonF
+from PyQt6.QtGui import QBrush, QPen, QPainter, QColor, QPolygonF, QPalette
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QGraphicsView, QGraphicsScene, QGraphicsRectItem,
     QGraphicsSimpleTextItem, QGraphicsItem
 )
-from src.domain.module_models import ModuleDef
+from src.domain.module_models import (
+    GRAIN_HORIZONTAL,
+    GRAIN_VERTICAL,
+    ModuleDef,
+)
 from src.app.app_settings import DrawingSettings, load_drawing_settings
 from src.tabs.modul.module_defaults import normalize_rail_offsets_mm
 
@@ -67,6 +71,7 @@ class ViewsCanvas(QWidget):
         self._last_rail_offset_handle_key = ""
         self._viewport_drag_handle_key = ""
         self._show_front_zone_handle_labels = True
+        self._show_grain_overlay = True
 
     def _fit_scene_to_view(self) -> None:
         scene_rect = self.scene.sceneRect()
@@ -101,6 +106,12 @@ class ViewsCanvas(QWidget):
 
     def is_preview_mode(self) -> bool:
         return bool(getattr(self, "_preview_mode", False))
+
+    def set_show_grain_overlay(self, on: bool) -> None:
+        self._show_grain_overlay = bool(on)
+
+    def show_grain_overlay(self) -> bool:
+        return bool(getattr(self, "_show_grain_overlay", True))
 
     def set_active_front_zone_handle(self, handle_key: str) -> None:
         key = str(handle_key or "").strip()
@@ -804,6 +815,190 @@ class ViewsCanvas(QWidget):
                 dashed: bool = False,
                 z: float = 5.0,
         ) -> None:
+            def _base_part_key(raw_key: str) -> str:
+                out = str(raw_key or "").strip()
+                if "__" in out:
+                    out = out.split("__", 1)[0]
+                if "@" in out:
+                    out = out.split("@", 1)[0]
+                return out.strip()
+
+            def _resolve_part_grain(raw_key: str) -> str:
+                base_key = _base_part_key(raw_key)
+                if not base_key:
+                    return ""
+                if base_key.startswith("front_zone_handle") or base_key.startswith("rail_offset_handle"):
+                    return ""
+                part = (m.parts or {}).get(base_key)
+                if part is None:
+                    return ""
+                try:
+                    return str(part.effective_grain() or "")
+                except Exception:
+                    return ""
+
+            def _draw_grain_overlay(raw_rect: QRectF, grain_direction: str, z_value: float) -> None:
+                if not self.show_grain_overlay():
+                    return
+                gd = str(grain_direction or "").strip()
+                if gd not in (GRAIN_VERTICAL, GRAIN_HORIZONTAL):
+                    return
+                if raw_rect.width() < 6.0 or raw_rect.height() < 6.0:
+                    return
+
+                s = load_drawing_settings()
+                style = str(getattr(s, "grain_overlay_style", "wavy")).strip()
+                alpha = int(getattr(s, "grain_overlay_alpha", 80))
+                spacing = float(getattr(s, "grain_line_spacing_mm", 15.0))
+                image_path = str(getattr(s, "grain_image_path", "") or "").strip()
+
+                if style == "image" and image_path:
+                    _draw_image_grain(raw_rect, image_path, gd, z_value, alpha)
+                    return
+
+                base = self.palette().color(QPalette.ColorRole.Text)
+                color = QColor(base)
+                color.setAlpha(alpha)
+
+                pen = QPen(color)
+                pen.setWidth(1)
+                pen.setCosmetic(True)
+
+                inset = 1.2
+                w = raw_rect.width() - inset * 2
+                h = raw_rect.height() - inset * 2
+
+                if style == "lines":
+                    if gd == GRAIN_VERTICAL:
+                        step = max(8.0, min(spacing, w / 4.0))
+                        num_lines = int(w / step)
+                        for i in range(num_lines + 1):
+                            x = raw_rect.left() + inset + i * step
+                            if x > raw_rect.right() - inset:
+                                break
+                            line = self.scene.addLine(
+                                x, raw_rect.top() + inset,
+                                x, raw_rect.bottom() - inset,
+                                pen,
+                            )
+                            line.setZValue(float(z_value) + 0.15)
+                    else:
+                        step = max(8.0, min(spacing, h / 4.0))
+                        num_lines = int(h / step)
+                        for i in range(num_lines + 1):
+                            y = raw_rect.top() + inset + i * step
+                            if y > raw_rect.bottom() - inset:
+                                break
+                            line = self.scene.addLine(
+                                raw_rect.left() + inset, y,
+                                raw_rect.right() - inset, y,
+                                pen,
+                            )
+                            line.setZValue(float(z_value) + 0.15)
+                else:
+                    if gd == GRAIN_VERTICAL:
+                        step = max(8.0, min(spacing, w / 4.0))
+                        num_lines = int(w / step)
+                        
+                        for i in range(num_lines + 1):
+                            x_base = raw_rect.left() + inset + i * step
+                            if x_base > raw_rect.right() - inset:
+                                break
+                            
+                            points = []
+                            num_points = 20
+                            amp = 2.5 + (i % 3) * 0.8
+                            freq = 0.15 + (i % 2) * 0.05
+                            phase = (i % 4) * 0.3
+                            
+                            for j in range(num_points + 1):
+                                t = j / num_points
+                                y = raw_rect.top() + inset + t * h
+                                
+                                import math
+                                offset = amp * math.sin(t * math.pi * freq * 4 + phase)
+                                offset += (t - 0.5) * 1.5
+                                
+                                points.append(QPointF(x_base + offset, y))
+                            
+                            for j in range(len(points) - 1):
+                                line = self.scene.addLine(
+                                    points[j].x(), points[j].y(),
+                                    points[j + 1].x(), points[j + 1].y(),
+                                    pen,
+                                )
+                                line.setZValue(float(z_value) + 0.15)
+                    
+                    else:
+                        step = max(8.0, min(spacing, h / 4.0))
+                        num_lines = int(h / step)
+                        
+                        for i in range(num_lines + 1):
+                            y_base = raw_rect.top() + inset + i * step
+                            if y_base > raw_rect.bottom() - inset:
+                                break
+                            
+                            points = []
+                            num_points = 20
+                            amp = 2.5 + (i % 3) * 0.8
+                            freq = 0.15 + (i % 2) * 0.05
+                            phase = (i % 4) * 0.3
+                            
+                            for j in range(num_points + 1):
+                                t = j / num_points
+                                x = raw_rect.left() + inset + t * w
+                                
+                                import math
+                                offset = amp * math.sin(t * math.pi * freq * 4 + phase)
+                                offset += (t - 0.5) * 1.5
+                                
+                                points.append(QPointF(x, y_base + offset))
+                            
+                            for j in range(len(points) - 1):
+                                line = self.scene.addLine(
+                                    points[j].x(), points[j].y(),
+                                    points[j + 1].x(), points[j + 1].y(),
+                                    pen,
+                                )
+                                line.setZValue(float(z_value) + 0.15)
+
+            def _draw_image_grain(raw_rect: QRectF, image_path: str, gd: str, z_value: float, alpha: int) -> None:
+                from pathlib import Path
+                if not Path(image_path).exists():
+                    return
+                
+                try:
+                    pixmap = QPixmap(image_path)
+                    if pixmap.isNull():
+                        return
+                    
+                    target_w = raw_rect.width()
+                    target_h = raw_rect.height()
+                    
+                    scaled = pixmap.scaled(
+                        int(target_w), int(target_h),
+                        Qt.AspectRatioMode.IgnoreAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
+                    
+                    if gd == GRAIN_HORIZONTAL:
+                        transform = QTransform()
+                        transform.rotate(90)
+                        scaled = scaled.transformed(transform)
+                        scaled = scaled.scaled(
+                            int(target_h), int(target_w),
+                            Qt.AspectRatioMode.IgnoreAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation,
+                        )
+                    
+                    item = QGraphicsPixmapItem(scaled)
+                    item.setOffset(raw_rect.left(), raw_rect.top())
+                    item.setZValue(float(z_value) + 0.1)
+                    self.scene.addItem(item)
+                    
+                except Exception:
+                    pass
+
             sel = (key == selected_part_key) or (
                     selected_part_key == "front" and str(key).startswith("front__")
             )
@@ -828,6 +1023,8 @@ class ViewsCanvas(QWidget):
                 active_handle=active_handle,
             )
             self.scene.addItem(item)
+
+            _draw_grain_overlay(rect, _resolve_part_grain(key), z)
 
         def add_front_zone_label(
                 key: str,
@@ -1041,17 +1238,34 @@ class ViewsCanvas(QWidget):
             H - top_rail_presence_mm - bottom_rail_presence_mm - top_rail_offset_mm - bottom_rail_offset_mm,
         )
 
-        # segmenty: jesli brak pionow -> 1 segment = ca'e swiat'o
+        # segmenty + piony:
+        # szerokosc przegród bierze sie z realnej czesci (dims_mm["t"]),
+        # aby zmiana materialu byla widoczna fizycznie na rysunku.
+        divider_widths: list[float] = []
+        for i in range(1, div_n + 1):
+            key = div_keys[i - 1] if (i - 1) < len(div_keys) else f"divider_{i}"
+            try:
+                part_t = float(((parts.get(key) or {}).dims_mm or {}).get("t", t) or t)
+            except Exception:
+                part_t = float(t)
+            part_t = max(1.0, min(inner_w, part_t))
+            divider_widths.append(part_t)
+
         seg_w = inner_w
         if div_n > 0:
-            clear = max(0.0, inner_w - div_n * t)
+            clear = max(0.0, inner_w - sum(divider_widths))
             seg_w = clear / (div_n + 1)
+
+        divider_prefix: list[float] = [0.0]
+        for w_div in divider_widths:
+            divider_prefix.append(divider_prefix[-1] + float(w_div))
 
         # piony (klikane)
         for i in range(1, div_n + 1):
             key = div_keys[i - 1] if (i - 1) < len(div_keys) else f"divider_{i}"
-            x = inner_x + seg_w * i + t * (i - 1)
-            add_part_rect(key=key, rect=QRectF(x, inner_y, t, inner_h), dashed=False, z=6)
+            divider_w = divider_widths[i - 1] if (i - 1) < len(divider_widths) else float(t)
+            x = inner_x + seg_w * i + divider_prefix[i - 1]
+            add_part_rect(key=key, rect=QRectF(x, inner_y, divider_w, inner_h), dashed=False, z=6)
 
         # segment dla po'ek:
         # - gdy pionow brak -> po'ki w ca'ym swietle
@@ -1095,7 +1309,7 @@ class ViewsCanvas(QWidget):
                 shelf_by_slot[slot] = shelf_key
 
         for seg_side, seg_idx in segment_specs:
-            seg_x = inner_x + seg_w * seg_idx + t * seg_idx
+            seg_x = inner_x + seg_w * seg_idx + divider_prefix[min(seg_idx, len(divider_prefix) - 1)]
             seg_x = max(inner_x, min(inner_x + max(0.0, inner_w - seg_w), seg_x))
 
             for idx in range(1, shelf_n + 1):
@@ -1103,9 +1317,14 @@ class ViewsCanvas(QWidget):
                 if draw_both_sides:
                     fallback_key = f"shelf_{seg_side}_{idx}"
                 key = shelf_by_slot.get((seg_side, idx), fallback_key)
+                try:
+                    shelf_t = float(((parts.get(key) or {}).dims_mm or {}).get("t", t) or t)
+                except Exception:
+                    shelf_t = float(t)
+                shelf_t = max(1.0, min(inner_h, shelf_t))
                 y_center = inner_y + (idx / (shelf_n + 1)) * inner_h
-                y_top = max(inner_y, min(inner_y + inner_h - t, y_center - t / 2))
-                add_part_rect(key=key, rect=QRectF(seg_x, y_top, seg_w, t), dashed=False, z=6)
+                y_top = max(inner_y, min(inner_y + inner_h - shelf_t, y_center - shelf_t / 2.0))
+                add_part_rect(key=key, rect=QRectF(seg_x, y_top, seg_w, shelf_t), dashed=False, z=6)
 
         front_rect = _resolve_front_face_rect()
         if front_rect is not None:

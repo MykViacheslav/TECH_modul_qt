@@ -14,6 +14,19 @@ from PyQt6.QtWidgets import (
 )
 
 from src.storage.company_expenses_store_json import CompanyExpensesStoreJson, new_expense_id
+from src.ui.theme_utils import get_muted_color
+from src.ui.theme_utils import get_muted_color
+
+TABLE_TEXT_STYLE = """
+QTableWidget {
+    color: #1f2937;
+    selection-color: #0f172a;
+}
+QTableWidget::item:selected {
+    background: #dbeafe;
+    color: #0f172a;
+}
+"""
 
 
 DEFAULT_FIXED_EXPENSES: list[str] = [
@@ -54,11 +67,12 @@ class TabWydatkiStale(QWidget):
             "Stale koszty miesieczne firmy. Dodaj pozycje i kwoty. Na koncu widzisz sume razem.",
             self,
         )
-        subtitle.setStyleSheet("color:#555555;")
+        subtitle.setStyleSheet(f"color:{get_muted_color()};")
         subtitle.setWordWrap(True)
         root.addWidget(subtitle, 0, Qt.AlignmentFlag.AlignLeft)
 
         self.tbl = QTableWidget(0, 3, self)
+        self.tbl.setStyleSheet(TABLE_TEXT_STYLE)
         self.tbl.setHorizontalHeaderLabels(["ID", "Pozycja", "Kwota [zl]"])
         self.tbl.setAlternatingRowColors(True)
         self.tbl.verticalHeader().setVisible(False)

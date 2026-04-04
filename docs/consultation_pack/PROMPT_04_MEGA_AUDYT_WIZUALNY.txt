@@ -1,0 +1,20 @@
+﻿To jest pelny pakiet screenshotow naszej aplikacji TECH_modul.
+Priorytet: ocena wygladu i wygody uzycia dla zwyklego uzytkownika mobilnego.
+Analizuj tylko nasze zalaczniki.
+
+Zakres:
+- przejrzyj `SCREENS_FULL_INDEX.md` i screeny z `screens_full/`,
+- potraktuj to jako jeden produkt z wieloma zakladkami,
+- ocen spojnosc wizualna, czytelnosc i ergonomie.
+
+Oddaj wynik w formacie:
+1) TOP 12 najwazniejszych problemow UX/UI (P1/P2/P3)
+2) TOP 12 rekomendacji (konkret: co, gdzie, po co)
+3) Propozycja standardu ekranu mobilnego (header, tresc, akcje, onboarding)
+4) Co usunac ze stalego widoku, a co zostawic zawsze widoczne
+5) Krotki plan wdrozenia: Sprint 1 / Sprint 2 / Sprint 3
+
+Wymagania:
+- bez ogolnikow,
+- konkretne decyzje layoutowe,
+- propozycje mozliwe do wdrozenia od razu.

@@ -229,12 +229,17 @@ class TabBazaModul(QWidget):
                 border: 1px solid #d8dee8;
                 border-radius: 10px;
                 background: white;
+                color: #1f2937;
                 gridline-color: #e7ecf2;
                 alternate-background-color: #f8fbff;
             }
             QTreeWidget::item {
                 padding-top: 4px;
                 padding-bottom: 4px;
+            }
+            QTreeWidget::item:selected {
+                background: #dbeafe;
+                color: #0f172a;
             }
             QHeaderView::section {
                 background: #eef3f8;
@@ -291,8 +296,13 @@ class TabBazaModul(QWidget):
                 border: 1px solid #d8dee8;
                 border-radius: 8px;
                 background: white;
+                color: #1f2937;
                 gridline-color: #e7ecf2;
                 alternate-background-color: #f8fbff;
+            }
+            QTableWidget::item:selected {
+                background: #dbeafe;
+                color: #0f172a;
             }
             QHeaderView::section {
                 background: #eef3f8;

@@ -63,6 +63,7 @@ from src.storage.worker_store_json import WorkerStoreJson
 from src.tabs.sciana.dialog_load_assembly import LoadAssemblyDialog
 from src.ui.collapsible_block import CollapsibleBlock
 from src.ui.ui_polish import mark_ui_card, set_ui_variant
+from src.ui.theme_utils import get_muted_color
 
 
 SAVED_MODULE_MIME = "application/x-tech-modul-saved-module"
@@ -2591,7 +2592,7 @@ class TabSciana(QWidget):
         self.btn_clear_decor_labels = QPushButton("Wyczysc dekor")
         self.lab_material_preset_hint = QLabel("")
         self.lab_material_preset_hint.setWordWrap(True)
-        self.lab_material_preset_hint.setStyleSheet("color:#666666;")
+        self.lab_material_preset_hint.setStyleSheet(f"color:{get_muted_color()};")
         self.ed_client = QLineEdit()
         self.ed_client.setReadOnly(True)
         self.ed_order = QLineEdit()
@@ -2635,7 +2636,7 @@ class TabSciana(QWidget):
 
         self.lab_store_status = QLabel("")
         self.lab_store_status.setWordWrap(True)
-        self.lab_store_status.setStyleSheet("color:#666666;")
+        self.lab_store_status.setStyleSheet(f"color:{get_muted_color()};")
         form.addRow("", self.lab_store_status)
         set_ui_variant(self.btn_refresh_walls, "ghost")
         set_ui_variant(self.btn_apply_company_collection, "success")
@@ -2789,7 +2790,7 @@ class TabSciana(QWidget):
 
         self.lab_saved_hint = QLabel("Moduly sa pobierane z bazy zakladki Modul. Mozesz kliknac i przeciagnac modul na sciane.")
         self.lab_saved_hint.setWordWrap(True)
-        self.lab_saved_hint.setStyleSheet("color:#666666;")
+        self.lab_saved_hint.setStyleSheet(f"color:{get_muted_color()};")
         store_layout.addWidget(self.lab_saved_hint)
 
         self.block_store = CollapsibleBlock("Dodaj zapisany modul", panel)

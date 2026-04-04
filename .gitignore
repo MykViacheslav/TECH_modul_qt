@@ -19,6 +19,7 @@ htmlcov/
 # IDE
 .idea/
 .vscode/
+.claude/
 
 # Build / packaging
 build/
@@ -51,6 +52,40 @@ tools/*.zip
 pytest_*.txt
 pytest_full_output*.txt
 pytest_report*.xml
+*.log
+
+# Local generated outputs and backups
+backups/
+reports/
+review_data/
+test_screenshots/
+test_screenshots_review/
+test_screenshots_review_real/
+mockup/
+Tekstura/
+pliki pobrane/
+
+# Local notes / helper outputs (project root)
+ai_last_output.txt
+output.txt
+change.diff
+briefing.txt
+nul
+
+# Personal screenshots/photos not part of source
+WhatsApp*.jpeg
+Zrzut ekranu*.png
+
+# Secrets / credentials
+.env
+.env.*
+*.key
+*.key.pem
+*.p12
+*.pfx
+*.sqlite
+*.sqlite3
+*.db
 
 # OS
 Thumbs.db

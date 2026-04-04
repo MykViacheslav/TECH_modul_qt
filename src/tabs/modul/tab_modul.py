@@ -2,7 +2,7 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from typing import Dict, Optional, Tuple
-from PyQt6.QtCore import Qt, pyqtSignal, QRectF, QPointF, QTimer, QEvent
+from PyQt6.QtCore import Qt, pyqtSignal, QRectF, QPointF, QTimer, QEvent, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QBrush, QPen, QPainter, QColor, QPolygonF, QKeySequence, QShortcut
 from PyQt6.QtWidgets import *
 from src.ui.collapsible_block import CollapsibleBlock
@@ -88,6 +88,7 @@ class ZoneFrame(QFrame):
 
         lab = QLabel(title_pl)
         lab.setObjectName("zoneTitle")
+        self.zone_title_label = lab
         lay.addWidget(lab)
 
         self.body = QWidget(self)
@@ -229,11 +230,17 @@ class TabModul(QWidget):
         root.addWidget(split, 1)
 
         self.zone_left = ZoneFrame("left", "PARAMETRY", self, scrollable=True)
+        self.zone_left.zone_title_label.hide()      # bloki maja wlasne naglowki
+        self.zone_left.layout().setContentsMargins(4, 4, 4, 4)
         self.zone_center = ZoneFrame("center", "MODUL KONSTRUKTORSKI", self, scrollable=False)
+        self.zone_center.zone_title_label.hide()    # toolbar + dim_strip pelnia te role
+        self.zone_center.layout().setContentsMargins(0, 0, 0, 0)
         self.zone_right = ZoneFrame("right", "BOM I KOSZTY", self, scrollable=True)
+        self.zone_right.zone_title_label.hide()     # bloki maja wlasne naglowki
+        self.zone_right.layout().setContentsMargins(4, 4, 4, 4)
 
-        self.zone_left.setMinimumWidth(260)
-        self.zone_right.setMinimumWidth(260)
+        self.zone_left.setMinimumWidth(160)
+        self.zone_right.setMinimumWidth(210)
 
         split.addWidget(self.zone_left)
         split.addWidget(self.zone_center)
@@ -247,80 +254,115 @@ class TabModul(QWidget):
         self._apply_zone_splitter_sizes(self._zone_splitter_saved_sizes)
         self._zone_splitter.splitterMoved.connect(self._on_zone_splitter_moved)
 
-        # ---------- LEFT BLOCKS ----------
-        self.blk_dims = CollapsibleBlock("Wymiary modulu")
-        self.blk_dims.setObjectName("blk_dims")
-        self.dim = DimensionsBlock()
-        self.blk_dims.content_layout().addWidget(self.dim)
-        self.zone_left.body_lay.addWidget(self.blk_dims)
+        # ---------- LEFT BLOCKS — CORPUS-style 3-tab panel ----------
+        # blk_* = None dla kompatybilnosci z _apply_left_blocks_startup_visibility
+        self.blk_dims = self.blk_mat = self.blk_fhw = self.blk_joint = None
+        self.blk_shelves = self.blk_div = self.blk_ref = None
+        self.blk_tree = self.blk_vis = self.blk_sess = None
 
-        self.blk_mat = CollapsibleBlock("Materialy")
-        self.blk_mat.setObjectName("blk_mat")
-        self.mat = MaterialsBlock(self._catalog)
-        self.blk_mat.content_layout().addWidget(self.mat)
-        self.zone_left.body_lay.addWidget(self.blk_mat)
+        self.dim = DimensionsBlock()   # kontrolki reparentowane do dim_strip
 
-        self.blk_fhw = CollapsibleBlock("Front i wyposazenie")
-        self.blk_fhw.setObjectName("blk_fhw")
-        self.fhw = FrontHardwareBlock(self._catalog)
-        self.blk_fhw.content_layout().addWidget(self.fhw)
-        self.zone_left.body_lay.addWidget(self.blk_fhw)
-
-        self.blk_joint = CollapsibleBlock("Elementy korpusu")
-        self.blk_joint.setObjectName("blk_joint")
-        self.joint = CarcassJointsBlock()
-        self.blk_joint.content_layout().addWidget(self.joint)
-        self.zone_left.body_lay.addWidget(self.blk_joint)
-
-        self.blk_shelves = CollapsibleBlock("Polki")
-        self.blk_shelves.setObjectName("blk_shelves")
-        self.shelves = ShelvesBlock()
-        self.blk_shelves.content_layout().addWidget(self.shelves)
-        self.zone_left.body_lay.addWidget(self.blk_shelves)
-
-        self.blk_div = CollapsibleBlock("Przegrody")
-        self.blk_div.setObjectName("blk_div")
+        # Tworzymy widgety (bez CollapsibleBlock — zakladki sa kontenerem)
+        self.mat      = MaterialsBlock(self._catalog)
+        self.fhw      = FrontHardwareBlock(self._catalog)
+        self.joint    = CarcassJointsBlock()
+        self.shelves  = ShelvesBlock()
         self.dividers = DividersBlock()
-        self.blk_div.content_layout().addWidget(self.dividers)
-        self.zone_left.body_lay.addWidget(self.blk_div)
-
-        self.blk_ref = CollapsibleBlock("Punkt odniesienia")
-        self.blk_ref.setObjectName("blk_ref")
-        self.ref = ReferencePointBlock()
-        self.blk_ref.content_layout().addWidget(self.ref)
-        self.zone_left.body_lay.addWidget(self.blk_ref)
-
-        self.blk_tree = CollapsibleBlock("Lista formatek")
-        self.blk_tree.setObjectName("blk_tree")
-        self.blk_tree.setMaximumHeight(360)
-        self.tree = PartsTableBlock()
-        self.blk_tree.content_layout().addWidget(self.tree)
-        self.zone_left.body_lay.addWidget(self.blk_tree)
-
-        self.blk_vis = CollapsibleBlock("Widoczne elementy")
-        self.blk_vis.setObjectName("blk_vis")
-        self.blk_vis.setMaximumHeight(280)
-        self.vis = VisiblePartsBlock()
-        self.blk_vis.content_layout().addWidget(self.vis)
-        self.zone_left.body_lay.addWidget(self.blk_vis)
-
-        self.blk_sess = CollapsibleBlock("Sesja i widok")
-        self.blk_sess.setObjectName("blk_sess")
-        self.blk_sess.setMaximumHeight(260)
+        self.ref      = ReferencePointBlock()
+        self.tree     = PartsTableBlock()
+        self.vis      = VisiblePartsBlock()
         self.sessview = SessionAndViewBlock()
-        self.blk_sess.content_layout().addWidget(self.sessview)
-        self.zone_left.body_lay.addWidget(self.blk_sess)
 
-        # TECH:
-        # blok ustawien rysunku ma dalej istniec w TabModul dla synchronizacji,
-        # ale nie moze byc widoczny ani dodany do lewego layoutu "Modul".
+        # QTabWidget — CORPUS-style: pionowy pasek zakładek po LEWEJ (West)
+        # Tab bar ~32px, treść obok — minimalny footprint
+        _SS_LEFT_TABS = """
+            QTabWidget::pane {
+                border: none;
+                border-left: 1px solid #e2e8f0;
+                background: transparent;
+            }
+            QTabBar {
+                background: #f1f5f9;
+            }
+            QTabBar::tab {
+                background: #f1f5f9;
+                color: #64748b;
+                border: none;
+                border-radius: 0px;
+                padding: 14px 6px;
+                margin: 0px;
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 0.05em;
+                min-height: 108px;
+                max-width: 34px;
+            }
+            QTabBar::tab:selected {
+                background: #ffffff;
+                color: #1d4ed8;
+                border-left: 3px solid #1d4ed8;
+            }
+            QTabBar::tab:hover:!selected {
+                background: #e2e8f0;
+                color: #1e293b;
+            }
+        """
+
+        def _make_scroll_tab(*widgets) -> QWidget:
+            """Opakowuje widgety w QScrollArea dla zakładki."""
+            container = QWidget()
+            vl = QVBoxLayout(container)
+            vl.setContentsMargins(4, 4, 4, 4)
+            vl.setSpacing(6)
+            for w in widgets:
+                vl.addWidget(w)
+            vl.addStretch(1)
+            sc = QScrollArea()
+            sc.setWidgetResizable(True)
+            sc.setFrameShape(QFrame.Shape.NoFrame)
+            sc.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            sc.setWidget(container)
+            return sc
+
+        # Kompaktowy blok sesji — 3 przyciski poziomo na dole listy
+        _sess_wrap = QWidget()
+        _sess_lay = QHBoxLayout(_sess_wrap)
+        _sess_lay.setContentsMargins(0, 0, 0, 0)
+        _sess_lay.setSpacing(4)
+        _sess_lay.addWidget(self.sessview.btn_set_default)
+        _sess_lay.addWidget(self.sessview.btn_clear_default)
+        _sess_lay.addWidget(self.sessview.btn_clear)
+
+        self.left_tabs = QTabWidget()
+        self.left_tabs.setStyleSheet(_SS_LEFT_TABS)
+        # CORPUS-style: zakładki PIONOWO po lewej stronie panelu
+        self.left_tabs.setTabPosition(QTabWidget.TabPosition.West)
+        self.left_tabs.setDocumentMode(True)
+
+        # Zakladka 1: Materialy — główna, najczesciej uzywana
+        # Tekst zakładki: pionowo (Qt obraca automatycznie przy West)
+        self.left_tabs.addTab(_make_scroll_tab(self.mat, self.fhw), "MAT")
+        # Zakladka 2: Opcje korpusu
+        self.left_tabs.addTab(
+            _make_scroll_tab(self.joint, self.shelves, self.dividers, self.ref),
+            "OPC"
+        )
+        # Zakladka 3: Lista formatek (pełna wysokość)
+        _tab_lista = QWidget()
+        _tab_lista_lay = QVBoxLayout(_tab_lista)
+        _tab_lista_lay.setContentsMargins(4, 4, 4, 4)
+        _tab_lista_lay.setSpacing(4)
+        _tab_lista_lay.addWidget(self.tree, 1)
+        _tab_lista_lay.addWidget(_sess_wrap, 0)
+        self.left_tabs.addTab(_tab_lista, "LST")
+
+        self.zone_left.body_lay.addWidget(self.left_tabs, 1)
+
+        # TECH: blok ustawien rysunku — ukryty, tylko do synchronizacji
         self.draw_settings = ExtractedDrawingSettingsBlock(self)
         self.draw_settings.hide()
 
-        # porzadek startowy lewej kolumny
-        self._apply_left_blocks_startup_visibility()
-
-        self.zone_left.body_lay.addStretch(1)
+        # _apply_left_blocks_startup_visibility jest teraz no-op (zakladki zastepuja akordeony)
 
         # ---------- CENTER ----------
         self.quick_bar = QFrame(self.zone_center)
@@ -379,6 +421,11 @@ class TabModul(QWidget):
             s = QFrame(); s.setFrameShape(QFrame.Shape.VLine)
             s.setStyleSheet(_SS_SEP); return s
 
+        # -- Przycisk zwijania lewego panelu (CORPUS-style) --
+        self.btn_q_toggle_left = _ico("<<", self._toggle_left_panel, "Zwiń / rozwiń panel lewy")
+        quick_lay.addWidget(self.btn_q_toggle_left)
+        quick_lay.addWidget(_sep())
+
         # -- Sekcja 1: Sesja --
         self.btn_q_new   = _pri("\u271a Nowy", self.start_new_module, "Nowy modul (Ctrl+N)")
         self.btn_q_clear = _ico("\u2715", self._on_clear_current_module, "Wyczysc formularz")
@@ -414,36 +461,204 @@ class TabModul(QWidget):
         quick_lay.addWidget(self.btn_q_receptura)
         quick_lay.addWidget(self.btn_q_focus_name)
         quick_lay.addWidget(self.btn_q_shortcuts)
+        self.chk_q_grain_overlay = QCheckBox("Pokaz strukture uslojenia")
+        self.chk_q_grain_overlay.setChecked(True)
+        self.chk_q_grain_overlay.setToolTip("Przelacz wizualna strukture uslojenia na formatkach")
+        self.chk_q_grain_overlay.setStyleSheet(
+            "QCheckBox{color:#cbd5e1;font-size:11px;font-weight:700;padding:0 8px;}"
+            "QCheckBox::indicator{width:14px;height:14px;border:1px solid #64748b;border-radius:3px;background:#0f172a;}"
+            "QCheckBox::indicator:checked{background:#1d4ed8;border-color:#60a5fa;}"
+        )
+        self.chk_q_grain_overlay.toggled.connect(self._on_toggle_grain_overlay)
+        quick_lay.addWidget(self.chk_q_grain_overlay)
+
+        self.cb_grain_style = QComboBox()
+        self.cb_grain_style.addItems(["Linie proste", "Linie faliste", "Tekstura obraz"])
+        self.cb_grain_style.setToolTip("Styl wizualizacji uslojenia")
+        self.cb_grain_style.setStyleSheet(
+            "QComboBox{color:#cbd5e1;background:#1e293b;font-size:11px;padding:2px 6px;"
+            "border:1px solid #334155;border-radius:4px;min-width:100px;}"
+            "QComboBox::drop-down{width:16px;border:none;}"
+            "QComboBox QAbstractItemView{color:#e2e8f0;background:#1e293b;selection-background:#334155;}"
+        )
+        self.cb_grain_style.setCurrentIndex(1)
+        self.cb_grain_style.currentIndexChanged.connect(self._on_grain_style_changed)
+        quick_lay.addWidget(self.cb_grain_style)
+
+        self.btn_load_texture = QPushButton("📁", self)
+        self.btn_load_texture.setToolTip("Wczytaj teksture drewna z pliku")
+        self.btn_load_texture.setStyleSheet(
+            "QPushButton{color:#cbd5e1;background:#1e293b;font-size:14px;padding:2px 6px;"
+            "border:1px solid #334155;border-radius:4px;min-width:28px;max-width:28px;}"
+            "QPushButton:hover{background:#334155;}"
+        )
+        self.btn_load_texture.clicked.connect(self._on_load_texture_clicked)
+        quick_lay.addWidget(self.btn_load_texture)
 
         quick_lay.addStretch(1)
+        # -- Przycisk zwijania prawego panelu --
+        self.btn_q_toggle_right = _ico(">>", self._toggle_right_panel, "Zwiń / rozwiń panel prawy")
+        quick_lay.addWidget(self.btn_q_toggle_right)
+
         self.zone_center.body_lay.addWidget(self.quick_bar, 0)
+
+        # ── DIM STRIP ─────────────────────────────────────────────────
+        # Kompaktowy pasek z nazwa/grupa modulu + wymiary L/H/W + offsety.
+        # Kontrolki sa reparentowane z DimensionsBlock — self.dim.sp_w itp.
+        # nadal dzialaja normalnie, tylko wyswietlaja sie tutaj.
+        # ──────────────────────────────────────────────────────────────
+        self.dim_strip = QFrame(self.zone_center)
+        self.dim_strip.setObjectName("modul_dim_strip")
+        self.dim_strip.setFixedHeight(42)
+        self.dim_strip.setStyleSheet(
+            "QFrame#modul_dim_strip{"
+            "background:#1e293b;border:none;"
+            "border-bottom:1px solid #334155;}"
+        )
+        _dlay = QHBoxLayout(self.dim_strip)
+        _dlay.setContentsMargins(12, 3, 12, 3)
+        _dlay.setSpacing(6)
+
+        # Jasniejsze kolory — CZYTELNE na ciemnym tle
+        _DS_LBL  = "QLabel{color:#e2e8f0;font-size:11px;font-weight:700;letter-spacing:0.03em;}"
+        _DS_UNIT = "QLabel{color:#94a3b8;font-size:10px;}"
+        _DS_LINE = (
+            "QLineEdit{background:#0f172a;color:#f8fafc;border:1px solid #475569;"
+            "border-radius:4px;padding:2px 8px;font-size:13px;font-weight:700;"
+            "min-width:130px;max-width:200px;}"
+            "QLineEdit:focus{border-color:#60a5fa;}"
+        )
+        _DS_COMBO = (
+            "QComboBox{background:#0f172a;color:#e2e8f0;border:1px solid #475569;"
+            "border-radius:4px;padding:2px 6px;font-size:11px;max-width:115px;}"
+            "QComboBox:focus{border-color:#60a5fa;}"
+            "QComboBox::drop-down{border:none;width:14px;}"
+            "QComboBox QAbstractItemView{background:#1e293b;color:#e2e8f0;"
+            "selection-background-color:#3b82f6;}"
+        )
+        _DS_SPIN = (
+            "QDoubleSpinBox{background:#0f172a;color:#f8fafc;border:1px solid #475569;"
+            "border-radius:4px;padding:2px 2px 2px 6px;font-size:13px;font-weight:700;"
+            "min-width:72px;max-width:80px;}"
+            "QDoubleSpinBox:focus{border-color:#60a5fa;}"
+            "QDoubleSpinBox::up-button,QDoubleSpinBox::down-button{width:14px;background:#334155;border:none;}"
+        )
+        _DS_SPIN_SM = (
+            "QDoubleSpinBox{background:#0f172a;color:#cbd5e1;border:1px solid #3b4a60;"
+            "border-radius:4px;padding:2px 2px 2px 5px;font-size:11px;font-weight:600;"
+            "min-width:60px;max-width:68px;}"
+            "QDoubleSpinBox:focus{border-color:#60a5fa;}"
+            "QDoubleSpinBox::up-button,QDoubleSpinBox::down-button{width:12px;background:#334155;border:none;}"
+        )
+        _DS_SEP = "QFrame{background:#334155;max-width:1px;min-width:1px;margin:6px 4px;}"
+
+        def _dlbl(t):
+            l = QLabel(t); l.setStyleSheet(_DS_LBL); return l
+
+        def _dunit():
+            l = QLabel("mm"); l.setStyleSheet(_DS_UNIT); return l
+
+        def _dsep():
+            s = QFrame()
+            s.setFrameShape(QFrame.Shape.VLine)
+            s.setStyleSheet(_DS_SEP)
+            return s
+
+        # --- Nazwa modulu ---
+        self.dim.ed_name.setStyleSheet(_DS_LINE)
+        self.dim.ed_name.setPlaceholderText("Nazwa modułu…")
+        _dlay.addWidget(_dlbl("NAZWA:"))
+        _dlay.addWidget(self.dim.ed_name)
+
+        # --- Grupa bazy ---
+        self.dim.cb_base_group.setStyleSheet(_DS_COMBO)
+        _dlay.addWidget(self.dim.cb_base_group)
+        _dlay.addWidget(_dsep())
+
+        # --- L / H / W ---
+        for _lbl_txt, _sp in [("L", self.dim.sp_w), ("H", self.dim.sp_h), ("W", self.dim.sp_d)]:
+            _sp.setStyleSheet(_DS_SPIN)
+            _sp.setSuffix("")          # bez "mm" — unit osobno
+            _dlay.addWidget(_dlbl(_lbl_txt + ":"))
+            _dlay.addWidget(_sp)
+            _dlay.addWidget(_dunit())
+
+        _dlay.addWidget(_dsep())
+
+        # --- Offsety wienca (mniejsze) ---
+        self.dim.sp_top_rail_offset.setStyleSheet(_DS_SPIN_SM)
+        self.dim.sp_top_rail_offset.setSuffix("")
+        self.dim.sp_bottom_rail_offset.setStyleSheet(_DS_SPIN_SM)
+        self.dim.sp_bottom_rail_offset.setSuffix("")
+
+        _dlay.addWidget(_dlbl("⬆:"))
+        _dlay.addWidget(self.dim.sp_top_rail_offset)
+        _dlay.addWidget(_dlbl("⬇:"))
+        _dlay.addWidget(self.dim.sp_bottom_rail_offset)
+        _dlay.addWidget(_dunit())
+        _dlay.addStretch(1)
+
+        self.zone_center.body_lay.addWidget(self.dim_strip, 0)
+        # ── koniec DIM STRIP ───────────────────────────────────────────
 
         self.canvas = ViewsCanvas()
         self.canvas.set_preview_mode(True)
+        if hasattr(self, "chk_q_grain_overlay"):
+            self.canvas.set_show_grain_overlay(bool(self.chk_q_grain_overlay.isChecked()))
         self.zone_center.body_lay.addWidget(self.canvas, 1)
 
-        # ---------- RIGHT ----------
-        blk_preview = CollapsibleBlock("Podglad modulu")
+        # ---------- RIGHT (CORPUS-style: pionowe zakladki, jedno okno na raz) ----------
         self.preview_mini = ModuleMiniPreview(self.zone_right)
         self.preview_mini.setMinimumHeight(240)
         self.preview_info = QLabel("-", self.zone_right)
         self.preview_info.setWordWrap(True)
         self.preview_info.setStyleSheet("font-weight:600; color:#213042;")
-        blk_preview.content_layout().addWidget(self.preview_mini)
-        blk_preview.content_layout().addWidget(self.preview_info)
-        self.zone_right.body_lay.addWidget(blk_preview, 0)
-
-        blk_edge = CollapsibleBlock("Oklejanie formatki")
         self.edge = EdgeBandingBlock(self._catalog)
-        blk_edge.content_layout().addWidget(self.edge)
-        self.zone_right.body_lay.addWidget(blk_edge, 1)
-
-        blk_bom = CollapsibleBlock("BOM i koszty")
         self.bom = BomBlock(self._catalog)
-        blk_bom.content_layout().addWidget(self.bom)
-        self.zone_right.body_lay.addWidget(blk_bom, 1)
 
-        self.zone_right.body_lay.addStretch(1)
+        _SS_RIGHT_TABS = """
+            QTabWidget::pane {
+                border: none;
+                border-left: 1px solid #e2e8f0;
+                background: transparent;
+            }
+            QTabBar {
+                background: #f1f5f9;
+            }
+            QTabBar::tab {
+                background: #f1f5f9;
+                color: #64748b;
+                border: none;
+                border-radius: 0px;
+                padding: 14px 6px;
+                margin: 0px;
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 0.05em;
+                min-height: 60px;
+                max-width: 28px;
+            }
+            QTabBar::tab:selected {
+                background: #ffffff;
+                color: #1d4ed8;
+                border-left: 3px solid #1d4ed8;
+            }
+            QTabBar::tab:hover:!selected {
+                background: #e2e8f0;
+                color: #1e293b;
+            }
+        """
+
+        self.right_tabs = QTabWidget()
+        self.right_tabs.setStyleSheet(_SS_RIGHT_TABS)
+        self.right_tabs.setTabPosition(QTabWidget.TabPosition.West)
+        self.right_tabs.setDocumentMode(True)
+        self.right_tabs.addTab(_make_scroll_tab(self.preview_mini, self.preview_info), "Podglad")
+        self.right_tabs.addTab(_make_scroll_tab(self.edge), "Oklejanie")
+        self.right_tabs.addTab(_make_scroll_tab(self.bom), "BOM i koszty")
+        self.right_tabs.setCurrentIndex(0)
+
+        self.zone_right.body_lay.addWidget(self.right_tabs, 1)
 
         # hooki (jesli masz)
         if hasattr(self, "_hook_signals"):
@@ -568,6 +783,52 @@ class TabModul(QWidget):
         if hasattr(self, "fhw") and hasattr(self.fhw, "chk_temp_hide_front"):
             now = bool(self.fhw.chk_temp_hide_front.isChecked())
             self.fhw.chk_temp_hide_front.setChecked(not now)
+
+    def _on_toggle_grain_overlay(self, checked: bool) -> None:
+        if hasattr(self, "canvas") and hasattr(self.canvas, "set_show_grain_overlay"):
+            self.canvas.set_show_grain_overlay(bool(checked))
+        if hasattr(self, "canvas") and hasattr(self.canvas, "render_module"):
+            self.canvas.render_module(
+                self._draft,
+                fit=False,
+                selected_part_key=getattr(self, "_selected_part_key", ""),
+            )
+
+    def _on_grain_style_changed(self, index: int) -> None:
+        from src.app.app_settings import save_drawing_settings, load_drawing_settings
+        s = load_drawing_settings()
+        styles = ["lines", "wavy", "image"]
+        style = styles[index] if index < len(styles) else "wavy"
+        s = replace(s, grain_overlay_style=style)
+        save_drawing_settings(s)
+        self._refresh_canvas_with_grain()
+
+    def _on_load_texture_clicked(self) -> None:
+        from PyQt6.QtWidgets import QFileDialog
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Wybierz teksture drewna",
+            "",
+            "Obrazy (*.png *.jpg *.jpeg *.bmp *.webp)",
+        )
+        if file_path:
+            from src.app.app_settings import save_drawing_settings, load_drawing_settings
+            s = load_drawing_settings()
+            s = replace(s, grain_overlay_style="image", grain_image_path=file_path)
+            save_drawing_settings(s)
+            self.cb_grain_style.setCurrentIndex(2)
+            self._refresh_canvas_with_grain()
+
+    def _refresh_canvas_with_grain(self) -> None:
+        if hasattr(self, "canvas") and self.canvas:
+            self.canvas.set_show_grain_overlay(True)
+            self.chk_q_grain_overlay.setChecked(True)
+            if hasattr(self.canvas, "render_module") and self._draft:
+                self.canvas.render_module(
+                    self._draft,
+                    fit=False,
+                    selected_part_key=getattr(self, "_selected_part_key", ""),
+                )
 
     def _open_shortcuts_dialog(self) -> None:
         dlg = QDialog(self)
@@ -712,33 +973,12 @@ class TabModul(QWidget):
 
     def _apply_left_blocks_startup_visibility(self) -> None:
         """
-        Ustawia spokojniejszy widok startowy zakladki "Modul".
-
-        Zostaja otwarte:
-        - Wymiary
-        - Materialy
-        - Fronty i okucia
-        - Laczenia korpusu
-
-        Startowo zwiniete:
-        - Po'ki
-        - Piony
-        - Punkt odniesienia
-        - Drzewo projektu
-        - Widoczne elementy
-        - Sesja i widok
+        Poprzednio ustawiala widocznosc blokow akordeonowych.
+        Teraz panel lewy uzywa QTabWidget — metoda jest no-op.
+        Startowo aktywna jest zakladka 0 (Materialy).
         """
-        self._set_collapsible_block_body_visible(getattr(self, "blk_dims", None), True)
-        self._set_collapsible_block_body_visible(getattr(self, "blk_mat", None), True)
-        self._set_collapsible_block_body_visible(getattr(self, "blk_fhw", None), True)
-        self._set_collapsible_block_body_visible(getattr(self, "blk_joint", None), True)
-
-        self._set_collapsible_block_body_visible(getattr(self, "blk_shelves", None), False)
-        self._set_collapsible_block_body_visible(getattr(self, "blk_div", None), False)
-        self._set_collapsible_block_body_visible(getattr(self, "blk_ref", None), False)
-        self._set_collapsible_block_body_visible(getattr(self, "blk_tree", None), False)
-        self._set_collapsible_block_body_visible(getattr(self, "blk_vis", None), False)
-        self._set_collapsible_block_body_visible(getattr(self, "blk_sess", None), False)
+        if hasattr(self, "left_tabs"):
+            self.left_tabs.setCurrentIndex(0)
 
     def _apply_edgeband_to_selected(self) -> None:
         keys = self.tree.selected_part_keys()
@@ -819,7 +1059,7 @@ class TabModul(QWidget):
         super().closeEvent(event)
 
     def _default_zone_splitter_sizes(self) -> list[int]:
-        return [360, 900, 360]
+        return [195, 1050, 255]
 
     def _normalize_zone_splitter_sizes(self, sizes) -> list[int]:
         fallback = list(getattr(self, "_zone_splitter_saved_sizes", self._default_zone_splitter_sizes()) or self._default_zone_splitter_sizes())
@@ -838,7 +1078,13 @@ class TabModul(QWidget):
         return out
 
     def _load_zone_splitter_sizes(self) -> list[int]:
-        return self._normalize_zone_splitter_sizes(load_modul_splitter_sizes(self._default_zone_splitter_sizes()))
+        sizes = self._normalize_zone_splitter_sizes(load_modul_splitter_sizes(self._default_zone_splitter_sizes()))
+        # Jesli lewy panel (sizes[0]) jest zapisany jako > 300px (stary layout),
+        # resetuj do nowych wartosci domyslnych.
+        if sizes and sizes[0] > 260:
+            sizes = self._default_zone_splitter_sizes()
+            save_modul_splitter_sizes(sizes)
+        return sizes
 
     def _apply_zone_splitter_sizes(self, sizes=None) -> None:
         if not hasattr(self, "_zone_splitter"):
@@ -861,6 +1107,81 @@ class TabModul(QWidget):
     def _on_zone_splitter_moved(self, _pos: int, _index: int) -> None:
         if hasattr(self, "_zone_splitter_save_timer"):
             self._zone_splitter_save_timer.start(180)
+
+    # ── CORPUS-style: animowane zwijanie lewego panelu ──────────────────
+    _left_panel_expanded: bool = True
+
+    def _toggle_left_panel(self) -> None:
+        """Animowane zwijanie/rozwijanie lewego panelu (jak w CORPUS)."""
+        if not hasattr(self, "zone_left"):
+            return
+
+        anim = QPropertyAnimation(self.zone_left, b"maximumWidth", self)
+        anim.setDuration(220)
+        anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
+
+        if self._left_panel_expanded:
+            # Chowamy — zapamiętaj bieżącą szerokość
+            self._left_panel_last_width = max(
+                self.zone_left.width(), 180
+            )
+            anim.setStartValue(self.zone_left.width())
+            anim.setEndValue(0)
+            anim.finished.connect(lambda: self.zone_left.setVisible(False))
+            self.btn_q_toggle_left.setText(">>")
+            self.btn_q_toggle_left.setToolTip("Rozwiń panel lewy")
+            self._left_panel_expanded = False
+        else:
+            # Pokazujemy — przywróć szerokość
+            target = getattr(self, "_left_panel_last_width", 210)
+            self.zone_left.setVisible(True)
+            self.zone_left.setMaximumWidth(0)
+            anim.setStartValue(0)
+            anim.setEndValue(target)
+            anim.finished.connect(
+                lambda: self.zone_left.setMaximumWidth(16777215)
+            )
+            self.btn_q_toggle_left.setText("<<")
+            self.btn_q_toggle_left.setToolTip("Zwiń panel lewy")
+            self._left_panel_expanded = True
+
+        anim.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
+
+    # ── CORPUS-style: zwijanie PRAWEGO panelu ────────────────────────────
+    _right_panel_expanded: bool = True
+
+    def _toggle_right_panel(self) -> None:
+        """Animowane zwijanie/rozwijanie prawego panelu (BOM i koszty)."""
+        if not hasattr(self, "zone_right"):
+            return
+
+        anim = QPropertyAnimation(self.zone_right, b"maximumWidth", self)
+        anim.setDuration(220)
+        anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
+
+        if self._right_panel_expanded:
+            self._right_panel_last_width = max(self.zone_right.width(), 200)
+            anim.setStartValue(self.zone_right.width())
+            anim.setEndValue(0)
+            anim.finished.connect(lambda: self.zone_right.setVisible(False))
+            self.btn_q_toggle_right.setText("<<")
+            self.btn_q_toggle_right.setToolTip("Rozwiń panel prawy")
+            self._right_panel_expanded = False
+        else:
+            target = getattr(self, "_right_panel_last_width", 260)
+            self.zone_right.setVisible(True)
+            self.zone_right.setMaximumWidth(0)
+            anim.setStartValue(0)
+            anim.setEndValue(target)
+            anim.finished.connect(
+                lambda: self.zone_right.setMaximumWidth(16777215)
+            )
+            self.btn_q_toggle_right.setText(">>")
+            self.btn_q_toggle_right.setToolTip("Zwiń panel prawy")
+            self._right_panel_expanded = True
+
+        anim.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
+    # ────────────────────────────────────────────────────────────────────
 
     def _run_startup_canvas_fit(self) -> None:
         """
@@ -942,6 +1263,11 @@ class TabModul(QWidget):
 
         # okleina ma osobny handler (nie przebudowuje czesci)
         self.edge.sig_changed.connect(self._on_edge_changed)
+        # przyciski "Zastosuj do zaznaczonych" / "Zastosuj do wszystkich półek"
+        if hasattr(self.edge, "sig_apply_to_selected"):
+            self.edge.sig_apply_to_selected.connect(self._apply_edgeband_to_selected)
+        if hasattr(self.edge, "sig_apply_to_all_shelves"):
+            self.edge.sig_apply_to_all_shelves.connect(self._apply_edgeband_to_all_shelves)
         if hasattr(self.bom, "sig_material_changed"):
             self.bom.sig_material_changed.connect(self._on_part_material_changed)
         if hasattr(self.bom, "sig_material_reset_requested"):
@@ -2025,6 +2351,16 @@ class TabModul(QWidget):
     def _normalize_part_key_for_selection(self, part_key: str) -> str:
         return normalize_part_key_for_model(part_key)
 
+    @staticmethod
+    def _normalize_part_key_for_visibility(part_key: str) -> str:
+        base_key = normalize_part_key_for_model(part_key)
+        key = str(base_key or "").strip().lower()
+        if key.startswith("shelf_") or key.startswith("shelf-"):
+            return "shelf"
+        if key.startswith("divider_") or key.startswith("divider-"):
+            return "divider"
+        return base_key
+
     def _default_material_key_for_part(self, part_key: str) -> str:
         group_key = get_material_group_for_part_key(part_key)
         materials = dict(getattr(self._draft, "materials", {}) or {})
@@ -2112,6 +2448,14 @@ class TabModul(QWidget):
             return
 
         part = self._draft.parts.get(base_key)
+        # Fallback: klucz moze byc numerowany np. "shelf_1", "shelf_2"
+        # gdy _selected_part_key to "shelf", szukamy pierwszego pasujacego
+        if part is None:
+            for k, p in self._draft.parts.items():
+                if k == base_key or k.startswith(base_key + "_") or k.startswith(base_key):
+                    part = p
+                    base_key = k
+                    break
         if part is None:
             return
 
@@ -2256,11 +2600,14 @@ class TabModul(QWidget):
         if not getattr(self, "_draft", None):
             return
         from dataclasses import replace as _dc_replace
+        model_key = self._normalize_part_key_for_visibility(part_key)
+        if not model_key:
+            return
         vp = set(getattr(self._draft, "visible_parts", set()) or set())
         if visible:
-            vp.add(part_key)
+            vp.add(model_key)
         else:
-            vp.discard(part_key)
+            vp.discard(model_key)
         try:
             self._draft = _dc_replace(self._draft, visible_parts=vp)
         except Exception:
@@ -2285,6 +2632,12 @@ class TabModul(QWidget):
             self._draft = _dc_replace(self._draft, parts=parts)
         except Exception:
             return
+        if hasattr(self, "canvas") and hasattr(self.canvas, "render_module"):
+            self.canvas.render_module(
+                self._draft,
+                fit=False,
+                selected_part_key=getattr(self, "_selected_part_key", ""),
+            )
         if hasattr(self, "_session_save_request"):
             self._session_save_request()
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -28,6 +29,7 @@ from PyQt6.QtWidgets import (
 )
 
 from src.app.app_settings import load_table_column_widths, save_table_column_widths
+from src.app.app_settings import load_ui_theme_settings
 from src.domain.client_models import ClientDef
 from src.domain.assembly_models import FurnitureAssemblyDef
 from src.domain.order_models import OrderDef
@@ -46,10 +48,26 @@ from src.tabs.modul.dialog_catalog_editor import CatalogEditorDialog
 ORDER_STATUS_ITEMS: tuple[str, ...] = (
     "Nowe",
     "Wycena",
+    "Wycena szybka",
+    "Wycena gotowa",
+    "Oczekiwanie na klienta",
+    "Wstrzymane",
+    "Zaakceptowane",
+    "Zakup materialow",
     "W produkcji",
+    "Lakiernia",
+    "Montaz",
+    "Poprawki",
     "Gotowe",
+    "Zamkniete",
     "Zakonczone",
+    "Anulowane",
 )
+
+ORDER_STATUS_FILTER_ALL = "Wszystkie"
+ORDER_WORKER_FILTER_ALL = "Wszyscy"
+
+_ORDER_CLOSED_STATUSES = {"Zakonczone", "Anulowane"}
 
 
 class TabBazy(QWidget):
@@ -72,6 +90,21 @@ class TabBazy(QWidget):
         catalog: CatalogStoreJson | None = None,
     ) -> None:
         super().__init__(parent)
+        theme = load_ui_theme_settings()
+        self._is_tech = str(theme.motif or "").strip().lower() == "tech" and str(theme.mode or "").strip().lower() == "night"
+        self._colors = {
+            "title": "#e8efff" if self._is_tech else "#1f2937",
+            "section_bg": "#111b30" if self._is_tech else "#fffdf8",
+            "section_border": "#2a4368" if self._is_tech else "#e6d9c8",
+            "section_head": "#dbe9ff" if self._is_tech else "#2f241b",
+            "section_sub": "#9bb0cd" if self._is_tech else "#6b5b4b",
+            "stat_bg": "#15253f" if self._is_tech else "#f7efe2",
+            "stat_border": "#2e4b78" if self._is_tech else "#e2d2bc",
+            "stat_title": "#9cb7dc" if self._is_tech else "#80684f",
+            "stat_value": "#f2f7ff" if self._is_tech else "#2f241b",
+            "muted": "#9bb0cd" if self._is_tech else "#666666",
+        }
+        self._status_style = f"color:{self._colors['muted']};"
 
         self._module_store = module_store if module_store is not None else ModuleStoreJson()
         self._wall_store = wall_store if wall_store is not None else WallStoreJson()
@@ -89,7 +122,7 @@ class TabBazy(QWidget):
         root.setSpacing(8)
 
         title = QLabel("BAZY")
-        title.setStyleSheet("font-weight:700;")
+        title.setStyleSheet(f"font-weight:700; color:{self._colors['title']};")
         root.addWidget(title)
 
         self.tabs = QTabWidget(self)
@@ -124,13 +157,17 @@ class TabBazy(QWidget):
                 self.ed_client_id.setFocus()
         return opened
 
-    def open_orders_tab(self, clear_form: bool = False) -> bool:
+    def open_orders_tab(self, clear_form: bool = False, focus_code: str = "") -> bool:
         opened = self._open_subtab_by_title("Zamowienia")
         if opened:
+            if focus_code:
+                self._clear_order_filters(reload=False)
             self._reload_orders_tab()
             if clear_form:
                 self._clear_order_form()
                 self.ed_order_code.setFocus()
+            elif focus_code:
+                self._select_order_by_code(focus_code)
         return opened
 
     def open_workers_tab(self, clear_form: bool = False) -> bool:
@@ -151,8 +188,8 @@ class TabBazy(QWidget):
         box = QFrame(self)
         box.setStyleSheet(
             "QFrame {"
-            " background:#fffdf8;"
-            " border:1px solid #e6d9c8;"
+            f" background:{self._colors['section_bg']};"
+            f" border:1px solid {self._colors['section_border']};"
             " border-radius:12px;"
             "}"
         )
@@ -161,12 +198,12 @@ class TabBazy(QWidget):
         layout.setSpacing(8)
 
         head = QLabel(title, box)
-        head.setStyleSheet("font-size:16px; font-weight:800; color:#2f241b;")
+        head.setStyleSheet(f"font-size:16px; font-weight:800; color:{self._colors['section_head']};")
         layout.addWidget(head)
         if subtitle:
             sub = QLabel(subtitle, box)
             sub.setWordWrap(True)
-            sub.setStyleSheet("color:#6b5b4b;")
+            sub.setStyleSheet(f"color:{self._colors['section_sub']};")
             layout.addWidget(sub)
         return box, layout
 
@@ -174,8 +211,8 @@ class TabBazy(QWidget):
         box = QFrame(self)
         box.setStyleSheet(
             "QFrame {"
-            " background:#f7efe2;"
-            " border:1px solid #e2d2bc;"
+            f" background:{self._colors['stat_bg']};"
+            f" border:1px solid {self._colors['stat_border']};"
             " border-radius:12px;"
             "}"
         )
@@ -183,9 +220,9 @@ class TabBazy(QWidget):
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(2)
         lab_title = QLabel(title, box)
-        lab_title.setStyleSheet("font-size:11px; font-weight:700; color:#80684f;")
+        lab_title.setStyleSheet(f"font-size:11px; font-weight:700; color:{self._colors['stat_title']};")
         lab_value = QLabel("-", box)
-        lab_value.setStyleSheet("font-size:20px; font-weight:900; color:#2f241b;")
+        lab_value.setStyleSheet(f"font-size:20px; font-weight:900; color:{self._colors['stat_value']};")
         layout.addWidget(lab_title)
         layout.addWidget(lab_value)
         return box, lab_value
@@ -317,7 +354,7 @@ class TabBazy(QWidget):
 
         self.lab_modules_status = QLabel("")
         self.lab_modules_status.setWordWrap(True)
-        self.lab_modules_status.setStyleSheet("color:#666666;")
+        self.lab_modules_status.setStyleSheet(self._status_style)
         layout.addWidget(self.lab_modules_status)
 
         self.btn_new_module.clicked.connect(self._on_new_module)
@@ -383,7 +420,7 @@ class TabBazy(QWidget):
 
         self.lab_walls_status = QLabel("")
         self.lab_walls_status.setWordWrap(True)
-        self.lab_walls_status.setStyleSheet("color:#666666;")
+        self.lab_walls_status.setStyleSheet(self._status_style)
         layout.addWidget(self.lab_walls_status)
 
         self.btn_new_wall.clicked.connect(self._on_new_wall)
@@ -445,12 +482,12 @@ class TabBazy(QWidget):
 
         self.lab_assemblies_info = QLabel("-")
         self.lab_assemblies_info.setWordWrap(True)
-        self.lab_assemblies_info.setStyleSheet("color:#666666;")
+        self.lab_assemblies_info.setStyleSheet(self._status_style)
         layout.addWidget(self.lab_assemblies_info)
 
         self.lab_assemblies_status = QLabel("")
         self.lab_assemblies_status.setWordWrap(True)
-        self.lab_assemblies_status.setStyleSheet("color:#666666;")
+        self.lab_assemblies_status.setStyleSheet(self._status_style)
         layout.addWidget(self.lab_assemblies_status)
 
         self.btn_new_assembly.clicked.connect(self._on_new_assembly)
@@ -570,7 +607,7 @@ class TabBazy(QWidget):
 
         self.lab_clients_status = QLabel("")
         self.lab_clients_status.setWordWrap(True)
-        self.lab_clients_status.setStyleSheet("color:#666666;")
+        self.lab_clients_status.setStyleSheet(self._status_style)
         layout.addWidget(self.lab_clients_status)
 
         self.btn_client_add.clicked.connect(self._on_client_add)
@@ -584,6 +621,39 @@ class TabBazy(QWidget):
     def _build_orders_tab(self) -> QWidget:
         panel = QWidget(self)
         layout = QVBoxLayout(panel)
+
+        filters_row = QHBoxLayout()
+        filters_row.setSpacing(8)
+        filters_row.addWidget(QLabel("Status"), 0)
+        self.cb_order_status_filter = QComboBox(panel)
+        self.cb_order_status_filter.setMinimumWidth(170)
+        self.cb_order_status_filter.addItem(ORDER_STATUS_FILTER_ALL, ORDER_STATUS_FILTER_ALL)
+        for status in ORDER_STATUS_ITEMS:
+            self.cb_order_status_filter.addItem(status, status)
+        filters_row.addWidget(self.cb_order_status_filter, 0)
+
+        filters_row.addWidget(QLabel("Pracownik"), 0)
+        self.cb_order_worker_filter = QComboBox(panel)
+        self.cb_order_worker_filter.setMinimumWidth(190)
+        self.cb_order_worker_filter.addItem(ORDER_WORKER_FILTER_ALL, ORDER_WORKER_FILTER_ALL)
+        filters_row.addWidget(self.cb_order_worker_filter, 0)
+
+        filters_row.addWidget(QLabel("Szukaj"), 0)
+        self.ed_order_query_filter = QLineEdit(panel)
+        self.ed_order_query_filter.setPlaceholderText("kod / ID / nazwa / klient / adres")
+        filters_row.addWidget(self.ed_order_query_filter, 1)
+
+        self.btn_order_clear_filters = QPushButton("Wyczysc filtry", panel)
+        self._make_compact_button(self.btn_order_clear_filters, min_width=130, max_width=160)
+        filters_row.addWidget(self.btn_order_clear_filters, 0)
+        layout.addLayout(filters_row)
+
+        self.lab_order_filter_info = QLabel("0 / 0", panel)
+        self.lab_order_filter_info.setStyleSheet(self._status_style)
+        layout.addWidget(self.lab_order_filter_info)
+        self.lab_order_filter_active = QLabel("Filtry: brak", panel)
+        self.lab_order_filter_active.setStyleSheet(self._status_style)
+        layout.addWidget(self.lab_order_filter_active)
 
         form = QFormLayout()
         self.ed_order_code = QLineEdit()
@@ -626,7 +696,7 @@ class TabBazy(QWidget):
         layout.addLayout(btns)
 
         self.tbl_orders = QTableWidget(0, 5, panel)
-        self.tbl_orders.setHorizontalHeaderLabels(["Kod", "Klient", "Pracownik", "Status", "Adres"])
+        self.tbl_orders.setHorizontalHeaderLabels(["Kod", "Klient", "Status", "Pracownik", "Adres"])
         self.tbl_orders.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tbl_orders.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.tbl_orders.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -636,7 +706,7 @@ class TabBazy(QWidget):
 
         self.lab_orders_status = QLabel("")
         self.lab_orders_status.setWordWrap(True)
-        self.lab_orders_status.setStyleSheet("color:#666666;")
+        self.lab_orders_status.setStyleSheet(self._status_style)
         layout.addWidget(self.lab_orders_status)
 
         self.btn_order_add.clicked.connect(self._on_order_add)
@@ -644,6 +714,10 @@ class TabBazy(QWidget):
         self.btn_order_delete.clicked.connect(self._on_order_delete)
         self.btn_order_clear.clicked.connect(self._clear_order_form)
         self.tbl_orders.itemSelectionChanged.connect(self._sync_order_form_from_selection)
+        self.cb_order_status_filter.currentIndexChanged.connect(self._reload_orders_tab)
+        self.cb_order_worker_filter.currentIndexChanged.connect(self._reload_orders_tab)
+        self.ed_order_query_filter.textChanged.connect(self._reload_orders_tab)
+        self.btn_order_clear_filters.clicked.connect(self._clear_order_filters)
 
         return panel
 
@@ -821,7 +895,7 @@ class TabBazy(QWidget):
 
         self.lab_workers_status = QLabel("")
         self.lab_workers_status.setWordWrap(True)
-        self.lab_workers_status.setStyleSheet("color:#666666;")
+        self.lab_workers_status.setStyleSheet(self._status_style)
         layout.addWidget(self.lab_workers_status)
 
         self.btn_worker_add.clicked.connect(self._on_worker_add)
@@ -1516,6 +1590,53 @@ class TabBazy(QWidget):
         self.cb_order_worker.setCurrentText(current)
         self.cb_order_worker.blockSignals(False)
 
+    def _reload_order_filters(self, orders: list[OrderDef]) -> None:
+        current_status = str(self.cb_order_status_filter.currentData() or ORDER_STATUS_FILTER_ALL)
+        current_worker = str(self.cb_order_worker_filter.currentData() or ORDER_WORKER_FILTER_ALL)
+
+        statuses: list[str] = []
+        seen_status: set[str] = set()
+        for status in ORDER_STATUS_ITEMS:
+            if status not in seen_status:
+                statuses.append(status)
+                seen_status.add(status)
+        for order in orders:
+            status = str(getattr(order, "status", "") or "").strip()
+            if status and status not in seen_status:
+                statuses.append(status)
+                seen_status.add(status)
+
+        workers: list[str] = []
+        seen_workers: set[str] = set()
+        for worker in self._worker_store.list_workers():
+            name = str(getattr(worker, "name", "") or "").strip()
+            if name and name not in seen_workers:
+                workers.append(name)
+                seen_workers.add(name)
+        for order in orders:
+            worker_name = str(getattr(order, "worker_name", "") or "").strip()
+            if worker_name and worker_name not in seen_workers:
+                workers.append(worker_name)
+                seen_workers.add(worker_name)
+
+        self.cb_order_status_filter.blockSignals(True)
+        self.cb_order_status_filter.clear()
+        self.cb_order_status_filter.addItem(ORDER_STATUS_FILTER_ALL, ORDER_STATUS_FILTER_ALL)
+        for status in statuses:
+            self.cb_order_status_filter.addItem(status, status)
+        idx_status = self.cb_order_status_filter.findData(current_status)
+        self.cb_order_status_filter.setCurrentIndex(idx_status if idx_status >= 0 else 0)
+        self.cb_order_status_filter.blockSignals(False)
+
+        self.cb_order_worker_filter.blockSignals(True)
+        self.cb_order_worker_filter.clear()
+        self.cb_order_worker_filter.addItem(ORDER_WORKER_FILTER_ALL, ORDER_WORKER_FILTER_ALL)
+        for worker_name in workers:
+            self.cb_order_worker_filter.addItem(worker_name, worker_name)
+        idx_worker = self.cb_order_worker_filter.findData(current_worker)
+        self.cb_order_worker_filter.setCurrentIndex(idx_worker if idx_worker >= 0 else 0)
+        self.cb_order_worker_filter.blockSignals(False)
+
     def _on_client_add(self) -> None:
         if not str(self.ed_client_id.text().strip()):
             self.ed_client_id.setText(self._generate_next_client_id())
@@ -1563,12 +1684,116 @@ class TabBazy(QWidget):
             notes=str(self.ed_order_notes.toPlainText().strip()),
         )
 
+    @staticmethod
+    def _today_iso() -> str:
+        return datetime.now().strftime("%Y-%m-%d")
+
+    def _with_order_stage_dates(self, order: OrderDef, previous: OrderDef | None) -> OrderDef:
+        payload = order.to_dict()
+        prev_payload = previous.to_dict() if previous is not None else {}
+        for key in (
+            "date_wycena_end",
+            "date_produkcja_end",
+            "date_zakup_mat_end",
+            "date_montaz_end",
+            "date_poprawki_end",
+            "date_projekt_end",
+            "date_probki_end",
+        ):
+            payload[key] = str(payload.get(key, "") or prev_payload.get(key, "") or "")
+
+        today = self._today_iso()
+        status = str(payload.get("status", "") or "").strip()
+
+        if status == "Wycena gotowa":
+            if not str(payload.get("date_wycena", "") or "").strip():
+                payload["date_wycena"] = today
+            payload["date_wycena_end"] = today
+        elif status == "W produkcji":
+            if not str(payload.get("date_produkcja", "") or "").strip():
+                payload["date_produkcja"] = today
+        elif status == "Anulowane":
+            if str(payload.get("date_wycena", "") or "").strip():
+                payload["date_wycena_end"] = today
+            if str(payload.get("date_produkcja", "") or "").strip():
+                payload["date_produkcja_end"] = today
+            if str(payload.get("date_zakup_mat", "") or "").strip():
+                payload["date_zakup_mat_end"] = today
+            if str(payload.get("date_montaz", "") or "").strip():
+                payload["date_montaz_end"] = today
+            if str(payload.get("date_poprawki", "") or "").strip():
+                payload["date_poprawki_end"] = today
+            if str(payload.get("date_projekt", "") or "").strip():
+                payload["date_projekt_end"] = today
+            if str(payload.get("date_probki", "") or "").strip():
+                payload["date_probki_end"] = today
+
+        return OrderDef.from_dict(payload)
+
+    def _with_order_status_history(self, order: OrderDef, previous: OrderDef | None) -> OrderDef:
+        payload = order.to_dict()
+        history = list(getattr(previous, "status_history", []) or []) if previous is not None else []
+        to_status = str(getattr(order, "status", "") or "").strip()
+        from_status = str(getattr(previous, "status", "") or "").strip() if previous is not None else ""
+        should_append = previous is None or from_status != to_status
+        if should_append:
+            history.append(
+                {
+                    "changed_at": datetime.now().isoformat(timespec="seconds"),
+                    "from_status": from_status,
+                    "to_status": to_status,
+                    "changed_by": str(getattr(order, "worker_name", "") or "").strip(),
+                    "note": "",
+                }
+            )
+        payload["status_history"] = history
+        return OrderDef.from_dict(payload)
+
+    def _merge_order_with_existing(self, form_order: OrderDef, existing: OrderDef | None) -> OrderDef:
+        if existing is None:
+            return form_order
+        payload = existing.to_dict()
+        payload.update(
+            {
+                "code": form_order.code or existing.code,
+                "client_name": form_order.client_name,
+                "worker_name": form_order.worker_name,
+                "status": form_order.status,
+                "site_address": form_order.site_address,
+                "notes": form_order.notes,
+            }
+        )
+        return OrderDef.from_dict(payload)
+
     def _selected_order_code(self) -> str:
         rows = self.tbl_orders.selectionModel().selectedRows() if self.tbl_orders.selectionModel() is not None else []
         if not rows:
             return ""
         item = self.tbl_orders.item(int(rows[0].row()), 0)
         return item.text().strip() if item is not None else ""
+
+    def _select_order_by_code(self, code: str) -> bool:
+        wanted = str(code or "").strip()
+        if not wanted:
+            return False
+        for row in range(self.tbl_orders.rowCount()):
+            item = self.tbl_orders.item(row, 0)
+            if item is None:
+                continue
+            if str(item.text() or "").strip() == wanted:
+                self.tbl_orders.selectRow(row)
+                self._sync_order_form_from_selection()
+                return True
+        return False
+
+    def _clear_order_filters(self, reload: bool = True) -> None:
+        idx_status = self.cb_order_status_filter.findData(ORDER_STATUS_FILTER_ALL)
+        idx_worker = self.cb_order_worker_filter.findData(ORDER_WORKER_FILTER_ALL)
+        self.cb_order_status_filter.setCurrentIndex(idx_status if idx_status >= 0 else 0)
+        self.cb_order_worker_filter.setCurrentIndex(idx_worker if idx_worker >= 0 else 0)
+        self.ed_order_query_filter.clear()
+        if reload:
+            self._reload_orders_tab()
 
     def _clear_order_form(self) -> None:
         self._is_syncing_order_ui = True
@@ -1605,29 +1830,83 @@ class TabBazy(QWidget):
             self._is_syncing_order_ui = False
 
     def _reload_orders_tab(self) -> None:
-        orders = self._order_store.list_orders()
-        self.tbl_orders.setRowCount(len(orders))
-        for row, order in enumerate(orders):
-            values = [order.code, order.client_name, getattr(order, "worker_name", ""), order.status, order.site_address]
+        orders = list(self._order_store.list_orders())
+        self._reload_order_filters(orders)
+        status_filter = str(self.cb_order_status_filter.currentData() or ORDER_STATUS_FILTER_ALL).strip()
+        worker_filter = str(self.cb_order_worker_filter.currentData() or ORDER_WORKER_FILTER_ALL).strip()
+        query_filter = str(self.ed_order_query_filter.text() or "").strip().lower()
+
+        def _is_match(order: OrderDef) -> bool:
+            if status_filter != ORDER_STATUS_FILTER_ALL and str(getattr(order, "status", "") or "").strip() != status_filter:
+                return False
+            if worker_filter != ORDER_WORKER_FILTER_ALL and str(getattr(order, "worker_name", "") or "").strip() != worker_filter:
+                return False
+            if not query_filter:
+                return True
+            haystack = " | ".join(
+                [
+                    str(getattr(order, "code", "") or ""),
+                    str(getattr(order, "order_id", "") or ""),
+                    str(getattr(order, "order_name", "") or ""),
+                    str(getattr(order, "client_name", "") or ""),
+                    str(getattr(order, "worker_name", "") or ""),
+                    str(getattr(order, "site_address", "") or ""),
+                ]
+            ).lower()
+            return query_filter in haystack
+
+        filtered = [order for order in orders if _is_match(order)]
+        filtered.sort(
+            key=lambda order: (
+                1 if str(getattr(order, "status", "") or "").strip() in _ORDER_CLOSED_STATUSES else 0,
+                str(getattr(order, "code", "") or "").strip().lower(),
+            )
+        )
+
+        self.tbl_orders.setRowCount(len(filtered))
+        for row, order in enumerate(filtered):
+            values = [
+                str(getattr(order, "code", "") or ""),
+                str(getattr(order, "client_name", "") or ""),
+                str(getattr(order, "status", "") or ""),
+                str(getattr(order, "worker_name", "") or ""),
+                str(getattr(order, "site_address", "") or ""),
+            ]
             for col, value in enumerate(values):
                 self.tbl_orders.setItem(row, col, QTableWidgetItem(value))
+
+        active_filters: list[str] = []
+        if status_filter != ORDER_STATUS_FILTER_ALL:
+            active_filters.append(f"status: {status_filter}")
+        if worker_filter != ORDER_WORKER_FILTER_ALL:
+            active_filters.append(f"pracownik: {worker_filter}")
+        if query_filter:
+            active_filters.append(f"szukaj: {query_filter}")
+        self.lab_order_filter_active.setText("Filtry: brak" if not active_filters else "Filtry: " + " | ".join(active_filters))
+        self.lab_order_filter_info.setText(f"Wynik: {len(filtered)} / {len(orders)}")
         self._reload_order_worker_choices()
         self._resize_table_to_contents(self.tbl_orders)
 
     def _on_order_add(self) -> None:
-        order = self._order_from_form()
-        if not order.code:
+        form_order = self._order_from_form()
+        if not form_order.code:
             self._set_status(self.lab_orders_status, "Podaj kod zamowienia.", ok=False)
             return
+        order = self._with_order_stage_dates(form_order, previous=None)
+        order = self._with_order_status_history(order, previous=None)
         result = self._order_store.save_new(order)
         self._set_status(self.lab_orders_status, result.message_pl, ok=result.ok)
         self._reload_orders_tab()
 
     def _on_order_overwrite(self) -> None:
-        order = self._order_from_form()
-        if not order.code:
+        form_order = self._order_from_form()
+        if not form_order.code:
             self._set_status(self.lab_orders_status, "Podaj kod zamowienia.", ok=False)
             return
+        previous = self._order_store.get(form_order.code)
+        order = self._merge_order_with_existing(form_order, previous)
+        order = self._with_order_stage_dates(order, previous)
+        order = self._with_order_status_history(order, previous)
         result = self._order_store.overwrite(order)
         self._set_status(self.lab_orders_status, result.message_pl, ok=result.ok)
         self._reload_orders_tab()

@@ -133,8 +133,7 @@ def main() -> int:
         try:
             w = MainWindow()
             w.set_current_user(current_worker, current_role)
-            w.showNormal()  # Use showNormal instead of showMaximized
-            w.resize(1400, 900)  # Set reasonable default size
+            w.showMaximized()
         except Exception as e:
             show_error(
                 "Błąd uruchomienia",

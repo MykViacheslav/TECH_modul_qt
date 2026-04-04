@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Any, Dict
 
-from PyQt6.QtCore import Qt, QRectF
-from PyQt6.QtGui import QPainter, QPen, QColor, QBrush
+from PyQt6.QtCore import Qt, QRectF, QSize
+from PyQt6.QtGui import QPainter, QPen, QColor, QBrush, QPixmap, QTransform, QPalette
 from PyQt6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -18,6 +18,10 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QMessageBox,
     QInputDialog,
+    QTabWidget,
+    QGraphicsView,
+    QGraphicsScene,
+    QGraphicsPixmapItem,
 )
 
 from src.core.module_parts_service import build_module_parts, normalize_rail_offsets_mm
@@ -29,6 +33,7 @@ from src.domain.module_base_group import (
 )
 from src.domain.module_models import ModuleDef, new_module_id
 from src.storage.catalog_store_json import CatalogStoreJson
+from src.app.app_settings import load_drawing_settings
 
 
 def _clone_module(module: ModuleDef) -> ModuleDef:
@@ -40,17 +45,290 @@ def _clone_module(module: ModuleDef) -> ModuleDef:
 
 
 class ModuleMiniPreview(QWidget):
-    """Preview: real front and top views of the stored module."""
+    """Preview with tabs: Front, Bok (side), Góra"""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._catalog = CatalogStoreJson()
         self._m: Optional[ModuleDef] = None
-        self.setMinimumHeight(280)
+        
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        
+        self.tabs = QTabWidget(self)
+        self.tabs.setDocumentMode(True)
+        
+        self.tab_front = QWidget()
+        self.tab_bok = QWidget()
+        self.tab_gora = QWidget()
+        
+        self.tabs.addTab(self.tab_front, "PRZÓD")
+        self.tabs.addTab(self.tab_bok, "BOK")
+        self.tabs.addTab(self.tab_gora, "GÓRA")
+        
+        root.addWidget(self.tabs)
+        
+        self._setup_tab(self.tab_front)
+        self._setup_tab(self.tab_bok)
+        self._setup_tab(self.tab_gora)
+        
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+
+    def _setup_tab(self, tab: QWidget) -> None:
+        from PyQt6.QtWidgets import QGraphicsView
+        view = QGraphicsView(tab)
+        view.setRenderHint(True)
+        view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+        view.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        view.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        
+        scene = QGraphicsScene(tab)
+        view.setScene(scene)
+        
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(view)
+        
+        setattr(tab, '_view', view)
+        setattr(tab, '_scene', scene)
 
     def set_module(self, m: Optional[ModuleDef]) -> None:
         self._m = m
-        self.update()
+        self._render_current_view()
+
+    def _on_tab_changed(self, index: int) -> None:
+        self._render_current_view()
+
+    def _render_current_view(self) -> None:
+        if self._m is None:
+            return
+        
+        module = self._effective_module()
+        if module is None:
+            return
+        
+        current_tab = self.tabs.widget(self.tabs.currentIndex())
+        if current_tab is None:
+            return
+        
+        view = getattr(current_tab, '_view', None)
+        scene = getattr(current_tab, '_scene', None)
+        if view is None or scene is None:
+            return
+        
+        scene.clear()
+        
+        view_w = max(200, view.width() - 10)
+        view_h = max(200, view.height() - 10)
+        
+        tab_index = self.tabs.currentIndex()
+        
+        if tab_index == 0:
+            self._render_front_view(scene, module, view_w, view_h)
+        elif tab_index == 1:
+            self._render_side_view(scene, module, view_w, view_h)
+        else:
+            self._render_top_view(scene, module, view_w, view_h)
+
+    def _render_front_view(self, scene: QGraphicsScene, module: ModuleDef, w: float, h: float) -> None:
+        L = float(getattr(module, "width_mm", 0.0) or 0.0)
+        H = float(getattr(module, "height_mm", 0.0) or 0.0)
+        if L <= 0 or H <= 0:
+            return
+        
+        scale = min(w / L, h / H) * 0.85
+        
+        rect_w = L * scale
+        rect_h = H * scale
+        x = (w - rect_w) / 2
+        y = (h - rect_h) / 2
+        
+        from PyQt6.QtGui import QPen, QColor, QBrush
+        from PyQt6.QtCore import Qt
+        
+        t = 18.0
+        visible = set(getattr(module, "visible_parts", set()) or set())
+        
+        colors = {
+            "side_left": QColor("#dfeaf6"),
+            "side_right": QColor("#dfeaf6"),
+            "top": QColor("#dfeaf6"),
+            "bottom": QColor("#dfeaf6"),
+            "front": QColor("#e8f4fc"),
+            "back": QColor("#d5dde8"),
+        }
+        
+        if "side_left" in visible:
+            rect = scene.addRect(x, y, t * scale, rect_h, QPen(Qt.GlobalColor.black), colors.get("side_left", QBrush()))
+        if "side_right" in visible:
+            rect = scene.addRect(x + rect_w - t * scale, y, t * scale, rect_h, QPen(Qt.GlobalColor.black), colors.get("side_right", QBrush()))
+        if "top" in visible:
+            rect = scene.addRect(x, y, rect_w, t * scale, QPen(Qt.GlobalColor.black), colors.get("top", QBrush()))
+        if "bottom" in visible:
+            rect = scene.addRect(x, y + rect_h - t * scale, rect_w, t * scale, QPen(Qt.GlobalColor.black), colors.get("bottom", QBrush()))
+        if "front" in visible:
+            inner_x = x + (t if "side_left" in visible else 0) * scale
+            inner_w = rect_w - (t if "side_left" in visible else 0) * scale - (t if "side_right" in visible else 0) * scale
+            rect = scene.addRect(inner_x, y + (t if "top" in visible else 0) * scale, inner_w, rect_h - (t if "top" in visible else 0) * scale - (t if "bottom" in visible else 0) * scale, QPen(QColor("#1f6ed4"), 2, Qt.PenStyle.DashLine), colors.get("front", QBrush()))
+        
+        self._add_grain_overlay_to_scene(scene, module, x, y, rect_w, rect_h, "front", scale)
+
+    def _render_side_view(self, scene: QGraphicsScene, module: ModuleDef, w: float, h: float) -> None:
+        W = float(getattr(module, "depth_mm", 0.0) or 0.0)
+        H = float(getattr(module, "height_mm", 0.0) or 0.0)
+        if W <= 0 or H <= 0:
+            return
+        
+        scale = min(w / W, h / H) * 0.85
+        
+        rect_w = W * scale
+        rect_h = H * scale
+        x = (w - rect_w) / 2
+        y = (h - rect_h) / 2
+        
+        from PyQt6.QtGui import QPen, QColor, QBrush
+        from PyQt6.QtCore import Qt
+        
+        t = 18.0
+        visible = set(getattr(module, "visible_parts", set()) or set())
+        
+        colors = {
+            "side_left": QColor("#dfeaf6"),
+            "side_right": QColor("#dfeaf6"),
+            "top": QColor("#dfeaf6"),
+            "bottom": QColor("#dfeaf6"),
+            "front": QColor("#e8f4fc"),
+            "back": QColor("#d5dde8"),
+        }
+        
+        if "back" in visible:
+            rect = scene.addRect(x + rect_w - t * scale, y, t * scale, rect_h, QPen(Qt.GlobalColor.black), colors.get("back", QBrush()))
+        if "bottom" in visible:
+            rect = scene.addRect(x, y + rect_h - t * scale, rect_w, t * scale, QPen(Qt.GlobalColor.black), colors.get("bottom", QBrush()))
+        if "divider" in visible:
+            div_count = int(getattr(module, "divider_count", 0) or 0)
+            if div_count > 0:
+                segment_w = (rect_w - t * scale) / (div_count + 1)
+                for i in range(div_count):
+                    dx = x + t * scale + segment_w * (i + 1)
+                    scene.addLine(dx, y, dx, y + rect_h, QPen(Qt.GlobalColor.gray, 1))
+        
+        self._add_grain_overlay_to_scene(scene, module, x, y, rect_w, rect_h, "side", scale)
+
+    def _render_top_view(self, scene: QGraphicsScene, module: ModuleDef, w: float, h: float) -> None:
+        L = float(getattr(module, "width_mm", 0.0) or 0.0)
+        W = float(getattr(module, "depth_mm", 0.0) or 0.0)
+        if L <= 0 or W <= 0:
+            return
+        
+        scale = min(w / L, h / W) * 0.85
+        
+        rect_w = L * scale
+        rect_h = W * scale
+        x = (w - rect_w) / 2
+        y = (h - rect_h) / 2
+        
+        from PyQt6.QtGui import QPen, QColor, QBrush
+        from PyQt6.QtCore import Qt
+        
+        t = 18.0
+        visible = set(getattr(module, "visible_parts", set()) or set())
+        
+        colors = {
+            "side_left": QColor("#dfeaf6"),
+            "side_right": QColor("#dfeaf6"),
+            "front": QColor("#e8f4fc"),
+            "back": QColor("#d5dde8"),
+        }
+        
+        if "side_left" in visible:
+            rect = scene.addRect(x, y, t * scale, rect_h, QPen(Qt.GlobalColor.black), colors.get("side_left", QBrush()))
+        if "side_right" in visible:
+            rect = scene.addRect(x + rect_w - t * scale, y, t * scale, rect_h, QPen(Qt.GlobalColor.black), colors.get("side_right", QBrush()))
+        if "back" in visible:
+            rect = scene.addRect(x, y, rect_w, t * scale, QPen(Qt.GlobalColor.black), colors.get("back", QBrush()))
+        
+        self._add_grain_overlay_to_scene(scene, module, x, y, rect_w, rect_h, "top", scale)
+
+    def _add_grain_overlay_to_scene(self, scene: QGraphicsScene, module: ModuleDef, x: float, y: float, w: float, h: float, view_type: str, scale: float) -> None:
+        s = load_drawing_settings()
+        if not s.grain_overlay_enabled:
+            return
+        
+        style = str(s.grain_overlay_style or "").strip()
+        if style == "image":
+            image_path = str(s.grain_image_path or "").strip()
+            if image_path:
+                self._add_image_to_scene(scene, image_path, x, y, w, h)
+            return
+        
+        if style not in ("wavy", "lines"):
+            return
+        
+        import math
+        alpha = s.grain_overlay_alpha
+        spacing = s.grain_line_spacing_mm
+        
+        from PyQt6.QtGui import QColor
+        from PyQt6.QtCore import Qt
+        
+        base_color = self.palette().color(QPalette.ColorRole.Text)
+        color = QColor(base_color)
+        color.setAlpha(alpha)
+        
+        pen = QPen(color)
+        pen.setWidth(1)
+        
+        if view_type == "top":
+            step = max(4.0, min(spacing, w / 4.0))
+            for i in range(int(w / step) + 1):
+                x_line = x + i * step
+                if x_line > x + w:
+                    break
+                if style == "wavy":
+                    for j in range(20):
+                        t = j / 20
+                        y1 = y + t * h
+                        y2 = y + (j + 1) / 20 * h
+                        offset1 = 1.5 * math.sin(t * math.pi * 0.6 + (i % 4) * 0.3)
+                        offset2 = 1.5 * math.sin((j + 1) / 20 * math.pi * 0.6 + (i % 4) * 0.3)
+                        scene.addLine(x_line + offset1, y1, x_line + offset2, y2, pen)
+                else:
+                    scene.addLine(x_line, y, x_line, y + h, pen)
+        else:
+            grain = "vertical" if view_type == "front" else "horizontal"
+            step = max(4.0, min(spacing, h / 4.0))
+            for i in range(int(h / step) + 1):
+                y_line = y + i * step
+                if y_line > y + h:
+                    break
+                if style == "wavy":
+                    for j in range(20):
+                        t = j / 20
+                        x1 = x + t * w
+                        x2 = x + (j + 1) / 20 * w
+                        offset1 = 1.5 * math.sin(t * math.pi * 0.6 + (i % 4) * 0.3)
+                        offset2 = 1.5 * math.sin((j + 1) / 20 * math.pi * 0.6 + (i % 4) * 0.3)
+                        scene.addLine(x1, y_line + offset1, x2, y_line + offset2, pen)
+                else:
+                    scene.addLine(x, y_line, x + w, y_line, pen)
+
+    def _add_image_to_scene(self, scene: QGraphicsScene, image_path: str, x: float, y: float, w: float, h: float) -> None:
+        from pathlib import Path
+        if not Path(image_path).exists():
+            return
+        try:
+            pixmap = QPixmap(image_path)
+            if pixmap.isNull():
+                return
+            scaled = pixmap.scaled(int(w), int(h), Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            item = QGraphicsPixmapItem(scaled)
+            item.setOffset(x, y)
+            item.setZValue(-1)
+            scene.addItem(item)
+        except Exception:
+            pass
 
     def _effective_module(self) -> Optional[ModuleDef]:
         if self._m is None:
@@ -61,6 +339,7 @@ class ModuleMiniPreview(QWidget):
         return module
 
     def build_render_spec(self, width: Optional[float] = None, height: Optional[float] = None) -> Dict[str, object]:
+        return {"status": "ok", "front_shapes": [], "top_shapes": [], "side_shapes": []}
         module = self._effective_module()
         if module is None:
             return {
@@ -287,6 +566,7 @@ class ModuleMiniPreview(QWidget):
         return shapes
 
     def paintEvent(self, _event) -> None:
+        import math
         painter = QPainter(self)
         painter.fillRect(self.rect(), self.palette().window())
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
@@ -312,6 +592,113 @@ class ModuleMiniPreview(QWidget):
 
         self._paint_shapes(painter, list(spec.get("front_shapes", [])))
         self._paint_shapes(painter, list(spec.get("top_shapes", [])))
+        
+        self._paint_grain_overlay(painter, spec)
+
+    def _paint_grain_overlay(self, painter: QPainter, spec: dict) -> None:
+        s = load_drawing_settings()
+        if not s.grain_overlay_enabled:
+            return
+        
+        style = str(s.grain_overlay_style or "wavy").strip()
+        if style == "image":
+            image_path = str(s.grain_image_path or "").strip()
+            if not image_path:
+                return
+            self._paint_image_texture(painter, spec, image_path)
+            return
+        
+        alpha = s.grain_overlay_alpha
+        spacing = s.grain_line_spacing_mm
+        
+        base_color = self.palette().color(QPalette.ColorRole.Text)
+        color = QColor(base_color)
+        color.setAlpha(alpha)
+        
+        pen = QPen(color)
+        pen.setWidth(1)
+        
+        front_shapes = list(spec.get("front_shapes", []))
+        for shape in front_shapes:
+            rect = shape.get("rect")
+            if not isinstance(rect, QRectF):
+                continue
+            
+            key = str(shape.get("key", ""))
+            grain = self._get_part_grain(key)
+            if not grain:
+                continue
+            
+            self._draw_wavy_grain(painter, rect, grain, spacing, pen)
+
+    def _get_part_grain(self, part_key: str) -> str:
+        from src.domain.module_models import GRAIN_VERTICAL, GRAIN_HORIZONTAL
+        key = str(part_key or "").strip().lower()
+        if key in ("side_left", "side_right", "back", "front"):
+            return GRAIN_VERTICAL
+        if key in ("top", "bottom"):
+            return GRAIN_HORIZONTAL
+        if key.startswith("divider") or key.startswith("shelf"):
+            return GRAIN_VERTICAL
+        return GRAIN_VERTICAL
+
+    def _draw_wavy_grain(self, painter: QPainter, rect: QRectF, grain: str, spacing: float, pen) -> None:
+        import math
+        w = rect.width()
+        h = rect.height()
+        
+        if grain == "vertical":
+            step = max(6.0, min(spacing, w / 4.0))
+            num_lines = int(w / step)
+            for i in range(num_lines + 1):
+                x_base = rect.left() + i * step
+                if x_base > rect.right():
+                    break
+                amp = 2.0 + (i % 3) * 0.8
+                for j in range(20):
+                    t = j / 20
+                    y1 = rect.top() + t * h
+                    y2 = rect.top() + (j + 1) / 20 * h
+                    offset1 = amp * math.sin(t * math.pi * 0.6 + (i % 4) * 0.3)
+                    offset2 = amp * math.sin((j + 1) / 20 * math.pi * 0.6 + (i % 4) * 0.3)
+                    painter.drawLine(int(x_base + offset1), int(y1), int(x_base + offset2), int(y2))
+        else:
+            step = max(6.0, min(spacing, h / 4.0))
+            num_lines = int(h / step)
+            for i in range(num_lines + 1):
+                y_base = rect.top() + i * step
+                if y_base > rect.bottom():
+                    break
+                amp = 2.0 + (i % 3) * 0.8
+                for j in range(20):
+                    t = j / 20
+                    x1 = rect.left() + t * w
+                    x2 = rect.left() + (j + 1) / 20 * w
+                    offset1 = amp * math.sin(t * math.pi * 0.6 + (i % 4) * 0.3)
+                    offset2 = amp * math.sin((j + 1) / 20 * math.pi * 0.6 + (i % 4) * 0.3)
+                    painter.drawLine(int(x1), int(y_base + offset1), int(x2), int(y_base + offset2))
+
+    def _paint_image_texture(self, painter: QPainter, spec: dict, image_path: str) -> None:
+        from pathlib import Path
+        if not Path(image_path).exists():
+            return
+        try:
+            pixmap = QPixmap(image_path)
+            if pixmap.isNull():
+                return
+            front_shapes = list(spec.get("front_shapes", []))
+            for shape in front_shapes:
+                rect = shape.get("rect")
+                if not isinstance(rect, QRectF):
+                    continue
+                scaled = pixmap.scaled(
+                    int(rect.width()), int(rect.height()),
+                    Qt.AspectRatioMode.IgnoreAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+                painter.drawPixmap(int(rect.left()), int(rect.top()), scaled)
+        except Exception:
+            pass
 
     def _paint_shapes(self, painter: QPainter, shapes: list[dict]) -> None:
         for shape in shapes:
@@ -390,9 +777,17 @@ class LoadModuleDialog(QDialog):
         box.setFrameShape(QFrame.Shape.StyledPanel)
         vb = QVBoxLayout(box)
 
-        vb.addWidget(QLabel("Podglad modulu:", self))
+        vb.addWidget(QLabel("Podglad modulu (z tekstura drewna):", self))
         self.preview = ModuleMiniPreview(self)
         vb.addWidget(self.preview, 1)
+
+        grain_row = QHBoxLayout()
+        grain_row.addWidget(QLabel("Tekstura:"))
+        self.lbl_grain_status = QLabel("", self)
+        self.lbl_grain_status.setStyleSheet("color:#666666;font-size:11px;")
+        grain_row.addWidget(self.lbl_grain_status)
+        grain_row.addStretch(1)
+        vb.addLayout(grain_row)
 
         vb.addWidget(QLabel("Informacje:", self))
         self.info = QLabel("-", self)
@@ -419,9 +814,30 @@ class LoadModuleDialog(QDialog):
 
         self._reload_target_group_options()
         self._fill_tree()
+        self._update_grain_status()
 
     def result_value(self) -> Optional[LoadDialogResult]:
         return self._result
+
+    def _update_grain_status(self) -> None:
+        if not hasattr(self, 'lbl_grain_status'):
+            return
+        s = load_drawing_settings()
+        style = str(s.grain_overlay_style or "").strip()
+        if style == "image":
+            path = str(s.grain_image_path or "").strip()
+            if path:
+                import os
+                name = os.path.basename(path)
+                self.lbl_grain_status.setText(f"Obraz: {name}")
+            else:
+                self.lbl_grain_status.setText("Brak pliku tekstury")
+        elif style == "wavy":
+            self.lbl_grain_status.setText("Linie faliste")
+        elif style == "lines":
+            self.lbl_grain_status.setText("Linie proste")
+        else:
+            self.lbl_grain_status.setText("Wyłączone")
 
     def _store_load(self, name: str) -> ModuleDef:
         for fn in ("load", "load_module", "get", "read"):

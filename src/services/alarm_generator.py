@@ -22,6 +22,7 @@ class AlarmGenerator:
     SRC_SERVICE = "alarm_generator_service"
     SRC_MATERIAL = "alarm_generator_material"
     SRC_ORDER_INTEGRITY = "alarm_generator_order_integrity"
+    SRC_PRODUCION = "alarm_generator_production"
 
     def __init__(self, alarm_service: "AlarmService | None" = None) -> None:
         self._store = AlarmStoreJson()
@@ -82,6 +83,7 @@ class AlarmGenerator:
         self._generate_service_alarms()
         self._generate_material_alarms()
         self._generate_order_integrity_alarms()
+        self._generate_production_alarms()
         
         # Also run AlarmService checks if available
         if self._alarm_service is not None:
@@ -461,3 +463,91 @@ class AlarmGenerator:
             return [dict(x) for x in raw if isinstance(x, dict)] if isinstance(raw, list) else []
         except Exception:
             return []
+
+    def _generate_production_alarms(self) -> None:
+        self._clear_generated_source(self.SRC_PRODUCION)
+        orders = self._order_store.list_orders()
+        today = datetime.now().date()
+
+        for order in orders:
+            order_name = str(getattr(order, "order_id", "") or getattr(order, "code", "") or "").strip()
+            if not order_name:
+                continue
+
+            date_produkcja = str(getattr(order, "date_produkcja", "") or "").strip()
+            date_produkcja_end = str(getattr(order, "date_produkcja_end", "") or "").strip()
+            status = str(getattr(order, "status", "") or "").strip().lower()
+
+            if date_produkcja:
+                try:
+                    prod_date = datetime.strptime(date_produkcja, "%Y-%m-%d").date()
+                except ValueError:
+                    prod_date = None
+
+                if prod_date and prod_date < today and status not in ("zakonczone", "zakończone"):
+                    title = f"{order_name} - produkcja zalegla"
+                    if not self._alarm_exists(title, "produkcja", self.SRC_PRODUCION):
+                        days_late = (today - prod_date).days
+                        self._add_alarm(
+                            AlarmDef(
+                                category="produkcja",
+                                severity="krytyczny",
+                                title=title,
+                                description=f"Produkcja zamowienia {order_name} jest zalegla o {days_late} dni.",
+                                related_order=order_name,
+                                due_date=date_produkcja,
+                            ),
+                            self.SRC_PRODUCION,
+                        )
+
+            if not date_produkcja and status == "w produkcji":
+                title = f"{order_name} - brak daty produkcji"
+                if not self._alarm_exists(title, "produkcja", self.SRC_PRODUCION):
+                    self._add_alarm(
+                        AlarmDef(
+                            category="produkcja",
+                            severity="ostrzezenie",
+                            title=title,
+                            description=f"Zamowienie {order_name} jest w produkcji, ale nie ma ustawionej daty.",
+                            related_order=order_name,
+                        ),
+                        self.SRC_PRODUCION,
+                    )
+
+            if date_produkcja and not date_produkcja_end and status == "w produkcji":
+                title = f"{order_name} - brak daty zakonczenia produkcji"
+                if not self._alarm_exists(title, "produkcja", self.SRC_PRODUCION):
+                    self._add_alarm(
+                        AlarmDef(
+                            category="produkcja",
+                            severity="info",
+                            title=title,
+                            description=f"Ustaw date zakonczenia produkcji dla {order_name}.",
+                            related_order=order_name,
+                        ),
+                        self.SRC_PRODUCION,
+                    )
+
+            date_montaz = str(getattr(order, "date_montaz", "") or "").strip()
+            if date_montaz:
+                try:
+                    montaz_date = datetime.strptime(date_montaz, "%Y-%m-%d").date()
+                except ValueError:
+                    montaz_date = None
+
+                if montaz_date and status not in ("zakonczone", "zakończone", "zamontowane", "zamonowane"):
+                    days_to_montaz = (montaz_date - today).days
+                    if days_to_montaz <= 3 and days_to_montaz >= 0:
+                        title = f"{order_name} - montaz za {days_to_montaz} dni"
+                        if not self._alarm_exists(title, "produkcja", self.SRC_PRODUCION):
+                            self._add_alarm(
+                                AlarmDef(
+                                    category="produkcja",
+                                    severity="ostrzezenie",
+                                    title=title,
+                                    description=f"Montaz zamowienia {order_name} zaplanowany za {days_to_montaz} dni.",
+                                    related_order=order_name,
+                                    due_date=date_montaz,
+                                ),
+                                self.SRC_PRODUCION,
+                            )

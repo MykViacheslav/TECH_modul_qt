@@ -1,0 +1,16 @@
+﻿Analizuj tylko ten screenshot (nasza aplikacja TECH_modul).
+Nie porownuj do innych obrazow z czatu.
+
+Cel:
+Zmniejszyc ilosc tekstu i zwiekszyc przestrzen robocza (compact mobile).
+
+Przygotuj:
+1) Co usunac/ukryc od razu (P1)
+2) Co przeniesc pod "Szczegoly" / "Wiecej" (P2)
+3) Co zostawic zawsze widoczne (P1)
+4) Proponowany uklad sekcji od gory do dolu
+5) Docelowe zasady: max liczba linii tekstu, wysokosci blokow, minimalne CTA
+
+Wymagania:
+- montazysta musi wykonac glowna akcje bez przewijania dlugich opisow,
+- tresci pomocnicze maja byc dostepne, ale domyslnie zwiniete.

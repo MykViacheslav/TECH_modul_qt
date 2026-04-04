@@ -35,7 +35,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
 )
 
-from src.app.app_settings import load_ui_string_list, save_ui_string_list
+from src.app.app_settings import load_ui_string_list, save_ui_string_list, load_ui_theme_settings
 from src.domain.wall_models import (
     WallLayoutDef,
     WallMeasurementDef,
@@ -51,6 +51,7 @@ from src.tabs.sciana.dialog_photo_measure import PhotoMeasureDialog
 from src.tabs.sciana.dialog_load_wall import LoadWallDialog
 from src.ui.collapsible_block import CollapsibleBlock
 from src.ui.ui_polish import mark_ui_card, set_ui_variant
+from src.ui.theme_utils import get_muted_color
 
 
 LAYOUT_TYPE_ITEMS: tuple[tuple[str, str], ...] = (
@@ -935,6 +936,9 @@ class TabScianaLayout(QWidget):
         self._left_zone_last_width = 390
         self._right_zone_visible = True
         self._right_zone_last_width = 380
+        theme = load_ui_theme_settings()
+        self._is_tech = str(theme.motif).strip().lower() == "tech" and str(theme.mode).strip().lower() == "night"
+        self._muted = "#9bb0cd" if self._is_tech else "#555"
 
         root = QHBoxLayout(self)
         root.setContentsMargins(10, 10, 10, 10)
@@ -942,14 +946,18 @@ class TabScianaLayout(QWidget):
 
         self.left_zone_toggle = QPushButton("Pokaz lewy panel", self)
         self.left_zone_toggle.setStyleSheet(
-            "QPushButton { border: none; background: transparent; color: #555; font-weight: 600; padding: 4px; text-align: left; }"
+            f"QPushButton {{ border:none; background:transparent; color:{self._muted};"
+            " font-weight:600; padding:4px; text-align:left; }}"
         )
         self.left_zone_toggle.clicked.connect(self._toggle_left_zone)
         # Hide root vertical toggle to reclaim horizontal workspace.
         self.left_zone_toggle.hide()
 
         self.right_zone_toggle = QPushButton("Panel informacyjny >", self)
-        self.right_zone_toggle.setStyleSheet("QPushButton { border: none; background: transparent; color: #555; font-weight: 600; padding: 4px; text-align: left; }")
+        self.right_zone_toggle.setStyleSheet(
+            f"QPushButton {{ border:none; background:transparent; color:{self._muted};"
+            " font-weight:600; padding:4px; text-align:left; }}"
+        )
         self.right_zone_toggle.clicked.connect(self._toggle_right_zone)
         # Hide root vertical toggle to reclaim horizontal workspace.
         self.right_zone_toggle.hide()
@@ -994,75 +1002,168 @@ class TabScianaLayout(QWidget):
         self._refresh_left_zone_toggle_button()
 
     def _apply_desktop_visual_styles(self) -> None:
-        self.setStyleSheet(
-            """
-            QWidget#sciana_layout_root {
-                background: #f3f6fb;
-            }
-            QWidget#sciana_zone_left,
-            QWidget#sciana_zone_center,
-            QWidget#sciana_zone_right {
-                border: 1px solid #d8e1ee;
-                border-radius: 14px;
-                background: #f7f9fc;
-            }
-            QLabel#sciana_zone_title {
-                font-size: 11px;
-                letter-spacing: 0.08em;
-                font-weight: 700;
-                color: #64748b;
-                padding: 2px 4px 4px 4px;
-            }
-            QFrame#sciana_layout_quick_bar {
-                background: #edf3fb;
-                border: 1px solid #d5e1f1;
-                border-radius: 14px;
-            }
-            QGroupBox#sciana_view_card,
-            QGroupBox#sciana_top_card {
-                border: 1px solid #d8e1ee;
-                border-radius: 12px;
-                margin-top: 10px;
-                background: #ffffff;
-                font-weight: 700;
-                color: #334155;
-            }
-            QGroupBox#sciana_view_card::title,
-            QGroupBox#sciana_top_card::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                top: -1px;
-                padding: 0 4px;
-                color: #475569;
-                font-size: 12px;
-            }
-            QTableWidget {
-                border: 1px solid #d8e1ee;
-                border-radius: 10px;
-                background: #ffffff;
-                gridline-color: #e5e7eb;
-                selection-background-color: #dbeafe;
-                selection-color: #0f172a;
-            }
-            QHeaderView::section {
-                background: #edf2f8;
-                color: #334155;
-                padding: 6px 8px;
-                border: 0;
-                border-right: 1px solid #dbe3ee;
-                border-bottom: 1px solid #dbe3ee;
-                font-weight: 700;
-            }
-            QLabel#sciana_side_note {
-                color: #334155;
-                line-height: 1.35;
-            }
-            """
-        )
+        if self._is_tech:
+            self.setStyleSheet(
+                """
+                QWidget#sciana_layout_root {
+                    background: #0b1020;
+                }
+                QWidget#sciana_zone_left,
+                QWidget#sciana_zone_center,
+                QWidget#sciana_zone_right {
+                    border: 1px solid #243c5f;
+                    border-radius: 14px;
+                    background: #0f172a;
+                }
+                QLabel#sciana_zone_title {
+                    font-size: 11px;
+                    letter-spacing: 0.08em;
+                    font-weight: 700;
+                    color: #9bb0cd;
+                    padding: 2px 4px 4px 4px;
+                }
+                QFrame#sciana_layout_quick_bar {
+                    background: #111b30;
+                    border: 1px solid #2a4368;
+                    border-radius: 14px;
+                }
+                QGroupBox#sciana_view_card,
+                QGroupBox#sciana_top_card {
+                    border: 1px solid #2a4368;
+                    border-radius: 12px;
+                    margin-top: 10px;
+                    background: #111b30;
+                    font-weight: 700;
+                    color: #dbe9ff;
+                }
+                QGroupBox#sciana_view_card::title,
+                QGroupBox#sciana_top_card::title {
+                    subcontrol-origin: margin;
+                    left: 10px;
+                    top: -1px;
+                    padding: 0 4px;
+                    color: #9cb7dc;
+                    font-size: 12px;
+                }
+                QTableWidget {
+                    border: 1px solid #2a4368;
+                    border-radius: 10px;
+                    background: #111b30;
+                    gridline-color: #243c5f;
+                    selection-background-color: #1d4ed8;
+                    selection-color: #f2f7ff;
+                }
+                QHeaderView::section {
+                    background: #15253f;
+                    color: #dbe9ff;
+                    padding: 6px 8px;
+                    border: 0;
+                    border-right: 1px solid #243c5f;
+                    border-bottom: 1px solid #243c5f;
+                    font-weight: 700;
+                }
+                QLabel#sciana_side_note {
+                    color: #9bb0cd;
+                    line-height: 1.35;
+                }
+                """
+            )
+        else:
+            self.setStyleSheet(
+                """
+                QWidget#sciana_layout_root {
+                    background: #f3f6fb;
+                }
+                QWidget#sciana_zone_left,
+                QWidget#sciana_zone_center,
+                QWidget#sciana_zone_right {
+                    border: 1px solid #d8e1ee;
+                    border-radius: 14px;
+                    background: #f7f9fc;
+                }
+                QLabel#sciana_zone_title {
+                    font-size: 11px;
+                    letter-spacing: 0.08em;
+                    font-weight: 700;
+                    color: #64748b;
+                    padding: 2px 4px 4px 4px;
+                }
+                QFrame#sciana_layout_quick_bar {
+                    background: #edf3fb;
+                    border: 1px solid #d5e1f1;
+                    border-radius: 14px;
+                }
+                QGroupBox#sciana_view_card,
+                QGroupBox#sciana_top_card {
+                    border: 1px solid #d8e1ee;
+                    border-radius: 12px;
+                    margin-top: 10px;
+                    background: #ffffff;
+                    font-weight: 700;
+                    color: #334155;
+                }
+                QGroupBox#sciana_view_card::title,
+                QGroupBox#sciana_top_card::title {
+                    subcontrol-origin: margin;
+                    left: 10px;
+                    top: -1px;
+                    padding: 0 4px;
+                    color: #475569;
+                    font-size: 12px;
+                }
+                QTableWidget {
+                    border: 1px solid #d8e1ee;
+                    border-radius: 10px;
+                    background: #ffffff;
+                    gridline-color: #e5e7eb;
+                    selection-background-color: #dbeafe;
+                    selection-color: #0f172a;
+                }
+                QHeaderView::section {
+                    background: #edf2f8;
+                    color: #334155;
+                    padding: 6px 8px;
+                    border: 0;
+                    border-right: 1px solid #dbe3ee;
+                    border-bottom: 1px solid #dbe3ee;
+                    font-weight: 700;
+                }
+                QLabel#sciana_side_note {
+                    color: #334155;
+                    line-height: 1.35;
+                }
+                """
+            )
         self._style_collapsible_blocks()
 
     def _style_collapsible_blocks(self) -> None:
-        block_style = """
+        block_style = (
+            """
+            QToolButton {
+                padding: 8px 12px;
+                font-size: 13px;
+                font-weight: 700;
+                text-align: left;
+                border: 1px solid #2a4368;
+                border-radius: 11px;
+                background: #111b30;
+                color: #dbe9ff;
+            }
+            QToolButton:hover {
+                background: #1a2740;
+                border-color: #3b82f6;
+            }
+            QFrame#contentPanel {
+                border: 1px solid #243c5f;
+                border-top: 0px;
+                border-bottom-left-radius: 11px;
+                border-bottom-right-radius: 11px;
+                background: #0f172a;
+            }
+            """
+            if self._is_tech
+            else
+            """
             QToolButton {
                 padding: 8px 12px;
                 font-size: 13px;
@@ -1084,7 +1185,8 @@ class TabScianaLayout(QWidget):
                 border-bottom-right-radius: 11px;
                 background: #f9fbff;
             }
-        """
+            """
+        )
         for block in (
             getattr(self, "blk_main", None),
             getattr(self, "blk_store", None),
@@ -1265,8 +1367,11 @@ class TabScianaLayout(QWidget):
             button.setMinimumHeight(32)
 
         self.lab_store_status = QLabel("")
+
         self.lab_store_status.setWordWrap(True)
-        self.lab_store_status.setStyleSheet("color:#666666;")
+
+        self.lab_store_status.setStyleSheet(f"color:{get_muted_color()};")
+
         self.blk_main.content_layout().addWidget(main_body)
         layout.addWidget(self.blk_main)
 

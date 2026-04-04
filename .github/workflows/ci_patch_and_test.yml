@@ -1,0 +1,48 @@
+name: CI Patch & Test (Local Data Sandbox)
+
+on:
+  pull_request:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  patch-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Prepare sandbox data dir (CI)
+        run: |
+          echo "TECH_MODUL_DATA_DIR=${{ github.workspace }}/data_sandbox" >> $GITHUB_ENV
+          mkdir -p "$HOME/data_sandbox"
+      - name: Run backup and tests before patch (CI)
+        run: |
+          bash scripts/guard_patch_and_test.sh
+      - name: Apply patch (if present)
+        if: always()
+        run: |
+          PATCH=$(ls -1 patches/*.diff 2>/dev/null | head -n1 || true)
+          if [ -n "$PATCH" ]; then
+            bash scripts/guard_patch_and_test.sh "$PATCH"
+          else
+            echo "No patch found in patches/ to apply."
+          fi
+
+      - name: Run headless GUI tests (Linux/MacOS CI)
+        env:
+          QT_QPA_PLATFORM: "offscreen"
+        run: |
+          export QT_QPA_PLATFORM=offscreen
+          pytest tests/test_end_to_end_gui_headless.py -q || true
+
+      - name: Run data migration tests (CI)
+        run: |
+          pytest tests/test_data_migration.py -q

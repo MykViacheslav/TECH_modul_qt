@@ -82,6 +82,7 @@ def _theme_palette(mode: str, motif: str) -> dict[str, str]:
             "tab_bg": "#efe8dc",
             "tab_hover": "#f6efe5",
             "text": "#243243",
+            "muted": "#5a6b7a",
             "btn_bg": "#fffdfa",
             "input_bg": "#fffdfa",
             "table_bg": "#ffffff",
@@ -95,6 +96,7 @@ def _theme_palette(mode: str, motif: str) -> dict[str, str]:
             "tab_bg": "#e2ecf8",
             "tab_hover": "#d9e7f6",
             "text": "#1f3146",
+            "muted": "#5a6b7a",
             "btn_bg": "#fafdff",
             "input_bg": "#fafdff",
             "table_bg": "#ffffff",
@@ -108,6 +110,7 @@ def _theme_palette(mode: str, motif: str) -> dict[str, str]:
             "tab_bg": "#e6e8eb",
             "tab_hover": "#dde0e4",
             "text": "#2a3340",
+            "muted": "#5a6b7a",
             "btn_bg": "#fdfefe",
             "input_bg": "#fdfefe",
             "table_bg": "#ffffff",
@@ -121,6 +124,7 @@ def _theme_palette(mode: str, motif: str) -> dict[str, str]:
             "tab_bg": "#dcecdf",
             "tab_hover": "#d2e6d6",
             "text": "#23352a",
+            "muted": "#4a6354",
             "btn_bg": "#fbfffc",
             "input_bg": "#fbfffc",
             "table_bg": "#ffffff",
@@ -134,6 +138,7 @@ def _theme_palette(mode: str, motif: str) -> dict[str, str]:
             "tab_bg": "#e5ecf7",
             "tab_hover": "#d7e3f3",
             "text": "#0f172a",
+            "muted": "#475569",
             "btn_bg": "#ffffff",
             "input_bg": "#ffffff",
             "table_bg": "#ffffff",
@@ -147,6 +152,7 @@ def _theme_palette(mode: str, motif: str) -> dict[str, str]:
             "tab_bg": "#e1e9f7",
             "tab_hover": "#d7e2f5",
             "text": "#12243e",
+            "muted": "#64748b",
             "btn_bg": "#f7faff",
             "input_bg": "#ffffff",
             "table_bg": "#ffffff",
@@ -163,6 +169,7 @@ def _theme_palette(mode: str, motif: str) -> dict[str, str]:
             "tab_bg": "#d0d5de",
             "tab_hover": "#c4ccd8",
             "text": "#1e2b3a",
+            "muted": "#7a8a9a",
             "btn_bg": "#f5f7fa",
             "input_bg": "#ffffff",
             "table_bg": "#ffffff",
@@ -176,6 +183,7 @@ def _theme_palette(mode: str, motif: str) -> dict[str, str]:
             "tab_bg": "#c8d4e6",
             "tab_hover": "#bccce2",
             "text": "#1a2d44",
+            "muted": "#6b7c8f",
             "btn_bg": "#f5f8fd",
             "input_bg": "#ffffff",
             "table_bg": "#ffffff",
@@ -189,6 +197,7 @@ def _theme_palette(mode: str, motif: str) -> dict[str, str]:
             "tab_bg": "#d2d8e0",
             "tab_hover": "#c6ced8",
             "text": "#202a36",
+            "muted": "#6b7785",
             "btn_bg": "#f6f8fb",
             "input_bg": "#ffffff",
             "table_bg": "#ffffff",
@@ -202,6 +211,7 @@ def _theme_palette(mode: str, motif: str) -> dict[str, str]:
             "tab_bg": "#c9d9ce",
             "tab_hover": "#bdd1c4",
             "text": "#213628",
+            "muted": "#5a7a64",
             "btn_bg": "#f4faf6",
             "input_bg": "#ffffff",
             "table_bg": "#ffffff",
@@ -215,6 +225,7 @@ def _theme_palette(mode: str, motif: str) -> dict[str, str]:
             "tab_bg": "#1e293b",
             "tab_hover": "#334155",
             "text": "#f8fafc",
+            "muted": "#94a3b8",
             "btn_bg": "#1f2937",
             "input_bg": "#111827",
             "table_bg": "#0f172a",
@@ -228,6 +239,7 @@ def _theme_palette(mode: str, motif: str) -> dict[str, str]:
             "tab_bg": "#15213a",
             "tab_hover": "#1c2c49",
             "text": "#e8efff",
+            "muted": "#94a3b8",
             "btn_bg": "#16223a",
             "input_bg": "#0f1a2f",
             "table_bg": "#0d172a",
@@ -492,6 +504,9 @@ def _build_app_stylesheet(mode: str, motif: str, ui_scale: float = 1.0) -> str:
             border: 1px solid {card_border};
             border-radius: {control_radius + 4}px;
             background: {card_bg};
+        }}
+        QLabel[uiMuted="true"] {{
+            color: {p["muted"]};
         }}
         QPushButton[uiVariant="primary"],
         QToolButton[uiVariant="primary"] {{
@@ -1717,6 +1732,10 @@ class MainWindow(QMainWindow):
         if tab is not None and hasattr(tab, "open_orders_tab"):
             tab.open_orders_tab(clear_form=False)
         self._navigate_to_tab("Zamowienia")
+
+    # Alias used by wiring (tab_baza_szybkich_wycen signal)
+    def _open_orders_in_bazy_code(self, *args) -> None:
+        self._open_orders_in_bazy()
 
     def _open_workers_in_bazy(self) -> None:
         self._capture_order_return_state()

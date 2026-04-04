@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -17,6 +17,17 @@ from PyQt6.QtWidgets import (
 
 from src.storage.company_expenses_store_json import CompanyExpensesStoreJson, new_expense_id
 from src.storage.worker_store_json import WorkerStoreJson
+
+TABLE_TEXT_STYLE = """
+QTableWidget {
+    color: #1f2937;
+    selection-color: #0f172a;
+}
+QTableWidget::item:selected {
+    background: #dbeafe;
+    color: #0f172a;
+}
+"""
 
 
 DEFAULT_VARIABLE_EXPENSES: list[str] = [
@@ -60,11 +71,12 @@ class TabWydatkiZmienne(QWidget):
             "Zmienne koszty miesieczne + kalkulacja realnej roboczo-godziny dla aktualnej liczby pracownikow.",
             self,
         )
-        subtitle.setStyleSheet("color:#555555;")
+        subtitle.setStyleSheet("color: palette(text);")
         subtitle.setWordWrap(True)
         root.addWidget(subtitle, 0, Qt.AlignmentFlag.AlignLeft)
 
         self.tbl = QTableWidget(0, 3, self)
+        self.tbl.setStyleSheet(TABLE_TEXT_STYLE)
         self.tbl.setHorizontalHeaderLabels(["ID", "Pozycja", "Kwota [zl]"])
         self.tbl.setAlternatingRowColors(True)
         self.tbl.verticalHeader().setVisible(False)
@@ -236,4 +248,5 @@ class TabWydatkiZmienne(QWidget):
     def showEvent(self, event) -> None:  # type: ignore[override]
         super().showEvent(event)
         self._reload()
+
 

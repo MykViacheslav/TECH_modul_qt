@@ -27,6 +27,13 @@ class DrawingSettings:
     edgeband_color: str = "#cc0000"
     edgeband_width_px: int = 4
 
+    # Usyłkowanie drewna - wizualizacja
+    grain_overlay_enabled: bool = True
+    grain_overlay_style: str = "wavy"     # "lines" | "wavy" | "image"
+    grain_overlay_alpha: int = 80          # 0-255, domyslnie 80
+    grain_line_spacing_mm: float = 15.0    # odstep linii w mm
+    grain_image_path: str = ""             # sciezka do obrazka tekstury
+
     # NOWE
     hinge_edge_offset_mm: float = 12.0
     auto_double_front_width_mm: float = 600.0
@@ -34,8 +41,8 @@ class DrawingSettings:
 
 @dataclass(frozen=True)
 class UiThemeSettings:
-    mode: str = "day"      # "day" | "night"
-    motif: str = "cream"   # "cream" | "blue" | "gray" | "green" | "contrast"
+    mode: str = "night"      # "day" | "night"
+    motif: str = "tech"      # "cream" | "blue" | "gray" | "green" | "contrast" | "tech"
 
 
 @dataclass(frozen=True)
@@ -172,6 +179,12 @@ def load_drawing_settings() -> DrawingSettings:
 
         hinge_edge_offset_mm=max(0.0, as_float(base.get("hinge_edge_offset_mm", 12.0), 12.0)),
         auto_double_front_width_mm=max(100.0, as_float(base.get("auto_double_front_width_mm", 600.0), 600.0)),
+
+        grain_overlay_enabled=as_bool(base.get("grain_overlay_enabled", True), True),
+        grain_overlay_style=str(base.get("grain_overlay_style", "wavy")),
+        grain_overlay_alpha=as_int(base.get("grain_overlay_alpha", 80), 80),
+        grain_line_spacing_mm=max(5.0, as_float(base.get("grain_line_spacing_mm", 15.0), 15.0)),
+        grain_image_path=str(base.get("grain_image_path", "")),
     )
 
 
@@ -207,6 +220,12 @@ def save_drawing_settings(s: DrawingSettings) -> None:
 
         "hinge_edge_offset_mm": float(s.hinge_edge_offset_mm),
         "auto_double_front_width_mm": float(s.auto_double_front_width_mm),
+
+        "grain_overlay_enabled": bool(s.grain_overlay_enabled),
+        "grain_overlay_style": str(s.grain_overlay_style),
+        "grain_overlay_alpha": int(s.grain_overlay_alpha),
+        "grain_line_spacing_mm": float(s.grain_line_spacing_mm),
+        "grain_image_path": str(s.grain_image_path or ""),
     }
 
     _save_settings_data(data)
@@ -348,13 +367,13 @@ def load_ui_theme_settings() -> UiThemeSettings:
     data = _load_settings_data()
     ui = data.get("ui") or {}
 
-    mode = str(ui.get("theme_mode", "day")).strip().lower()
+    mode = str(ui.get("theme_mode", "night")).strip().lower()
     if mode not in ("day", "night"):
-        mode = "day"
+        mode = "night"
 
-    motif = str(ui.get("theme_motif", "cream")).strip().lower()
-    if motif not in ("cream", "blue", "gray", "green", "contrast"):
-        motif = "cream"
+    motif = str(ui.get("theme_motif", "tech")).strip().lower()
+    if motif not in ("cream", "blue", "gray", "green", "contrast", "tech"):
+        motif = "tech"
 
     return UiThemeSettings(mode=mode, motif=motif)
 
@@ -562,13 +581,13 @@ def save_default_material_settings(s: DefaultMaterialSettings) -> None:
 
 
 def save_ui_theme_settings(mode: str, motif: str) -> None:
-    mode_norm = str(mode or "day").strip().lower()
+    mode_norm = str(mode or "night").strip().lower()
     if mode_norm not in ("day", "night"):
-        mode_norm = "day"
+        mode_norm = "night"
 
-    motif_norm = str(motif or "cream").strip().lower()
-    if motif_norm not in ("cream", "blue", "gray", "green", "contrast"):
-        motif_norm = "cream"
+    motif_norm = str(motif or "tech").strip().lower()
+    if motif_norm not in ("cream", "blue", "gray", "green", "contrast", "tech"):
+        motif_norm = "tech"
 
     data = _load_settings_data()
     ui = dict(data.get("ui") or {})

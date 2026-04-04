@@ -496,20 +496,26 @@ class TabDashboard(QWidget):
         # ── KPI cards ────────────────────────────────────────────────────────
         kpi_row = QHBoxLayout()
         kpi_row.setSpacing(12)
-        self._card_income = KpiCard("Wpłynęło od klientów", "#16a34a", "💰")
-        self._card_pending = KpiCard("Oczekuje wpłaty", "#d97706", "⏳")
-        self._card_costs = KpiCard("Koszty miesięczne", "#dc2626", "📉")
+        self._card_income = KpiCard("Wplynęło od klientów", "#16a34a", "💰")
+        self._card_pending = KpiCard("Oczekuje wplaty", "#d97706", "⏳")
+        self._card_costs = KpiCard("Koszty miesieczne", "#dc2626", "📉")
         self._card_real_hour = KpiCard("Realna rob.-godz.", "#7c3aed", "⏱️")
         self._card_orders = KpiCard("Aktywne zlecenia", "#2563eb", "📋")
-        self._card_services = KpiCard("Uslugi z terminem", "#0891b2", "🧩")
+        self._card_in_production = KpiCard("W produkcji", "#9333ea", "⚙️")
+        self._card_on_montage = KpiCard("Na montazu", "#0891b2", "🔧")
+        self._card_overdue = KpiCard("Przekroczone", "#dc2626", "⛔")
+        self._card_services = KpiCard("Uslugi z terminem", "#059669", "🧩")
         self._card_alarms_critical = KpiCard("Alarmy krytyczne", "#dc2626", "🚨")
-        self._card_alarms_warning = KpiCard("Ostrzeżenia", "#d97706", "⚠️")
+        self._card_alarms_warning = KpiCard("Ostrzezenia", "#d97706", "⚠️")
         for card in (
             self._card_income,
             self._card_pending,
             self._card_costs,
             self._card_real_hour,
             self._card_orders,
+            self._card_in_production,
+            self._card_on_montage,
+            self._card_overdue,
             self._card_services,
             self._card_alarms_critical,
             self._card_alarms_warning,
@@ -620,6 +626,37 @@ class TabDashboard(QWidget):
             if due < today:
                 overdue_services += 1
 
+        # Production stats
+        today = date.today()
+        in_production = 0
+        on_montage = 0
+        overdue_production = 0
+        for order in orders:
+            status = str(order.status or "").strip().lower()
+            if status == "zakonczone":
+                continue
+            
+            date_prod = str(getattr(order, "date_produkcja", "") or "").strip()
+            date_mont = str(getattr(order, "date_montaz", "") or "").strip()
+            
+            if date_prod:
+                try:
+                    prod_date = date.fromisoformat(date_prod)
+                    if prod_date < today:
+                        overdue_production += 1
+                    if status == "w produkcji":
+                        in_production += 1
+                except ValueError:
+                    pass
+            
+            if date_mont:
+                try:
+                    mont_date = date.fromisoformat(date_mont)
+                    if mont_date >= today and status not in ("zakonczone", "zamonowane", "zamontowane"):
+                        on_montage += 1
+                except ValueError:
+                    pass
+
         # KPI cards
         self._card_income.set_value(total_paid, sub=f"{len([o for o in orders if any(p.get('paid') for p in o.customer_payments)])} zleceń z wpłatami")
         self._card_pending.set_value(total_pending, sub="do odebrania od klientów")
@@ -629,6 +666,9 @@ class TabDashboard(QWidget):
             sub=f"{int(float(real_hour.get('workers_count', 0.0) or 0.0))} prac. x {float(real_hour.get('hours_per_worker', 0.0) or 0.0):.0f} h",
         )
         self._card_orders.set_value_int(len(active), sub=f"wszystkich: {len(orders)}")
+        self._card_in_production.set_value_int(in_production, sub="w trakcie")
+        self._card_on_montage.set_value_int(on_montage, sub="zaplanowane")
+        self._card_overdue.set_value_int(overdue_production, sub="wymaga interwencji")
         self._card_services.set_value_int(with_deadline, sub=f"po terminie: {overdue_services} / wszystkie: {total_services}")
 
         # Alarm cards

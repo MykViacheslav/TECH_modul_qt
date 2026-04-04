@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
 
 from src.domain.assembly_models import FurnitureAssemblyDef
 from src.storage.assembly_store_json import AssemblyStoreJson
+from src.ui.theme_utils import get_muted_color
 
 
 def _clone_assembly(assembly: FurnitureAssemblyDef | None) -> FurnitureAssemblyDef | None:
@@ -74,7 +75,7 @@ class LoadAssemblyDialog(QDialog):
         self.btn_delete.setEnabled(False)
         self.lab_err = QLabel("", self)
         self.lab_err.setWordWrap(True)
-        self.lab_err.setStyleSheet("color:#666666;")
+        self.lab_err.setStyleSheet(f"color:{get_muted_color()};")
         manage_row.addWidget(self.btn_delete, 0)
         manage_row.addWidget(self.lab_err, 1)
         root.addLayout(manage_row)

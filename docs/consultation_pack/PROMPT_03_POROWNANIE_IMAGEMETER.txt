@@ -1,0 +1,15 @@
+﻿To jest ekran naszej aplikacji TECH_modul (nie ImageMeter).
+Analizuj tylko ten zalaczony screen.
+
+Zadanie:
+Podaj, jak zblizyc UX do narzedziowego stylu aplikacji pomiarowej, ale bez kopiowania wygladu 1:1.
+
+Odpowiedz podziel na:
+1) Roznice miedzy naszym ekranem a stylem narzedzi pomiarowych
+2) 10 konkretnych zmian UI (priorytety P1/P2/P3)
+3) Minimalny "tool mode" dla telefonu (co zawsze na wierzchu)
+4) Tresci, ktore musza byc ukryte pod panelem pomocniczym
+
+Warunek:
+- zadnych ogolnych rad,
+- tylko konkretne decyzje layoutu, hierarchii i akcji.

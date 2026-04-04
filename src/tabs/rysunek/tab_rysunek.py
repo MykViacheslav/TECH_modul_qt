@@ -187,6 +187,7 @@ class TabRysunek(QWidget):
         self.cb_motif.addItem("Szary", "gray")
         self.cb_motif.addItem("Zielony", "green")
         self.cb_motif.addItem("Kontrastowy", "contrast")
+        self.cb_motif.addItem("TECH (docelowy)", "tech")
 
         lbl_font_scale = QLabel("Skala czcionki:", panel)
         self.cb_font_scale = QComboBox(panel)
@@ -214,13 +215,13 @@ class TabRysunek(QWidget):
         mode_index = self.cb_mode.findData(str(mode or "day"))
         if mode_index >= 0:
             self.cb_mode.setCurrentIndex(mode_index)
-        motif_index = self.cb_motif.findData(str(motif or "cream"))
+        motif_index = self.cb_motif.findData(str(motif or "tech"))
         if motif_index >= 0:
             self.cb_motif.setCurrentIndex(motif_index)
 
     def _theme_from_ui(self) -> tuple[str, str]:
         mode = str(self.cb_mode.currentData() or "day")
-        motif = str(self.cb_motif.currentData() or "cream")
+        motif = str(self.cb_motif.currentData() or "tech")
         return mode, motif
 
     def _set_font_scale_to_ui(self, value: float) -> None:

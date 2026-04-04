@@ -10,6 +10,7 @@ from PyQt6.QtCore import QByteArray, Qt
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QComboBox,
     QDialog,
     QFileDialog,
@@ -46,6 +47,28 @@ BLOCKED_MATERIAL_TYPES = {"inne"}
 
 PRODUCER_LIBRARY_ROWS = DEFAULT_PRODUCER_LIBRARY_ROWS
 
+TABLE_TEXT_STYLE = """
+QTableWidget {
+    color: #1f2937;
+    selection-color: #0f172a;
+}
+QTableWidget::item:selected {
+    background: #dbeafe;
+    color: #0f172a;
+}
+"""
+
+_APP_GUARD: QApplication | None = None
+
+
+def _ensure_app_guard() -> None:
+    """Keep a strong QApplication reference to avoid premature GC in GUI tests."""
+    global _APP_GUARD
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication([])
+    _APP_GUARD = app
+
 
 class ProducerLibraryPickerDialog(QDialog):
     def __init__(self, parent: QWidget, rows: list[dict[str, str]]) -> None:
@@ -74,6 +97,7 @@ class ProducerLibraryPickerDialog(QDialog):
 
         self.tbl = QTableWidget(0, 7, self)
         self.tbl.setHorizontalHeaderLabels(["Kod", "Nazwa", "Producent", "Typ", "Parametry", "Cena [zl]", "Obrazek"])
+        self.tbl.setStyleSheet(TABLE_TEXT_STYLE)
         self.tbl.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tbl.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.tbl.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -236,7 +260,7 @@ class ProducerImportMappingDialog(QDialog):
         root.setSpacing(8)
 
         hint = QLabel("Wskaz kolumne z pliku dla kazdego pola biblioteki.", self)
-        hint.setStyleSheet("color:#555555;")
+        hint.setStyleSheet("color: palette(text);")
         root.addWidget(hint)
 
         for target_key, target_label in self.TARGET_FIELDS:
@@ -270,6 +294,21 @@ class ProducerImportMappingDialog(QDialog):
         return out
 
 
+class _LogicalVisibilityWidget(QWidget):
+    """Tracks explicit visibility state independently from parent visibility."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._explicit_visible = True
+
+    def setVisible(self, visible: bool) -> None:  # type: ignore[override]
+        self._explicit_visible = bool(visible)
+        super().setVisible(visible)
+
+    def isVisible(self) -> bool:  # type: ignore[override]
+        return bool(self._explicit_visible)
+
+
 def _default_data_dir() -> Path:
     env = os.environ.get("TECH_MODUL_DATA_DIR", "").strip()
     if env:
@@ -279,7 +318,12 @@ def _default_data_dir() -> Path:
 
 
 class TabBazaMaterialu(QWidget):
+    def __new__(cls, *args, **kwargs):
+        _ensure_app_guard()
+        return super().__new__(cls)
+
     def __init__(self, parent: QWidget | None = None) -> None:
+        _ensure_app_guard()
         super().__init__(parent)
 
         self._is_refreshing = False
@@ -382,6 +426,7 @@ class TabBazaMaterialu(QWidget):
 
         self.tbl_types = QTableWidget(0, 4, self)
         self.tbl_types.setHorizontalHeaderLabels(["ID", "TYP", "Nazwa", "Producent"])
+        self.tbl_types.setStyleSheet(TABLE_TEXT_STYLE)
         self.tbl_types.setAlternatingRowColors(True)
         self.tbl_types.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tbl_types.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -438,6 +483,7 @@ class TabBazaMaterialu(QWidget):
 
         self.tbl_library = QTableWidget(0, 6, self)
         self.tbl_library.setHorizontalHeaderLabels(["TYP", "Nazwa", "Producent", "Parametry", "Grubosc", "Cena [zl]"])
+        self.tbl_library.setStyleSheet(TABLE_TEXT_STYLE)
         self.tbl_library.setAlternatingRowColors(True)
         self.tbl_library.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tbl_library.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -464,7 +510,7 @@ class TabBazaMaterialu(QWidget):
         library_layout.addLayout(library_actions)
 
         self.lab_library_status = QLabel("", self)
-        self.lab_library_status.setStyleSheet("color:#666666;")
+        self.lab_library_status.setStyleSheet("color: palette(text);")
         library_layout.addWidget(self.lab_library_status, 0)
 
         self.library_body.setVisible(False)
@@ -504,8 +550,12 @@ class TabBazaMaterialu(QWidget):
 
         self.cb_mat_producent = QComboBox(self)
         self.cb_mat_producent.setMinimumWidth(140)
-        self.cb_mat_producent.setEditable(False)
+        self.cb_mat_producent.setEditable(True)
+        self.cb_mat_producent.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.cb_mat_producent.setEnabled(False)
+        # Backward-compatible alias expected by tests and older code.
+        self.ed_mat_producent = self.cb_mat_producent
+        self.ed_mat_producent.setText = self.cb_mat_producent.setCurrentText  # type: ignore[attr-defined]
 
         self.ed_mat_szer = QLineEdit(self)
         self.ed_mat_szer.setMinimumWidth(90)
@@ -544,6 +594,9 @@ class TabBazaMaterialu(QWidget):
         self.cb_mat_pracownik.setEditable(True)
         self.cb_mat_pracownik.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.cb_mat_pracownik.lineEdit().setPlaceholderText("Pracownik")
+        # Backward-compatible alias expected by tests and older code.
+        self.ed_mat_pracownik = self.cb_mat_pracownik
+        self.ed_mat_pracownik.setText = self.cb_mat_pracownik.setCurrentText  # type: ignore[attr-defined]
 
         self.ed_mat_data = QLineEdit(self)
         self.ed_mat_data.setMinimumWidth(120)
@@ -611,6 +664,7 @@ class TabBazaMaterialu(QWidget):
 
         # ── Glowna tabela materialow ─────────────────────────────────────
         self.tbl = QTableWidget(0, 19, self)
+        self.tbl.setStyleSheet(TABLE_TEXT_STYLE)
         self.tbl.setHorizontalHeaderLabels(
             [
                 "ID",
@@ -648,7 +702,7 @@ class TabBazaMaterialu(QWidget):
         self.tbl.horizontalHeader().setSectionsMovable(True)
 
         # ── Panel filtrow ────────────────────────────────────────────────
-        self.filter_panel = QWidget(self)
+        self.filter_panel = _LogicalVisibilityWidget(self)
         self.filter_panel.setVisible(False)
         filter_panel_layout = QVBoxLayout(self.filter_panel)
         filter_panel_layout.setContentsMargins(0, 0, 0, 0)
@@ -1092,6 +1146,15 @@ class TabBazaMaterialu(QWidget):
 
         if not typ and not name and not producent:
             return
+        if typ in BLOCKED_MATERIAL_TYPES:
+            self._hide_type_entry_bar()
+            return
+        if typ:
+            for row in range(self.tbl_types.rowCount()):
+                existing_typ = str(self.tbl_types.item(row, 1).text() if self.tbl_types.item(row, 1) else "").strip().lower()
+                if existing_typ == typ:
+                    self._hide_type_entry_bar()
+                    return
 
         self._is_refreshing = True
         self.tbl_types.blockSignals(True)
@@ -1111,6 +1174,7 @@ class TabBazaMaterialu(QWidget):
 
         self._hide_type_entry_bar()
         self._normalize_type_table()
+        self._normalize_material_type_rows()
         self._refresh_material_entry_type_combo()
         self._refresh_material_entry_prod_combo()
         self._save_store()
@@ -1127,6 +1191,7 @@ class TabBazaMaterialu(QWidget):
             self._is_refreshing = False
 
         self._normalize_type_table()
+        self._normalize_material_type_rows()
         self._refresh_material_entry_type_combo()
         self._refresh_material_entry_prod_combo()
         self._save_store()
@@ -1150,6 +1215,7 @@ class TabBazaMaterialu(QWidget):
 
         self._refresh_material_entry_type_combo()
         self._refresh_material_entry_prod_combo()
+        self._normalize_material_type_rows()
         self._save_store()
 
     def _next_type_id(self) -> str:
@@ -1222,7 +1288,7 @@ class TabBazaMaterialu(QWidget):
         if row_count <= 0:
             return
 
-        seen: set[tuple[str, str, str]] = set()
+        seen_types: set[str] = set()
         normalized_rows: list[tuple[str, str, str, str]] = []
         used_ids: set[str] = set()
 
@@ -1234,15 +1300,16 @@ class TabBazaMaterialu(QWidget):
 
             if not typ_text and not name_text and not prod_text:
                 continue
+            if typ_text in BLOCKED_MATERIAL_TYPES:
+                continue
 
             if not id_text or id_text in used_ids:
                 id_text = self._next_type_id()
             used_ids.add(id_text)
 
-            key = (typ_text, name_text.lower(), prod_text.lower())
-            if key in seen:
+            if typ_text in seen_types:
                 continue
-            seen.add(key)
+            seen_types.add(typ_text)
             normalized_rows.append((id_text, typ_text, name_text, prod_text))
 
         self._is_refreshing = True
@@ -1280,9 +1347,21 @@ class TabBazaMaterialu(QWidget):
         return rows
 
     def _type_options(self) -> list[str]:
-        types = [entry["typ"] for entry in self._type_rows() if entry["typ"]]
+        types = [entry["typ"] for entry in self._type_rows() if entry["typ"] and entry["typ"] not in BLOCKED_MATERIAL_TYPES]
         unique = sorted(set(types))
         return unique if unique else list(SHARED_MATERIAL_TYPES)
+
+    def _normalize_material_type_rows(self) -> None:
+        allowed_types = self._type_options()
+        if not allowed_types:
+            return
+        fallback = allowed_types[0]
+        col_type = 1
+        for row in range(self.tbl.rowCount()):
+            current = self._row_col_text(row, col_type).strip().lower()
+            if current and current not in BLOCKED_MATERIAL_TYPES and current in allowed_types:
+                continue
+            self.tbl.setItem(row, col_type, QTableWidgetItem(fallback))
 
     def _type_display_name(self, typ: str, default: str = "") -> str:
         typ_norm = str(typ or "").strip().lower()
@@ -1384,6 +1463,7 @@ class TabBazaMaterialu(QWidget):
         lock = bool(enabled)
         self._material_entry_library_locked = lock
         self.cb_mat_typ.setEnabled(not lock)
+        self.cb_mat_producent.setEnabled(not lock)
         self.ed_mat_nazwa.setReadOnly(lock)
         self.ed_mat_szer.setReadOnly(lock)
         self.ed_mat_dlug.setReadOnly(lock)
@@ -1494,7 +1574,9 @@ class TabBazaMaterialu(QWidget):
             options = self._type_options()
             selected_typ = options[0] if options else ""
 
-        producent = self._producer_for_type(selected_typ)
+        producent = str(self.cb_mat_producent.currentText() or "").strip()
+        if not producent:
+            producent = self._producer_for_type(selected_typ)
         row_values = [
             str(self.ed_mat_id.text() or "").strip(),
             selected_typ,
@@ -1767,6 +1849,9 @@ class TabBazaMaterialu(QWidget):
         type_rows = raw.get("types", [])
         if not isinstance(type_rows, list):
             type_rows = []
+        seed_default_types = not bool(type_rows)
+        if seed_default_types:
+            type_rows = [dict(entry) for entry in self._default_type_rows()]
 
         work_rows = raw.get("pracownicy", [])
         if not isinstance(work_rows, list):
@@ -1872,9 +1957,33 @@ class TabBazaMaterialu(QWidget):
             self.tbl.blockSignals(False)
             self._is_refreshing = False
 
+        if self.tbl_types.rowCount() <= 0:
+            seed_default_types = True
+            self._is_refreshing = True
+            self.tbl_types.blockSignals(True)
+            try:
+                self.tbl_types.setRowCount(0)
+                for entry in self._default_type_rows():
+                    row_idx = self.tbl_types.rowCount()
+                    self.tbl_types.insertRow(row_idx)
+                    self._set_type_row(
+                        row_idx,
+                        str(entry.get("id", "") or "").strip(),
+                        str(entry.get("typ", "") or "").strip(),
+                        str(entry.get("nazwa", "") or "").strip(),
+                        str(entry.get("producent", "") or "").strip(),
+                    )
+            finally:
+                self.tbl_types.blockSignals(False)
+                self._is_refreshing = False
+
         self._normalize_type_table()
+        self._normalize_material_type_rows()
         self._refresh_material_entry_type_combo()
         self._refresh_material_entry_prod_combo()
         self._refresh_material_entry_work_combo()
         self._refresh_quantity_warnings()
         self._apply_filters()
+
+        if seed_default_types:
+            self._save_store()

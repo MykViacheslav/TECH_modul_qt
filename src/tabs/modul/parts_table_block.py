@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
 
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
-from PyQt6.QtGui import QColor, QBrush, QFont
+from PyQt6.QtGui import QColor, QBrush, QFont, QPalette
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
@@ -130,7 +130,7 @@ class PartsTableBlock(QWidget):
         self._lbl_title = QLabel("Lista formatek")
         self._lbl_title.setStyleSheet("font-weight:700; font-size:11px;")
         self._lbl_count = QLabel("")
-        self._lbl_count.setStyleSheet("color:#64748b; font-size:10px;")
+        self._lbl_count.setStyleSheet("font-size:10px;")
         hdr.addWidget(self._lbl_title)
         hdr.addWidget(self._lbl_count)
         hdr.addStretch(1)
@@ -174,7 +174,7 @@ class PartsTableBlock(QWidget):
         self._stat_area  = QLabel("Pow.: 0,00 m²")
         self._stat_edge  = QLabel("Obr.: 0,00 m")
         for lbl in (self._stat_count, self._stat_area, self._stat_edge):
-            lbl.setStyleSheet("font-size:10px; color:#475569;")
+            lbl.setStyleSheet("font-size:10px;")
             foot_lay.addWidget(lbl)
         foot_lay.addStretch(1)
 
@@ -183,6 +183,19 @@ class PartsTableBlock(QWidget):
         # ── sygnaly ──
         self.table.itemSelectionChanged.connect(self._on_selection_changed)
         self.table.cellClicked.connect(self._on_cell_clicked)
+        self._apply_readable_palette()
+
+    @staticmethod
+    def _alpha(color: QColor, alpha: int) -> QColor:
+        out = QColor(color)
+        out.setAlpha(max(0, min(255, int(alpha))))
+        return out
+
+    def _apply_readable_palette(self) -> None:
+        text = self.palette().color(QPalette.ColorRole.Text)
+        self._c_text = QColor(text)
+        self._c_muted = self._alpha(text, 170)
+        self._c_subtle = self._alpha(text, 130)
 
     # ─────────────────────────────────────────────────────────────────────────
     # PUBLIC API
@@ -190,6 +203,7 @@ class PartsTableBlock(QWidget):
 
     def rebuild_from_module(self, m: ModuleDef) -> None:
         """Pelne przeladowanie tabeli z modelu."""
+        self._apply_readable_palette()
         self._module = m
         self._loading = True
         self.table.blockSignals(True)
@@ -214,13 +228,21 @@ class PartsTableBlock(QWidget):
         area_total = 0.0
         edge_total = 0.0
 
+        def _is_effectively_visible(part_key: str) -> bool:
+            key = str(part_key or "").strip().lower()
+            if key.startswith("shelf_") or key.startswith("shelf-"):
+                return "shelf" in vp
+            if key.startswith("divider_") or key.startswith("divider-"):
+                return "divider" in vp
+            return part_key in vp
+
         for lp, key in enumerate(ordered, start=1):
             part = parts[key]
             self._keys.append(key)
             row = self.table.rowCount()
             self.table.insertRow(row)
 
-            visible = key in vp
+            visible = _is_effectively_visible(key)
             grain = part.effective_grain()
             dims = part.dims_mm or {}
             thick_mm = dims.get("t", 18.0)
@@ -235,14 +257,14 @@ class PartsTableBlock(QWidget):
             # Lp
             item_lp = QTableWidgetItem(str(lp))
             item_lp.setTextAlignment(int(Qt.AlignmentFlag.AlignCenter))
-            item_lp.setForeground(QBrush(QColor("#94a3b8")))
+            item_lp.setForeground(QBrush(self._c_muted))
             item_lp.setData(Qt.ItemDataRole.UserRole, key)
             self.table.setItem(row, _COL_LP, item_lp)
 
             # 👁 widocznosc
             item_eye = QTableWidgetItem("👁" if visible else "○")
             item_eye.setTextAlignment(int(Qt.AlignmentFlag.AlignCenter))
-            item_eye.setForeground(QBrush(QColor("#3b82f6") if visible else QColor("#cbd5e1")))
+            item_eye.setForeground(QBrush(self._c_text if visible else self._c_subtle))
             item_eye.setToolTip("Kliknij aby ukryc/pokazac element na rysunku")
             self.table.setItem(row, _COL_EYE, item_eye)
 
@@ -251,29 +273,30 @@ class PartsTableBlock(QWidget):
             f = QFont()
             f.setBold(True)
             item_name.setFont(f)
+            item_name.setForeground(QBrush(self._c_text))
             self.table.setItem(row, _COL_NAME, item_name)
 
             # Typ
             item_type = QTableWidgetItem(_part_type_label(key))
-            item_type.setForeground(QBrush(QColor("#7c3aed")))
+            item_type.setForeground(QBrush(self._c_text))
             self.table.setItem(row, _COL_TYPE, item_type)
 
             # Material (klucz, bo nazwy wymagaja katalogu)
             mat_key = str(part.material_override_key or part.material_key or "-")
             item_mat = QTableWidgetItem(mat_key)
-            item_mat.setForeground(QBrush(QColor("#374151")))
+            item_mat.setForeground(QBrush(self._c_text))
             self.table.setItem(row, _COL_MAT, item_mat)
 
             # Grubość
             thick_int = int(thick_mm) if float(thick_mm) == int(float(thick_mm)) else thick_mm
             item_thick = QTableWidgetItem(f"{thick_int}")
             item_thick.setTextAlignment(int(Qt.AlignmentFlag.AlignCenter))
-            item_thick.setForeground(QBrush(QColor("#64748b")))
+            item_thick.setForeground(QBrush(self._c_text))
             self.table.setItem(row, _COL_THICK, item_thick)
 
             # Wymiary
             item_dims = QTableWidgetItem(_dims_label(dims))
-            item_dims.setForeground(QBrush(QColor("#0369a1")))
+            item_dims.setForeground(QBrush(self._c_text))
             self.table.setItem(row, _COL_DIMS, item_dims)
 
             # Ilosc (na razie zawsze 1 – rozbudowac jesli modul ma qty per part)
@@ -286,19 +309,18 @@ class PartsTableBlock(QWidget):
             item_grain = QTableWidgetItem(symbol)
             item_grain.setTextAlignment(int(Qt.AlignmentFlag.AlignCenter))
             if grain == GRAIN_VERTICAL:
-                item_grain.setForeground(QBrush(QColor("#0891b2")))
+                item_grain.setForeground(QBrush(self._c_text))
             elif grain == GRAIN_HORIZONTAL:
-                item_grain.setForeground(QBrush(QColor("#d97706")))
+                item_grain.setForeground(QBrush(self._c_text))
             else:
-                item_grain.setForeground(QBrush(QColor("#94a3b8")))
+                item_grain.setForeground(QBrush(self._c_subtle))
             item_grain.setToolTip("Kliknij aby zmienic kierunek uslojenia")
             self.table.setItem(row, _COL_GRAIN, item_grain)
 
             # Obrzeze
             item_edge = QTableWidgetItem(_edge_label(part.edge_banding or {}))
             item_edge.setTextAlignment(int(Qt.AlignmentFlag.AlignCenter))
-            if edge_count > 0:
-                item_edge.setForeground(QBrush(QColor("#dc2626")))
+            item_edge.setForeground(QBrush(self._c_text if edge_count > 0 else self._c_subtle))
             self.table.setItem(row, _COL_EDGE, item_edge)
 
         self.table.blockSignals(False)
@@ -357,7 +379,7 @@ class PartsTableBlock(QWidget):
         currently_visible = item.text() == "👁"
         new_visible = not currently_visible
         item.setText("👁" if new_visible else "○")
-        item.setForeground(QBrush(QColor("#3b82f6") if new_visible else QColor("#cbd5e1")))
+        item.setForeground(QBrush(self._c_text if new_visible else self._c_subtle))
         self.sig_visibility_changed.emit(key, new_visible)
 
     def _cycle_grain(self, row: int, key: str) -> None:
@@ -373,9 +395,9 @@ class PartsTableBlock(QWidget):
         symbol = _grain_symbol(new_grain)
         item.setText(symbol)
         if new_grain == GRAIN_VERTICAL:
-            item.setForeground(QBrush(QColor("#0891b2")))
+            item.setForeground(QBrush(self._c_text))
         elif new_grain == GRAIN_HORIZONTAL:
-            item.setForeground(QBrush(QColor("#d97706")))
+            item.setForeground(QBrush(self._c_text))
         else:
-            item.setForeground(QBrush(QColor("#94a3b8")))
+            item.setForeground(QBrush(self._c_subtle))
         self.sig_grain_changed.emit(key, new_grain)

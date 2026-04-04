@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QStyle, QVBoxLayout, QWidget
+from src.app.app_settings import load_ui_theme_settings
 
 
 class TabStart(QWidget):
@@ -19,18 +20,43 @@ class TabStart(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        theme = load_ui_theme_settings()
+        self._is_tech = str(theme.motif or "").strip().lower() == "tech" and str(theme.mode or "").strip().lower() == "night"
+        self._colors = {
+            "title": "#e8efff" if self._is_tech else "#14263d",
+            "subtitle": "#9bb2d3" if self._is_tech else "#5f6c7c",
+            "section": "#cbdaf3" if self._is_tech else "#203047",
+            "panel_border": "#2a4368" if self._is_tech else "#e6ebf1",
+            "panel_bg": "#111b30" if self._is_tech else "#ffffff",
+            "panel_title": "#dbe9ff" if self._is_tech else "#203047",
+            "primary_border": "#3f64a1" if self._is_tech else "#d7dfeb",
+            "primary_bg": "#1a2b4a" if self._is_tech else "#f7f9fc",
+            "primary_bg_hover": "#24406f" if self._is_tech else "#eef3f9",
+            "primary_text": "#eaf2ff" if self._is_tech else "#132640",
+            "secondary_border": "#2f4f80" if self._is_tech else "#e1e7ef",
+            "secondary_bg": "#13233f" if self._is_tech else "#ffffff",
+            "secondary_bg_hover": "#1d335a" if self._is_tech else "#f7f9fc",
+            "secondary_text": "#dce9ff" if self._is_tech else "#203047",
+            "card_border": "#2e4b78" if self._is_tech else "#e3e9f1",
+            "card_bg": "#15253f" if self._is_tech else "#fbfcfe",
+            "badge_bg": "#274b82" if self._is_tech else "#dce8f6",
+            "badge_text": "#f2f7ff" if self._is_tech else "#173355",
+            "body_text": "#9cb1cf" if self._is_tech else "#667484",
+            "info_title": "#dbe9ff" if self._is_tech else "#243243",
+            "info_text": "#9bb0cd" if self._is_tech else "#5d6a79",
+        }
 
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 28, 28, 28)
         root.setSpacing(18)
 
         title = QLabel("PANEL STARTOWY")
-        title.setStyleSheet("font-size: 26px; font-weight: 900; color:#14263d;")
+        title.setStyleSheet(f"font-size: 26px; font-weight: 900; color:{self._colors['title']};")
         root.addWidget(title, 0, Qt.AlignmentFlag.AlignLeft)
 
         subtitle = QLabel("Tu zaczynasz prace. Najpierw zakladasz zamowienie, potem przechodzisz dalej.")
         subtitle.setWordWrap(True)
-        subtitle.setStyleSheet("color:#5f6c7c; font-size:14px;")
+        subtitle.setStyleSheet(f"color:{self._colors['subtitle']}; font-size:14px;")
         root.addWidget(subtitle, 0, Qt.AlignmentFlag.AlignLeft)
 
         start_panel = self._make_panel()
@@ -58,7 +84,7 @@ class TabStart(QWidget):
         root.addWidget(start_panel)
 
         section = QLabel("Pozostale narzedzia")
-        section.setStyleSheet("font-size: 15px; font-weight: 800; color:#203047;")
+        section.setStyleSheet(f"font-size: 15px; font-weight: 800; color:{self._colors['section']};")
         root.addWidget(section, 0, Qt.AlignmentFlag.AlignLeft)
 
         tools_panel = self._make_panel()
@@ -111,16 +137,16 @@ class TabStart(QWidget):
         panel = QFrame(self)
         panel.setStyleSheet(
             "QFrame {"
-            "border: 1px solid #e6ebf1;"
+            f"border: 1px solid {self._colors['panel_border']};"
             "border-radius: 18px;"
-            "background: #ffffff;"
+            f"background: {self._colors['panel_bg']};"
             "}"
         )
         return panel
 
     def _make_panel_title(self, text: str) -> QLabel:
         label = QLabel(text, self)
-        label.setStyleSheet("font-size: 15px; font-weight: 800; color:#203047;")
+        label.setStyleSheet(f"font-size: 15px; font-weight: 800; color:{self._colors['panel_title']};")
         return label
 
     def _make_primary_button(self, title: str, description: str) -> QPushButton:
@@ -136,15 +162,15 @@ class TabStart(QWidget):
             "text-align: left;"
             "padding: 0 12px;"
             "border-radius: 12px;"
-            "border: 1px solid #d7dfeb;"
-            "background: #f7f9fc;"
-            "color: #132640;"
+            f"border: 1px solid {self._colors['primary_border']};"
+            f"background: {self._colors['primary_bg']};"
+            f"color: {self._colors['primary_text']};"
             "font-size: 14px;"
             "font-weight: 700;"
             "}"
             "QPushButton:hover {"
-            "border-color: #aebfd9;"
-            "background: #eef3f9;"
+            f"border-color: {self._colors['primary_border']};"
+            f"background: {self._colors['primary_bg_hover']};"
             "}"
         )
         btn.setIconSize(QSize(22, 22))
@@ -163,15 +189,15 @@ class TabStart(QWidget):
             "text-align: left;"
             "padding: 0 12px;"
             "border-radius: 12px;"
-            "border: 1px solid #e1e7ef;"
-            "background: #ffffff;"
-            "color: #203047;"
+            f"border: 1px solid {self._colors['secondary_border']};"
+            f"background: {self._colors['secondary_bg']};"
+            f"color: {self._colors['secondary_text']};"
             "font-size: 13px;"
             "font-weight: 700;"
             "}"
             "QPushButton:hover {"
-            "border-color: #b7c5d8;"
-            "background: #f7f9fc;"
+            f"border-color: {self._colors['secondary_border']};"
+            f"background: {self._colors['secondary_bg_hover']};"
             "}"
         )
         btn.setIconSize(QSize(20, 20))
@@ -184,9 +210,9 @@ class TabStart(QWidget):
         card = QFrame(self)
         card.setStyleSheet(
             "QFrame {"
-            "border: 1px solid #e3e9f1;"
+            f"border: 1px solid {self._colors['card_border']};"
             "border-radius: 16px;"
-            "background: #fbfcfe;"
+            f"background: {self._colors['card_bg']};"
             "}"
         )
         layout = QVBoxLayout(card)
@@ -196,19 +222,19 @@ class TabStart(QWidget):
         badge.setFixedWidth(28)
         badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         badge.setStyleSheet(
-            "background:#dce8f6;"
-            "color:#173355;"
+            f"background:{self._colors['badge_bg']};"
+            f"color:{self._colors['badge_text']};"
             "border-radius: 14px;"
             "font-weight: 800;"
             "padding: 4px 0;"
         )
         layout.addWidget(badge, 0, Qt.AlignmentFlag.AlignLeft)
         label = QLabel(title, card)
-        label.setStyleSheet("font-size: 15px; font-weight: 800; color:#173355;")
+        label.setStyleSheet(f"font-size: 15px; font-weight: 800; color:{self._colors['panel_title']};")
         layout.addWidget(label)
         text = QLabel(description, card)
         text.setWordWrap(True)
-        text.setStyleSheet("color:#667484;")
+        text.setStyleSheet(f"color:{self._colors['body_text']};")
         layout.addWidget(text)
         return card
 
@@ -219,10 +245,10 @@ class TabStart(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
         label = QLabel(title, card)
-        label.setStyleSheet("font-weight: 800; color:#243243;")
+        label.setStyleSheet(f"font-weight: 800; color:{self._colors['info_title']};")
         text = QLabel(description, card)
         text.setWordWrap(True)
-        text.setStyleSheet("color:#5d6a79;")
+        text.setStyleSheet(f"color:{self._colors['info_text']};")
         layout.addWidget(label)
         layout.addWidget(text)
         return card

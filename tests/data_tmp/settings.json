@@ -1,0 +1,65 @@
+{
+  "drawing": {
+    "rect_line_color": "#000000",
+    "rect_line_width_px": 3,
+    "dim_line_color": "#0066cc",
+    "dim_line_width_px": 3,
+    "dim_end_style": "arrows",
+    "grid_enabled": true,
+    "grid_step_mm": 50.0,
+    "grid_color": "#e6e6e6",
+    "grid_width_px": 1,
+    "show_front_part": true,
+    "front_mode": "external",
+    "edgeband_color": "#cc0000",
+    "edgeband_width_px": 4,
+    "hinge_edge_offset_mm": 12.0,
+    "auto_double_front_width_mm": 600.0
+  },
+  "default_materials": {
+    "carcass_material_key": "szary_mat",
+    "carcass_thickness_mm": 18.0,
+    "front_material_key": "antracyt",
+    "front_thickness_mm": 16.0,
+    "shelf_material_key": "",
+    "shelf_thickness_mm": 18.0,
+    "back_material_key": "hdf_3mm",
+    "back_thickness_mm": 3.0,
+    "carcass_edgeband_key": "",
+    "front_edgeband_key": "",
+    "default_leg_height_mm": 100.0,
+    "default_carcass_joint": "type2",
+    "material_profile_key": "lazienka_szara"
+  },
+  "ui": {
+    "string_lists": {
+      "order_client_identity_order": [
+        "id",
+        "first_name",
+        "last_name",
+        "phone",
+        "email"
+      ],
+      "order_client_address_order": [
+        "street",
+        "house_number",
+        "apartment_number",
+        "postal_code",
+        "city"
+      ],
+      "order_order_primary_order": [
+        "order_id",
+        "code",
+        "order_name",
+        "status"
+      ],
+      "order_order_address_order": [
+        "site_street",
+        "site_house_number",
+        "site_apartment_number",
+        "site_postal_code",
+        "site_city"
+      ]
+    }
+  }
+}

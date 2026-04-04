@@ -1,10 +1,11 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import os
 import re
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -27,10 +28,22 @@ from PyQt6.QtWidgets import (
 
 from src.tabs.baza_szybkich_wycen.tab_baza_szybkich_wycen import (
     quick_quote_archive_path,
+    quick_quote_export_dir,
     sanitize_quick_quote_entries,
 )
 from src.storage.catalog_store_json import CatalogStoreJson
 from src.storage.client_store_json import ClientStoreJson
+
+TABLE_TEXT_STYLE = """
+QTableWidget {
+    color: #1f2937;
+    selection-color: #0f172a;
+}
+QTableWidget::item:selected {
+    background: #dbeafe;
+    color: #0f172a;
+}
+"""
 
 
 SECTION_SCOPE_ITEMS: tuple[str, ...] = (
@@ -63,6 +76,44 @@ class _NumericSortItem(QTableWidgetItem):
             except Exception:
                 pass
         return super().__lt__(other)
+
+
+def _slugify_filename(value: str, fallback: str = "oferta") -> str:
+    text = re.sub(r"[^A-Za-z0-9_-]+", "_", str(value or "").strip())
+    text = re.sub(r"_+", "_", text).strip("_")
+    return text or fallback
+
+
+def _next_unique_export_path(directory: Path, stem: str, suffix: str) -> Path:
+    first = directory / f"{stem}{suffix}"
+    if not first.exists():
+        return first
+    index = 2
+    while True:
+        candidate = directory / f"{stem}_{index:02d}{suffix}"
+        if not candidate.exists():
+            return candidate
+        index += 1
+
+
+def _create_simple_pdf(path: Path, lines: list[str]) -> None:
+    text = "\n".join(lines)
+    escaped = text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+    payload = (
+        "%PDF-1.4\n"
+        "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n"
+        "2 0 obj << /Type /Pages /Count 1 /Kids [3 0 R] >> endobj\n"
+        "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R >> endobj\n"
+        f"4 0 obj << /Length {len(escaped) + 40} >> stream\n"
+        "BT /F1 12 Tf 36 760 Td\n"
+        f"({escaped}) Tj\n"
+        "ET\n"
+        "endstream endobj\n"
+        "xref\n0 5\n0000000000 65535 f \n"
+        "0000000010 00000 n \n0000000060 00000 n \n0000000115 00000 n \n0000000205 00000 n \n"
+        "trailer << /Root 1 0 R /Size 5 >>\nstartxref\n320\n%%EOF\n"
+    )
+    path.write_bytes(payload.encode("utf-8", errors="ignore"))
 
 
 def _default_data_dir() -> Path:
@@ -172,6 +223,7 @@ class SzybkaWycenaSection(QFrame):
         body_layout.addWidget(self.scope_row_widget, 0)
 
         self.tbl = QTableWidget(0, 6, self)
+        self.tbl.setStyleSheet(TABLE_TEXT_STYLE)
         self.tbl.setHorizontalHeaderLabels(["ID", "Szafka", "L", "W", "H", "Cena"])
         self.tbl.setAlternatingRowColors(True)
         self.tbl.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
@@ -236,6 +288,7 @@ class SzybkaWycenaSection(QFrame):
         materials_body_layout.setContentsMargins(0, 0, 0, 0)
         materials_body_layout.setSpacing(4)
         self.tbl_materials = QTableWidget(0, 7, self)
+        self.tbl_materials.setStyleSheet(TABLE_TEXT_STYLE)
         self.tbl_materials.setHorizontalHeaderLabels(
             ["ID", "Nazwa", "Parametry", "Cena [zl]", "Typ", "m2", "Suma [zl]"]
         )
@@ -291,6 +344,7 @@ class SzybkaWycenaSection(QFrame):
         hardware_body_layout.addLayout(hw_controls)
 
         self.tbl_hardware = QTableWidget(0, 5, self)
+        self.tbl_hardware.setStyleSheet(TABLE_TEXT_STYLE)
         self.tbl_hardware.setHorizontalHeaderLabels(["ID", "Nazwa", "Cena [zl]", "Ilosc", "Suma [zl]"])
         self.tbl_hardware.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.tbl_hardware.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
@@ -926,7 +980,7 @@ class TabSzybkaWycena(QWidget):
             self,
         )
         subtitle.setWordWrap(True)
-        subtitle.setStyleSheet("color:#555555;")
+        subtitle.setStyleSheet("color: palette(text);")
         root.addWidget(subtitle, 0, Qt.AlignmentFlag.AlignLeft)
 
         row_actions = QHBoxLayout()
@@ -935,15 +989,27 @@ class TabSzybkaWycena(QWidget):
         self.btn_edit_section = QPushButton("Modyfikuj pasek", self)
         self.btn_remove_section = QPushButton("Wykasuj pasek", self)
         self.btn_save_to_base = QPushButton("Dodaj do BAZY wycen", self)
+        self.btn_export_pdf = QPushButton("Eksport PDF", self)
         self.cb_client_selector = QComboBox(self)
         self.cb_client_selector.setMinimumWidth(220)
+        self.ed_offer_title = QLineEdit(self)
+        self.ed_offer_title.setPlaceholderText("Tytul oferty")
+        self.ed_offer_title.setMinimumWidth(220)
+        self.ed_discount_pct = QLineEdit(self)
+        self.ed_discount_pct.setPlaceholderText("Rabat %")
+        self.ed_discount_pct.setFixedWidth(90)
         self.cb_section_picker = QComboBox(self)
         row_actions.addWidget(self.btn_add_section, 0)
         row_actions.addWidget(self.btn_edit_section, 0)
         row_actions.addWidget(self.btn_remove_section, 0)
         row_actions.addWidget(self.btn_save_to_base, 0)
+        row_actions.addWidget(self.btn_export_pdf, 0)
+        row_actions.addWidget(QLabel("Oferta:", self), 0)
+        row_actions.addWidget(self.ed_offer_title, 0)
         row_actions.addWidget(QLabel("Klient:", self), 0)
         row_actions.addWidget(self.cb_client_selector, 0)
+        row_actions.addWidget(QLabel("Rabat:", self), 0)
+        row_actions.addWidget(self.ed_discount_pct, 0)
         row_actions.addStretch(1)
         row_actions.addWidget(QLabel("Aktywny pasek:", self), 0)
         row_actions.addWidget(self.cb_section_picker, 0)
@@ -967,9 +1033,42 @@ class TabSzybkaWycena(QWidget):
         self.btn_edit_section.clicked.connect(self._edit_selected_section)
         self.btn_remove_section.clicked.connect(self._remove_selected_section)
         self.btn_save_to_base.clicked.connect(self._save_quote_to_base)
+        self.btn_export_pdf.clicked.connect(self._export_current_quote_pdf)
 
         self._refresh_clients()
+        self.ed_discount_pct.setText("0")
         self._add_section()
+
+    @staticmethod
+    def _parse_percent(value: Any) -> float:
+        raw = str(value or "").strip().replace(",", ".")
+        if not raw:
+            return 0.0
+        try:
+            parsed = float(raw)
+        except Exception:
+            return 0.0
+        return max(0.0, min(95.0, parsed))
+
+    @staticmethod
+    def _apply_discount(total: float, discount_pct: float) -> float:
+        base = max(0.0, float(total or 0.0))
+        pct = max(0.0, min(95.0, float(discount_pct or 0.0)))
+        return base * (1.0 - (pct / 100.0))
+
+    @staticmethod
+    def _build_quote_id(entries: list[dict[str, Any]], now_dt: datetime | None = None) -> str:
+        now = now_dt or datetime.now()
+        base = f"Q{now.strftime('%Y%m%d_%H%M%S')}"
+        used = {str(row.get("id", "") or "").strip() for row in entries if isinstance(row, dict)}
+        if base not in used:
+            return base
+        index = 2
+        while True:
+            candidate = f"{base}_{index:02d}"
+            if candidate not in used:
+                return candidate
+            index += 1
 
     def _load_sources(self) -> None:
         self._mo_mm, self._module_templates = self._load_module_templates()
@@ -1195,7 +1294,7 @@ class TabSzybkaWycena(QWidget):
             QMessageBox.warning(
                 self,
                 "Wybierz klienta",
-                "Wybierz klienta, dla którego chcesz zapisać tę wycenę.",
+                "Wybierz klienta, dla ktĂłrego chcesz zapisaÄ‡ tÄ™ wycenÄ™.",
             )
             return
         sections, total = self._collect_sections_summary()
@@ -1203,22 +1302,66 @@ class TabSzybkaWycena(QWidget):
             QMessageBox.warning(
                 self,
                 "Brak sekcji",
-                "Dodaj przynajmniej jeden pasek z szafkami, aby zapisać wycenę.",
+                "Dodaj przynajmniej jeden pasek z szafkami, aby zapisaÄ‡ wycenÄ™.",
             )
             return
         entries = self._load_quote_archive()
+        quote_id = self._build_quote_id(entries)
+        title = str(self.ed_offer_title.text() or "").strip() or "Oferta"
+        discount_pct = self._parse_percent(self.ed_discount_pct.text())
+        final_total = self._apply_discount(total, discount_pct)
         entry = {
-            "id": f"Q{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            "id": quote_id,
+            "title": title,
             "client": client,
-            "price": f"{total:.2f} zl",
+            "base_price": f"{total:.2f} zl",
+            "price": f"{final_total:.2f} zl",
+            "discount_pct": f"{discount_pct:.2f}%",
             "vat": "23%",
             "margin": "0.00%",
+            "created_at": datetime.now().isoformat(timespec="seconds"),
             "sections": sections,
         }
         entries.append(entry)
         self._write_quote_archive(entries)
         QMessageBox.information(
             self,
-            "Zapisano wycenę",
-            "Szybka wycena została dopisana do bazy szybkich wycen.",
+            "Zapisano wycenÄ™",
+            "Szybka wycena zostaĹ‚a dopisana do bazy szybkich wycen.",
         )
+
+    def _export_current_quote_pdf(self) -> None:
+        client = str(self.cb_client_selector.currentData() or self.cb_client_selector.currentText() or "").strip()
+        if not client:
+            QMessageBox.warning(self, "Wybierz klienta", "Wybierz klienta przed eksportem PDF.")
+            return
+
+        sections, total = self._collect_sections_summary()
+        if not sections:
+            QMessageBox.warning(self, "Brak sekcji", "Dodaj przynajmniej jedna sekcje przed eksportem.")
+            return
+
+        entries = self._load_quote_archive()
+        quote_id = self._build_quote_id(entries)
+        title = str(self.ed_offer_title.text() or "").strip() or "Oferta"
+        discount_pct = self._parse_percent(self.ed_discount_pct.text())
+        final_total = self._apply_discount(total, discount_pct)
+
+        lines = [
+            f"ID oferty: {quote_id}",
+            f"Oferta: {title}",
+            f"Klient: {client}",
+            f"Cena bazowa: {total:.2f} zl",
+            f"Rabat: {discount_pct:.2f}%",
+            f"Cena po rabacie: {final_total:.2f} zl",
+        ]
+        for section in sections:
+            lines.append(
+                f"Sekcja: {section.get('id', '')} | {section.get('title', '')} | {section.get('price', '')}"
+            )
+
+        stem = f"{quote_id}_{_slugify_filename(title, fallback='Oferta')}"
+        out = _next_unique_export_path(quick_quote_export_dir(), stem, ".pdf")
+        _create_simple_pdf(out, lines)
+        QMessageBox.information(self, "Eksport PDF", f"Zapisano: {out.name}")
+

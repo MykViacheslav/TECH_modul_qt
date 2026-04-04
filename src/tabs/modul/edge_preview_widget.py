@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import hashlib
 from typing import Optional
@@ -7,7 +7,7 @@ from PyQt6.QtCore import QPointF, QRectF, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPainter, QPen
 from PyQt6.QtWidgets import QWidget
 
-# Paleta kolorow do obrze zy — cykliczna, rozroznialna
+# Paleta kolorow do obrze zy â€” cykliczna, rozroznialna
 _EDGE_COLORS: list[str] = [
     "#2563eb",  # niebieski
     "#16a34a",  # zielony
@@ -19,11 +19,12 @@ _EDGE_COLORS: list[str] = [
     "#65a30d",  # limonkowy
 ]
 
-_NO_EDGE_COLOR = "#d1d5db"   # szary — brak obrzeza
+_NO_EDGE_COLOR = "#d1d5db"   # szary â€” brak obrzeza
 _BOARD_FILL    = "#f8fafc"   # wypelnienie formatki
 _BOARD_BORDER  = "#374151"   # ramka formatki
 _STRIP_W       = 10          # grubosc paska obrzeza (px)
 _LABEL_FONT_SZ = 7           # rozmiar czcionki etykiety
+_BOARD_ASPECT  = 1.9
 
 
 def _key_to_color(key: str) -> QColor:
@@ -37,7 +38,7 @@ class EdgePreviewWidget(QWidget):
     Podglad wizualny obrze zy formatki.
 
     Kazda krawedz (top/right/bottom/left) jest rysowana jako kolorowy
-    pasek. Kolor zalezny od klucza obrzeza — rozne obrzeza = rozne kolory.
+    pasek. Kolor zalezny od klucza obrzeza â€” rozne obrzeza = rozne kolory.
     Brak obrzeza = szary pasek.
 
     Klikniecie w krawedz emituje sig_toggle_side(side_key).
@@ -47,16 +48,16 @@ class EdgePreviewWidget(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setMinimumHeight(130)
-        self.setMaximumHeight(160)
-        self.setMinimumWidth(200)
+        self.setMinimumHeight(80)
+        self.setMaximumHeight(110)
+        self.setMinimumWidth(160)
         # side_key -> edgeband_key (pusty = brak)
         self._bands: dict[str, str] = {}
         # side_key -> short label (np. skrocona nazwa)
         self._labels: dict[str, str] = {}
         self._active_part_name: str = ""
 
-    # ── PUBLIC API ────────────────────────────────────────────────────────
+    # â”€â”€ PUBLIC API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def set_edge_banding(
         self,
@@ -64,8 +65,8 @@ class EdgePreviewWidget(QWidget):
         labels: dict[str, str] | None = None,
     ) -> None:
         """
-        bands:  {side_key: edgeband_key}  — tylko te strony maja obrzeze.
-        labels: {edgeband_key: short_label} — opcjonalne etykiety dla kluczy.
+        bands:  {side_key: edgeband_key}  â€” tylko te strony maja obrzeze.
+        labels: {edgeband_key: short_label} â€” opcjonalne etykiety dla kluczy.
         """
         self._bands = dict(bands or {})
         self._labels = dict(labels or {})
@@ -73,7 +74,7 @@ class EdgePreviewWidget(QWidget):
 
     # backward-compat: akceptuj tez set (stary interfejs)
     def set_selected_edges(self, edges: set[str]) -> None:
-        """Stary interfejs — tylko which sides, brak info o kluczu."""
+        """Stary interfejs â€” tylko which sides, brak info o kluczu."""
         self._bands = {s: "__selected__" for s in edges}
         self._labels = {}
         self.update()
@@ -82,15 +83,24 @@ class EdgePreviewWidget(QWidget):
         self._active_part_name = name_pl
         self.update()
 
-    # ── GEOMETRY ─────────────────────────────────────────────────────────
+    # â”€â”€ GEOMETRY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def _board_rect(self) -> QRectF:
         """Prostokat reprezentujacy srodek formatki (bez paskow)."""
-        margin = float(_STRIP_W) + 6.0
-        label_h = 18.0
-        w = max(60.0, float(self.width())  - 2.0 * margin)
-        h = max(30.0, float(self.height()) - 2.0 * margin - label_h)
-        x = (float(self.width())  - w) / 2.0
+        margin = float(_STRIP_W) + 4.0
+        label_h = 13.0
+        avail_w = max(60.0, float(self.width()) - 2.0 * margin)
+        avail_h = max(30.0, float(self.height()) - 2.0 * margin - label_h)
+
+        # Nie rozciagaj miniatury na cala szerokosc panelu.
+        w = min(avail_w, avail_h * _BOARD_ASPECT)
+        h = min(avail_h, w / _BOARD_ASPECT)
+
+        # Oddech po bokach i pionie dla lepszej czytelnosci.
+        w *= 0.92
+        h *= 0.92
+
+        x = (float(self.width()) - w) / 2.0
         y = label_h + (float(self.height()) - label_h - h) / 2.0
         return QRectF(x, y, w, h)
 
@@ -126,7 +136,7 @@ class EdgePreviewWidget(QWidget):
                 return "right"
         return None
 
-    # ── PAINT ─────────────────────────────────────────────────────────────
+    # â”€â”€ PAINT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def paintEvent(self, _e) -> None:  # type: ignore[override]
         p = QPainter(self)
@@ -135,11 +145,11 @@ class EdgePreviewWidget(QWidget):
 
         # naglowek
         font_hdr = QFont()
-        font_hdr.setPointSize(8)
+        font_hdr.setPointSize(7)
         font_hdr.setBold(True)
         p.setFont(font_hdr)
         p.setPen(QPen(QColor("#374151")))
-        p.drawText(6, 14, f"Obrzeza: {self._active_part_name or '-'}")
+        p.drawText(4, 11, f"Obrzeza: {self._active_part_name or '-'}")
 
         board = self._board_rect()
         sw = float(_STRIP_W)
@@ -236,9 +246,11 @@ class EdgePreviewWidget(QWidget):
         else:
             p.drawText(strip, Qt.AlignmentFlag.AlignCenter, label_txt)
 
-    # ── MOUSE ─────────────────────────────────────────────────────────────
+    # â”€â”€ MOUSE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def mousePressEvent(self, e) -> None:  # type: ignore[override]
         side = self._side_hit(e.pos().x(), e.pos().y())
         if side:
             self.sig_toggle_side.emit(side)
+
+

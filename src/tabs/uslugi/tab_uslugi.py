@@ -35,6 +35,7 @@ from src.domain.client_models import ClientDef
 from src.domain.service_models import ServiceDef, new_service_id
 from src.domain.alarm_models import AlarmDef, new_alarm_id
 from src.domain.calendar_event import CalendarEvent
+from src.app.app_settings import load_ui_theme_settings
 from src.storage.alarm_store_json import AlarmStoreJson
 from src.storage.calendar_event_store_json import CalendarEventStoreJson
 from src.storage.client_store_json import ClientStoreJson
@@ -284,7 +285,9 @@ class _FormatkiDialog(QDialog):
         root.addWidget(self.tbl, 1)
 
         self.lab_summary = QLabel("Suma okleina: 0.000 mb | Suma lakier: 0.000 m.kw", self)
-        self.lab_summary.setStyleSheet("font-weight:600; color:#23344f;")
+        _theme = load_ui_theme_settings()
+        _is_tech = str(_theme.motif or "").strip().lower() == "tech" and str(_theme.mode or "").strip().lower() == "night"
+        self.lab_summary.setStyleSheet(f"font-weight:600; color:{'#dbe9ff' if _is_tech else '#23344f'};")
         root.addWidget(self.lab_summary, 0, Qt.AlignmentFlag.AlignRight)
 
         bottom = QHBoxLayout()
@@ -859,6 +862,23 @@ class _UslugaPanel(QWidget):
         self._formatki_by_row_id: dict[str, list[dict[str, Any]]] = {}
         self._active_quote_id = ""
         self._is_loading = False
+        theme = load_ui_theme_settings()
+        self._is_tech = str(theme.motif or "").strip().lower() == "tech" and str(theme.mode or "").strip().lower() == "night"
+        self._card_style = (
+            "QFrame { border:1px solid #2a4368; border-radius:8px; background:#111b30; }"
+            if self._is_tech
+            else "QFrame { border:1px solid #d9e0ea; border-radius:8px; background:#ffffff; }"
+        )
+        self._status_color = "#8fc4ff" if self._is_tech else "#2f6f3e"
+        self._muted_color = "#9bb0cd" if self._is_tech else "#555555"
+        self._summary_color = "#dbe9ff" if self._is_tech else "#23344f"
+        self._combo_style = (
+            "QComboBox { margin:0px; padding:0px 2px; border:1px solid #2f4f80; border-radius:2px; background:#10203a; color:#e8efff; }"
+            "QComboBox::drop-down { width:16px; }"
+            if self._is_tech
+            else "QComboBox { margin:0px; padding:0px 2px; border:1px solid #cfd8e3; border-radius:2px; }"
+            "QComboBox::drop-down { width:16px; }"
+        )
 
         root = QVBoxLayout(self)
         root.setContentsMargins(12, 12, 12, 12)
@@ -928,7 +948,7 @@ class _UslugaPanel(QWidget):
         top_row_2.addStretch(1)
 
         self.lab_total = QLabel("Suma netto: 0.00 zl | Suma brutto: 0.00 zl", self)
-        self.lab_total.setStyleSheet("font-size:16px; font-weight:700;")
+        self.lab_total.setStyleSheet(f"font-size:16px; font-weight:700; color:{self._summary_color};")
         top_row_2.addWidget(self.lab_total, 0)
         top_wrap.addLayout(top_row_2)
         root.addLayout(top_wrap)
@@ -995,14 +1015,14 @@ class _UslugaPanel(QWidget):
         root.addWidget(self.btn_toggle_formatki_list, 0, Qt.AlignmentFlag.AlignLeft)
 
         self.frame_formatki_preview = QFrame(self)
-        self.frame_formatki_preview.setStyleSheet("QFrame { border:1px solid #d9e0ea; border-radius:8px; background:#ffffff; }")
+        self.frame_formatki_preview.setStyleSheet(self._card_style)
         preview_root = QVBoxLayout(self.frame_formatki_preview)
         preview_root.setContentsMargins(8, 8, 8, 8)
         preview_root.setSpacing(6)
 
         preview_top = QHBoxLayout()
         self.lab_formatki_preview = QLabel("Brak wybranej pozycji.", self.frame_formatki_preview)
-        self.lab_formatki_preview.setStyleSheet("font-weight:600;")
+        self.lab_formatki_preview.setStyleSheet(f"font-weight:600; color:{self._summary_color};")
         preview_top.addWidget(self.lab_formatki_preview, 0)
         preview_top.addStretch(1)
         self.btn_print_formatki = QPushButton("Drukuj formatki", self.frame_formatki_preview)
@@ -1044,13 +1064,13 @@ class _UslugaPanel(QWidget):
         root.addWidget(self.frame_formatki_preview, 0)
 
         bottom = QFrame(self)
-        bottom.setStyleSheet("QFrame { border:1px solid #d9e0ea; border-radius:8px; background:#ffffff; }")
+        bottom.setStyleSheet(self._card_style)
         row = QHBoxLayout(bottom)
         row.setContentsMargins(10, 8, 10, 8)
         row.addWidget(QLabel("Tabela: material z bazy, usluga z cenika, RAL/NCS/model frontu.", self), 0)
         row.addStretch(1)
         self.lab = QLabel("", self)
-        self.lab.setStyleSheet("color:#2f6f3e;")
+        self.lab.setStyleSheet(f"color:{self._status_color};")
         row.addWidget(self.lab, 0)
         root.addWidget(bottom, 0)
 
@@ -1336,10 +1356,7 @@ class _UslugaPanel(QWidget):
             cb.setMinimumWidth(8)
             cb.setMinimumHeight(20)
             cb.setMaximumHeight(20)
-            cb.setStyleSheet(
-                "QComboBox { margin:0px; padding:0px 2px; border:1px solid #cfd8e3; border-radius:2px; }"
-                "QComboBox::drop-down { width:16px; }"
-            )
+            cb.setStyleSheet(self._combo_style)
         material.currentIndexChanged.connect(self._on_combo_changed)
         work.currentIndexChanged.connect(self._on_combo_changed)
         self.tbl.setCellWidget(row, self.COL_MATERIAL, material)
@@ -1913,16 +1930,20 @@ class _BazaUslugPanel(QWidget):
 class TabUslugi(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        theme = load_ui_theme_settings()
+        is_tech = str(theme.motif or "").strip().lower() == "tech" and str(theme.mode or "").strip().lower() == "night"
+        title_color = "#e8efff" if is_tech else "#111827"
+        subtitle_color = "#9bb0cd" if is_tech else "#555555"
         root = QVBoxLayout(self)
         root.setContentsMargins(14, 14, 14, 14)
         root.setSpacing(10)
 
         title = QLabel("USLUGI", self)
-        title.setStyleSheet("font-size:22px; font-weight:800;")
+        title.setStyleSheet(f"font-size:22px; font-weight:800; color:{title_color};")
         root.addWidget(title, 0, Qt.AlignmentFlag.AlignLeft)
 
         subtitle = QLabel("Cenik, klijenty, nowa usluga i baza uslug.", self)
-        subtitle.setStyleSheet("color:#555555;")
+        subtitle.setStyleSheet(f"color:{subtitle_color};")
         subtitle.setWordWrap(True)
         root.addWidget(subtitle, 0, Qt.AlignmentFlag.AlignLeft)
 

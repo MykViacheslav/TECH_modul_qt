@@ -31,7 +31,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
 )
 
-from src.app.app_settings import load_drawing_settings
+from src.app.app_settings import load_drawing_settings, load_ui_theme_settings
 from src.domain.assembly_resolution_service import resolve_assembly_items
 from src.domain.work_time_costing import WorkTimeCostBreakdown, compute_work_time_cost
 from src.storage.assembly_store_json import AssemblyStoreJson
@@ -146,6 +146,81 @@ class TabWycena(QWidget):
         self._policy_multipliers = dict(pricing_data.get("policy_multipliers", {}) or {})
         self._pricing_rules = dict(pricing_data.get("rules", {}) or {})
         self._active_role = str(pricing_data.get("active_role", "owner") or "owner")
+        theme = load_ui_theme_settings()
+        self._is_tech = str(theme.motif).strip().lower() == "tech" and str(theme.mode).strip().lower() == "night"
+        self._colors = (
+            {
+                "title": "#e8efff",
+                "subtitle": "#9cb7dc",
+                "hero_bg_0": "#111b30",
+                "hero_bg_1": "#15253f",
+                "hero_border": "#2e4b78",
+                "hero_title": "#f2f7ff",
+                "hero_desc": "#9cb7dc",
+                "hero_chip_bg": "#1f3a8a",
+                "hero_chip_border": "#3b82f6",
+                "hero_chip_text": "#eaf1ff",
+                "stats_bg": "rgba(18,30,52,0.98)",
+                "stats_border": "#2e4b78",
+                "metric_bg_0": "#15253f",
+                "metric_bg_1": "#1c3154",
+                "metric_border": "#2e4b78",
+                "metric_accent": "#3b82f6",
+                "metric_title": "#9cb7dc",
+                "metric_value": "#f2f7ff",
+                "client_box_bg": "#102947",
+                "client_box_border": "#2f5f96",
+                "client_box_accent": "#4f8ce8",
+                "client_hdr": "#cfe2ff",
+                "client_text": "#dbe9ff",
+                "payments_box_bg": "#163428",
+                "payments_box_border": "#2f7d65",
+                "payments_box_accent": "#2f9c7f",
+                "payments_hdr": "#c9f5e6",
+                "payments_text": "#dbf5e9",
+                "dates_box_bg": "#3a2b18",
+                "dates_box_border": "#8c6333",
+                "dates_box_accent": "#d08b3f",
+                "dates_hdr": "#ffe0ba",
+                "dates_text": "#fde6cc",
+            }
+            if self._is_tech
+            else {
+                "title": "#0f172a",
+                "subtitle": "#526174",
+                "hero_bg_0": "#ffffff",
+                "hero_bg_1": "#eef4ff",
+                "hero_border": "#d7e1ef",
+                "hero_title": "#10263d",
+                "hero_desc": "#526174",
+                "hero_chip_bg": "#0f172a",
+                "hero_chip_border": "#0f172a",
+                "hero_chip_text": "#ffffff",
+                "stats_bg": "rgba(255,255,255,0.96)",
+                "stats_border": "#d7e1ef",
+                "metric_bg_0": "#ffffff",
+                "metric_bg_1": "#f7fbff",
+                "metric_border": "#dbe4ef",
+                "metric_accent": "#2563eb",
+                "metric_title": "#64748b",
+                "metric_value": "#0f172a",
+                "client_box_bg": "#eff6ff",
+                "client_box_border": "#bfdbfe",
+                "client_box_accent": "#2563eb",
+                "client_hdr": "#1e40af",
+                "client_text": "#1f2937",
+                "payments_box_bg": "#f0fdf4",
+                "payments_box_border": "#d1fae5",
+                "payments_box_accent": "#16a34a",
+                "payments_hdr": "#14532d",
+                "payments_text": "#1f2937",
+                "dates_box_bg": "#fffbeb",
+                "dates_box_border": "#fde68a",
+                "dates_box_accent": "#d97706",
+                "dates_hdr": "#92400e",
+                "dates_text": "#1f2937",
+            }
+        )
 
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 18, 18, 18)
@@ -155,7 +230,9 @@ class TabWycena(QWidget):
         title_row.setSpacing(10)
 
         title = QLabel("WYCENA")
-        title.setStyleSheet("font-size: 24px; font-weight: 900; letter-spacing: 0.2px; color:#0f172a;")
+        title.setStyleSheet(
+            f"font-size:24px; font-weight:900; letter-spacing:0.2px; color:{self._colors['title']};"
+        )
         title_row.addWidget(title, 0, Qt.AlignmentFlag.AlignLeft)
         title_row.addStretch(1)
 
@@ -202,8 +279,11 @@ class TabWycena(QWidget):
 
         hero = QFrame(self)
         hero.setStyleSheet(
-            "QFrame{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #ffffff,stop:1 #eef4ff);"
-            "border:1px solid #d7e1ef;border-radius:20px;}"
+            "QFrame{"
+            f"background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 {self._colors['hero_bg_0']},"
+            f"stop:1 {self._colors['hero_bg_1']});"
+            f"border:1px solid {self._colors['hero_border']};border-radius:20px;"
+            "}"
         )
         hero_layout = QHBoxLayout(hero)
         hero_layout.setContentsMargins(16, 14, 16, 14)
@@ -211,34 +291,47 @@ class TabWycena(QWidget):
         hero_text = QVBoxLayout()
         hero_text.setSpacing(4)
         hero_title = QLabel("Premium control room dla wyceny")
-        hero_title.setStyleSheet("font-size:14px;font-weight:900;color:#10263d;")
+        hero_title.setStyleSheet(f"font-size:14px;font-weight:900;color:{self._colors['hero_title']};")
         hero_desc = QLabel("Tryb, polityka i rola pozostaja widoczne, ale nie dominują formularza.")
         hero_desc.setWordWrap(True)
-        hero_desc.setStyleSheet("font-size:12px;color:#526174;")
+        hero_desc.setStyleSheet(f"font-size:12px;color:{self._colors['hero_desc']};")
         hero_text.addWidget(hero_title)
         hero_text.addWidget(hero_desc)
         pill_row = QHBoxLayout()
         pill_row.setSpacing(8)
-        pill_row.addWidget(_make_pill("Desktop", "#dbeafe", "#1d4ed8", "#bfdbfe"))
-        pill_row.addWidget(_make_pill("Szybka decyzja", "#eef2ff", "#4338ca", "#c7d2fe"))
-        pill_row.addWidget(_make_pill("Spójny widok", "#ecfdf5", "#047857", "#a7f3d0"))
+        if self._is_tech:
+            pill_row.addWidget(_make_pill("Desktop", "#1c335c", "#dbe9ff", "#31588e"))
+            pill_row.addWidget(_make_pill("Szybka decyzja", "#2c2752", "#dbd4ff", "#504486"))
+            pill_row.addWidget(_make_pill("Spojny widok", "#173a31", "#c7f5e5", "#2f7d65"))
+        else:
+            pill_row.addWidget(_make_pill("Desktop", "#dbeafe", "#1d4ed8", "#bfdbfe"))
+            pill_row.addWidget(_make_pill("Szybka decyzja", "#eef2ff", "#4338ca", "#c7d2fe"))
+            pill_row.addWidget(_make_pill("Spojny widok", "#ecfdf5", "#047857", "#a7f3d0"))
         pill_row.addStretch(1)
         hero_text.addLayout(pill_row)
         hero_layout.addLayout(hero_text, 1)
-        hero_layout.addWidget(_make_pill("Tryb wyceny: " + self.cb_quote_mode.currentText(), "#0f172a", "#ffffff", "#0f172a"))
+        hero_layout.addWidget(
+            _make_pill(
+                "Tryb wyceny: " + self.cb_quote_mode.currentText(),
+                self._colors["hero_chip_bg"],
+                self._colors["hero_chip_text"],
+                self._colors["hero_chip_border"],
+            )
+        )
         root.addWidget(hero)
 
         self.subtitle = QLabel(
             "Osobna karta handlowa dla kompletow. Tutaj liczysz robocizne, transport, montaz i marze bez obciazania karty Komplet."
         )
         self.subtitle.setWordWrap(True)
-        self.subtitle.setStyleSheet("color:#526174;font-size:12px;")
+        self.subtitle.setStyleSheet(f"color:{self._colors['subtitle']};font-size:12px;")
         root.addWidget(self.subtitle, 0, Qt.AlignmentFlag.AlignLeft)
 
         self.stats_widget = QWidget(self)
         mark_ui_card(self.stats_widget, elevated=True)
         self.stats_widget.setStyleSheet(
-            "QWidget{background:rgba(255,255,255,0.96);border:1px solid #d7e1ef;border-radius:18px;}"
+            f"QWidget{{background:{self._colors['stats_bg']};"
+            f"border:1px solid {self._colors['stats_border']};border-radius:18px;}}"
         )
         stats_row = QHBoxLayout(self.stats_widget)
         stats_row.setContentsMargins(12, 10, 12, 10)
@@ -625,23 +718,25 @@ class TabWycena(QWidget):
         # --- Klient ---
         self.client_info_box = QFrame(right)
         self.client_info_box.setStyleSheet(
-            "QFrame { border: 1px solid #bfdbfe; border-left: 4px solid #2563eb; border-radius: 8px; background: #eff6ff; }"
+            f"QFrame {{ border: 1px solid {self._colors['client_box_border']};"
+            f" border-left: 4px solid {self._colors['client_box_accent']}; border-radius: 8px;"
+            f" background: {self._colors['client_box_bg']}; }}"
         )
         client_info_layout = QFormLayout(self.client_info_box)
         client_info_layout.setContentsMargins(12, 10, 12, 10)
         client_info_layout.setSpacing(4)
         _hdr_client = QLabel("Klient")
-        _hdr_client.setStyleSheet("font-weight: 800; font-size: 13px; color: #1e40af;")
+        _hdr_client.setStyleSheet(f"font-weight:800; font-size:13px; color:{self._colors['client_hdr']};")
         client_info_layout.addRow(_hdr_client)
         self.lab_client_name_val = QLabel("-")
-        self.lab_client_name_val.setStyleSheet("font-weight: 700; color: #1f2937;")
+        self.lab_client_name_val.setStyleSheet(f"font-weight:700; color:{self._colors['client_text']};")
         self.lab_client_name_val.setWordWrap(True)
         self.lab_client_phone_val = QLabel("-")
-        self.lab_client_phone_val.setStyleSheet("color: #374151;")
+        self.lab_client_phone_val.setStyleSheet(f"color:{self._colors['client_text']};")
         self.lab_client_email_val = QLabel("-")
-        self.lab_client_email_val.setStyleSheet("color: #374151;")
+        self.lab_client_email_val.setStyleSheet(f"color:{self._colors['client_text']};")
         self.lab_order_code_val = QLabel("-")
-        self.lab_order_code_val.setStyleSheet("font-family: monospace; color: #374151;")
+        self.lab_order_code_val.setStyleSheet(f"font-family:monospace; color:{self._colors['client_text']};")
         client_info_layout.addRow("Zamówienie:", self.lab_order_code_val)
         client_info_layout.addRow("Klient:", self.lab_client_name_val)
         client_info_layout.addRow("Tel.:", self.lab_client_phone_val)
@@ -652,21 +747,23 @@ class TabWycena(QWidget):
         # --- Płatności klienta ---
         self.payments_box = QFrame(right)
         self.payments_box.setStyleSheet(
-            "QFrame { border: 1px solid #d1fae5; border-left: 4px solid #16a34a; border-radius: 8px; background: #f0fdf4; }"
+            f"QFrame {{ border: 1px solid {self._colors['payments_box_border']};"
+            f" border-left: 4px solid {self._colors['payments_box_accent']}; border-radius: 8px;"
+            f" background: {self._colors['payments_box_bg']}; }}"
         )
         self.payments_layout = QVBoxLayout(self.payments_box)
         self.payments_layout.setContentsMargins(12, 10, 12, 10)
         self.payments_layout.setSpacing(4)
         _hdr_pay = QLabel("Płatności klienta")
-        _hdr_pay.setStyleSheet("font-weight: 800; font-size: 13px; color: #14532d;")
+        _hdr_pay.setStyleSheet(f"font-weight:800; font-size:13px; color:{self._colors['payments_hdr']};")
         self.payments_layout.addWidget(_hdr_pay)
         _pay_note = QLabel("Rezerwacja terminu: 5 000 zł  •  1 rata 60%  •  2 rata 30%  •  3 rata 10%")
-        _pay_note.setStyleSheet("font-size: 11px; color: #6b7280; margin-bottom: 4px;")
+        _pay_note.setStyleSheet(f"font-size:11px; color:{self._colors['payments_text']}; margin-bottom:4px;")
         _pay_note.setWordWrap(True)
         self.payments_layout.addWidget(_pay_note)
         self.lab_payments_rows = QLabel("")
         self.lab_payments_rows.setWordWrap(True)
-        self.lab_payments_rows.setStyleSheet("font-size: 12px; color: #1f2937;")
+        self.lab_payments_rows.setStyleSheet(f"font-size:12px; color:{self._colors['payments_text']};")
         self.payments_layout.addWidget(self.lab_payments_rows)
         self.payments_box.hide()
         right_layout.addWidget(self.payments_box, 0)
@@ -674,13 +771,15 @@ class TabWycena(QWidget):
         # --- Terminy projektu ---
         self.dates_box = QFrame(right)
         self.dates_box.setStyleSheet(
-            "QFrame { border: 1px solid #fde68a; border-left: 4px solid #d97706; border-radius: 8px; background: #fffbeb; }"
+            f"QFrame {{ border: 1px solid {self._colors['dates_box_border']};"
+            f" border-left: 4px solid {self._colors['dates_box_accent']}; border-radius: 8px;"
+            f" background: {self._colors['dates_box_bg']}; }}"
         )
         dates_layout = QFormLayout(self.dates_box)
         dates_layout.setContentsMargins(12, 10, 12, 10)
         dates_layout.setSpacing(4)
         _hdr_dates = QLabel("Terminy projektu")
-        _hdr_dates.setStyleSheet("font-weight: 800; font-size: 13px; color: #92400e;")
+        _hdr_dates.setStyleSheet(f"font-weight:800; font-size:13px; color:{self._colors['dates_hdr']};")
         dates_layout.addRow(_hdr_dates)
         self.lab_d_wycena = QLabel("-")
         self.lab_d_projekt = QLabel("-")
@@ -689,7 +788,7 @@ class TabWycena(QWidget):
         self.lab_d_produkcja = QLabel("-")
         self.lab_d_montaz = QLabel("-")
         self.lab_d_poprawki = QLabel("-")
-        _date_style = "color: #1f2937; font-weight: 600;"
+        _date_style = f"color:{self._colors['dates_text']}; font-weight:600;"
         for lbl in (
             self.lab_d_wycena, self.lab_d_projekt, self.lab_d_probki,
             self.lab_d_zakup_mat, self.lab_d_produkcja, self.lab_d_montaz, self.lab_d_poprawki,
@@ -765,16 +864,21 @@ class TabWycena(QWidget):
         frame = QFrame(self)
         mark_ui_card(frame, elevated=True)
         frame.setStyleSheet(
-            "QFrame{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #ffffff,stop:1 #f7fbff);"
-            "border:1px solid #dbe4ef;border-radius:16px;border-bottom:3px solid #2563eb;}"
+            "QFrame{"
+            f"background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 {self._colors['metric_bg_0']},"
+            f"stop:1 {self._colors['metric_bg_1']});"
+            f"border:1px solid {self._colors['metric_border']};"
+            "border-radius:16px;"
+            f"border-bottom:3px solid {self._colors['metric_accent']};"
+            "}"
         )
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(3)
         lab_title = QLabel(title, frame)
-        lab_title.setStyleSheet("color:#64748b; font-size:10px; font-weight:800;")
+        lab_title.setStyleSheet(f"color:{self._colors['metric_title']}; font-size:10px; font-weight:800;")
         lab_value = QLabel(value, frame)
-        lab_value.setStyleSheet("font-size: 18px; font-weight: 900; color:#0f172a;")
+        lab_value.setStyleSheet(f"font-size:18px; font-weight:900; color:{self._colors['metric_value']};")
         lab_value.setObjectName("metricValue")
         layout.addWidget(lab_title)
         layout.addWidget(lab_value)

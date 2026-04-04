@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from src.app.app_settings import load_ui_theme_settings
 from src.domain.alarm_models import (
     ALARM_CATEGORIES,
     ALARM_CATEGORY_LABELS,
@@ -28,6 +29,18 @@ from src.domain.alarm_models import (
     new_alarm_id,
 )
 from src.storage.alarm_store_json import AlarmStoreJson
+from src.ui.theme_utils import get_muted_color
+
+TABLE_TEXT_STYLE = """
+QTableWidget {
+    color: #1f2937;
+    selection-color: #0f172a;
+}
+QTableWidget::item:selected {
+    background: #dbeafe;
+    color: #0f172a;
+}
+"""
 
 
 class TabAlarmy(QWidget):
@@ -45,10 +58,10 @@ class TabAlarmy(QWidget):
         root.addWidget(title, 0, Qt.AlignmentFlag.AlignLeft)
 
         subtitle = QLabel(
-            "Monitoruj braki, płatności, terminy i inne ważne zdarzenia w firmie.",
+            "Monitoruj braki, platnosci, terminy i inne wazne zdarzenia w firmie.",
             self,
         )
-        subtitle.setStyleSheet("color:#555555;")
+        subtitle.setStyleSheet(f"color:{get_muted_color()};")
         subtitle.setWordWrap(True)
         root.addWidget(subtitle, 0, Qt.AlignmentFlag.AlignLeft)
 
@@ -59,6 +72,7 @@ class TabAlarmy(QWidget):
         self.cb_category.addItem("Wszystkie kategorie", "")
         for cat in ALARM_CATEGORIES:
             self.cb_category.addItem(ALARM_CATEGORY_LABELS.get(cat, cat), cat)
+        self.cb_category.setCurrentIndex(0)
         filters.addWidget(QLabel("Kategoria:", self), 0)
         filters.addWidget(self.cb_category, 0)
 
@@ -87,6 +101,7 @@ class TabAlarmy(QWidget):
         root.addLayout(filters)
 
         self.tbl = QTableWidget(0, 7, self)
+        self.tbl.setStyleSheet(TABLE_TEXT_STYLE)
         self.tbl.setHorizontalHeaderLabels(
             ["ID", "Kat.", "Poziom", "Tytul", "Opis", "Data", "Status"]
         )

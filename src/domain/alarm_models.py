@@ -17,6 +17,7 @@ ALARM_CATEGORIES = (
     "terminy",
     "faktury",
     "projekty",
+    "produkcja",
     "inne",
 )
 
@@ -34,6 +35,7 @@ ALARM_CATEGORY_LABELS = {
     "terminy": "Terminy",
     "faktury": "Faktury",
     "projekty": "Projekty",
+    "produkcja": "Produkcja",
     "inne": "Inne",
 }
 

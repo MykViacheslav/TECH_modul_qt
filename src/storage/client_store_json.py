@@ -29,14 +29,17 @@ class ClientStoreJson:
 
     def list_clients(self) -> List[ClientDef]:
         raw_all = self._read_all()
+        items = raw_all.get("items", raw_all)
         return [
-            ClientDef.from_dict(raw_all[name])
-            for name in sorted(raw_all.keys())
-            if isinstance(raw_all.get(name), dict)
+            ClientDef.from_dict(items[name])
+            for name in sorted(items.keys())
+            if isinstance(items.get(name), dict)
         ]
 
     def get(self, name: str) -> Optional[ClientDef]:
-        raw = self._read_all().get(name)
+        raw_all = self._read_all()
+        items = raw_all.get("items", raw_all)
+        raw = items.get(name)
         return ClientDef.from_dict(raw) if isinstance(raw, dict) else None
 
     def save_new(self, client: ClientDef) -> StoreResult:
@@ -65,7 +68,8 @@ class ClientStoreJson:
         try:
             txt = self._path.read_text(encoding="utf-8")
             data = json.loads(txt) if txt.strip() else {}
-            return data if isinstance(data, dict) else {}
+            items = data.get("items", data) if isinstance(data, dict) else {}
+            return items if isinstance(items, dict) else {}
         except Exception:
             return {}
 

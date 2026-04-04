@@ -1,0 +1,17 @@
+﻿Analizuj tylko ten jeden screenshot (TECH_modul).
+Nie opisuj innych obrazow z historii rozmowy.
+
+Kontekst:
+- aplikacja do wyceny/projektu/pomiaru,
+- uzytkownik: pomiarowiec/montazysta,
+- cel: szybkie i czytelne dzialanie w terenie.
+
+Zadanie:
+1) Co dziala dobrze (max 5 punktow)
+2) Co przeszkadza i obciaza ekran (max 8 punktow)
+3) Lista poprawek UX/UI z priorytetami P1/P2/P3
+4) Ryzyka wdrozeniowe (max 3 punkty)
+
+Format:
+- krotko, konkretnie, bez ogolnikow
+- punkty gotowe do wdrozenia

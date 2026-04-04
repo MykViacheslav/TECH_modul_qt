@@ -163,6 +163,13 @@ class OrderDef:
     date_poprawki: str = ""
     date_projekt: str = ""
     date_probki: str = ""
+    date_wycena_end: str = ""
+    date_produkcja_end: str = ""
+    date_zakup_mat_end: str = ""
+    date_montaz_end: str = ""
+    date_poprawki_end: str = ""
+    date_projekt_end: str = ""
+    date_probki_end: str = ""
     attachments: List[Dict[str, str]] = field(default_factory=list)
     quote_items: List[Dict[str, str]] = field(default_factory=list)
     material_choices: List[Dict[str, str]] = field(default_factory=list)
@@ -195,6 +202,13 @@ class OrderDef:
             "date_poprawki": self.date_poprawki,
             "date_projekt": self.date_projekt,
             "date_probki": self.date_probki,
+            "date_wycena_end": self.date_wycena_end,
+            "date_produkcja_end": self.date_produkcja_end,
+            "date_zakup_mat_end": self.date_zakup_mat_end,
+            "date_montaz_end": self.date_montaz_end,
+            "date_poprawki_end": self.date_poprawki_end,
+            "date_projekt_end": self.date_projekt_end,
+            "date_probki_end": self.date_probki_end,
             "attachments": _normalize_attachments(self.attachments),
             "quote_items": _normalize_quote_items(self.quote_items),
             "material_choices": _normalize_material_choices(self.material_choices),
@@ -230,6 +244,13 @@ class OrderDef:
             date_poprawki=str(data.get("date_poprawki", "") or ""),
             date_projekt=str(data.get("date_projekt", "") or ""),
             date_probki=str(data.get("date_probki", "") or ""),
+            date_wycena_end=str(data.get("date_wycena_end", "") or ""),
+            date_produkcja_end=str(data.get("date_produkcja_end", "") or ""),
+            date_zakup_mat_end=str(data.get("date_zakup_mat_end", "") or ""),
+            date_montaz_end=str(data.get("date_montaz_end", "") or ""),
+            date_poprawki_end=str(data.get("date_poprawki_end", "") or ""),
+            date_projekt_end=str(data.get("date_projekt_end", "") or ""),
+            date_probki_end=str(data.get("date_probki_end", "") or ""),
             attachments=_normalize_attachments(data.get("attachments", [])),
             quote_items=_normalize_quote_items(data.get("quote_items", [])),
             material_choices=_normalize_material_choices(data.get("material_choices", [])),
