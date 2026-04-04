@@ -232,8 +232,8 @@ class TabModul(QWidget):
         self.zone_center = ZoneFrame("center", "MODUL KONSTRUKTORSKI", self, scrollable=False)
         self.zone_right = ZoneFrame("right", "BOM I KOSZTY", self, scrollable=True)
 
-        self.zone_left.setMinimumWidth(320)
-        self.zone_right.setMinimumWidth(320)
+        self.zone_left.setMinimumWidth(260)
+        self.zone_right.setMinimumWidth(260)
 
         split.addWidget(self.zone_left)
         split.addWidget(self.zone_center)
@@ -325,83 +325,95 @@ class TabModul(QWidget):
         # ---------- CENTER ----------
         self.quick_bar = QFrame(self.zone_center)
         self.quick_bar.setObjectName("modul_quick_bar")
-        mark_ui_card(self.quick_bar, elevated=False)
-        self.quick_bar.setStyleSheet("""
-            QFrame#modul_quick_bar {
-                background: #edf3fb;
-                border: 1px solid #d5e1f1;
-                border-radius: 14px;
-            }
-        """)
+        self.quick_bar.setFixedHeight(46)
+        self.quick_bar.setStyleSheet(
+            "QFrame#modul_quick_bar {"
+            "  background:#1e293b; border:none;"
+            "  border-bottom:1px solid #334155; border-radius:0px;}"
+        )
         quick_lay = QHBoxLayout(self.quick_bar)
-        quick_lay.setContentsMargins(12, 10, 12, 10)
-        quick_lay.setSpacing(10)
+        quick_lay.setContentsMargins(10, 6, 10, 6)
+        quick_lay.setSpacing(4)
 
-        self.btn_q_new = QPushButton("Nowy")
-        self.btn_q_new.clicked.connect(self.start_new_module)
-        set_ui_variant(self.btn_q_new, "primary")
-        self.btn_q_new.setMinimumHeight(36)
+        _SS_PRI = (
+            "QPushButton{background:#1d4ed8;color:#fff;border:none;border-radius:6px;"
+            "font-weight:700;font-size:12px;padding:4px 12px;min-height:30px;}"
+            "QPushButton:hover{background:#2563eb;}"
+            "QPushButton:pressed{background:#1e40af;}"
+        )
+        _SS_ICO = (
+            "QPushButton{background:transparent;color:#94a3b8;border:1px solid #334155;"
+            "border-radius:6px;font-size:15px;min-width:30px;max-width:30px;"
+            "min-height:30px;max-height:30px;padding:0px;}"
+            "QPushButton:hover{background:#334155;color:#e2e8f0;border-color:#475569;}"
+            "QPushButton:disabled{color:#334155;border-color:#1e293b;}"
+        )
+        _SS_GHO = (
+            "QPushButton{background:transparent;color:#94a3b8;border:1px solid #334155;"
+            "border-radius:6px;font-size:11px;font-weight:600;min-height:30px;padding:4px 10px;}"
+            "QPushButton:hover{background:#334155;color:#e2e8f0;}"
+        )
+        _SS_SUC = (
+            "QPushButton{background:#15803d;color:#fff;border:none;border-radius:6px;"
+            "font-size:11px;font-weight:700;min-height:30px;padding:4px 12px;}"
+            "QPushButton:hover{background:#16a34a;}"
+        )
+        _SS_SEP = "QFrame{background:#334155;max-width:1px;min-width:1px;margin:6px 2px;}"
+
+        def _pri(label, slot, tip=""):
+            b = QPushButton(label); b.setStyleSheet(_SS_PRI)
+            if tip: b.setToolTip(tip)
+            b.clicked.connect(slot); return b
+
+        def _ico(icon, slot, tip=""):
+            b = QPushButton(icon); b.setStyleSheet(_SS_ICO)
+            if tip: b.setToolTip(tip)
+            b.clicked.connect(slot); return b
+
+        def _gho(label, slot, tip=""):
+            b = QPushButton(label); b.setStyleSheet(_SS_GHO)
+            if tip: b.setToolTip(tip)
+            b.clicked.connect(slot); return b
+
+        def _sep():
+            s = QFrame(); s.setFrameShape(QFrame.Shape.VLine)
+            s.setStyleSheet(_SS_SEP); return s
+
+        # -- Sekcja 1: Sesja --
+        self.btn_q_new   = _pri("\u271a Nowy", self.start_new_module, "Nowy modul (Ctrl+N)")
+        self.btn_q_clear = _ico("\u2715", self._on_clear_current_module, "Wyczysc formularz")
         quick_lay.addWidget(self.btn_q_new)
-
-        self.btn_q_clear = QPushButton("Wyczysc")
-        self.btn_q_clear.clicked.connect(self._on_clear_current_module)
-        set_ui_variant(self.btn_q_clear, "primary")
-        self.btn_q_clear.setMinimumHeight(36)
         quick_lay.addWidget(self.btn_q_clear)
+        quick_lay.addWidget(_sep())
 
-        self.btn_q_save = QPushButton("Zapisz")
-        self.btn_q_save.clicked.connect(self._shortcut_save_module)
-        set_ui_variant(self.btn_q_save, "primary")
-        self.btn_q_save.setMinimumHeight(36)
+        # -- Sekcja 2: Baza --
+        self.btn_q_save      = _ico("\U0001f4be", self._shortcut_save_module, "Zapisz nowy (Ctrl+S)")
+        self.btn_q_overwrite = _ico("\U0001f4cb", self._on_overwrite, "Nadpisz istniejacy")
+        self.btn_q_load      = _ico("\U0001f4c2", self._on_load_from_base_preview, "Wczytaj z bazy (Ctrl+L)")
+        self.btn_q_delete    = _ico("\U0001f5d1", self._on_dim_delete_clicked, "Usun z bazy")
         quick_lay.addWidget(self.btn_q_save)
-
-        self.btn_q_overwrite = QPushButton("Nadpisz")
-        self.btn_q_overwrite.clicked.connect(self._on_overwrite)
-        set_ui_variant(self.btn_q_overwrite, "ghost")
-        self.btn_q_overwrite.setMinimumHeight(36)
         quick_lay.addWidget(self.btn_q_overwrite)
-
-        self.btn_q_load = QPushButton("Wczytaj")
-        self.btn_q_load.clicked.connect(self._on_load_from_base_preview)
-        set_ui_variant(self.btn_q_load, "primary")
-        self.btn_q_load.setMinimumHeight(36)
         quick_lay.addWidget(self.btn_q_load)
-
-        self.btn_q_delete = QPushButton("Usun")
-        self.btn_q_delete.clicked.connect(self._on_dim_delete_clicked)
-        set_ui_variant(self.btn_q_delete, "ghost")
-        self.btn_q_delete.setMinimumHeight(36)
         quick_lay.addWidget(self.btn_q_delete)
+        quick_lay.addWidget(_sep())
 
-        self.btn_q_focus_name = QPushButton("Nazwa")
-        self.btn_q_focus_name.clicked.connect(self._shortcut_focus_module_name)
-        set_ui_variant(self.btn_q_focus_name, "ghost")
-        self.btn_q_focus_name.setMinimumHeight(36)
-        quick_lay.addWidget(self.btn_q_focus_name)
-
-        self.btn_q_doors = QPushButton("Drzwi")
-        self.btn_q_doors.clicked.connect(lambda: self._set_facade_mode_quick("doors"))
-        set_ui_variant(self.btn_q_doors, "ghost")
-        self.btn_q_doors.setMinimumHeight(36)
+        # -- Sekcja 3: Front --
+        self.btn_q_doors   = _gho("\U0001f6aa Drzwi",   lambda: self._set_facade_mode_quick("doors"),   "Tryb: drzwi")
+        self.btn_q_drawers = _gho("\u2261 Szuflady", lambda: self._set_facade_mode_quick("drawers"), "Tryb: szuflady")
         quick_lay.addWidget(self.btn_q_doors)
-
-        self.btn_q_drawers = QPushButton("Szuflady")
-        self.btn_q_drawers.clicked.connect(lambda: self._set_facade_mode_quick("drawers"))
-        set_ui_variant(self.btn_q_drawers, "ghost")
-        self.btn_q_drawers.setMinimumHeight(36)
         quick_lay.addWidget(self.btn_q_drawers)
+        quick_lay.addWidget(_sep())
 
-        self.btn_q_shortcuts = QPushButton("Skroty")
-        self.btn_q_shortcuts.clicked.connect(self._open_shortcuts_dialog)
-        set_ui_variant(self.btn_q_shortcuts, "ghost")
-        self.btn_q_shortcuts.setMinimumHeight(36)
-        quick_lay.addWidget(self.btn_q_shortcuts)
-
-        self.btn_q_receptura = QPushButton("Receptura")
+        # -- Sekcja 4: Import + Pomocne --
+        self.btn_q_receptura   = QPushButton("\U0001f9ea Receptura")
+        self.btn_q_receptura.setStyleSheet(_SS_SUC)
+        self.btn_q_receptura.setToolTip("Importuj materialy z receptury")
         self.btn_q_receptura.clicked.connect(self._on_import_materials_from_receptura)
-        set_ui_variant(self.btn_q_receptura, "success")
-        self.btn_q_receptura.setMinimumHeight(36)
+        self.btn_q_focus_name  = _ico("\u270f", self._shortcut_focus_module_name, "Skocz do nazwy (Ctrl+F)")
+        self.btn_q_shortcuts   = _ico("\u2328", self._open_shortcuts_dialog, "Skroty klawiszowe")
         quick_lay.addWidget(self.btn_q_receptura)
+        quick_lay.addWidget(self.btn_q_focus_name)
+        quick_lay.addWidget(self.btn_q_shortcuts)
 
         quick_lay.addStretch(1)
         self.zone_center.body_lay.addWidget(self.quick_bar, 0)

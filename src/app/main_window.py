@@ -721,10 +721,9 @@ class MainWindow(QMainWindow):
         theme = load_ui_theme_settings()
         _apply_accessible_ui_scale(theme.mode, theme.motif)
         self.setWindowTitle("TECH_modul")
-        screen = QApplication.primaryScreen().availableGeometry()
-        width = min(1560, screen.width() - 50)
-        height = min(980, screen.height() - 50)
-        self.resize(width, height)
+        # Okno startuje zmaksymalizowane; resize() jest tylko fallbackiem
+        # gdy showMaximized() nie zadziala (np. w testach)
+        self.resize(1400, 860)
 
         # Mapowania: tytuł → widget i tytuł → lokalizacja w grupie
         self._tabs_by_title: dict[str, QWidget] = {}
