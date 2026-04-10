@@ -26,6 +26,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from src.domain.project_model import ProjectModel
+from src.services.project_model_quick_quote_adapter import (
+    build_quick_quote_project_model,
+)
 from src.tabs.baza_szybkich_wycen.tab_baza_szybkich_wycen import (
     quick_quote_archive_path,
     quick_quote_export_dir,
@@ -1364,4 +1368,48 @@ class TabSzybkaWycena(QWidget):
         out = _next_unique_export_path(quick_quote_export_dir(), stem, ".pdf")
         _create_simple_pdf(out, lines)
         QMessageBox.information(self, "Eksport PDF", f"Zapisano: {out.name}")
+
+    def get_project_model(self) -> ProjectModel | None:
+        """Builds ProjectModel from the active quick quote section."""
+        section = self._active_section()
+        if section is None:
+            return None
+
+        # Collect all data from the active section
+        section._recalculate_price_total()
+        total_price = section._parse_float(section.ed_total.text())
+
+        # Build entry dict for the adapter
+        entry = {
+            "id": section.section_id,
+            "title": section.section_title,
+            "client": str(self.cb_client_selector.currentData() or self.cb_client_selector.currentText() or "").strip(),
+            "order_code": "",
+            "vat": 23.0,
+            "margin": 0.0,
+            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+
+        # Build quick_totals dict for the adapter
+        quick_totals = {
+            "material_value": total_price,
+            "transport": 0.0,
+            "hours": 0.0,
+            "montage": 0.0,
+            "extras_total": 0.0,
+            "labor_cost": 0.0,
+            "base_total": total_price,
+            "netto": total_price,
+            "brutto": total_price,
+            "rate_source": "quick_quote",
+        }
+
+        try:
+            return build_quick_quote_project_model(
+                entry,
+                quick_totals,
+                archive_path=str(quick_quote_archive_path()),
+            )
+        except Exception:
+            return None
 
