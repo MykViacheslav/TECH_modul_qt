@@ -43,7 +43,6 @@ class _StationPane(QWidget):
         self._view = WallCalendarView(
             parent=self,
             station_filter=self._station_filter,
-            station_locked=True,
         )
         layout.addWidget(self._view, 1)
 
@@ -62,6 +61,17 @@ class TabStanowiska(QWidget):
         sub = QLabel("CNC / Oklejanie / Lakiernia / Montaz / Biuro")
         sub.setStyleSheet("font-size:12px;color:#475569;")
         root.addWidget(sub)
+
+        plan_hint = QLabel(
+            "Warstwa planowania (dawny Plan) jest obecnie prowadzona przez Stanowiska i Ekrany. "
+            "Dane robocze pochodza glownie z kalendarza zsynchronizowanego z zamowieniami."
+        )
+        plan_hint.setWordWrap(True)
+        plan_hint.setStyleSheet(
+            "QLabel{background:#f8fafc;border:1px solid #d7e1ef;border-radius:8px;"
+            "padding:7px 10px;color:#334155;font-size:11px;font-weight:600;}"
+        )
+        root.addWidget(plan_hint)
 
         self._tabs = QTabWidget(self)
         self._tabs.setDocumentMode(True)

@@ -2537,42 +2537,83 @@ class TabSciana(QWidget):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
 
-        title = QLabel("STREFA LEWA")
-        title.setStyleSheet("font-weight:700;")
-        layout.addWidget(title)
+        # internal zone label removed (Step 31)
 
-        self.box_setup = QGroupBox("Ustawienia", panel)
-        form = QFormLayout(self.box_setup)
+        # Step 34: box_setup split into blk_identity + compact store_ops.
+        # The 6 advanced spinboxes (width/height/depth/gap/profile/hardware) were
+        # permanently hidden at runtime — kept as self.* attrs for signal connections
+        # but not placed in any visible form.
+        self.box_setup = None  # no longer a live QGroupBox — kept for compat
+
+        # --- blk_identity: core identity (Komplet: Podstawowe) ---
+        self.blk_identity = CollapsibleBlock("Komplet: Podstawowe", panel)
+        _id_body = QWidget(self.blk_identity)
+        _id_form = QFormLayout(_id_body)
+        _id_form.setSpacing(6)
 
         self.ed_name = QLineEdit()
-
-        self.sp_width = QDoubleSpinBox()
-        self.sp_width.setRange(500.0, 20000.0)
-        self.sp_width.setDecimals(1)
-        self.sp_width.setSuffix(" mm")
-
-        self.sp_height = QDoubleSpinBox()
-        self.sp_height.setRange(500.0, 5000.0)
-        self.sp_height.setDecimals(1)
-        self.sp_height.setSuffix(" mm")
-
-        self.sp_depth = QDoubleSpinBox()
-        self.sp_depth.setRange(100.0, 2000.0)
-        self.sp_depth.setDecimals(1)
-        self.sp_depth.setSuffix(" mm")
-
-        self.sp_gap = QDoubleSpinBox()
-        self.sp_gap.setRange(0.0, 200.0)
-        self.sp_gap.setDecimals(1)
-        self.sp_gap.setSuffix(" mm")
-
-        self.cb_profile = QComboBox()
         self.cb_wall = QComboBox()
         self.cb_wall.setMinimumContentsLength(26)
         self.cb_wall.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContentsOnFirstShow)
         self.btn_refresh_walls = QPushButton("Odswiez sciany")
-        self.chk_force_hardware = QCheckBox("Narzuc okucia z profilu zestawu")
+        set_ui_variant(self.btn_refresh_walls, "ghost")
+        self.btn_refresh_walls.setMinimumHeight(30)
+        self.ed_client = QLineEdit()
+        self.ed_client.setReadOnly(True)
+        self.ed_order = QLineEdit()
+        self.ed_order.setReadOnly(True)
+        self.cb_worker = QComboBox()
+
+        _wall_row = QWidget(_id_body)
+        _wall_row_layout = QHBoxLayout(_wall_row)
+        _wall_row_layout.setContentsMargins(0, 0, 0, 0)
+        _wall_row_layout.setSpacing(6)
+        _wall_row_layout.addWidget(self.cb_wall, 1)
+        _wall_row_layout.addWidget(self.btn_refresh_walls, 0)
+
+        _id_form.addRow("Nazwa", self.ed_name)
+        _id_form.addRow("Powiazana sciana", _wall_row)
+        _id_form.addRow("Klient", self.ed_client)
+        _id_form.addRow("Zamowienie", self.ed_order)
+        _id_form.addRow("Pracownik", self.cb_worker)
+
+        self.blk_identity.content_layout().addWidget(_id_body)
+        layout.addWidget(self.blk_identity)
+
+        # Hidden advanced fields — kept as self.* attrs for signal connections
+        # and business logic; never placed in a visible form (permanently hidden).
+        self.sp_width = QDoubleSpinBox(panel)
+        self.sp_width.setRange(500.0, 20000.0)
+        self.sp_width.setDecimals(1)
+        self.sp_width.setSuffix(" mm")
+        self.sp_width.hide()
+
+        self.sp_height = QDoubleSpinBox(panel)
+        self.sp_height.setRange(500.0, 5000.0)
+        self.sp_height.setDecimals(1)
+        self.sp_height.setSuffix(" mm")
+        self.sp_height.hide()
+
+        self.sp_depth = QDoubleSpinBox(panel)
+        self.sp_depth.setRange(100.0, 2000.0)
+        self.sp_depth.setDecimals(1)
+        self.sp_depth.setSuffix(" mm")
+        self.sp_depth.hide()
+
+        self.sp_gap = QDoubleSpinBox(panel)
+        self.sp_gap.setRange(0.0, 200.0)
+        self.sp_gap.setDecimals(1)
+        self.sp_gap.setSuffix(" mm")
+        self.sp_gap.hide()
+
+        self.cb_profile = QComboBox(panel)
+        self.cb_profile.hide()
+
+        self.chk_force_hardware = QCheckBox("Narzuc okucia z profilu zestawu", panel)
         self.chk_force_hardware.setChecked(True)
+        self.chk_force_hardware.hide()
+
+        # --- material/decor widgets (used by block_materials below) ---
         self.cb_material_carcass = QComboBox()
         self.cb_material_front = QComboBox()
         self.cb_material_back = QComboBox()
@@ -2593,62 +2634,12 @@ class TabSciana(QWidget):
         self.lab_material_preset_hint = QLabel("")
         self.lab_material_preset_hint.setWordWrap(True)
         self.lab_material_preset_hint.setStyleSheet(f"color:{get_muted_color()};")
-        self.ed_client = QLineEdit()
-        self.ed_client.setReadOnly(True)
-        self.ed_order = QLineEdit()
-        self.ed_order.setReadOnly(True)
-        self.cb_worker = QComboBox()
 
-        wall_row = QWidget(self.box_setup)
-        wall_row_layout = QHBoxLayout(wall_row)
-        wall_row_layout.setContentsMargins(0, 0, 0, 0)
-        wall_row_layout.setSpacing(6)
-        wall_row_layout.addWidget(self.cb_wall, 1)
-        wall_row_layout.addWidget(self.btn_refresh_walls, 0)
-
-        form.addRow("Nazwa", self.ed_name)
-        form.addRow("Powiazana sciana", wall_row)
-        form.addRow("Klient", self.ed_client)
-        form.addRow("Zamowienie", self.ed_order)
-        form.addRow("Pracownik", self.cb_worker)
-        form.addRow("Szerokosc kompletu", self.sp_width)
-        form.addRow("Wysokosc kompletu", self.sp_height)
-        form.addRow("Glebokosc bazowa", self.sp_depth)
-        form.addRow("Przerwa miedzy modulami", self.sp_gap)
-        form.addRow("Profil zestawu", self.cb_profile)
-        form.addRow("", self.chk_force_hardware)
-
-        store_btns = QHBoxLayout()
-        self.btn_save = QPushButton("Zapisz")
-        self.btn_load = QPushButton("Wczytaj")
-        self.btn_overwrite = QPushButton("Nadpisz")
-        set_ui_variant(self.btn_save, "primary")
-        set_ui_variant(self.btn_load, "ghost")
-        set_ui_variant(self.btn_overwrite, "ghost")
-        store_btns.addWidget(self.btn_save)
-        store_btns.addWidget(self.btn_load)
-        store_btns.addWidget(self.btn_overwrite)
-        form.addRow("", self._wrap_row_widget(self.box_setup, store_btns))
-
-        self.btn_back_to_order = QPushButton("Powrot do zamowienia")
-        set_ui_variant(self.btn_back_to_order, "ghost")
-        form.addRow("", self.btn_back_to_order)
-
-        self.lab_store_status = QLabel("")
-        self.lab_store_status.setWordWrap(True)
-        self.lab_store_status.setStyleSheet(f"color:{get_muted_color()};")
-        form.addRow("", self.lab_store_status)
-        set_ui_variant(self.btn_refresh_walls, "ghost")
         set_ui_variant(self.btn_apply_company_collection, "success")
         set_ui_variant(self.btn_apply_material_preset, "success")
         set_ui_variant(self.btn_clear_decor_labels, "danger")
         set_ui_variant(self.btn_clear_material_overrides, "danger")
         for button in (
-            self.btn_refresh_walls,
-            self.btn_save,
-            self.btn_load,
-            self.btn_overwrite,
-            self.btn_back_to_order,
             self.btn_apply_company_collection,
             self.btn_apply_material_preset,
             self.btn_clear_decor_labels,
@@ -2656,17 +2647,39 @@ class TabSciana(QWidget):
         ):
             button.setMinimumHeight(30)
 
-        for field in (
-            self.sp_width,
-            self.sp_height,
-            self.sp_depth,
-            self.sp_gap,
-            self.cb_profile,
-            self.chk_force_hardware,
-        ):
-            self._hide_form_row(form, field)
+        # --- compact store_ops: Zapisz | Wczytaj | Nadpisz + nav + status ---
+        _store_frame = QFrame(panel)
+        _store_frame.setFrameShape(QFrame.Shape.NoFrame)
+        _store_vbox = QVBoxLayout(_store_frame)
+        _store_vbox.setContentsMargins(4, 4, 4, 4)
+        _store_vbox.setSpacing(4)
 
-        layout.addWidget(self.box_setup)
+        self.btn_save = QPushButton("Zapisz")
+        self.btn_load = QPushButton("Wczytaj")
+        self.btn_overwrite = QPushButton("Nadpisz")
+        self.btn_back_to_order = QPushButton("Powrot do zamowienia")
+        set_ui_variant(self.btn_save, "primary")
+        set_ui_variant(self.btn_load, "ghost")
+        set_ui_variant(self.btn_overwrite, "ghost")
+        set_ui_variant(self.btn_back_to_order, "ghost")
+        for button in (self.btn_save, self.btn_load, self.btn_overwrite, self.btn_back_to_order):
+            button.setMinimumHeight(30)
+
+        _save_row = QHBoxLayout()
+        _save_row.setSpacing(6)
+        _save_row.addWidget(self.btn_save)
+        _save_row.addWidget(self.btn_load)
+        _save_row.addWidget(self.btn_overwrite)
+        _save_row.addStretch(1)
+        _store_vbox.addLayout(_save_row)
+        _store_vbox.addWidget(self.btn_back_to_order)
+
+        self.lab_store_status = QLabel("")
+        self.lab_store_status.setWordWrap(True)
+        self.lab_store_status.setStyleSheet(f"color:{get_muted_color()};")
+        _store_vbox.addWidget(self.lab_store_status)
+
+        layout.addWidget(_store_frame)
 
         self.box_materials = QGroupBox("", panel)
         materials_form = QFormLayout(self.box_materials)
@@ -3142,9 +3155,7 @@ class TabSciana(QWidget):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
 
-        title = QLabel("STREFA SRODKOWA")
-        title.setStyleSheet("font-weight:700;")
-        layout.addWidget(title)
+        # internal zone label removed (Step 31)
 
         self.preview_info_box = QWidget(panel)
         mark_ui_card(self.preview_info_box, elevated=False)
@@ -3197,65 +3208,51 @@ class TabSciana(QWidget):
         info_top_row.addWidget(view_switch, 0)
         info_layout.addLayout(info_top_row)
 
-        quick_actions = QWidget(self.preview_info_box)
-        quick_actions.setStyleSheet("QWidget { background: transparent; border: 0; }")
-        quick_actions_layout = QHBoxLayout(quick_actions)
-        quick_actions_layout.setContentsMargins(0, 0, 0, 0)
-        quick_actions_layout.setSpacing(10)
+        # Quick-actions bar: 2 logical rows (Step 32)
+        # Row 1: file/assembly ops — Zapisz | Nadpisz | Wczytaj | Nowy
+        # Row 2: canvas/edit ops  — Szukaj | Duplikuj | Snap | Skroty
+        self.quick_actions_bar = QWidget(self.preview_info_box)
+        self.quick_actions_bar.setStyleSheet("QWidget { background: transparent; border: 0; }")
+        quick_vbox = QVBoxLayout(self.quick_actions_bar)
+        quick_vbox.setContentsMargins(0, 0, 0, 0)
+        quick_vbox.setSpacing(4)
 
-        self.btn_q_save = QPushButton("Zapisz", quick_actions)
+        self.btn_q_save = QPushButton("Zapisz", self.quick_actions_bar)
         self.btn_q_save.clicked.connect(self._shortcut_save_assembly)
         set_ui_variant(self.btn_q_save, "primary")
-        self.btn_q_save.setMinimumHeight(30)
-        quick_actions_layout.addWidget(self.btn_q_save, 0)
 
-        self.btn_q_overwrite = QPushButton("Nadpisz", quick_actions)
+        self.btn_q_overwrite = QPushButton("Nadpisz", self.quick_actions_bar)
         self.btn_q_overwrite.clicked.connect(self._on_overwrite)
         set_ui_variant(self.btn_q_overwrite, "ghost")
-        self.btn_q_overwrite.setMinimumHeight(30)
-        quick_actions_layout.addWidget(self.btn_q_overwrite, 0)
 
-        self.btn_q_load = QPushButton("Wczytaj", quick_actions)
+        self.btn_q_load = QPushButton("Wczytaj", self.quick_actions_bar)
         self.btn_q_load.clicked.connect(self._on_load)
         set_ui_variant(self.btn_q_load, "ghost")
-        self.btn_q_load.setMinimumHeight(30)
-        quick_actions_layout.addWidget(self.btn_q_load, 0)
 
-        self.btn_q_new = QPushButton("Nowy", quick_actions)
+        self.btn_q_new = QPushButton("Nowy", self.quick_actions_bar)
         self.btn_q_new.clicked.connect(self.start_new_assembly)
         set_ui_variant(self.btn_q_new, "ghost")
-        self.btn_q_new.setMinimumHeight(30)
-        quick_actions_layout.addWidget(self.btn_q_new, 0)
 
-        self.btn_q_search = QPushButton("Szukaj", quick_actions)
+        self.btn_q_search = QPushButton("Szukaj", self.quick_actions_bar)
         self.btn_q_search.clicked.connect(self._shortcut_focus_saved_search)
         set_ui_variant(self.btn_q_search, "ghost")
-        self.btn_q_search.setMinimumHeight(30)
-        quick_actions_layout.addWidget(self.btn_q_search, 0)
 
-        self.btn_q_duplicate = QPushButton("Duplikuj", quick_actions)
+        self.btn_q_duplicate = QPushButton("Duplikuj", self.quick_actions_bar)
         self.btn_q_duplicate.clicked.connect(self._on_duplicate_selected_item)
         set_ui_variant(self.btn_q_duplicate, "success")
-        self.btn_q_duplicate.setMinimumHeight(30)
-        quick_actions_layout.addWidget(self.btn_q_duplicate, 0)
 
-        self.btn_q_snap = QPushButton("Snap", quick_actions)
+        self.btn_q_snap = QPushButton("Snap", self.quick_actions_bar)
         self.btn_q_snap.clicked.connect(self._toggle_snap_grid)
         set_ui_variant(self.btn_q_snap, "success")
-        self.btn_q_snap.setMinimumHeight(30)
-        quick_actions_layout.addWidget(self.btn_q_snap, 0)
 
-        self.btn_q_shortcuts = QPushButton("Skroty", quick_actions)
+        self.btn_q_shortcuts = QPushButton("Skroty", self.quick_actions_bar)
         self.btn_q_shortcuts.clicked.connect(self._open_shortcuts_dialog)
         set_ui_variant(self.btn_q_shortcuts, "ghost")
-        self.btn_q_shortcuts.setMinimumHeight(30)
-        quick_actions_layout.addWidget(self.btn_q_shortcuts, 0)
 
-        self.btn_q_more = QToolButton(quick_actions)
+        self.btn_q_more = QToolButton(self.quick_actions_bar)
         self.btn_q_more.setText("Wiecej")
         self.btn_q_more.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         set_ui_variant(self.btn_q_more, "ghost")
-        self.btn_q_more.setMinimumHeight(30)
         self._quick_more_menu = QMenu(self.btn_q_more)
         self._quick_more_menu.addAction("Nadpisz", self._on_overwrite)
         self._quick_more_menu.addAction("Wczytaj", self._on_load)
@@ -3266,51 +3263,40 @@ class TabSciana(QWidget):
         self._quick_more_menu.addAction("Pokaz/ukryj lewy panel", self._toggle_left_zone_visibility)
         self._quick_more_menu.addAction("Skroty", self._open_shortcuts_dialog)
         self.btn_q_more.setMenu(self._quick_more_menu)
-        quick_actions_layout.addWidget(self.btn_q_more, 0)
-
-        for btn, min_w, max_w in (
-            (self.btn_q_save, 96, 124),
-            (self.btn_q_overwrite, 102, 132),
-            (self.btn_q_load, 96, 124),
-            (self.btn_q_new, 90, 114),
-            (self.btn_q_search, 94, 120),
-            (self.btn_q_duplicate, 102, 132),
-            (self.btn_q_snap, 88, 112),
-            (self.btn_q_shortcuts, 98, 126),
-        ):
-            btn.setMinimumWidth(min_w)
-            btn.setMaximumWidth(max_w)
-        self.btn_q_more.setMinimumWidth(90)
-        self.btn_q_more.setMaximumWidth(120)
-        for btn in (
-            self.btn_q_save,
-            self.btn_q_overwrite,
-            self.btn_q_load,
-            self.btn_q_new,
-            self.btn_q_search,
-            self.btn_q_duplicate,
-            self.btn_q_snap,
-            self.btn_q_shortcuts,
-            self.btn_q_more,
-        ):
-            btn.setMinimumHeight(36)
-            btn.setMaximumHeight(36)
-
-        # Desktop-first: keep all key actions visible.
-        for btn in (
-            self.btn_q_overwrite,
-            self.btn_q_load,
-            self.btn_q_new,
-            self.btn_q_search,
-            self.btn_q_duplicate,
-            self.btn_q_snap,
-            self.btn_q_shortcuts,
-        ):
-            btn.show()
         self.btn_q_more.hide()
 
-        quick_actions_layout.addStretch(1)
-        info_layout.addWidget(quick_actions, 0)
+        for btn in (
+            self.btn_q_save, self.btn_q_overwrite, self.btn_q_load, self.btn_q_new,
+            self.btn_q_search, self.btn_q_duplicate, self.btn_q_snap, self.btn_q_shortcuts,
+            self.btn_q_more,
+        ):
+            btn.setMinimumHeight(32)
+            btn.setMaximumHeight(32)
+
+        # Row 1: Zapisz | Nadpisz | Wczytaj | Nowy
+        quick_row1 = QHBoxLayout()
+        quick_row1.setContentsMargins(0, 0, 0, 0)
+        quick_row1.setSpacing(8)
+        quick_row1.addWidget(self.btn_q_save)
+        quick_row1.addWidget(self.btn_q_overwrite)
+        quick_row1.addWidget(self.btn_q_load)
+        quick_row1.addWidget(self.btn_q_new)
+        quick_row1.addStretch(1)
+        quick_vbox.addLayout(quick_row1)
+
+        # Row 2: Szukaj | Duplikuj | Snap | Skroty
+        quick_row2 = QHBoxLayout()
+        quick_row2.setContentsMargins(0, 0, 0, 0)
+        quick_row2.setSpacing(8)
+        quick_row2.addWidget(self.btn_q_search)
+        quick_row2.addWidget(self.btn_q_duplicate)
+        quick_row2.addWidget(self.btn_q_snap)
+        quick_row2.addWidget(self.btn_q_shortcuts)
+        quick_row2.addWidget(self.btn_q_more)
+        quick_row2.addStretch(1)
+        quick_vbox.addLayout(quick_row2)
+
+        info_layout.addWidget(self.quick_actions_bar, 0)
 
         self.lab_active_module_info = QLabel("Dodaj zapisany modul, aby zaczac ukladanie kompletu.")
         self.lab_active_module_info.setWordWrap(True)
@@ -3366,9 +3352,7 @@ class TabSciana(QWidget):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
 
-        title = QLabel("STREFA PRAWA")
-        title.setStyleSheet("font-weight:700;")
-        layout.addWidget(title)
+        # internal zone label removed (Step 31)
 
         self.right_scroll_area = QScrollArea(panel)
         self.right_scroll_area.setWidgetResizable(True)
@@ -3397,14 +3381,16 @@ class TabSciana(QWidget):
         self.tbl_items.setAlternatingRowColors(True)
         items_layout.addWidget(self.tbl_items)
 
-        btn_row = QHBoxLayout()
+        # Module action buttons split into 2 rows (Step 33)
+        # Row 1: position ops  — W lewo | W prawo | Duplikuj
+        # Row 2: align/arrange — Wyrownaj lewo/prawo/gora/dol | Rozstaw | Usun
         self.btn_move_up = QPushButton("W lewo")
         self.btn_move_down = QPushButton("W prawo")
         self.btn_duplicate = QPushButton("Duplikuj")
-        self.btn_align_left = QPushButton("Wyrownaj lewo")
-        self.btn_align_right = QPushButton("Wyrownaj prawo")
-        self.btn_align_top = QPushButton("Wyrownaj gora")
-        self.btn_align_bottom = QPushButton("Wyrownaj dol")
+        self.btn_align_left = QPushButton("Wyr. lewo")
+        self.btn_align_right = QPushButton("Wyr. prawo")
+        self.btn_align_top = QPushButton("Wyr. gora")
+        self.btn_align_bottom = QPushButton("Wyr. dol")
         self.btn_distribute = QPushButton("Rozstaw")
         self.btn_remove = QPushButton("Usun")
         set_ui_variant(self.btn_move_up, "ghost")
@@ -3417,27 +3403,36 @@ class TabSciana(QWidget):
         set_ui_variant(self.btn_distribute, "success")
         set_ui_variant(self.btn_remove, "danger")
         for button in (
-            self.btn_move_up,
-            self.btn_move_down,
-            self.btn_duplicate,
-            self.btn_align_left,
-            self.btn_align_right,
-            self.btn_align_top,
-            self.btn_align_bottom,
-            self.btn_distribute,
-            self.btn_remove,
+            self.btn_move_up, self.btn_move_down, self.btn_duplicate,
+            self.btn_align_left, self.btn_align_right, self.btn_align_top,
+            self.btn_align_bottom, self.btn_distribute, self.btn_remove,
         ):
-            button.setMinimumHeight(30)
-        btn_row.addWidget(self.btn_move_up)
-        btn_row.addWidget(self.btn_move_down)
-        btn_row.addWidget(self.btn_duplicate)
-        btn_row.addWidget(self.btn_align_left)
-        btn_row.addWidget(self.btn_align_right)
-        btn_row.addWidget(self.btn_align_top)
-        btn_row.addWidget(self.btn_align_bottom)
-        btn_row.addWidget(self.btn_distribute)
-        btn_row.addWidget(self.btn_remove)
-        items_layout.addLayout(btn_row)
+            button.setMinimumHeight(28)
+
+        items_btn_vbox = QVBoxLayout()
+        items_btn_vbox.setContentsMargins(0, 2, 0, 0)
+        items_btn_vbox.setSpacing(4)
+
+        btn_row1 = QHBoxLayout()
+        btn_row1.setSpacing(6)
+        btn_row1.addWidget(self.btn_move_up)
+        btn_row1.addWidget(self.btn_move_down)
+        btn_row1.addWidget(self.btn_duplicate)
+        btn_row1.addStretch(1)
+        items_btn_vbox.addLayout(btn_row1)
+
+        btn_row2 = QHBoxLayout()
+        btn_row2.setSpacing(6)
+        btn_row2.addWidget(self.btn_align_left)
+        btn_row2.addWidget(self.btn_align_right)
+        btn_row2.addWidget(self.btn_align_top)
+        btn_row2.addWidget(self.btn_align_bottom)
+        btn_row2.addWidget(self.btn_distribute)
+        btn_row2.addWidget(self.btn_remove)
+        btn_row2.addStretch(1)
+        items_btn_vbox.addLayout(btn_row2)
+
+        items_layout.addLayout(items_btn_vbox)
         scroll_layout.addWidget(box_items, 0)
 
         box_offset = QGroupBox("", scroll_content)
@@ -6207,7 +6202,12 @@ class TabSciana(QWidget):
             return
 
         assembly_name = str(getattr(self._assembly, "name", "") or "Komplet")
-        order_id = str(getattr(self._assembly, "order_id", "") or "")
+        _order_name = str(getattr(self._assembly, "order_name", "") or "").strip()
+        order_id = ""
+        if _order_name:
+            _order_def = self._order_store.get(_order_name)
+            if _order_def is not None:
+                order_id = str(getattr(_order_def, "order_id", "") or "").strip()
 
         mat_agg: dict[str, list] = {}  # key -> [area_m2, label]
         edge_agg: dict[str, float] = {}  # key -> length_m

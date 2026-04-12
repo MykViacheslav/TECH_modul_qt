@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict
 
 
@@ -10,16 +10,17 @@ def new_worker_id() -> str:
 
 
 def new_worker_pin() -> str:
-    # Krótki awaryjny PIN do ręcznego wpisu na tablecie.
     return f"{uuid.uuid4().int % 1000000:06d}"
 
 
 @dataclass
 class WorkerDef:
-    # Dane osobowe
-    name: str = ""          # pełna nazwa (używana jako klucz w storage)
-    first_name: str = ""    # imię (opcjonalne — wypełniane z name jeśli puste)
-    last_name: str = ""     # nazwisko (opcjonalne — wypełniane z name jeśli puste)
+    id: str = ""
+
+    # Personal data
+    name: str = ""
+    first_name: str = ""
+    last_name: str = ""
     worker_id: str = ""
     pin_code: str = ""
     role: str = ""
@@ -29,7 +30,7 @@ class WorkerDef:
     exam_status: str = ""
     notes: str = ""
 
-    # Rozliczenia
+    # Settlements
     pay_mode: str = "Godzinowa"
     hourly_rate: float = 0.0
     daily_rate: float = 0.0
@@ -39,13 +40,15 @@ class WorkerDef:
     onsite_hour_addon_pln: float = 0.0
     lacquer_hour_addon_pln: float = 0.0
 
-    # Nowe pola
-    bhp_valid_until: str = ""        # data ważności BHP
-    medical_exam_until: str = ""     # data ważności badań lekarskich
-    advance_pln: float = 0.0         # zaliczka
-    payout_pln: float = 0.0          # wypłata
-    hours_worked: float = 0.0        # napracowane godziny
-    errors_notes: str = ""           # poprawki i błędy
+    # Additional fields
+    bhp_valid_until: str = ""
+    medical_exam_until: str = ""
+    advance_pln: float = 0.0
+    payout_pln: float = 0.0
+    hours_worked: float = 0.0
+    errors_notes: str = ""
+    created_at: str = ""
+    updated_at: str = ""
 
     def get_first_name(self) -> str:
         if self.first_name:
@@ -61,6 +64,7 @@ class WorkerDef:
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "id": self.id,
             "name": self.name,
             "first_name": self.first_name,
             "last_name": self.last_name,
@@ -86,16 +90,21 @@ class WorkerDef:
             "payout_pln": float(self.payout_pln or 0.0),
             "hours_worked": float(self.hours_worked or 0.0),
             "errors_notes": self.errors_notes,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
         }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "WorkerDef":
         data = data or {}
+        raw_id = str(data.get("id", "") or "")
+        raw_worker_id = str(data.get("worker_id", "") or "")
         return cls(
+            id=raw_id or raw_worker_id,
             name=str(data.get("name", "") or ""),
             first_name=str(data.get("first_name", "") or ""),
             last_name=str(data.get("last_name", "") or ""),
-            worker_id=str(data.get("worker_id", "") or ""),
+            worker_id=raw_worker_id or raw_id,
             pin_code=str(data.get("pin_code", "") or ""),
             role=str(data.get("role", "") or ""),
             phone=str(data.get("phone", "") or ""),
@@ -117,4 +126,6 @@ class WorkerDef:
             payout_pln=float(data.get("payout_pln", 0.0) or 0.0),
             hours_worked=float(data.get("hours_worked", 0.0) or 0.0),
             errors_notes=str(data.get("errors_notes", "") or ""),
+            created_at=str(data.get("created_at", "") or ""),
+            updated_at=str(data.get("updated_at", "") or ""),
         )

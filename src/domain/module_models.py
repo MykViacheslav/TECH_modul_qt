@@ -242,6 +242,7 @@ class ModuleDef:
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "id": self.module_id,
             "module_id": self.module_id,
             "name": self.name,
             "base_group": self.base_group,
@@ -298,7 +299,7 @@ class ModuleDef:
                     parsed_parts[str(k)] = v
 
         return cls(
-            module_id=str(data.get("module_id", "") or ""),
+            module_id=str(data.get("module_id", data.get("id", "")) or ""),
             name=str(data.get("name", "MOD_TEST_1") or "MOD_TEST_1"),
             base_group=str(data.get("base_group", "") or ""),
             width_mm=float(data.get("width_mm", 820.0) or 820.0),

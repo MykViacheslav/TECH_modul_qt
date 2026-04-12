@@ -27,11 +27,33 @@ from src.app.navigation_groups import GROUPS
 from src.domain.permissions import can_access_tab, has_permission, ROLE_LABELS, normalize_role
 from src.services.alarm_generator import AlarmGenerator
 from src.storage.alarm_store_json import AlarmStoreJson
+from src.core.assistant_context import AssistantContext
 from src.storage.access_control_store_json import AccessControlStoreJson
 from src.tabs.registry import build_tabs
 from src.widgets.assistant_avatar import FloatingAssistantAvatar
+from src.widgets.assistant_panel import AssistantPanel
 from src.widgets.login_dialog import QuickSwitchDialog
 from src.widgets.time_clock_kiosk import TimeClockKioskWindow
+
+
+# ---------------------------------------------------------------------------
+# Mapa wyświetlanych nazw zakładek (klucz registry → etykieta widoczna w UI)
+# Klucze w registry/GROUPS celowo nie mają polskich znaków (legacy identifiers).
+# Ta mapa nadpisuje tylko etykietę wizualną — całe wewnętrzne routing działa po kluczu.
+_TAB_DISPLAY_NAMES: dict[str, str] = {
+    "Nowe zamowienie":    "Zamówienie",
+    "Sciana":             "Ściana",
+    "Modul":              "Moduł",
+    "Komplet":            "Komplet",
+    "Finanse":            "Finanse",
+    "OPERACJE":           "Operacje",
+    "ALARMY":             "Alarmy",
+    "Baza materialu":     "Baza materiału",
+    "BAZA_modul":         "Baza modułów",
+    "QR TELEFON":         "QR Telefon",
+    "STRUKTURA":          "Struktura",
+    "Baza uslug":         "Baza usług",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -801,6 +823,22 @@ class MainWindow(QMainWindow):
         self._content_stack = QStackedWidget(central)
         main_layout.addWidget(self._content_stack, 1)
 
+        # Przycisk toggle dla panelu asystenta (zawsze widoczny)
+        self.btn_assistant_toggle = QPushButton("A")
+        self.btn_assistant_toggle.setFixedWidth(22)
+        self.btn_assistant_toggle.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+        self.btn_assistant_toggle.setToolTip("Pokaz / ukryj asystenta")
+        self.btn_assistant_toggle.clicked.connect(self._toggle_assistant_panel)
+        main_layout.addWidget(self.btn_assistant_toggle)
+
+        # Assistant panel (right side, collapsible)
+        self._assistant_panel = AssistantPanel(self)
+        self._assistant_panel.setMaximumWidth(350)
+        self._assistant_panel.setMinimumWidth(250)
+        self._assistant_panel.setVisible(True)
+        self._assistant_panel.sig_close_requested.connect(self._toggle_assistant_panel)
+        main_layout.addWidget(self._assistant_panel)
+
         # Zbierz wszystkie zakładki (z obsługą błędów)
         try:
             tabs_list = build_tabs()
@@ -832,7 +870,8 @@ class MainWindow(QMainWindow):
                 widget = self._tabs_by_title.get(tab_title)
                 if widget is not None:
                     tab_container = self._wrap_tab_widget(widget, tab_title)
-                    local_idx = gtw.addTab(tab_container, tab_title)
+                    display_name = _TAB_DISPLAY_NAMES.get(tab_title, tab_title)
+                    local_idx = gtw.addTab(tab_container, display_name)
                     gtw.setTabToolTip(local_idx, self._instruction_tooltip_for_tab(tab_title))
                     self._tab_title_to_group[tab_title] = g_idx
                     self._tab_title_to_local_idx[tab_title] = local_idx
@@ -861,6 +900,7 @@ class MainWindow(QMainWindow):
 
         self._update_navigation_buttons()
         self._wire_cross_tab_signals()
+        self._configure_cross_hub_navigation()
         # Compat shim must exist immediately (tests and signal handlers use it right away).
         self.tabs = _TabsCompat(self)
         self._install_instruction_hover_sources()
@@ -1055,6 +1095,13 @@ class MainWindow(QMainWindow):
         if hasattr(self, "_sidebar"):
             self._sidebar.setVisible(self._sidebar_visible)
         self._refresh_sidebar_toggle_button()
+
+    def _toggle_assistant_panel(self) -> None:
+        if not hasattr(self, "_assistant_panel"):
+            return
+        visible = not self._assistant_panel.isHidden()
+        self._assistant_panel.setVisible(not visible)
+        self.btn_assistant_toggle.setText("A")
 
     def _install_instruction_hover_sources(self) -> None:
         if hasattr(self, "_group_buttons"):
@@ -1610,6 +1657,25 @@ class MainWindow(QMainWindow):
 
     def _wire_cross_tab_signals(self) -> None:
         wire_cross_tab_signals(self)
+
+    def _configure_cross_hub_navigation(self) -> None:
+        tab_finanse = self._tabs_by_title.get("Finanse")
+        if tab_finanse is not None and hasattr(tab_finanse, "set_navigate_to_operations_handler"):
+            try:
+                tab_finanse.set_navigate_to_operations_handler(self.navigate_to_operations)
+            except Exception:
+                pass
+
+    def navigate_to_operations(self, payload: dict | None = None) -> None:
+        context = dict(payload or {})
+        self._navigate_to_tab("OPERACJE")
+        tab_ops = self._tabs_by_title.get("OPERACJE")
+        if tab_ops is None or not hasattr(tab_ops, "navigate_to_context"):
+            return
+        try:
+            tab_ops.navigate_to_context(context)
+        except Exception as exc:
+            self._show_runtime_error("przejscie do OPERACJE", exc)
 
     # ------------------------------------------------------------------
     # Metody otwierające konkretne zakładki

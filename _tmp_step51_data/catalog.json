@@ -1,0 +1,384 @@
+{
+  "materials": [
+    {
+      "key": "PB18",
+      "name_pl": "Plyta wiorowa",
+      "thickness_mm": 18.0,
+      "core": null,
+      "skins_left": [],
+      "skins_right": [],
+      "manufacturer": "Egger",
+      "material_type": "laminowana",
+      "material_group": "carcass_board",
+      "finish_group": "melamine",
+      "price_pln_per_m2": 72.0,
+      "price_note": ""
+    },
+    {
+      "key": "PB16",
+      "name_pl": "Plyta wiorowa",
+      "thickness_mm": 16.0,
+      "core": null,
+      "skins_left": [],
+      "skins_right": [],
+      "manufacturer": "Egger",
+      "material_type": "laminowana",
+      "material_group": "carcass_board",
+      "finish_group": "melamine",
+      "price_pln_per_m2": 66.0,
+      "price_note": ""
+    },
+    {
+      "key": "MDF18",
+      "name_pl": "MDF",
+      "thickness_mm": 18.0,
+      "core": null,
+      "skins_left": [],
+      "skins_right": [],
+      "manufacturer": "Swiss Krono",
+      "material_type": "surowy",
+      "material_group": "front_board",
+      "finish_group": "raw",
+      "price_pln_per_m2": 98.0,
+      "price_note": ""
+    },
+    {
+      "key": "MDF19",
+      "name_pl": "MDF",
+      "thickness_mm": 19.0,
+      "core": null,
+      "skins_left": [],
+      "skins_right": [],
+      "manufacturer": "Swiss Krono",
+      "material_type": "surowy",
+      "material_group": "front_board",
+      "finish_group": "raw",
+      "price_pln_per_m2": 108.0,
+      "price_note": ""
+    },
+    {
+      "key": "MDF19_LAK",
+      "name_pl": "MDF lakierowany",
+      "thickness_mm": 19.0,
+      "core": null,
+      "skins_left": [],
+      "skins_right": [],
+      "manufacturer": "Swiss Krono",
+      "material_type": "lakierowany",
+      "material_group": "front_board",
+      "finish_group": "lacquer",
+      "price_pln_per_m2": 189.0,
+      "price_note": "Przykladowa cena frontu lakierowanego"
+    },
+    {
+      "key": "HDF3",
+      "name_pl": "HDF",
+      "thickness_mm": 3.0,
+      "core": null,
+      "skins_left": [],
+      "skins_right": [],
+      "manufacturer": "Pfleiderer",
+      "material_type": "plecy",
+      "material_group": "back_board",
+      "finish_group": "raw",
+      "price_pln_per_m2": 24.0,
+      "price_note": ""
+    },
+    {
+      "key": "HDF2.5",
+      "name_pl": "HDF",
+      "thickness_mm": 2.5,
+      "core": null,
+      "skins_left": [],
+      "skins_right": [],
+      "manufacturer": "Pfleiderer",
+      "material_type": "plecy",
+      "material_group": "back_board",
+      "finish_group": "raw",
+      "price_pln_per_m2": 21.0,
+      "price_note": ""
+    }
+  ],
+  "edgebands": [
+    {
+      "key": "Brak",
+      "name_pl": "Brak",
+      "thickness_mm": 0.0,
+      "manufacturer": "",
+      "edgeband_type": "none",
+      "material_group": "none",
+      "price_pln_per_m": 0.0,
+      "price_note": ""
+    },
+    {
+      "key": "ABS 0.8",
+      "name_pl": "ABS 0,8",
+      "thickness_mm": 0.8,
+      "manufacturer": "Rehau",
+      "edgeband_type": "ABS",
+      "material_group": "abs",
+      "price_pln_per_m": 4.5,
+      "price_note": ""
+    },
+    {
+      "key": "ABS 2.0",
+      "name_pl": "ABS 2,0",
+      "thickness_mm": 2.0,
+      "manufacturer": "Rehau",
+      "edgeband_type": "ABS",
+      "material_group": "abs",
+      "price_pln_per_m": 7.8,
+      "price_note": ""
+    },
+    {
+      "key": "Fornir 0.6",
+      "name_pl": "Fornir 0,6",
+      "thickness_mm": 0.6,
+      "manufacturer": "Schorn",
+      "edgeband_type": "fornir",
+      "material_group": "veneer",
+      "price_pln_per_m": 6.2,
+      "price_note": ""
+    },
+    {
+      "key": "HPL 0.8",
+      "name_pl": "HPL 0,8",
+      "thickness_mm": 0.8,
+      "manufacturer": "Egger",
+      "edgeband_type": "HPL",
+      "material_group": "hpl",
+      "price_pln_per_m": 8.9,
+      "price_note": ""
+    }
+  ],
+  "hardware": [
+    {
+      "key": "hinge_generic",
+      "name_pl": "Zawias puszkowy",
+      "manufacturer": "generic",
+      "category": "hinge",
+      "item_type": "standard",
+      "unit": "szt",
+      "price_pln": 4.2,
+      "price_note": ""
+    },
+    {
+      "key": "hinge_blum_cliptop",
+      "name_pl": "Zawias Blum ClipTop",
+      "manufacturer": "blum",
+      "category": "hinge",
+      "item_type": "standard",
+      "unit": "szt",
+      "price_pln": 9.8,
+      "price_note": ""
+    },
+    {
+      "key": "hinge_hettich_sensys",
+      "name_pl": "Zawias Hettich Sensys",
+      "manufacturer": "hettich",
+      "category": "hinge",
+      "item_type": "standard",
+      "unit": "szt",
+      "price_pln": 8.9,
+      "price_note": ""
+    },
+    {
+      "key": "drawer_system_generic",
+      "name_pl": "System szuflady",
+      "manufacturer": "generic",
+      "category": "drawer_system",
+      "item_type": "standard",
+      "unit": "kpl",
+      "price_pln": 45.0,
+      "price_note": ""
+    },
+    {
+      "key": "drawer_system_blum",
+      "name_pl": "System szuflady Blum",
+      "manufacturer": "blum",
+      "category": "drawer_system",
+      "item_type": "standard",
+      "unit": "kpl",
+      "price_pln": 92.0,
+      "price_note": ""
+    },
+    {
+      "key": "drawer_system_hettich",
+      "name_pl": "System szuflady Hettich",
+      "manufacturer": "hettich",
+      "category": "drawer_system",
+      "item_type": "standard",
+      "unit": "kpl",
+      "price_pln": 74.0,
+      "price_note": ""
+    },
+    {
+      "key": "drawer_tip_on_generic",
+      "name_pl": "TIP-ON do szuflady",
+      "manufacturer": "generic",
+      "category": "drawer_tip_on",
+      "item_type": "push_to_open",
+      "unit": "szt",
+      "price_pln": 12.0,
+      "price_note": ""
+    },
+    {
+      "key": "drawer_tip_on_blum",
+      "name_pl": "TIP-ON Blum",
+      "manufacturer": "blum",
+      "category": "drawer_tip_on",
+      "item_type": "push_to_open",
+      "unit": "szt",
+      "price_pln": 20.0,
+      "price_note": ""
+    },
+    {
+      "key": "drawer_tip_on_hettich",
+      "name_pl": "Push to open Hettich",
+      "manufacturer": "hettich",
+      "category": "drawer_tip_on",
+      "item_type": "push_to_open",
+      "unit": "szt",
+      "price_pln": 18.0,
+      "price_note": ""
+    },
+    {
+      "key": "shelf_support_generic",
+      "name_pl": "Polkotrzymacz",
+      "manufacturer": "generic",
+      "category": "shelf_support",
+      "item_type": "support",
+      "unit": "szt",
+      "price_pln": 0.8,
+      "price_note": ""
+    },
+    {
+      "key": "wall_hanger_generic",
+      "name_pl": "Zawieszka meblowa",
+      "manufacturer": "generic",
+      "category": "wall_hanger",
+      "item_type": "hanger",
+      "unit": "szt",
+      "price_pln": 14.0,
+      "price_note": ""
+    },
+    {
+      "key": "divider_connector_generic",
+      "name_pl": "Lacznik pionu",
+      "manufacturer": "generic",
+      "category": "divider_connector",
+      "item_type": "connector",
+      "unit": "szt",
+      "price_pln": 1.4,
+      "price_note": ""
+    },
+    {
+      "key": "cabinet_leg_generic",
+      "name_pl": "Nozka meblowa",
+      "manufacturer": "generic",
+      "category": "cabinet_leg",
+      "item_type": "support",
+      "unit": "szt",
+      "price_pln": 8.0,
+      "price_note": ""
+    },
+    {
+      "key": "plinth_clip_generic",
+      "name_pl": "Klips cokolu",
+      "manufacturer": "generic",
+      "category": "plinth_clip",
+      "item_type": "clip",
+      "unit": "szt",
+      "price_pln": 1.6,
+      "price_note": ""
+    },
+    {
+      "key": "corner_connector_generic",
+      "name_pl": "Lacznik szafki naroznej",
+      "manufacturer": "generic",
+      "category": "corner_connector",
+      "item_type": "connector",
+      "unit": "kpl",
+      "price_pln": 18.0,
+      "price_note": ""
+    }
+  ],
+  "material_profiles": [
+    {
+      "key": "STD_WHITE",
+      "name_pl": "Standard bialy",
+      "material_map": {
+        "carcass": "PB18",
+        "front": "MDF19",
+        "back": "HDF2.5"
+      },
+      "edgeband_map": {
+        "carcass": "ABS 0.8",
+        "front": "ABS 0.8",
+        "back": "Brak"
+      },
+      "hardware_vendor_map": {
+        "hinge": "generic",
+        "drawer_system": "generic"
+      },
+      "description": "Uniwersalny profil dla standardowych bialych modulow."
+    },
+    {
+      "key": "OAK_PREMIUM",
+      "name_pl": "Deb premium",
+      "material_map": {
+        "carcass": "PB18",
+        "front": "MDF19_LAK",
+        "back": "HDF2.5"
+      },
+      "edgeband_map": {
+        "carcass": "ABS 2.0",
+        "front": "ABS 2.0",
+        "back": "Brak"
+      },
+      "hardware_vendor_map": {
+        "hinge": "blum",
+        "drawer_system": "blum"
+      },
+      "description": "Wariant premium: lakierowany front, grubsza okleina i Blum."
+    },
+    {
+      "key": "WARDROBE_GRAPHITE",
+      "name_pl": "Szafa grafit",
+      "material_map": {
+        "carcass": "PB16",
+        "front": "MDF19",
+        "back": "HDF3"
+      },
+      "edgeband_map": {
+        "carcass": "ABS 2.0",
+        "front": "ABS 2.0",
+        "back": "Brak"
+      },
+      "hardware_vendor_map": {
+        "hinge": "hettich",
+        "drawer_system": "hettich"
+      },
+      "description": "Szafowy profil ekonomiczny z Hettich i plyta 16 mm."
+    },
+    {
+      "key": "DISPLAY_GLASS",
+      "name_pl": "Witryna premium",
+      "material_map": {
+        "carcass": "PB18",
+        "front": "MDF19_LAK",
+        "back": "HDF2.5"
+      },
+      "edgeband_map": {
+        "carcass": "ABS 0.8",
+        "front": "ABS 0.8",
+        "back": "Brak"
+      },
+      "hardware_vendor_map": {
+        "hinge": "blum",
+        "drawer_system": "blum"
+      },
+      "description": "Profil pod witryny i zabudowy premium z lakierowanym frontem."
+    }
+  ]
+}

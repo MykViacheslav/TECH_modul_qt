@@ -1,0 +1,32 @@
+{
+  "accounts": {
+    "admin": {
+      "worker_name": "Viacheslav Mykytiuk",
+      "role": "wlasciciel",
+      "password": "1234",
+      "tab_overrides": {},
+      "ui_scale_override": null
+    },
+    "IRYNA": {
+      "worker_name": "Iryna Mykytiuk",
+      "role": "biuro",
+      "password": "1234",
+      "tab_overrides": {},
+      "ui_scale_override": null
+    },
+    "ANDRII": {
+      "worker_name": "Andrii Borshch",
+      "role": "produkcja",
+      "password": "1234",
+      "tab_overrides": {},
+      "ui_scale_override": null
+    },
+    "EMILIA": {
+      "worker_name": "Emilia Kmita",
+      "role": "biuro",
+      "password": "1234",
+      "tab_overrides": {},
+      "ui_scale_override": null
+    }
+  }
+}

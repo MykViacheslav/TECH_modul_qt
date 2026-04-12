@@ -1,0 +1,68 @@
+{
+  "fixed": [
+    {
+      "expense_id": "99F12CE5",
+      "name": "Wynajem",
+      "amount": 0.0
+    },
+    {
+      "expense_id": "A0218A4D",
+      "name": "OC samochodow",
+      "amount": 0.0
+    },
+    {
+      "expense_id": "E5FF2661",
+      "name": "Wymiana opon",
+      "amount": 0.0
+    },
+    {
+      "expense_id": "56587BDF",
+      "name": "Prad",
+      "amount": 0.0
+    },
+    {
+      "expense_id": "C5A7C9A8",
+      "name": "Leasingi",
+      "amount": 0.0
+    }
+  ],
+  "variable": [
+    {
+      "expense_id": "8080E919",
+      "name": "Pensja pracownika",
+      "amount": 0.0
+    },
+    {
+      "expense_id": "1DB6EB35",
+      "name": "Zakupy materialow",
+      "amount": 0.0
+    },
+    {
+      "expense_id": "AAE3B5CC",
+      "name": "Paliwo",
+      "amount": 0.0
+    },
+    {
+      "expense_id": "67E6592D",
+      "name": "Wynajem mieszkania pracownikom",
+      "amount": 0.0
+    },
+    {
+      "expense_id": "A886F697",
+      "name": "Delegacja",
+      "amount": 0.0
+    },
+    {
+      "expense_id": "B2E8906F",
+      "name": "Zakup chemii",
+      "amount": 0.0
+    },
+    {
+      "expense_id": "EA39AF10",
+      "name": "Inne",
+      "amount": 0.0
+    }
+  ],
+  "workers_count": 1,
+  "hours_per_worker": 160.0
+}

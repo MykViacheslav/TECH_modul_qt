@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -15,12 +15,39 @@ class MaterialDef:
     key: str
     name_pl: str
     thickness_mm: float
+    core: Optional[Dict] = None
+    skins_left: List[Dict] = field(default_factory=list)
+    skins_right: List[Dict] = field(default_factory=list)
     manufacturer: str = ""
     material_type: str = ""
     material_group: str = ""
     finish_group: str = ""
     price_pln_per_m2: float = 0.0
     price_note: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "skins_left", list(self.skins_left or []))
+        object.__setattr__(self, "skins_right", list(self.skins_right or []))
+
+    @property
+    def composite_enabled(self) -> bool:
+        return bool(self.core or self.skins_left or self.skins_right)
+
+    @property
+    def core_thickness_mm(self) -> float:
+        return float((self.core or {}).get("thickness_mm", 0.0) or 0.0)
+
+    @property
+    def left_facing_thickness_mm(self) -> float:
+        if not self.skins_left:
+            return 0.0
+        return float((self.skins_left[0] or {}).get("thickness_mm", 0.0) or 0.0)
+
+    @property
+    def right_facing_thickness_mm(self) -> float:
+        if not self.skins_right:
+            return 0.0
+        return float((self.skins_right[0] or {}).get("thickness_mm", 0.0) or 0.0)
 
 
 @dataclass(frozen=True)
@@ -76,17 +103,21 @@ class CatalogStoreJson:
         out: List[MaterialDef] = []
         for item in (data.get("materials") or []):
             try:
+                normalized = self._normalize_section_row("materials", item)
                 out.append(
                     MaterialDef(
-                        key=str(item["key"]),
-                        name_pl=str(item.get("name_pl", item["key"])),
-                        thickness_mm=self._safe_float(item.get("thickness_mm", 0.0)),
-                        manufacturer=str(item.get("manufacturer", "") or ""),
-                        material_type=str(item.get("material_type", "") or ""),
-                        material_group=str(item.get("material_group", "") or ""),
-                        finish_group=str(item.get("finish_group", "") or ""),
-                        price_pln_per_m2=self._safe_float(item.get("price_pln_per_m2", 0.0)),
-                        price_note=str(item.get("price_note", "") or ""),
+                        key=str(normalized["key"]),
+                        name_pl=str(normalized.get("name_pl", normalized["key"])),
+                        thickness_mm=self._material_total_thickness_mm(normalized),
+                        core=dict(normalized.get("core") or {}) or None,
+                        skins_left=[dict(layer) for layer in (normalized.get("skins_left") or []) if isinstance(layer, dict)],
+                        skins_right=[dict(layer) for layer in (normalized.get("skins_right") or []) if isinstance(layer, dict)],
+                        manufacturer=str(normalized.get("manufacturer", "") or ""),
+                        material_type=str(normalized.get("material_type", "") or ""),
+                        material_group=str(normalized.get("material_group", "") or ""),
+                        finish_group=str(normalized.get("finish_group", "") or ""),
+                        price_pln_per_m2=self._safe_float(normalized.get("price_pln_per_m2", 0.0)),
+                        price_note=str(normalized.get("price_note", "") or ""),
                     )
                 )
             except Exception:
@@ -227,7 +258,14 @@ class CatalogStoreJson:
 
     def material_thickness(self, key: str, fallback_mm: float) -> float:
         item = self.get_material(key)
-        return float(item.thickness_mm) if item else float(fallback_mm)
+        if not item:
+            return float(fallback_mm)
+        return self._compute_material_total_thickness(
+            thickness_mm=item.thickness_mm,
+            core=item.core,
+            skins_left=item.skins_left,
+            skins_right=item.skins_right,
+        )
 
     def material_price_per_m2(self, key: str, fallback_pln: float = 0.0) -> float:
         item = self.get_material(key)
@@ -391,10 +429,25 @@ class CatalogStoreJson:
             return {}
 
         if section == "materials":
+            core = self._normalize_material_layer(source.get("core"))
+            skins_left = self._normalize_material_layers(source.get("skins_left"))
+            skins_right = self._normalize_material_layers(source.get("skins_right"))
+            if core is None and not skins_left and not skins_right:
+                core, skins_left, skins_right = self._legacy_composite_to_layers(source)
+            legacy_thickness = self._safe_float(source.get("thickness_mm", 0.0))
+            computed_thickness = self._compute_material_total_thickness(
+                thickness_mm=legacy_thickness,
+                core=core,
+                skins_left=skins_left,
+                skins_right=skins_right,
+            )
             return {
                 "key": key,
                 "name_pl": str(source.get("name_pl", key) or key),
-                "thickness_mm": self._safe_float(source.get("thickness_mm", 0.0)),
+                "thickness_mm": computed_thickness,
+                "core": core,
+                "skins_left": skins_left,
+                "skins_right": skins_right,
                 "manufacturer": str(source.get("manufacturer", "") or ""),
                 "material_type": str(source.get("material_type", "") or ""),
                 "material_group": str(source.get("material_group", "") or ""),
@@ -474,6 +527,100 @@ class CatalogStoreJson:
             }
 
         return {}
+
+    def _legacy_composite_to_layers(self, source: Dict) -> tuple[Optional[Dict], List[Dict], List[Dict]]:
+        enabled = str(source.get("composite_enabled", "") or "").strip().lower() in {"1", "true", "yes", "y", "tak"}
+        core_thickness = self._safe_float(source.get("core_thickness_mm", 0.0))
+        left_thickness = self._safe_float(source.get("left_facing_thickness_mm", 0.0))
+        right_thickness = self._safe_float(source.get("right_facing_thickness_mm", 0.0))
+        if not enabled and core_thickness <= 0.0 and left_thickness <= 0.0 and right_thickness <= 0.0:
+            return None, [], []
+
+        core = None
+        if core_thickness > 0.0:
+            core = {
+                "code": str(source.get("core_material_key", "") or "").strip(),
+                "name_pl": str(source.get("core_material_name_pl", "") or "").strip(),
+                "thickness_mm": core_thickness,
+            }
+            if not core["name_pl"]:
+                core["name_pl"] = core["code"]
+
+        skins_left: List[Dict] = []
+        if left_thickness > 0.0:
+            left = {
+                "code": str(source.get("left_facing_key", "") or "").strip(),
+                "name_pl": str(source.get("left_facing_name_pl", "") or "").strip(),
+                "thickness_mm": left_thickness,
+            }
+            if not left["name_pl"]:
+                left["name_pl"] = left["code"]
+            skins_left.append(left)
+
+        skins_right: List[Dict] = []
+        if right_thickness > 0.0:
+            right = {
+                "code": str(source.get("right_facing_key", "") or "").strip(),
+                "name_pl": str(source.get("right_facing_name_pl", "") or "").strip(),
+                "thickness_mm": right_thickness,
+            }
+            if not right["name_pl"]:
+                right["name_pl"] = right["code"]
+            skins_right.append(right)
+
+        return core, skins_left, skins_right
+
+    def _material_total_thickness_mm(self, source: Dict) -> float:
+        return self._compute_material_total_thickness(
+            thickness_mm=self._safe_float(source.get("thickness_mm", 0.0)),
+            core=source.get("core"),
+            skins_left=source.get("skins_left"),
+            skins_right=source.get("skins_right"),
+        )
+
+    def _normalize_material_layer(self, raw_layer: object) -> Optional[Dict]:
+        if not isinstance(raw_layer, dict):
+            return None
+        code = str(raw_layer.get("code", "") or "").strip()
+        name_pl = str(raw_layer.get("name_pl", "") or "").strip()
+        thickness_mm = self._safe_float(raw_layer.get("thickness_mm", 0.0))
+        if not code and not name_pl and thickness_mm <= 0.0:
+            return None
+        return {
+            "code": code,
+            "name_pl": name_pl or code,
+            "thickness_mm": thickness_mm,
+        }
+
+    def _normalize_material_layers(self, raw_layers: object) -> List[Dict]:
+        out: List[Dict] = []
+        if not isinstance(raw_layers, list):
+            return out
+        for raw_layer in raw_layers:
+            normalized = self._normalize_material_layer(raw_layer)
+            if normalized is not None:
+                out.append(normalized)
+        return out
+
+    def _compute_material_total_thickness(
+        self,
+        *,
+        thickness_mm: float,
+        core: object,
+        skins_left: object,
+        skins_right: object,
+    ) -> float:
+        normalized_core = self._normalize_material_layer(core)
+        normalized_left = self._normalize_material_layers(skins_left)
+        normalized_right = self._normalize_material_layers(skins_right)
+
+        if normalized_core is None and not normalized_left and not normalized_right:
+            return self._safe_float(thickness_mm)
+
+        total = self._safe_float((normalized_core or {}).get("thickness_mm", 0.0))
+        total += sum(self._safe_float(layer.get("thickness_mm", 0.0)) for layer in normalized_left)
+        total += sum(self._safe_float(layer.get("thickness_mm", 0.0)) for layer in normalized_right)
+        return float(total)
 
     def _merge_default_item(self, section: str, default_item: Dict, existing_item: Dict) -> Dict:
         if section != "material_profiles":

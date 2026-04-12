@@ -77,7 +77,6 @@ class ModuleMiniPreview(QWidget):
     def _setup_tab(self, tab: QWidget) -> None:
         from PyQt6.QtWidgets import QGraphicsView
         view = QGraphicsView(tab)
-        view.setRenderHint(True)
         view.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         view.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)

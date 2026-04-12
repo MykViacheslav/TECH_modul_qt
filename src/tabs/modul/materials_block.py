@@ -28,6 +28,8 @@ _SS_COMBO_EDGE = (
     "QComboBox{font-size:10px;padding:2px 3px;min-height:24px;color:#64748b;}"
 )
 _SS_DIVIDER = "QFrame{background:#e2e8f0;max-height:1px;margin:4px 0;}"
+_SS_SECTION = "QFrame{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;}"
+_SS_SECTION_TITLE = "QLabel{color:#334155;font-size:10px;font-weight:800;letter-spacing:0.04em;padding:0;}"
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -58,7 +60,7 @@ class MaterialsBlock(QWidget):
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
+        root.setSpacing(8)
 
         # ── helpers ──────────────────────────────────────────────────────────
         def _hdr(text: str) -> QLabel:
@@ -83,18 +85,29 @@ class MaterialsBlock(QWidget):
             f = QFrame(); f.setFrameShape(QFrame.Shape.HLine)
             f.setStyleSheet(_SS_DIVIDER); return f
 
+        def _section(title: str) -> tuple[QFrame, QVBoxLayout]:
+            frame = QFrame(self)
+            frame.setStyleSheet(_SS_SECTION)
+            lay = QVBoxLayout(frame)
+            lay.setContentsMargins(8, 6, 8, 8)
+            lay.setSpacing(6)
+            lab = QLabel(title, frame)
+            lab.setStyleSheet(_SS_SECTION_TITLE)
+            lay.addWidget(lab, 0)
+            return frame, lay
+
         # ── Profil (pełna szerokość) ──────────────────────────────────────────
-        root.addWidget(_hdr("PROFIL"))
+        profile_section, profile_lay = _section("Profil")
         self.cb_profile = _cb()
-        root.addWidget(self.cb_profile)
+        profile_lay.addWidget(self.cb_profile)
 
         self.lab_profile_desc = QLabel("")
         self.lab_profile_desc.setWordWrap(True)
         self.lab_profile_desc.setStyleSheet(
             "color:#94a3b8;font-size:10px;font-style:italic;padding:2px 0 4px 0;"
         )
-        root.addWidget(self.lab_profile_desc)
-        root.addWidget(_divider())
+        profile_lay.addWidget(self.lab_profile_desc)
+        root.addWidget(profile_section)
 
         # ── Siatka 3×3: Etykieta | Material | Okleina ─────────────────────────
         self.cb_carcass      = _cb()
@@ -128,14 +141,17 @@ class MaterialsBlock(QWidget):
         grid.setColumnStretch(0, 0)
         grid.setColumnStretch(1, 3)
         grid.setColumnStretch(2, 2)
-        root.addWidget(grid_w)
-        root.addWidget(_divider())
+        materials_section, materials_lay = _section("Material i okleina")
+        materials_lay.addWidget(grid_w)
+        root.addWidget(materials_section)
 
         # ── Edytuj bazę cen ───────────────────────────────────────────────────
         self.btn_edit_catalog = QPushButton("Edytuj baze cen")
         self.btn_edit_catalog.setStyleSheet("margin-top:2px;font-size:11px;")
         self.btn_edit_catalog.clicked.connect(self._open_catalog_editor)
-        root.addWidget(self.btn_edit_catalog)
+        catalog_section, catalog_lay = _section("Baza cen")
+        catalog_lay.addWidget(self.btn_edit_catalog, 0, Qt.AlignmentFlag.AlignLeft)
+        root.addWidget(catalog_section)
 
         # ── Wypełnij dane i podłącz sygnały ───────────────────────────────────
         self._fill_profiles()

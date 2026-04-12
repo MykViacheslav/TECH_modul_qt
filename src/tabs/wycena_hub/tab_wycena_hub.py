@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import traceback
+import json
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QTabWidget, QVBoxLayout, QWidget
@@ -33,6 +34,97 @@ def _make_placeholder(label_text: str) -> QWidget:
     lbl.setStyleSheet("color:#94a3b8; font-size:15px; font-weight:600;")
     lay.addWidget(lbl)
     return w
+
+
+class _CuttingResultPanel(QWidget):
+    """Minimalny panel read-only dla wyniku rozkroju (GiB Lab)."""
+
+    def __init__(self, giblab_provider, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._giblab_provider = giblab_provider
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(14, 14, 14, 14)
+        root.setSpacing(10)
+
+        title = QLabel("Rozkroj / wynik GiB Lab", self)
+        title.setStyleSheet("font-size:16px; font-weight:800; color:#10233f;")
+        root.addWidget(title, 0, Qt.AlignmentFlag.AlignLeft)
+
+        self.lab_empty = QLabel(
+            "Brak danych rozkroju dla biezacego projektu/importu.\n"
+            "Wczytaj wynik GiB Lab w zakladce 'Import 3D' (krok 5), a potem wroc tutaj.",
+            self,
+        )
+        self.lab_empty.setWordWrap(True)
+        self.lab_empty.setStyleSheet(
+            "QLabel{background:#f8fafc;border:1px solid #d7e1ef;border-radius:10px;"
+            "padding:10px;color:#475569;font-size:12px;}"
+        )
+        root.addWidget(self.lab_empty, 0)
+
+        self.box = QFrame(self)
+        self.box.setStyleSheet(
+            "QFrame{background:#ffffff;border:1px solid #d7e1ef;border-radius:12px;}"
+        )
+        grid = QGridLayout(self.box)
+        grid.setContentsMargins(12, 10, 12, 10)
+        grid.setHorizontalSpacing(14)
+        grid.setVerticalSpacing(8)
+
+        self._value_labels: dict[str, QLabel] = {}
+        fields = [
+            ("Liczba plyt (realnie)", "real_sheets_count"),
+            ("Powierzchnia realna [m2]", "real_area_m2"),
+            ("Odpad [m2]", "scrap_m2"),
+            ("Wykorzystanie [%]", "utilization_pct"),
+            ("Roznica vs teoria", "difference_vs_theory"),
+        ]
+        for row_idx, (label_text, key) in enumerate(fields):
+            lab = QLabel(label_text, self.box)
+            lab.setStyleSheet("color:#526174; font-size:11px; font-weight:700;")
+            val = QLabel("-", self.box)
+            val.setWordWrap(True)
+            val.setStyleSheet("color:#10233f; font-size:13px; font-weight:800;")
+            grid.addWidget(lab, row_idx, 0)
+            grid.addWidget(val, row_idx, 1)
+            self._value_labels[key] = val
+        root.addWidget(self.box, 0)
+        root.addStretch(1)
+
+        self.refresh()
+
+    def _set_empty(self) -> None:
+        self.lab_empty.show()
+        self.box.hide()
+        for lbl in self._value_labels.values():
+            lbl.setText("-")
+
+    def refresh(self) -> None:
+        model = None
+        if callable(self._giblab_provider):
+            try:
+                model = self._giblab_provider()
+            except Exception:
+                model = None
+
+        giblab = getattr(model, "giblab_result", None) if model is not None else None
+        if giblab is None or not str(getattr(giblab, "result_path", "") or "").strip():
+            self._set_empty()
+            return
+
+        diff_map = dict(getattr(giblab, "difference_vs_theory", {}) or {})
+        utilization = float(diff_map.get("utilization_pct", 0.0) or 0.0)
+
+        self.lab_empty.hide()
+        self.box.show()
+        self._value_labels["real_sheets_count"].setText(str(int(getattr(giblab, "real_sheets_count", 0) or 0)))
+        self._value_labels["real_area_m2"].setText(f"{float(getattr(giblab, 'real_area_m2', 0.0) or 0.0):.3f}")
+        self._value_labels["scrap_m2"].setText(f"{float(getattr(giblab, 'scrap_m2', 0.0) or 0.0):.3f}")
+        self._value_labels["utilization_pct"].setText(f"{utilization:.2f}")
+        self._value_labels["difference_vs_theory"].setText(
+            json.dumps(diff_map, ensure_ascii=False, sort_keys=True) if diff_map else "{}"
+        )
 
 
 class _SummaryPanel(QWidget):
@@ -213,6 +305,22 @@ class TabWycenaHub(QWidget):
         )
         root.addWidget(self.lab_guide, 0)
 
+        self.mode_banner = QFrame(self)
+        self.mode_banner.setStyleSheet(
+            "QFrame{background:#eef6ff;border:1px solid #cfe3ff;border-radius:10px;}"
+        )
+        banner_lay = QVBoxLayout(self.mode_banner)
+        banner_lay.setContentsMargins(10, 8, 10, 8)
+        banner_lay.setSpacing(2)
+        self.lab_mode_title = QLabel("", self.mode_banner)
+        self.lab_mode_title.setStyleSheet("font-size:12px;font-weight:800;color:#10233f;")
+        self.lab_mode_desc = QLabel("", self.mode_banner)
+        self.lab_mode_desc.setWordWrap(True)
+        self.lab_mode_desc.setStyleSheet("font-size:11px;color:#334155;")
+        banner_lay.addWidget(self.lab_mode_title)
+        banner_lay.addWidget(self.lab_mode_desc)
+        root.addWidget(self.mode_banner, 0)
+
         self._sub_tabs = QTabWidget(self)
         self._sub_tabs.setDocumentMode(True)
         root.addWidget(self._sub_tabs)
@@ -256,11 +364,9 @@ class TabWycenaHub(QWidget):
         )
         self._sub_tabs.addTab(self._tab_uslugi, "Usługi")
 
-        # ── Rozkrój — placeholder ────────────────────────────────────────────
-        self._sub_tabs.addTab(
-            _make_placeholder("Rozkrój\n\n(w przygotowaniu)"),
-            "Rozkrój",
-        )
+        # ── Rozkrój — minimalny panel read-only ──────────────────────────────
+        self._tab_rozkroj = _CuttingResultPanel(self._get_giblab_model, self)
+        self._sub_tabs.addTab(self._tab_rozkroj, "Rozkrój")
 
         # ── Podsumowanie — ujednolicone ─────────────────────────────────────
         self._summary_panel = UnifiedSummaryPanel(
@@ -293,6 +399,8 @@ class TabWycenaHub(QWidget):
         summary_index = self._sub_tabs.indexOf(self._summary_panel) if hasattr(self, "_summary_panel") else -1
         if index != summary_index:
             self._summary_source_index = index
+        if index == 4 and hasattr(self, "_tab_rozkroj") and hasattr(self._tab_rozkroj, "refresh"):
+            self._tab_rozkroj.refresh()
         if index == summary_index:
             self._summary_panel.refresh()
         self._update_guide_text(index)
@@ -313,7 +421,37 @@ class TabWycenaHub(QWidget):
     def _update_guide_text(self, index: int | None = None) -> None:
         if index is None:
             index = self._sub_tabs.currentIndex()
-        self.lab_guide.setText(self._guide_text_for_index(int(index)))
+        idx = int(index)
+        self.lab_guide.setText(self._guide_text_for_index(idx))
+        self._update_mode_banner(idx)
+
+    def _update_mode_banner(self, index: int) -> None:
+        if index == 0:
+            self.mode_banner.setStyleSheet(
+                "QFrame{background:#eef6ff;border:1px solid #cfe3ff;border-radius:10px;}"
+            )
+            self.lab_mode_title.setText("TRYB SYSTEMOWY: WYCENA PROJEKTU")
+            self.lab_mode_desc.setText(
+                "Uzyj tego trybu, gdy liczysz z danych technicznych modułu/kompletu/sciany. "
+                "Dla szybkiej oferty handlowej bez pelnej struktury przejdz do 'Szybka wycena'."
+            )
+            return
+        if index == 1:
+            self.mode_banner.setStyleSheet(
+                "QFrame{background:#ecfdf5;border:1px solid #c7f3dd;border-radius:10px;}"
+            )
+            self.lab_mode_title.setText("TRYB HANDLOWY: SZYBKA WYCENA")
+            self.lab_mode_desc.setText(
+                "Uzyj tego trybu, gdy potrzebujesz szybkiej oferty dla klienta. "
+                "Do pelnej kalkulacji technicznej przejdz do 'Wycena projektu'."
+            )
+            return
+
+        self.mode_banner.setStyleSheet(
+            "QFrame{background:#f8fafc;border:1px solid #d7e1ef;border-radius:10px;}"
+        )
+        self.lab_mode_title.setText("TRYB UZUPELNIAJACY")
+        self.lab_mode_desc.setText("Pracujesz w trybie pomocniczym huba Wycena.")
 
     def _current_summary_snapshot(self) -> dict[str, object]:
         summary_index = self._sub_tabs.indexOf(self._summary_panel) if hasattr(self, "_summary_panel") else -1

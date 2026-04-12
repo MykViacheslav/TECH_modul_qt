@@ -18,8 +18,11 @@ _GROUP_META: dict[str, tuple[str, str]] = {
     "Sprzedaż": ("🛒", "Sprz."),
     "Uslugi":   ("🔧", "Usługi"),
     "Projekt":  ("📐", "Projekt"),
+    "Finanse":  ("💼", "Fin."),
+    "Operacje": ("🧭", "Oper."),
     "Firma":    ("🏢", "Firma"),
     "Bazy":     ("🗄", "Bazy"),
+    "Ustawienia": ("⚙", "Ust."),
     "Inne":     ("⚙", "Inne"),
 }
 

@@ -1,0 +1,624 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<Project3dc name="Drawing2" date="2026.04.09" version="3.0">
+<Dictionary>
+<ProjectProperties>
+<property key="" name="Customer" value=""/>
+<property key="" name="Customer Reference" value=""/>
+<property key="" name="Door Material 1 Colour" value=""/>
+<property key="" name="Door Material 2 Colour" value=""/>
+<property key="" name="Carass Colour" value="CBD White "/>
+</ProjectProperties>
+<Classes><Item id="0" description="Not defined" /><Item id="1" description="Assembly" /><Item id="4" description="Miscellaneous materials" /><Item id="6" description="Operation" /><Item id="18" description="Sheet Part" /><Item id="19" description="Fittings" /><Item id="34" description="Worktop" /><Item id="50" description="Sheet Door" /><Item id="51" description="Fastener" /><Item id="66" description="Other Parts" /><Item id="82" description="Extruded Door" /><Item id="114" description="Bent Sheet" /><Item id="130" description="Profile Part" /><Item id="146" description="Sheet layer" /><Item id="200" description="Door-Assembly" /><Item id="210" description="Drawer" /></Classes>
+<Units><Item id="0" description="Piece" name="pcs" /><Item id="1" description="Meter" name="m" /><Item id="2" description="Square meter" name="m2" /><Item id="3" description="Kilogram" name="kg" /><Item id="4" description="Litre" name="l" /><Item id="5" description="Millimetre" name="mm" /><Item id="6" description="Set" name="set" /><Item id="8" description="Cubic meters" name="m3" /><Item id="10" description="Unit of calculation" name="calc.u." /></Units>
+<Materials>
+<Item id="101:4" type="fastener" code="SCREW_L30" name="45mm Chipboard Screw Pozi Head" cost="0.1" />
+<Item id="105:34" type="fastener" code="174H710E" name="Mounting plate, Cruciform, 0 mm" cost="2.5" />
+<Item id="105:48" type="fastener" code="71B358E" name="Blum CLIP top BM Standard 110" cost="5.5" />
+<Item id="2:7" type="fitting" code="HANDLE7/128" name="HANDLE_128" cost="1" />
+<Item id="3:24" type="fitting" code="LEG1_100_AUS_1" name="LEG adjustable Screwin" cost="1" />
+<Item id="109:47" type="fastener" code="71E358B_MSI" name="MSI_71E358B_nakl_fi3" cost="0" />
+<Item id="102:2" type="fastener" code="013138" name="Shelf support 5x8" cost="0.1" />
+<Item id="202:473" type="sheet" code="01.011_3K1_" name="Plyta_3K1_" thick="3.1" cost="0" />
+<Item id="202:465" type="sheet" code="01.011_18K3_" name="Plyta_18K3_" thick="18.3" cost="0" />
+<Item id="202:383" type="sheet" code="01.016_19K3" name="Plyta_MDF_19K3" thick="19.3" cost="0" />
+<Item id="203:44" type="band" code="P_1_2" name="PVC roz 1 mm" cost="0.3" thick="1" />
+<Item id="203:13" type="band" code="P_1D" name="PVC 1 mm doors" cost="2.5" thick="1" />
+</Materials>
+</Dictionary>
+<ProjectStructure>
+<Obj id="P:2" class="6" code="A101" name="Cutting 2400x1200 doors material" position="" quantity="3.81" unit="2" 
+cost="90" costFlag="false" 
+/>
+<Obj id="P:5" class="6" code="A200" name="Edging" position="" quantity="13.6" unit="1" 
+cost="2.5" costFlag="false" 
+/>
+<Obj id="P:7" class="6" code="A500" name="Drafting" position="" quantity="1" unit="0" 
+cost="150" costFlag="false" 
+/>
+<Obj id="P:8" class="6" code="A701" name="Boad delivery" position="" quantity="1" unit="0" 
+cost="30" costFlag="false" 
+/>
+<Obj id="P:9" class="6" code="A702" name="Hardware delivery" position="" quantity="1" unit="0" 
+cost="30" costFlag="false" 
+/>
+<Obj id="P:10" class="6" code="A601" name="Assembly of base or overhead cabinet" position="" quantity="1" unit="0" 
+cost="25" costFlag="false" 
+/>
+<Obj id="P:11" class="6" code="A602" name="Assembly of drawbank" position="" quantity="1" unit="0" 
+cost="35" costFlag="false" 
+/>
+<Obj id="P:12" class="6" code="A603" name="Assembly of tall cabinet" position="" quantity="1" unit="0" 
+cost="30" costFlag="false" 
+/>
+<Obj id="P:13" class="6" code="A604" name="Assembly of corner cabinet" position="" quantity="1" unit="0" 
+cost="35" costFlag="false" 
+/>
+<Obj id="P:14" class="6" code="A800" name="Labour in a workshop" position="" quantity="1" unit="0" 
+cost="120" costFlag="false" 
+/>
+<Obj id="18" class="19" code="HANDLE7/128" name="HANDLE_128" position="" quantity="2" unit="0" 
+parent="1" 
+cost="1" costFlag="false" 
+material="2:7" 
+/>
+<Obj id="14:1" class="51" code="SCREW_L30" name="45mm Chipboard Screw Pozi Head" position="" quantity="16" unit="0" 
+parent="1" 
+cost="0.1" costFlag="false" 
+material="101:4" 
+/>
+<Obj id="14" class="19" code="LEG1_100_AUS_1" name="LEG adjustable Screwin" position="" quantity="4" unit="0" 
+parent="1" 
+cost="1" costFlag="false" 
+material="3:24" 
+/>
+<Obj id="12:2" class="51" code="174H710E" name="Mounting plate, Cruciform, 0 mm" position="" quantity="4" unit="0" 
+parent="1" 
+cost="2.5" costFlag="false" 
+material="105:34" 
+/>
+<Obj id="12:1" class="51" code="71B358E" name="Blum CLIP top BM Standard 110" position="" quantity="4" unit="0" 
+parent="1" 
+cost="5.5" costFlag="false" 
+material="105:48" 
+/>
+<Obj id="10" class="51" code="013138" name="Shelf support 5x8" position="" quantity="4" unit="0" 
+parent="1" 
+cost="0.1" costFlag="false" 
+material="102:2" 
+/>
+<Obj id="9" class="50" code="ASS1.00.008" name="Front_R" position="" quantity="1" unit="0" l="793" w="495" dtt="19.3" manipulation="1" 
+dl="795" dw="497" 
+dtl="795" dtw="497" 
+material="202:383" txt="false" cutting="true" FactAngle="true" 
+parent="1" 
+cost="0" costFlag="false" 
+barcode="" 
+bandR="203:13" bandRtype="0" 
+bandT="203:13" bandTtype="0" 
+bandL="203:13" bandLtype="0" 
+bandB="203:13" bandBtype="0" 
+machine="" 
+>
+<Bands>
+<Band id="203:13" quantity="805.00000" edgeType="0" edgeId="4"/>
+<Band id="203:13" quantity="507.00000" edgeType="0" edgeId="1"/>
+<Band id="203:13" quantity="805.00000" edgeType="0" edgeId="2"/>
+<Band id="203:13" quantity="507.00000" edgeType="0" edgeId="3"/>
+</Bands>
+<ShapeOverallCS>
+<Side id="base">
+<Shape>
+<EdgeLine id="1" X1="0.00000" Y1="0.00000" X2="0.00000" Y2="497.00000"/>
+<EdgeLine id="2" X1="0.00000" Y1="497.00000" X2="795.00000" Y2="497.00000"/>
+<EdgeLine id="3" X1="795.00000" Y1="497.00000" X2="795.00000" Y2="0.00000"/>
+<EdgeLine id="4" X1="795.00000" Y1="0.00000" X2="0.00000" Y2="0.00000"/>
+</Shape>
+</Side>
+<Side id="2" FaceProp="true">
+<Shape>
+<EdgeLine id="-1" X1="0.00000" Y1="0.00000" X2="0.00000" Y2="497.00000"/>
+<EdgeLine id="-2" X1="0.00000" Y1="497.00000" X2="795.00000" Y2="497.00000"/>
+<EdgeLine id="-3" X1="795.00000" Y1="497.00000" X2="795.00000" Y2="0.00000"/>
+<EdgeLine id="-4" X1="795.00000" Y1="0.00000" X2="0.00000" Y2="0.00000"/>
+</Shape>
+</Side>
+<Drillings>
+<Drilling X="100.00000" Y="23.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="13" DrilType="2" depth="13.00000" diam="35.00"/>
+<Drilling X="122.50000" Y="32.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="13" DrilType="2" depth="2.00000" diam="3.00"/>
+<Drilling X="77.50000" Y="32.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="13" DrilType="2" depth="2.00000" diam="3.00"/>
+<Drilling X="695.00000" Y="23.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="13" DrilType="2" depth="13.00000" diam="35.00"/>
+<Drilling X="717.50000" Y="32.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="13" DrilType="2" depth="2.00000" diam="3.00"/>
+<Drilling X="672.50000" Y="32.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="13" DrilType="2" depth="2.00000" diam="3.00"/>
+<Drilling X="745.00000" Y="447.00000" Z="19.30000" vectorX="0.00000" vectorY="0.00000" vectorZ="-1.00000" ProjMark="19" DrilType="1" depth="19.30000" diam="5.00"/>
+<Drilling X="745.00000" Y="319.00000" Z="19.30000" vectorX="0.00000" vectorY="0.00000" vectorZ="-1.00000" ProjMark="19" DrilType="1" depth="19.30000" diam="5.00"/>
+</Drillings>
+</ShapeOverallCS>
+<ShapeCuttingCS>
+<Side id="base">
+<Shape>
+<EdgeLine id="1" X1="1.00000" Y1="1.00000" X2="1.00000" Y2="496.00000"/>
+<EdgeLine id="2" X1="1.00000" Y1="496.00000" X2="794.00000" Y2="496.00000"/>
+<EdgeLine id="3" X1="794.00000" Y1="496.00000" X2="794.00000" Y2="1.00000"/>
+<EdgeLine id="4" X1="794.00000" Y1="1.00000" X2="1.00000" Y2="1.00000"/>
+</Shape>
+</Side>
+<Side id="2" FaceProp="true">
+<Shape>
+<EdgeLine id="-1" X1="1.00000" Y1="1.00000" X2="1.00000" Y2="496.00000"/>
+<EdgeLine id="-2" X1="1.00000" Y1="496.00000" X2="794.00000" Y2="496.00000"/>
+<EdgeLine id="-3" X1="794.00000" Y1="496.00000" X2="794.00000" Y2="1.00000"/>
+<EdgeLine id="-4" X1="794.00000" Y1="1.00000" X2="1.00000" Y2="1.00000"/>
+</Shape>
+</Side>
+<Drillings>
+<Drilling X="100.00000" Y="23.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="13" DrilType="2" depth="13.00000" diam="35.00"/>
+<Drilling X="122.50000" Y="32.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="13" DrilType="2" depth="2.00000" diam="3.00"/>
+<Drilling X="77.50000" Y="32.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="13" DrilType="2" depth="2.00000" diam="3.00"/>
+<Drilling X="695.00000" Y="23.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="13" DrilType="2" depth="13.00000" diam="35.00"/>
+<Drilling X="717.50000" Y="32.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="13" DrilType="2" depth="2.00000" diam="3.00"/>
+<Drilling X="672.50000" Y="32.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="13" DrilType="2" depth="2.00000" diam="3.00"/>
+<Drilling X="745.00000" Y="447.00000" Z="19.30000" vectorX="0.00000" vectorY="0.00000" vectorZ="-1.00000" ProjMark="19" DrilType="1" depth="19.30000" diam="5.00"/>
+<Drilling X="745.00000" Y="319.00000" Z="19.30000" vectorX="0.00000" vectorY="0.00000" vectorZ="-1.00000" ProjMark="19" DrilType="1" depth="19.30000" diam="5.00"/>
+</Drillings>
+</ShapeCuttingCS>
+</Obj>
+<Obj id="8" class="50" code="ASS1.00.007" name="Front_L" position="" quantity="1" unit="0" l="793" w="495" dtt="19.3" manipulation="1" 
+dl="795" dw="497" 
+dtl="795" dtw="497" 
+material="202:383" txt="false" cutting="true" FactAngle="true" 
+parent="1" 
+cost="0" costFlag="false" 
+barcode="" 
+bandR="203:13" bandRtype="0" 
+bandB="203:13" bandBtype="0" 
+bandL="203:13" bandLtype="0" 
+bandT="203:13" bandTtype="0" 
+machine="" 
+>
+<Bands>
+<Band id="203:13" quantity="805.00000" edgeType="0" edgeId="4"/>
+<Band id="203:13" quantity="507.00000" edgeType="0" edgeId="1"/>
+<Band id="203:13" quantity="805.00000" edgeType="0" edgeId="2"/>
+<Band id="203:13" quantity="507.00000" edgeType="0" edgeId="3"/>
+</Bands>
+<ShapeOverallCS>
+<Side id="base">
+<Shape>
+<EdgeLine id="4" X1="0.00000" Y1="497.00000" X2="795.00000" Y2="497.00000"/>
+<EdgeLine id="3" X1="795.00000" Y1="497.00000" X2="795.00000" Y2="0.00000"/>
+<EdgeLine id="2" X1="795.00000" Y1="0.00000" X2="0.00000" Y2="0.00000"/>
+<EdgeLine id="1" X1="0.00000" Y1="0.00000" X2="0.00000" Y2="497.00000"/>
+</Shape>
+</Side>
+<Side id="2" FaceProp="true">
+<Shape>
+<EdgeLine id="-4" X1="0.00000" Y1="497.00000" X2="795.00000" Y2="497.00000"/>
+<EdgeLine id="-3" X1="795.00000" Y1="497.00000" X2="795.00000" Y2="0.00000"/>
+<EdgeLine id="-2" X1="795.00000" Y1="0.00000" X2="0.00000" Y2="0.00000"/>
+<EdgeLine id="-1" X1="0.00000" Y1="0.00000" X2="0.00000" Y2="497.00000"/>
+</Shape>
+</Side>
+<Drillings>
+<Drilling X="100.00000" Y="474.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="12" DrilType="2" depth="13.00000" diam="35.00"/>
+<Drilling X="122.50000" Y="465.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="12" DrilType="2" depth="2.00000" diam="3.00"/>
+<Drilling X="77.50000" Y="465.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="12" DrilType="2" depth="2.00000" diam="3.00"/>
+<Drilling X="695.00000" Y="474.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="12" DrilType="2" depth="13.00000" diam="35.00"/>
+<Drilling X="717.50000" Y="465.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="12" DrilType="2" depth="2.00000" diam="3.00"/>
+<Drilling X="672.50000" Y="465.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="12" DrilType="2" depth="2.00000" diam="3.00"/>
+<Drilling X="745.00000" Y="50.00000" Z="19.30000" vectorX="0.00000" vectorY="0.00000" vectorZ="-1.00000" ProjMark="18" DrilType="1" depth="19.30000" diam="5.00"/>
+<Drilling X="745.00000" Y="178.00000" Z="19.30000" vectorX="0.00000" vectorY="0.00000" vectorZ="-1.00000" ProjMark="18" DrilType="1" depth="19.30000" diam="5.00"/>
+</Drillings>
+</ShapeOverallCS>
+<ShapeCuttingCS>
+<Side id="base">
+<Shape>
+<EdgeLine id="4" X1="1.00000" Y1="496.00000" X2="794.00000" Y2="496.00000"/>
+<EdgeLine id="3" X1="794.00000" Y1="496.00000" X2="794.00000" Y2="1.00000"/>
+<EdgeLine id="2" X1="794.00000" Y1="1.00000" X2="1.00000" Y2="1.00000"/>
+<EdgeLine id="1" X1="1.00000" Y1="1.00000" X2="1.00000" Y2="496.00000"/>
+</Shape>
+</Side>
+<Side id="2" FaceProp="true">
+<Shape>
+<EdgeLine id="-4" X1="1.00000" Y1="496.00000" X2="794.00000" Y2="496.00000"/>
+<EdgeLine id="-3" X1="794.00000" Y1="496.00000" X2="794.00000" Y2="1.00000"/>
+<EdgeLine id="-2" X1="794.00000" Y1="1.00000" X2="1.00000" Y2="1.00000"/>
+<EdgeLine id="-1" X1="1.00000" Y1="1.00000" X2="1.00000" Y2="496.00000"/>
+</Shape>
+</Side>
+<Drillings>
+<Drilling X="100.00000" Y="474.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="12" DrilType="2" depth="13.00000" diam="35.00"/>
+<Drilling X="122.50000" Y="465.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="12" DrilType="2" depth="2.00000" diam="3.00"/>
+<Drilling X="77.50000" Y="465.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="12" DrilType="2" depth="2.00000" diam="3.00"/>
+<Drilling X="695.00000" Y="474.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="12" DrilType="2" depth="13.00000" diam="35.00"/>
+<Drilling X="717.50000" Y="465.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="12" DrilType="2" depth="2.00000" diam="3.00"/>
+<Drilling X="672.50000" Y="465.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="12" DrilType="2" depth="2.00000" diam="3.00"/>
+<Drilling X="745.00000" Y="50.00000" Z="19.30000" vectorX="0.00000" vectorY="0.00000" vectorZ="-1.00000" ProjMark="18" DrilType="1" depth="19.30000" diam="5.00"/>
+<Drilling X="745.00000" Y="178.00000" Z="19.30000" vectorX="0.00000" vectorY="0.00000" vectorZ="-1.00000" ProjMark="18" DrilType="1" depth="19.30000" diam="5.00"/>
+</Drillings>
+</ShapeCuttingCS>
+</Obj>
+<Obj id="7" class="18" code="ASS1.00.006" name="Plecy" position="" quantity="1" unit="0" l="798" w="998" dtt="3.1" manipulation="0" 
+dl="798" dw="998" 
+dtl="798" dtw="998" 
+material="202:473" txt="false" cutting="true" FactAngle="true" 
+parent="1" 
+cost="0" costFlag="false" 
+barcode="" 
+machine="" 
+>
+<ShapeOverallCS>
+<Side id="base" FaceProp="true">
+<Shape>
+<EdgeLine id="1" X1="0.00000" Y1="0.00000" X2="0.00000" Y2="998.00000"/>
+<EdgeLine id="2" X1="0.00000" Y1="998.00000" X2="798.00000" Y2="998.00000"/>
+<EdgeLine id="3" X1="798.00000" Y1="998.00000" X2="798.00000" Y2="0.00000"/>
+<EdgeLine id="4" X1="798.00000" Y1="0.00000" X2="0.00000" Y2="0.00000"/>
+</Shape>
+</Side>
+<Side id="2">
+<Shape>
+<EdgeLine id="-1" X1="0.00000" Y1="0.00000" X2="0.00000" Y2="998.00000"/>
+<EdgeLine id="-2" X1="0.00000" Y1="998.00000" X2="798.00000" Y2="998.00000"/>
+<EdgeLine id="-3" X1="798.00000" Y1="998.00000" X2="798.00000" Y2="0.00000"/>
+<EdgeLine id="-4" X1="798.00000" Y1="0.00000" X2="0.00000" Y2="0.00000"/>
+</Shape>
+</Side>
+</ShapeOverallCS>
+<ShapeCuttingCS>
+<Side id="base" FaceProp="true">
+<Shape>
+<EdgeLine id="1" X1="0.00000" Y1="0.00000" X2="0.00000" Y2="998.00000"/>
+<EdgeLine id="2" X1="0.00000" Y1="998.00000" X2="798.00000" Y2="998.00000"/>
+<EdgeLine id="3" X1="798.00000" Y1="998.00000" X2="798.00000" Y2="0.00000"/>
+<EdgeLine id="4" X1="798.00000" Y1="0.00000" X2="0.00000" Y2="0.00000"/>
+</Shape>
+</Side>
+<Side id="2">
+<Shape>
+<EdgeLine id="-1" X1="0.00000" Y1="0.00000" X2="0.00000" Y2="998.00000"/>
+<EdgeLine id="-2" X1="0.00000" Y1="998.00000" X2="798.00000" Y2="998.00000"/>
+<EdgeLine id="-3" X1="798.00000" Y1="998.00000" X2="798.00000" Y2="0.00000"/>
+<EdgeLine id="-4" X1="798.00000" Y1="0.00000" X2="0.00000" Y2="0.00000"/>
+</Shape>
+</Side>
+</ShapeCuttingCS>
+</Obj>
+<Obj id="6" class="18" code="ASS1.00.005" name="Półka" position="" quantity="1" unit="0" l="961.4" w="488" dtt="18.3" manipulation="0" 
+dl="963.4" dw="490" 
+dtl="963.4" dtw="490" 
+material="202:465" txt="false" cutting="true" FactAngle="true" 
+parent="1" 
+cost="0" costFlag="false" 
+barcode="" 
+bandB="203:44" bandBtype="0" 
+bandR="203:44" bandRtype="0" 
+bandT="203:44" bandTtype="0" 
+bandL="203:44" bandLtype="0" 
+machine="" 
+>
+<Bands>
+<Band id="203:44" quantity="500.00000" edgeType="0" edgeId="4"/>
+<Band id="203:44" quantity="973.40000" edgeType="0" edgeId="1"/>
+<Band id="203:44" quantity="500.00000" edgeType="0" edgeId="2"/>
+<Band id="203:44" quantity="973.40000" edgeType="0" edgeId="3"/>
+</Bands>
+<ShapeOverallCS>
+<Side id="base" FaceProp="true">
+<Shape>
+<EdgeLine id="1" X1="0.00000" Y1="490.00000" X2="963.40000" Y2="490.00000"/>
+<EdgeLine id="2" X1="963.40000" Y1="490.00000" X2="963.40000" Y2="0.00000"/>
+<EdgeLine id="3" X1="963.40000" Y1="0.00000" X2="0.00000" Y2="0.00000" Face="true"/>
+<EdgeLine id="4" X1="0.00000" Y1="0.00000" X2="0.00000" Y2="490.00000"/>
+</Shape>
+</Side>
+<Side id="2">
+<Shape>
+<EdgeLine id="-1" X1="0.00000" Y1="490.00000" X2="963.40000" Y2="490.00000"/>
+<EdgeLine id="-2" X1="963.40000" Y1="490.00000" X2="963.40000" Y2="0.00000"/>
+<EdgeLine id="-3" X1="963.40000" Y1="0.00000" X2="0.00000" Y2="0.00000" Face="true"/>
+<EdgeLine id="-4" X1="0.00000" Y1="0.00000" X2="0.00000" Y2="490.00000"/>
+</Shape>
+</Side>
+</ShapeOverallCS>
+<ShapeCuttingCS>
+<Side id="base" FaceProp="true">
+<Shape>
+<EdgeLine id="1" X1="1.00000" Y1="489.00000" X2="962.40000" Y2="489.00000"/>
+<EdgeLine id="2" X1="962.40000" Y1="489.00000" X2="962.40000" Y2="1.00000"/>
+<EdgeLine id="3" X1="962.40000" Y1="1.00000" X2="1.00000" Y2="1.00000" Face="true"/>
+<EdgeLine id="4" X1="1.00000" Y1="1.00000" X2="1.00000" Y2="489.00000"/>
+</Shape>
+</Side>
+<Side id="2">
+<Shape>
+<EdgeLine id="-1" X1="1.00000" Y1="489.00000" X2="962.40000" Y2="489.00000"/>
+<EdgeLine id="-2" X1="962.40000" Y1="489.00000" X2="962.40000" Y2="1.00000"/>
+<EdgeLine id="-3" X1="962.40000" Y1="1.00000" X2="1.00000" Y2="1.00000" Face="true"/>
+<EdgeLine id="-4" X1="1.00000" Y1="1.00000" X2="1.00000" Y2="489.00000"/>
+</Shape>
+</Side>
+</ShapeCuttingCS>
+</Obj>
+<Obj id="5" class="18" code="ASS1.00.004" name="Wieniec górny" position="" quantity="1" unit="0" l="963.4" w="499" dtt="18.3" manipulation="0" 
+dl="963.4" dw="500" 
+dtl="963.4" dtw="500" 
+material="202:465" txt="false" cutting="true" FactAngle="true" 
+parent="1" 
+cost="0" costFlag="false" 
+barcode="" 
+bandB="203:44" bandBtype="0" 
+machine="" 
+>
+<Bands>
+<Band id="203:44" quantity="973.40000" edgeType="0" edgeId="3"/>
+</Bands>
+<ShapeOverallCS>
+<Side id="base" FaceProp="true">
+<Shape>
+<EdgeLine id="1" X1="0.00000" Y1="500.00000" X2="963.40000" Y2="500.00000"/>
+<EdgeLine id="2" X1="963.40000" Y1="500.00000" X2="963.40000" Y2="0.00000"/>
+<EdgeLine id="3" X1="963.40000" Y1="0.00000" X2="0.00000" Y2="0.00000" Face="true"/>
+<EdgeLine id="4" X1="0.00000" Y1="0.00000" X2="0.00000" Y2="500.00000"/>
+</Shape>
+</Side>
+<Side id="2">
+<Shape>
+<EdgeLine id="-1" X1="0.00000" Y1="500.00000" X2="963.40000" Y2="500.00000"/>
+<EdgeLine id="-2" X1="963.40000" Y1="500.00000" X2="963.40000" Y2="0.00000"/>
+<EdgeLine id="-3" X1="963.40000" Y1="0.00000" X2="0.00000" Y2="0.00000" Face="true"/>
+<EdgeLine id="-4" X1="0.00000" Y1="0.00000" X2="0.00000" Y2="500.00000"/>
+</Shape>
+</Side>
+</ShapeOverallCS>
+<ShapeCuttingCS>
+<Side id="base" FaceProp="true">
+<Shape>
+<EdgeLine id="4" X1="0.00000" Y1="1.00000" X2="0.00000" Y2="500.00000"/>
+<EdgeLine id="1" X1="0.00000" Y1="500.00000" X2="963.40000" Y2="500.00000"/>
+<EdgeLine id="2" X1="963.40000" Y1="500.00000" X2="963.40000" Y2="1.00000"/>
+<EdgeLine id="3" X1="963.40000" Y1="1.00000" X2="0.00000" Y2="1.00000" Face="true"/>
+</Shape>
+</Side>
+<Side id="2">
+<Shape>
+<EdgeLine id="-4" X1="0.00000" Y1="1.00000" X2="0.00000" Y2="500.00000"/>
+<EdgeLine id="-1" X1="0.00000" Y1="500.00000" X2="963.40000" Y2="500.00000"/>
+<EdgeLine id="-2" X1="963.40000" Y1="500.00000" X2="963.40000" Y2="1.00000"/>
+<EdgeLine id="-3" X1="963.40000" Y1="1.00000" X2="0.00000" Y2="1.00000" Face="true"/>
+</Shape>
+</Side>
+</ShapeCuttingCS>
+</Obj>
+<Obj id="4" class="18" code="ASS1.00.003" name="Wieniec górny" position="" quantity="1" unit="0" l="963.4" w="499" dtt="18.3" manipulation="1" 
+dl="963.4" dw="500" 
+dtl="963.4" dtw="500" 
+material="202:465" txt="false" cutting="true" FactAngle="true" 
+parent="1" 
+cost="0" costFlag="false" 
+barcode="" 
+bandB="203:44" bandBtype="0" 
+machine="" 
+>
+<Bands>
+<Band id="203:44" quantity="973.40000" edgeType="0" edgeId="3"/>
+</Bands>
+<ShapeOverallCS>
+<Side id="base">
+<Shape>
+<EdgeLine id="1" X1="0.00000" Y1="500.00000" X2="963.40000" Y2="500.00000"/>
+<EdgeLine id="2" X1="963.40000" Y1="500.00000" X2="963.40000" Y2="0.00000"/>
+<EdgeLine id="3" X1="963.40000" Y1="0.00000" X2="0.00000" Y2="0.00000" Face="true"/>
+<EdgeLine id="4" X1="0.00000" Y1="0.00000" X2="0.00000" Y2="500.00000"/>
+</Shape>
+</Side>
+<Side id="2" FaceProp="true">
+<Shape>
+<EdgeLine id="-1" X1="0.00000" Y1="500.00000" X2="963.40000" Y2="500.00000"/>
+<EdgeLine id="-2" X1="963.40000" Y1="500.00000" X2="963.40000" Y2="0.00000"/>
+<EdgeLine id="-3" X1="963.40000" Y1="0.00000" X2="0.00000" Y2="0.00000" Face="true"/>
+<EdgeLine id="-4" X1="0.00000" Y1="0.00000" X2="0.00000" Y2="500.00000"/>
+</Shape>
+</Side>
+<Drillings>
+<Drilling X="58.70000" Y="152.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="14" DrilType="1" depth="3.00000" diam="3.00"/>
+<Drilling X="58.70000" Y="88.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="14" DrilType="1" depth="3.00000" diam="3.00"/>
+<Drilling X="904.70000" Y="152.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="15" DrilType="1" depth="3.00000" diam="3.00"/>
+<Drilling X="904.70000" Y="88.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="15" DrilType="1" depth="3.00000" diam="3.00"/>
+<Drilling X="904.70000" Y="432.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="16" DrilType="1" depth="3.00000" diam="3.00"/>
+<Drilling X="904.70000" Y="368.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="16" DrilType="1" depth="3.00000" diam="3.00"/>
+<Drilling X="58.70000" Y="432.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="17" DrilType="1" depth="3.00000" diam="3.00"/>
+<Drilling X="58.70000" Y="368.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="17" DrilType="1" depth="3.00000" diam="3.00"/>
+</Drillings>
+</ShapeOverallCS>
+<ShapeCuttingCS>
+<Side id="base">
+<Shape>
+<EdgeLine id="4" X1="0.00000" Y1="1.00000" X2="0.00000" Y2="500.00000"/>
+<EdgeLine id="1" X1="0.00000" Y1="500.00000" X2="963.40000" Y2="500.00000"/>
+<EdgeLine id="2" X1="963.40000" Y1="500.00000" X2="963.40000" Y2="1.00000"/>
+<EdgeLine id="3" X1="963.40000" Y1="1.00000" X2="0.00000" Y2="1.00000" Face="true"/>
+</Shape>
+</Side>
+<Side id="2" FaceProp="true">
+<Shape>
+<EdgeLine id="-4" X1="0.00000" Y1="1.00000" X2="0.00000" Y2="500.00000"/>
+<EdgeLine id="-1" X1="0.00000" Y1="500.00000" X2="963.40000" Y2="500.00000"/>
+<EdgeLine id="-2" X1="963.40000" Y1="500.00000" X2="963.40000" Y2="1.00000"/>
+<EdgeLine id="-3" X1="963.40000" Y1="1.00000" X2="0.00000" Y2="1.00000" Face="true"/>
+</Shape>
+</Side>
+<Drillings>
+<Drilling X="58.70000" Y="152.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="14" DrilType="1" depth="3.00000" diam="3.00"/>
+<Drilling X="58.70000" Y="88.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="14" DrilType="1" depth="3.00000" diam="3.00"/>
+<Drilling X="904.70000" Y="152.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="15" DrilType="1" depth="3.00000" diam="3.00"/>
+<Drilling X="904.70000" Y="88.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="15" DrilType="1" depth="3.00000" diam="3.00"/>
+<Drilling X="904.70000" Y="432.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="16" DrilType="1" depth="3.00000" diam="3.00"/>
+<Drilling X="904.70000" Y="368.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="16" DrilType="1" depth="3.00000" diam="3.00"/>
+<Drilling X="58.70000" Y="432.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="17" DrilType="1" depth="3.00000" diam="3.00"/>
+<Drilling X="58.70000" Y="368.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="17" DrilType="1" depth="3.00000" diam="3.00"/>
+</Drillings>
+</ShapeCuttingCS>
+</Obj>
+<Obj id="3" class="18" code="ASS1.00.002" name="Wieniec górny" position="" quantity="1" unit="0" l="798" w="499" dtt="18.3" manipulation="1" 
+dl="800" dw="500" 
+dtl="800" dtw="500" 
+material="202:465" txt="false" cutting="true" FactAngle="true" 
+parent="1" 
+cost="0" costFlag="false" 
+barcode="" 
+bandL="203:44" bandLtype="0" 
+bandT="203:44" bandTtype="0" 
+bandR="203:44" bandRtype="0" 
+machine="" 
+>
+<Bands>
+<Band id="203:44" quantity="510.00000" edgeType="0" edgeId="2"/>
+<Band id="203:44" quantity="810.00000" edgeType="0" edgeId="3"/>
+<Band id="203:44" quantity="510.00000" edgeType="0" edgeId="4"/>
+</Bands>
+<ShapeOverallCS>
+<Side id="base" FaceProp="true">
+<Shape>
+<EdgeLine id="4" X1="0.00000" Y1="0.00000" X2="0.00000" Y2="500.00000"/>
+<EdgeLine id="3" X1="0.00000" Y1="500.00000" X2="800.00000" Y2="500.00000"/>
+<EdgeLine id="2" X1="800.00000" Y1="500.00000" X2="800.00000" Y2="0.00000"/>
+<EdgeLine id="1" X1="800.00000" Y1="0.00000" X2="0.00000" Y2="0.00000" Face="true"/>
+</Shape>
+</Side>
+<Side id="2">
+<Shape>
+<EdgeLine id="-4" X1="0.00000" Y1="0.00000" X2="0.00000" Y2="500.00000"/>
+<EdgeLine id="-3" X1="0.00000" Y1="500.00000" X2="800.00000" Y2="500.00000"/>
+<EdgeLine id="-2" X1="800.00000" Y1="500.00000" X2="800.00000" Y2="0.00000"/>
+<EdgeLine id="-1" X1="800.00000" Y1="0.00000" X2="0.00000" Y2="0.00000" Face="true"/>
+</Shape>
+</Side>
+<Drillings>
+<Drilling X="405.55671" Y="458.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="11" DrilType="1" depth="8.00000" diam="5.00"/>
+<Drilling X="405.55671" Y="32.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="11" DrilType="1" depth="8.00000" diam="5.00"/>
+<Drilling X="469.55671" Y="458.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="11" DrilType="1" depth="8.00000" diam="5.00"/>
+<Drilling X="469.55671" Y="32.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="11" DrilType="1" depth="8.00000" diam="5.00"/>
+<Drilling X="341.55671" Y="458.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="11" DrilType="1" depth="8.00000" diam="5.00"/>
+<Drilling X="341.55671" Y="32.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="11" DrilType="1" depth="8.00000" diam="5.00"/>
+<Drilling X="100.00000" Y="480.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="13" DrilType="1" depth="13.00000" diam="5.00"/>
+<Drilling X="100.00000" Y="448.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="13" DrilType="1" depth="13.00000" diam="5.00"/>
+<Drilling X="695.00000" Y="480.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="13" DrilType="1" depth="13.00000" diam="5.00"/>
+<Drilling X="695.00000" Y="448.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="13" DrilType="1" depth="13.00000" diam="5.00"/>
+</Drillings>
+</ShapeOverallCS>
+<ShapeCuttingCS>
+<Side id="base" FaceProp="true">
+<Shape>
+<EdgeLine id="2" X1="799.00000" Y1="499.00000" X2="799.00000" Y2="0.00000"/>
+<EdgeLine id="1" X1="799.00000" Y1="0.00000" X2="1.00000" Y2="0.00000" Face="true"/>
+<EdgeLine id="4" X1="1.00000" Y1="0.00000" X2="1.00000" Y2="499.00000"/>
+<EdgeLine id="3" X1="1.00000" Y1="499.00000" X2="799.00000" Y2="499.00000"/>
+</Shape>
+</Side>
+<Side id="2">
+<Shape>
+<EdgeLine id="-2" X1="799.00000" Y1="499.00000" X2="799.00000" Y2="0.00000"/>
+<EdgeLine id="-1" X1="799.00000" Y1="0.00000" X2="1.00000" Y2="0.00000" Face="true"/>
+<EdgeLine id="-4" X1="1.00000" Y1="0.00000" X2="1.00000" Y2="499.00000"/>
+<EdgeLine id="-3" X1="1.00000" Y1="499.00000" X2="799.00000" Y2="499.00000"/>
+</Shape>
+</Side>
+<Drillings>
+<Drilling X="405.55671" Y="458.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="11" DrilType="1" depth="8.00000" diam="5.00"/>
+<Drilling X="405.55671" Y="32.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="11" DrilType="1" depth="8.00000" diam="5.00"/>
+<Drilling X="469.55671" Y="458.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="11" DrilType="1" depth="8.00000" diam="5.00"/>
+<Drilling X="469.55671" Y="32.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="11" DrilType="1" depth="8.00000" diam="5.00"/>
+<Drilling X="341.55671" Y="458.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="11" DrilType="1" depth="8.00000" diam="5.00"/>
+<Drilling X="341.55671" Y="32.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="11" DrilType="1" depth="8.00000" diam="5.00"/>
+<Drilling X="100.00000" Y="480.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="13" DrilType="1" depth="13.00000" diam="5.00"/>
+<Drilling X="100.00000" Y="448.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="13" DrilType="1" depth="13.00000" diam="5.00"/>
+<Drilling X="695.00000" Y="480.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="13" DrilType="1" depth="13.00000" diam="5.00"/>
+<Drilling X="695.00000" Y="448.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="13" DrilType="1" depth="13.00000" diam="5.00"/>
+</Drillings>
+</ShapeCuttingCS>
+</Obj>
+<Obj id="2" class="18" code="ASS1.00.001" name="Wieniec górny" position="" quantity="1" unit="0" l="798" w="499" dtt="18.3" manipulation="1" 
+dl="800" dw="500" 
+dtl="800" dtw="500" 
+material="202:465" txt="false" cutting="true" FactAngle="true" 
+parent="1" 
+cost="0" costFlag="false" 
+barcode="" 
+bandL="203:44" bandLtype="0" 
+bandB="203:44" bandBtype="0" 
+bandR="203:44" bandRtype="0" 
+machine="" 
+>
+<Bands>
+<Band id="203:44" quantity="510.00000" edgeType="0" edgeId="2"/>
+<Band id="203:44" quantity="810.00000" edgeType="0" edgeId="3"/>
+<Band id="203:44" quantity="510.00000" edgeType="0" edgeId="4"/>
+</Bands>
+<ShapeOverallCS>
+<Side id="base" FaceProp="true">
+<Shape>
+<EdgeLine id="1" X1="0.00000" Y1="500.00000" X2="800.00000" Y2="500.00000"/>
+<EdgeLine id="2" X1="800.00000" Y1="500.00000" X2="800.00000" Y2="0.00000"/>
+<EdgeLine id="3" X1="800.00000" Y1="0.00000" X2="0.00000" Y2="0.00000" Face="true"/>
+<EdgeLine id="4" X1="0.00000" Y1="0.00000" X2="0.00000" Y2="500.00000"/>
+</Shape>
+</Side>
+<Side id="2">
+<Shape>
+<EdgeLine id="-1" X1="0.00000" Y1="500.00000" X2="800.00000" Y2="500.00000"/>
+<EdgeLine id="-2" X1="800.00000" Y1="500.00000" X2="800.00000" Y2="0.00000"/>
+<EdgeLine id="-3" X1="800.00000" Y1="0.00000" X2="0.00000" Y2="0.00000" Face="true"/>
+<EdgeLine id="-4" X1="0.00000" Y1="0.00000" X2="0.00000" Y2="500.00000"/>
+</Shape>
+</Side>
+<Drillings>
+<Drilling X="405.55671" Y="42.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="10" DrilType="1" depth="8.00000" diam="5.00"/>
+<Drilling X="405.55671" Y="468.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="10" DrilType="1" depth="8.00000" diam="5.00"/>
+<Drilling X="469.55671" Y="42.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="10" DrilType="1" depth="8.00000" diam="5.00"/>
+<Drilling X="469.55671" Y="468.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="10" DrilType="1" depth="8.00000" diam="5.00"/>
+<Drilling X="341.55671" Y="42.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="10" DrilType="1" depth="8.00000" diam="5.00"/>
+<Drilling X="341.55671" Y="468.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="10" DrilType="1" depth="8.00000" diam="5.00"/>
+<Drilling X="100.00000" Y="20.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="12" DrilType="1" depth="13.00000" diam="5.00"/>
+<Drilling X="100.00000" Y="52.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="12" DrilType="1" depth="13.00000" diam="5.00"/>
+<Drilling X="695.00000" Y="20.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="12" DrilType="1" depth="13.00000" diam="5.00"/>
+<Drilling X="695.00000" Y="52.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="12" DrilType="1" depth="13.00000" diam="5.00"/>
+</Drillings>
+</ShapeOverallCS>
+<ShapeCuttingCS>
+<Side id="base" FaceProp="true">
+<Shape>
+<EdgeLine id="3" X1="799.00000" Y1="1.00000" X2="1.00000" Y2="1.00000" Face="true"/>
+<EdgeLine id="4" X1="1.00000" Y1="1.00000" X2="1.00000" Y2="500.00000"/>
+<EdgeLine id="1" X1="1.00000" Y1="500.00000" X2="799.00000" Y2="500.00000"/>
+<EdgeLine id="2" X1="799.00000" Y1="500.00000" X2="799.00000" Y2="1.00000"/>
+</Shape>
+</Side>
+<Side id="2">
+<Shape>
+<EdgeLine id="-3" X1="799.00000" Y1="1.00000" X2="1.00000" Y2="1.00000" Face="true"/>
+<EdgeLine id="-4" X1="1.00000" Y1="1.00000" X2="1.00000" Y2="500.00000"/>
+<EdgeLine id="-1" X1="1.00000" Y1="500.00000" X2="799.00000" Y2="500.00000"/>
+<EdgeLine id="-2" X1="799.00000" Y1="500.00000" X2="799.00000" Y2="1.00000"/>
+</Shape>
+</Side>
+<Drillings>
+<Drilling X="405.55671" Y="42.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="10" DrilType="1" depth="8.00000" diam="5.00"/>
+<Drilling X="405.55671" Y="468.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="10" DrilType="1" depth="8.00000" diam="5.00"/>
+<Drilling X="469.55671" Y="42.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="10" DrilType="1" depth="8.00000" diam="5.00"/>
+<Drilling X="469.55671" Y="468.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="10" DrilType="1" depth="8.00000" diam="5.00"/>
+<Drilling X="341.55671" Y="42.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="10" DrilType="1" depth="8.00000" diam="5.00"/>
+<Drilling X="341.55671" Y="468.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="10" DrilType="1" depth="8.00000" diam="5.00"/>
+<Drilling X="100.00000" Y="20.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="12" DrilType="1" depth="13.00000" diam="5.00"/>
+<Drilling X="100.00000" Y="52.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="12" DrilType="1" depth="13.00000" diam="5.00"/>
+<Drilling X="695.00000" Y="20.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="12" DrilType="1" depth="13.00000" diam="5.00"/>
+<Drilling X="695.00000" Y="52.00000" Z="0.00000" vectorX="0.00000" vectorY="0.00000" vectorZ="1.00000" ProjMark="12" DrilType="1" depth="13.00000" diam="5.00"/>
+</Drillings>
+</ShapeCuttingCS>
+</Obj>
+<Obj id="1" class="1" code="ASS1.00.000" name="Modul" position="" quantity="1" unit="0" dtl="1000" dtw="500" dtt="800" 
+cost="0" costFlag="false" 
+>
+</Obj>
+</ProjectStructure>
+</Project3dc>

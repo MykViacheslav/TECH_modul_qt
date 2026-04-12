@@ -289,6 +289,17 @@ class TabEkrany(QWidget):
         sub.setStyleSheet("font-size:12px;color:#475569;")
         root.addWidget(sub)
 
+        plan_hint = QLabel(
+            "To jest aktualna warstwa planowania (dawny Plan) w runtime. "
+            "Ekrany i Stanowiska korzystaja glownie z danych kalendarza synchronizowanego z zamowieniami."
+        )
+        plan_hint.setWordWrap(True)
+        plan_hint.setStyleSheet(
+            "QLabel{background:#f8fafc;border:1px solid #d7e1ef;border-radius:8px;"
+            "padding:7px 10px;color:#334155;font-size:11px;font-weight:600;}"
+        )
+        root.addWidget(plan_hint)
+
         self._tabs = QTabWidget(self)
         self._tabs.setDocumentMode(True)
         self._tabs.setMovable(False)

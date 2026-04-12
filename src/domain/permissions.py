@@ -20,6 +20,7 @@ class UserRole(Enum):
     BIURO = "biuro"  # Office - orders, clients, pricing, reports
     PRODUKCJA = "produkcja"  # Production - production calendar, time tracking
     MAGAZYN = "magazyn"  # Warehouse - materials, inventory, purchases
+    MONTAZ = "montaz"  # Montage - own routes and montage issues
 
 
 # Role hierarchy (higher number = more permissions)
@@ -27,6 +28,7 @@ ROLE_HIERARCHY: Dict[str, int] = {
     "wlasciciel": 100,
     "biuro": 75,
     "magazyn": 60,
+    "montaz": 50,
     "produkcja": 40,
 }
 
@@ -36,6 +38,7 @@ ROLE_LABELS: Dict[str, str] = {
     "biuro": "Biuro",
     "produkcja": "Produkcja",
     "magazyn": "Magazyn",
+    "montaz": "Montaz",
 }
 
 # Legacy role names used in older parts of the app.
@@ -48,10 +51,13 @@ ROLE_ALIASES: Dict[str, str] = {
     "sales": "biuro",
     "production": "produkcja",
     "warehouse": "magazyn",
+    "installer": "montaz",
+    "install": "montaz",
+    "montage": "montaz",
 }
 
 # All defined roles
-ALL_ROLES = ("wlasciciel", "biuro", "produkcja", "magazyn")
+ALL_ROLES = ("wlasciciel", "biuro", "produkcja", "magazyn", "montaz")
 
 
 # Permission matrix: view/edit/delete/export/approve
@@ -104,6 +110,17 @@ class Permission:
     EXPORT_DATA = "data_export"
     VIEW_AVATAR = "avatar_view"
 
+    # === FINANSE (role uprawnione) ===
+    VIEW_FINANCE = "finance_view"
+    VIEW_FINANCE_DASHBOARD = "finance_dashboard_view"
+    VIEW_FINANCE_CASH = "finance_cash_view"
+    VIEW_FINANCE_TAXES = "finance_taxes_view"
+    VIEW_FINANCE_PAYROLL = "finance_payroll_view"
+
+    # === OPERACJE ===
+    VIEW_OPERATIONS = "operations_view"
+    EDIT_OPERATIONS = "operations_edit"
+
     # === Legacy aliases (backward compatibility) ===
     # Keep old names mapped to current permission ids so stale mappings
     # cannot crash with AttributeError.
@@ -139,6 +156,9 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         Permission.MANAGE_USERS,
         Permission.VIEW_REPORTS, Permission.EXPORT_DATA,
         Permission.VIEW_AVATAR,
+        Permission.VIEW_FINANCE, Permission.VIEW_FINANCE_DASHBOARD,
+        Permission.VIEW_FINANCE_CASH, Permission.VIEW_FINANCE_TAXES, Permission.VIEW_FINANCE_PAYROLL,
+        Permission.VIEW_OPERATIONS, Permission.EDIT_OPERATIONS,
     },
     "biuro": {
         # BIURO - Zamowienia, wycena, klienci, raporty (bez ustawien i HR)
@@ -152,6 +172,9 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         Permission.VIEW_ALARMS, Permission.RESOLVE_ALARMS, Permission.CREATE_ALARM_ACTION,
         Permission.VIEW_REPORTS, Permission.EXPORT_DATA,
         Permission.VIEW_AVATAR,
+        Permission.VIEW_FINANCE, Permission.VIEW_FINANCE_DASHBOARD,
+        Permission.VIEW_FINANCE_CASH, Permission.VIEW_FINANCE_TAXES,
+        Permission.VIEW_OPERATIONS, Permission.EDIT_OPERATIONS,
     },
     "magazyn": {
         # MAGAZYN - Pelna kontrola nad magazynem + podglad zamowien
@@ -163,6 +186,7 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         Permission.VIEW_CALENDAR,
         Permission.VIEW_ALARMS, Permission.RESOLVE_ALARMS, Permission.CREATE_ALARM_ACTION,
         Permission.VIEW_AVATAR,
+        Permission.VIEW_OPERATIONS, Permission.EDIT_OPERATIONS,
     },
     "produkcja": {
         # PRODUKCJA - Kalendarz produkcji, zmiana statusow, swoj czas pracy
@@ -173,6 +197,15 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         Permission.VIEW_INVENTORY,  # Podglad dostepnych materialow
         Permission.VIEW_ALARMS,  # Podglad alarmow
         Permission.VIEW_AVATAR,
+        Permission.VIEW_OPERATIONS, Permission.EDIT_OPERATIONS,
+    },
+    "montaz": {
+        Permission.VIEW_ORDERS,
+        Permission.VIEW_PRODUCTION,
+        Permission.VIEW_CALENDAR,
+        Permission.VIEW_ALARMS,
+        Permission.VIEW_AVATAR,
+        Permission.VIEW_OPERATIONS, Permission.EDIT_OPERATIONS,
     },
 }
 
@@ -220,6 +253,7 @@ def can_access_tab_by_role(role: str, tab_title: str) -> bool:
         "Nowe zamowienie": _permission_by_name("VIEW_NEW_ORDER", "VIEW_ORDERS"),
         "Nowe zamówienie": _permission_by_name("VIEW_NEW_ORDER", "VIEW_ORDERS"),
         "Wycena": _permission_by_name("VIEW_QUOTATION", "VIEW_PRICING"),
+        # "Sekcje do wyceny" scalono w hub Wycena — wpis zachowany dla wstecznej kompatybilności loginów
         "Sekcje do wyceny": _permission_by_name("VIEW_QUOTATION", "VIEW_PRICING"),
         # Service tab should be available in operational roles as well.
         "Uslugi": _permission_by_name("VIEW_ORDERS", "VIEW_SERVICES", "VIEW_PRICING"),
@@ -236,6 +270,10 @@ def can_access_tab_by_role(role: str, tab_title: str) -> bool:
         "Stanowiska": _permission_by_name("VIEW_CALENDAR", "VIEW_PRODUCTION"),
         "Kalendarz": _permission_by_name("VIEW_CALENDAR"),
         "Czas pracy": _permission_by_name("VIEW_WORK_TIME", "VIEW_CALENDAR"),
+        "OPERACJE": _permission_by_name("VIEW_OPERATIONS", "VIEW_ORDERS"),
+        # Wejscie do huba Finanse ma byc dostepne dla wszystkich rol roboczych.
+        # Wrazliwe sekcje sa ograniczane wewnatrz huba (cash/payroll/taxes).
+        "Finanse": _permission_by_name("VIEW_ORDERS", "VIEW_FINANCE", "VIEW_REPORTS"),
         "Wydatki stale firmy": _permission_by_name("VIEW_EXPENSES", "VIEW_REPORTS"),
         "Wydatki stałe firmy": _permission_by_name("VIEW_EXPENSES", "VIEW_REPORTS"),
         "Wydatki zmienne": _permission_by_name("VIEW_EXPENSES", "VIEW_REPORTS"),
@@ -254,6 +292,7 @@ def can_access_tab_by_role(role: str, tab_title: str) -> bool:
         "Baza faktur": _permission_by_name("VIEW_MATERIALS", "VIEW_INVENTORY"),
         "Baza materiału": _permission_by_name("VIEW_MATERIALS", "VIEW_INVENTORY"),
         "Baza szybkich wycen": _permission_by_name("VIEW_SERVICES", "VIEW_PRICING"),
+        "Baza uslug": _permission_by_name("VIEW_SERVICES", "VIEW_PRICING"),
 
         # Other
         # Informational tabs should not block access to the whole "Inne" group.

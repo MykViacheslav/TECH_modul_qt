@@ -1,76 +1,157 @@
-from PyQt6.QtWidgets import QApplication
+from src.core.module_parts_service import build_module_parts
+from src.domain.module_models import ModuleDef
+from src.storage.catalog_store_json import CatalogStoreJson
 
 
-def test_catalog_store_uses_composite_thickness_sum(tmp_path):
-    from src.storage.catalog_store_json import CatalogStoreJson
-
+def test_material_plain_legacy_still_loads(tmp_path):
     catalog = CatalogStoreJson(tmp_path / "catalog.json")
     catalog.replace_catalog(
         materials=[
             {
-                "key": "PB18_COMP_1S",
-                "name_pl": "Plyta kompozyt 1S",
+                "key": "PLAIN18",
+                "name_pl": "Material legacy",
                 "thickness_mm": 18.0,
-                "composite_enabled": 1,
-                "core_material_key": "PB18",
-                "core_thickness_mm": 17.2,
-                "left_facing_key": "Fornir 0.6",
-                "left_facing_thickness_mm": 0.6,
-                "right_facing_key": "",
-                "right_facing_thickness_mm": 0.0,
             }
         ]
     )
 
-    assert abs(catalog.material_thickness("PB18_COMP_1S", 18.0) - 17.8) < 0.001
-
-    mat = catalog.get_material("PB18_COMP_1S")
-    assert mat is not None
-    assert mat.composite_enabled is True
-    assert abs(float(mat.core_thickness_mm) - 17.2) < 0.001
-    assert abs(float(mat.left_facing_thickness_mm) - 0.6) < 0.001
-    assert abs(float(mat.right_facing_thickness_mm) - 0.0) < 0.001
+    material = catalog.get_material("PLAIN18")
+    assert material is not None
+    assert material.core is None
+    assert material.skins_left == []
+    assert material.skins_right == []
+    assert abs(catalog.material_thickness("PLAIN18", 0.0) - 18.0) < 0.001
 
 
-def test_catalog_editor_dialog_saves_composite_fields(tmp_path):
-    app = QApplication.instance() or QApplication([])
-
-    from src.storage.catalog_store_json import CatalogStoreJson
-    from src.tabs.modul.dialog_catalog_editor import CatalogEditorDialog
-
+def test_material_core_only_computes_total_thickness(tmp_path):
     catalog = CatalogStoreJson(tmp_path / "catalog.json")
-    dlg = CatalogEditorDialog(None, catalog)
-    table = dlg.page_materials.table
+    catalog.replace_catalog(
+        materials=[
+            {
+                "key": "CORE_ONLY",
+                "name_pl": "Core only",
+                "core": {"code": "pb18", "name_pl": "Plyta 18", "thickness_mm": 18.0},
+                "skins_left": [],
+                "skins_right": [],
+            }
+        ]
+    )
 
-    def _col(label: str) -> int:
-        for idx in range(table.columnCount()):
-            header = table.horizontalHeaderItem(idx)
-            if header is not None and str(header.text() or "").strip() == label:
-                return idx
-        raise AssertionError(f"Brak kolumny: {label}")
+    assert abs(catalog.material_thickness("CORE_ONLY", 0.0) - 18.0) < 0.001
 
-    row_pb18 = -1
-    for row in range(table.rowCount()):
-        item = table.item(row, 0)
-        if item is not None and str(item.text() or "").strip() == "PB18":
-            row_pb18 = row
-            break
-    assert row_pb18 >= 0
 
-    table.item(row_pb18, _col("Kompozyt (0/1)")).setText("1")
-    table.item(row_pb18, _col("Rdzen - klucz")).setText("PB18")
-    table.item(row_pb18, _col("Rdzen mm")).setText("17.2")
-    table.item(row_pb18, _col("Okladzina L - klucz")).setText("Fornir 0.6")
-    table.item(row_pb18, _col("Okladzina L mm")).setText("0.6")
-    table.item(row_pb18, _col("Okladzina P - klucz")).setText("Fornir 0.6")
-    table.item(row_pb18, _col("Okladzina P mm")).setText("0.6")
+def test_material_composite_one_sided_computes_total_thickness(tmp_path):
+    catalog = CatalogStoreJson(tmp_path / "catalog.json")
+    catalog.replace_catalog(
+        materials=[
+            {
+                "key": "ONE_SIDE",
+                "name_pl": "One side veneer",
+                "core": {"code": "pb18", "name_pl": "Plyta 18", "thickness_mm": 18.0},
+                "skins_left": [{"code": "veneer_06", "name_pl": "Fornir 0.6", "thickness_mm": 0.6}],
+                "skins_right": [],
+            }
+        ]
+    )
 
-    dlg._save_and_accept()
+    assert abs(catalog.material_thickness("ONE_SIDE", 0.0) - 18.6) < 0.001
 
-    saved = catalog.get_material("PB18")
-    assert saved is not None
-    assert saved.composite_enabled is True
-    assert abs(float(saved.core_thickness_mm) - 17.2) < 0.001
-    assert abs(float(saved.left_facing_thickness_mm) - 0.6) < 0.001
-    assert abs(float(saved.right_facing_thickness_mm) - 0.6) < 0.001
-    assert abs(catalog.material_thickness("PB18", 18.0) - 18.4) < 0.001
+
+def test_material_composite_two_sided_computes_total_thickness(tmp_path):
+    catalog = CatalogStoreJson(tmp_path / "catalog.json")
+    catalog.replace_catalog(
+        materials=[
+            {
+                "key": "TWO_SIDE_MULTI",
+                "name_pl": "Two side multi",
+                "core": {"code": "mdf19", "name_pl": "MDF 19", "thickness_mm": 19.0},
+                "skins_left": [
+                    {"code": "primer_02", "name_pl": "Podklad 0.2", "thickness_mm": 0.2},
+                    {"code": "veneer_06", "name_pl": "Fornir 0.6", "thickness_mm": 0.6},
+                ],
+                "skins_right": [
+                    {"code": "primer_02", "name_pl": "Podklad 0.2", "thickness_mm": 0.2},
+                    {"code": "veneer_06", "name_pl": "Fornir 0.6", "thickness_mm": 0.6},
+                ],
+            }
+        ]
+    )
+
+    assert abs(catalog.material_thickness("TWO_SIDE_MULTI", 0.0) - 20.6) < 0.001
+
+
+def test_material_store_preserves_composite_structure(tmp_path):
+    catalog = CatalogStoreJson(tmp_path / "catalog.json")
+    source_row = {
+        "key": "STORE_SHAPE",
+        "name_pl": "Store shape",
+        "core": {"code": "pb18", "name_pl": "Plyta 18", "thickness_mm": 18.0},
+        "skins_left": [{"code": "hpl_08", "name_pl": "HPL 0.8", "thickness_mm": 0.8}],
+        "skins_right": [{"code": "hpl_08", "name_pl": "HPL 0.8", "thickness_mm": 0.8}],
+    }
+    catalog.replace_catalog(materials=[source_row])
+
+    exported = catalog.export_catalog()
+    row = next(item for item in exported["materials"] if item["key"] == "STORE_SHAPE")
+    assert isinstance(row.get("core"), dict)
+    assert isinstance(row.get("skins_left"), list)
+    assert isinstance(row.get("skins_right"), list)
+    assert row["core"]["code"] == "pb18"
+    assert len(row["skins_left"]) == 1
+    assert len(row["skins_right"]) == 1
+    assert abs(float(row.get("thickness_mm", 0.0)) - 19.6) < 0.001
+
+
+def test_material_legacy_composite_fields_are_accepted(tmp_path):
+    catalog = CatalogStoreJson(tmp_path / "catalog.json")
+    catalog.replace_catalog(
+        materials=[
+            {
+                "key": "LEGACY_COMP",
+                "name_pl": "Legacy composite",
+                "thickness_mm": 18.0,
+                "composite_enabled": 1,
+                "core_material_key": "pb18",
+                "core_thickness_mm": 17.2,
+                "left_facing_key": "veneer_06",
+                "left_facing_thickness_mm": 0.6,
+                "right_facing_key": "veneer_06",
+                "right_facing_thickness_mm": 0.6,
+            }
+        ]
+    )
+
+    material = catalog.get_material("LEGACY_COMP")
+    assert material is not None
+    assert material.composite_enabled is True
+    assert abs(catalog.material_thickness("LEGACY_COMP", 0.0) - 18.4) < 0.001
+
+
+def test_module_uses_material_thickness_from_composite_material(tmp_path):
+    catalog = CatalogStoreJson(tmp_path / "catalog.json")
+    catalog.replace_catalog(
+        materials=[
+            {
+                "key": "CARCASS_COMP",
+                "name_pl": "Carcass composite",
+                "core": {"code": "pb18", "name_pl": "Plyta 18", "thickness_mm": 18.0},
+                "skins_left": [{"code": "veneer_06", "name_pl": "Fornir 0.6", "thickness_mm": 0.6}],
+                "skins_right": [{"code": "veneer_06", "name_pl": "Fornir 0.6", "thickness_mm": 0.6}],
+            },
+            {"key": "MDF19", "name_pl": "Front", "thickness_mm": 19.0},
+            {"key": "HDF2.5", "name_pl": "Plecy", "thickness_mm": 2.5},
+        ]
+    )
+
+    module = ModuleDef(
+        name="COMP-MODULE",
+        width_mm=900.0,
+        depth_mm=560.0,
+        height_mm=2200.0,
+        materials={"carcass": "CARCASS_COMP", "front": "MDF19", "back": "HDF2.5"},
+        visible_parts={"side_left", "side_right", "top", "bottom"},
+    )
+    parts = build_module_parts(module, catalog)
+
+    assert abs(float(parts["side_left"].dims_mm["t"]) - 19.2) < 0.001
+    assert abs(float(parts["top"].dims_mm["t"]) - 19.2) < 0.001

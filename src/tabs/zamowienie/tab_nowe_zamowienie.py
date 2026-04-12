@@ -38,6 +38,8 @@ from PyQt6.QtWidgets import (
     QTextEdit,
     QTableWidget,
     QTableWidgetItem,
+    QTabBar,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -82,17 +84,17 @@ def _make_summary_card(title: str, value: str, palette: dict[str, str] | None = 
         f"background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 {colors.get('summary_card_bg_0', '#ffffff')},"
         f"stop:1 {colors.get('summary_card_bg_1', '#f7fbff')});"
         f"border:1px solid {colors.get('summary_card_border', '#d8e3ef')};"
-        "border-radius:16px;"
+        "border-radius:12px;"
         f"border-bottom:3px solid {colors.get('summary_card_accent', '#2563eb')};"
         "}"
     )
     layout = QVBoxLayout(card)
-    layout.setContentsMargins(12, 10, 12, 10)
-    layout.setSpacing(3)
+    layout.setContentsMargins(10, 6, 10, 6)
+    layout.setSpacing(2)
     title_label = QLabel(title, card)
-    title_label.setStyleSheet(f"color:{colors.get('summary_card_title', '#64748b')};font-size:10px;font-weight:800;")
+    title_label.setStyleSheet(f"color:{colors.get('summary_card_title', '#64748b')};font-size:9px;font-weight:800;")
     value_label = QLabel(value, card)
-    value_label.setStyleSheet(f"color:{colors.get('summary_card_value', '#0f172a')};font-size:18px;font-weight:900;")
+    value_label.setStyleSheet(f"color:{colors.get('summary_card_value', '#0f172a')};font-size:16px;font-weight:900;")
     layout.addWidget(title_label)
     layout.addWidget(value_label)
     card.value_label = value_label  # type: ignore[attr-defined]
@@ -481,6 +483,9 @@ class TabNoweZamowienie(QWidget):
         self._current_order_calendar_date = ""
         self._current_order_calendar_note = ""
         self._customer_payments: list[dict[str, object]] = []
+        self._quote_entry_mode = "-"
+        self._order_commercial_total = 0.0
+        self._order_grand_total = 0.0
         self._is_syncing_order_address = False
         self._is_syncing_worker_name = False
         self._generated_order_ids: set[str] = set()
@@ -588,132 +593,155 @@ class TabNoweZamowienie(QWidget):
         )
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(18, 18, 18, 18)
-        root.setSpacing(14)
+        root.setContentsMargins(10, 6, 10, 6)
+        root.setSpacing(4)
         self.setObjectName("TabNoweZamowienieRoot")
+        _field_border  = "#2a4368" if self._is_tech else "#c8d4e0"
+        _field_focus   = "#3b6faa" if self._is_tech else "#94a3b8"
+        _field_bg      = "#0d1829" if self._is_tech else "#ffffff"
+        _field_text    = "#e2eeff" if self._is_tech else "#1e293b"
         self.setStyleSheet(
             f"QWidget#TabNoweZamowienieRoot {{ background:{self._colors['page_bg']}; }}"
+            # --- pola wejsciowe ---
+            f"QLineEdit, QDateEdit, QSpinBox, QDoubleSpinBox {{"
+            f"  border:1px solid {_field_border}; border-radius:4px;"
+            f"  padding:2px 6px; background:{_field_bg}; color:{_field_text};"
+            f"  font-size:11px; min-height:22px; max-height:26px; }}"
+            f"QLineEdit:focus, QDateEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {{"
+            f"  border-color:{_field_focus}; }}"
+            f"QComboBox {{"
+            f"  border:1px solid {_field_border}; border-radius:4px;"
+            f"  padding:2px 6px; background:{_field_bg}; color:{_field_text};"
+            f"  font-size:11px; min-height:22px; }}"
+            f"QComboBox:focus {{ border-color:{_field_focus}; }}"
+            f"QComboBox::drop-down {{ border-left:1px solid {_field_border}; width:18px; }}"
+            f"QTextEdit {{"
+            f"  border:1px solid {_field_border}; border-radius:4px;"
+            f"  padding:4px 6px; background:{_field_bg}; color:{_field_text};"
+            f"  font-size:11px; }}"
+            f"QTextEdit:focus {{ border-color:{_field_focus}; }}"
         )
 
-        title = QLabel("NOWE ZAMOWIENIE")
-        title.setStyleSheet(
-            f"font-size:24px; font-weight:900; letter-spacing:0.2px; color:{self._colors['title']};"
+        # Rzad 1: pasek kontekstu + nawigacja krokow
+        self.workflow_top_bar = QFrame(self)
+        self.workflow_top_bar.setObjectName("newOrderWorkflowTopBar")
+        self.workflow_top_bar.setStyleSheet(
+            f"QFrame#newOrderWorkflowTopBar{{"
+            f"border:1px solid {self._colors['summary_strip_border']};"
+            f"border-radius:5px;background:{self._colors['summary_strip_bg']};}}"
+            f"QPushButton{{font-size:10px;font-weight:600;"
+            f"background:{self._colors['hero_bg_0']};color:{self._colors['muted']};"
+            f"border:1px solid {self._colors['hero_border']};border-radius:4px;"
+            f"padding:0px 10px;}}"
+            f"QPushButton:hover{{background:{self._colors['hero_bg_1']};"
+            f"color:{self._colors['hero_title']};}}"
+            f"QPushButton:disabled{{color:{self._colors['muted']};}}"
         )
-        root.addWidget(title, 0, Qt.AlignmentFlag.AlignLeft)
-
-        subtitle = QLabel("Start projektu: klient, zamowienie, pracownik i pozycje do wyceny.")
-        subtitle.setWordWrap(True)
-        subtitle.setStyleSheet(f"color:{self._colors['subtitle']};")
-        root.addWidget(subtitle, 0, Qt.AlignmentFlag.AlignLeft)
-
-        hero = QFrame(self)
-        hero.setStyleSheet(
-            "QFrame{"
-            f"background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 {self._colors['hero_bg_0']},"
-            f"stop:1 {self._colors['hero_bg_1']});"
-            f"border:1px solid {self._colors['hero_border']};"
-            "border-radius:20px;}"
-        )
-        hero_layout = QHBoxLayout(hero)
-        hero_layout.setContentsMargins(16, 14, 16, 14)
-        hero_layout.setSpacing(12)
-        hero_text = QVBoxLayout()
-        hero_text.setSpacing(4)
-        hero_title = QLabel("Premium order workspace")
-        hero_title.setStyleSheet(f"font-size:14px;font-weight:900;color:{self._colors['hero_title']};")
-        hero_desc = QLabel("Najpierw klient i status, potem szczegoly. Formularz ma byc czytelny, nie ciezki.")
-        hero_desc.setWordWrap(True)
-        hero_desc.setStyleSheet(f"font-size:12px;color:{self._colors['hero_desc']};")
-        hero_text.addWidget(hero_title)
-        hero_text.addWidget(hero_desc)
-        chip_row = QHBoxLayout()
-        chip_row.setSpacing(8)
-        chip_specs = (
-            (
-                ("Klient", "#1c335c", "#dbe9ff"),
-                ("Status", "#2c2752", "#dbd4ff"),
-                ("Start projektu", "#173a31", "#c7f5e5"),
-            )
-            if self._is_tech
-            else (
-                ("Klient", "#dbeafe", "#1d4ed8"),
-                ("Status", "#eef2ff", "#4338ca"),
-                ("Start projektu", "#ecfdf5", "#047857"),
-            )
-        )
-        for text, bg, fg in chip_specs:
-            chip_row.addWidget(_make_pill(text, bg, fg))
-        hero_text.addLayout(chip_row)
-        hero_layout.addLayout(hero_text, 1)
-        self._hero_status_chip = QLabel("Robocze / testowe")
-        self._hero_status_chip.setStyleSheet(
-            f"QLabel{{background:transparent;color:{self._colors['hero_title']};"
-            f"border:1px solid {self._colors['hero_chip_border']};border-radius:999px;"
-            "padding:8px 12px;font-size:10px;font-weight:900;}"
-        )
-        hero_layout.addWidget(self._hero_status_chip)
-        root.addWidget(hero)
-
-        summary_strip = QFrame(self)
-        summary_strip.setStyleSheet(
-            f"QFrame{{background:{self._colors['summary_strip_bg']};"
-            f"border:1px solid {self._colors['summary_strip_border']};border-radius:18px;}}"
-        )
-        summary_layout = QHBoxLayout(summary_strip)
-        summary_layout.setContentsMargins(12, 10, 12, 10)
-        summary_layout.setSpacing(10)
-        self.card_client_summary, self.lab_client_summary = _make_summary_card("Klient", "-", self._colors)
-        self.card_order_summary, self.lab_order_summary = _make_summary_card("Zamowienie", "-", self._colors)
-        self.card_status_summary, self.lab_status_summary = _make_summary_card("Status", "Nowe", self._colors)
-        self.card_progress_summary, self.lab_progress_summary = _make_summary_card("Postep", "0%", self._colors)
-        for card in (
-            self.card_client_summary,
-            self.card_order_summary,
-            self.card_status_summary,
-            self.card_progress_summary,
+        top_bar_layout = QHBoxLayout(self.workflow_top_bar)
+        top_bar_layout.setContentsMargins(8, 3, 8, 3)
+        top_bar_layout.setSpacing(8)
+        _lbl_style = f"color:{self._colors['muted']}; font-size:11px; font-weight:700;"
+        self.lab_top_client = QLabel("Klient: -", self.workflow_top_bar)
+        self.lab_top_order = QLabel("Nr: -", self.workflow_top_bar)
+        self.lab_top_status = QLabel("Status: Nowe", self.workflow_top_bar)
+        self.lab_top_progress = QLabel("Postęp: 0%", self.workflow_top_bar)
+        self.lab_top_step = QLabel("Krok 1/5  —  Klient", self.workflow_top_bar)
+        # lab_top_next_hint zachowany jako atrybut (uzywany w _refresh_step_nav_buttons)
+        # ale nie dodawany do layoutu — nie zajmuje miejsca
+        self.lab_top_next_hint = QLabel("", self.workflow_top_bar)
+        self.lab_top_next_hint.setVisible(False)
+        for lab in (
+            self.lab_top_client,
+            self.lab_top_order,
+            self.lab_top_status,
+            self.lab_top_progress,
+            self.lab_top_step,
         ):
-            summary_layout.addWidget(card)
-        root.addWidget(summary_strip)
+            lab.setStyleSheet(_lbl_style)
+            top_bar_layout.addWidget(lab, 0)
+        top_bar_layout.addStretch(1)
+        self.btn_top_prev = QPushButton("◀ Wstecz", self.workflow_top_bar)
+        self.btn_top_next = QPushButton("Dalej ▶", self.workflow_top_bar)
+        for btn in (self.btn_top_prev, self.btn_top_next):
+            self._make_compact_button(btn, min_width=72, max_width=100)
+            btn.setFixedHeight(20)
+            top_bar_layout.addWidget(btn, 0)
+        root.addWidget(self.workflow_top_bar, 0)
 
-        # Szybka nawigacja workflow (N1/N2/N3) - stale widoczna u gory
+        # Rzad 2: globalne akcje zapisu
+        self.global_actions_bar = QFrame(self)
+        self.global_actions_bar.setObjectName("newOrderGlobalActionsBar")
+        self.global_actions_bar.setStyleSheet(
+            f"QFrame#newOrderGlobalActionsBar{{"
+            f"border:1px solid {self._colors['summary_strip_border']};"
+            f"border-radius:5px;background:{self._colors['summary_strip_bg']};}}"
+            f"QPushButton{{font-size:10px;font-weight:600;"
+            f"background:{self._colors['hero_bg_0']};color:{self._colors['muted']};"
+            f"border:1px solid {self._colors['hero_border']};border-radius:4px;"
+            f"padding:0px 10px;}}"
+            f"QPushButton:hover{{background:{self._colors['hero_bg_1']};"
+            f"color:{self._colors['hero_title']};}}"
+            f"QPushButton:pressed{{border-color:{self._colors['summary_card_accent']};}}"
+        )
+        global_actions_layout = QHBoxLayout(self.global_actions_bar)
+        global_actions_layout.setContentsMargins(8, 2, 8, 2)
+        global_actions_layout.setSpacing(5)
+        self.btn_save_draft = QPushButton("Zapisz roboczo", self.global_actions_bar)
+        self.btn_save_new = QPushButton("Zapisz nowe", self.global_actions_bar)
+        self.btn_overwrite_all = QPushButton("Nadpisz wszystko", self.global_actions_bar)
+        self.btn_clear = QPushButton("Wyczysc karte", self.global_actions_bar)
+        for _gbtn in (self.btn_save_draft, self.btn_save_new, self.btn_overwrite_all, self.btn_clear):
+            self._make_compact_button(_gbtn, min_width=100, max_width=140)
+            _gbtn.setFixedHeight(22)
+            global_actions_layout.addWidget(_gbtn, 0)
+        global_actions_layout.addStretch(1)
+        root.addWidget(self.global_actions_bar, 0)
+
+        # Szybka nawigacja workflow (N1-N5) - stale widoczna u gory
         self.step_nav = QFrame(self)
         self.step_nav.setObjectName("newOrderStepNav")
         self.step_nav.setStyleSheet(
             f"""
             QFrame#newOrderStepNav {{
                 border: 1px solid {self._colors['summary_strip_border']};
-                border-radius: 14px;
+                border-radius: 12px;
                 background: {self._colors['summary_strip_bg']};
             }}
             """
         )
         step_nav_layout = QHBoxLayout(self.step_nav)
-        step_nav_layout.setContentsMargins(10, 8, 10, 8)
-        step_nav_layout.setSpacing(8)
+        step_nav_layout.setContentsMargins(10, 6, 10, 6)
+        step_nav_layout.setSpacing(6)
 
         self.btn_step_client = QPushButton("N1  Klient", self.step_nav)
-        self.btn_step_order = QPushButton("N2  Zamowienie", self.step_nav)
+        self.btn_step_order = QPushButton("N2  Zamówienie", self.step_nav)
         self.btn_step_quote = QPushButton("N3  Pozycje do wyceny", self.step_nav)
+        self.btn_step_attachments = QPushButton("N4  Zalaczniki", self.step_nav)
+        self.btn_step_summary = QPushButton("N5  Podsumowanie", self.step_nav)
 
         self._step_buttons: dict[str, QPushButton] = {
             "client": self.btn_step_client,
             "order": self.btn_step_order,
             "quote": self.btn_step_quote,
+            "attachments": self.btn_step_attachments,
+            "summary": self.btn_step_summary,
         }
         for btn in self._step_buttons.values():
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setMinimumHeight(34)
+            btn.setMinimumHeight(30)
+            btn.setMaximumHeight(30)
             btn.setStyleSheet(
                 "QPushButton{"
                 f"background:{self._colors['hero_bg_0']};"
                 f"color:{self._colors['hero_title']};"
                 f"border:1px solid {self._colors['hero_border']};"
-                "border-radius:10px;font-size:12px;font-weight:800;padding:4px 12px;}"
+                "border-radius:8px;font-size:11px;font-weight:800;padding:2px 10px;}"
                 "QPushButton:hover{border-color:#3b82f6;}"
             )
             step_nav_layout.addWidget(btn, 0)
         step_nav_layout.addStretch(1)
-        root.addWidget(self.step_nav, 0)
+        # step_nav nie jest dodawany do root — przyciski N1-N5 zyja w pamieci
+        # dla logiki _refresh_workflow_step_buttons, ale nie sa widoczne w UI
 
         self.start_entry_bar = QFrame(self)
         self.start_entry_bar.setObjectName("newOrderEntryBar")
@@ -729,34 +757,40 @@ class TabNoweZamowienie(QWidget):
         start_entry_layout = QHBoxLayout(self.start_entry_bar)
         start_entry_layout.setContentsMargins(14, 12, 14, 12)
         start_entry_layout.setSpacing(10)
-        self.btn_start_new_order = QPushButton("+ Dodaj nowe zamowienie", self.start_entry_bar)
+        self.btn_start_new_order = QPushButton("+ Dodaj nowe zamówienie", self.start_entry_bar)
         self._make_compact_button(self.btn_start_new_order, min_width=220, max_width=260)
         self.btn_start_new_order.setMinimumHeight(42)
         start_entry_layout.addWidget(self.btn_start_new_order, 0)
         start_entry_layout.addStretch(1)
         root.addWidget(self.start_entry_bar, 0)
 
-        self.scroll_area = QScrollArea(self)
-        self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        # Zachowujemy nazwę scroll_area dla kompatybilnosci metod, ale to juz nie jest dluga strona.
+        self.scroll_area = QFrame(self)
         root.addWidget(self.scroll_area, 1)
-
-        self.page_widget = QWidget(self.scroll_area)
-        self.scroll_area.setWidget(self.page_widget)
-
-        page_root = QVBoxLayout(self.page_widget)
+        page_root = QVBoxLayout(self.scroll_area)
         page_root.setContentsMargins(0, 0, 0, 0)
-        page_root.setSpacing(14)
-
-        body = QVBoxLayout()
-        body.setSpacing(12)
-        page_root.addLayout(body, 1)
-        self.body_layout = body
+        page_root.setSpacing(8)
+        self.workflow_tabs = QTabWidget(self.scroll_area)
+        self.workflow_tabs.setDocumentMode(True)
+        self.workflow_tabs.setTabPosition(QTabWidget.TabPosition.North)
+        self.workflow_tabs.setStyleSheet(
+            f"QTabBar::tab{{padding:5px 18px;font-size:11px;font-weight:600;"
+            f"border:1px solid {self._colors['hero_border']};"
+            f"border-bottom:0;border-top-left-radius:5px;border-top-right-radius:5px;"
+            f"background:{self._colors['hero_bg_0']};color:{self._colors['muted']};"
+            f"margin-right:2px;}}"
+            f"QTabBar::tab:selected{{background:{self._colors['summary_strip_bg']};"
+            f"border-bottom:2px solid #7aa3cc;color:{self._colors['hero_title']};"
+            f"font-weight:700;}}"
+            f"QTabBar::tab:hover{{background:{self._colors['hero_bg_1']};"
+            f"color:{self._colors['hero_title']};}}"
+            "QTabWidget::pane{border:0;margin-top:0;}"
+        )
+        page_root.addWidget(self.workflow_tabs, 1)
 
         self.grp_client = CollapsibleBlock("Klient", self)
         self.grp_order = CollapsibleBlock("Zamowienie", self)
         self.grp_worker = CollapsibleBlock("Pracownik", self)
-        self.grp_actions = CollapsibleBlock("Akcje", self)
         self.grp_architect = CollapsibleBlock("Zalaczniki od architekta", self)
         self.grp_quote_items = CollapsibleBlock("Pozycje do wyceny", self)
         self.grp_material_choices = CollapsibleBlock("Probki i finalne materialy", self)
@@ -764,24 +798,148 @@ class TabNoweZamowienie(QWidget):
         self.grp_walls = CollapsibleBlock("Sciany zamowienia", self)
         self.grp_summary = CollapsibleBlock("Podsumowanie zamowienia", self)
 
-        body.addWidget(self.grp_client)
-        body.addWidget(self.grp_order)
-        body.addWidget(self.grp_worker)
-        body.addWidget(self.grp_quote_items)
-        body.addWidget(self.grp_actions)
-        body.addWidget(self.grp_architect)
-        body.addWidget(self.grp_material_choices)
-        body.addWidget(self.grp_customer_cash)
-        body.addWidget(self.grp_walls)
-        body.addWidget(self.grp_summary)
-        body.addStretch(1)
+        self.step_client_page = QWidget(self.workflow_tabs)
+        self.step_order_page = QWidget(self.workflow_tabs)
+        self.step_quote_page = QWidget(self.workflow_tabs)
+        self.step_attachments_page = QWidget(self.workflow_tabs)
+        self.step_summary_page = QWidget(self.workflow_tabs)
+        self._step_pages: dict[str, QWidget] = {
+            "client": self.step_client_page,
+            "order": self.step_order_page,
+            "quote": self.step_quote_page,
+            "attachments": self.step_attachments_page,
+            "summary": self.step_summary_page,
+        }
+        self._step_order = ["client", "order", "quote", "attachments", "summary"]
+        self._step_index_map = {key: idx for idx, key in enumerate(self._step_order)}
+        self._step_current = "client"
+        _tab_labels: dict[str, str] = {
+            "client": "Klient",
+            "order": "Zamówienie",
+            "quote": "Pozycje do wyceny",
+            "attachments": "Załączniki",
+            "summary": "Podsumowanie",
+        }
+        for key in self._step_order:
+            page = self._step_pages[key]
+            lay = QVBoxLayout(page)
+            lay.setContentsMargins(10, 8, 10, 8)
+            lay.setSpacing(8)
+            self.workflow_tabs.addTab(page, _tab_labels.get(key, key))
+
+        self.step_hint_client = QLabel(
+            "N1 Klient: wybierz klienta z bazy albo dodaj nowego, potem przejdź do danych zamówienia.",
+            self.step_client_page,
+        )
+        self.step_hint_order = QLabel(
+            "N2 Zamówienie: uzupełnij dane zlecenia i status, potem przejdź do pozycji do wyceny.",
+            self.step_order_page,
+        )
+        self.step_hint_quote = QLabel(
+            "N3 Pozycje do wyceny: wybierz tryb (projekt / szybka / import 3D) i dodaj pozycje.",
+            self.step_quote_page,
+        )
+        self.step_hint_attachments = QLabel(
+            "N4 Załączniki: dodaj pliki do zamówienia (PDF, zdjęcia, rysunki, pliki .project).",
+            self.step_attachments_page,
+        )
+        self.step_hint_summary = QLabel(
+            "N5 Podsumowanie: sprawdź komplet danych, zapisz zamówienie i przejdź dalej.",
+            self.step_summary_page,
+        )
+        for hint in (
+            self.step_hint_client,
+            self.step_hint_order,
+            self.step_hint_quote,
+            self.step_hint_attachments,
+            self.step_hint_summary,
+        ):
+            hint.setWordWrap(True)
+            hint.setStyleSheet(
+                f"color:{self._colors['muted']}; font-size:11px; font-weight:700; "
+                f"background:{self._colors['summary_strip_bg']}; border:1px solid {self._colors['summary_strip_border']}; "
+                "border-radius:10px; padding:8px 10px;"
+            )
+
+        for hint in (
+            self.step_hint_client,
+            self.step_hint_order,
+            self.step_hint_quote,
+            self.step_hint_attachments,
+            self.step_hint_summary,
+        ):
+            hint.setVisible(False)
+
+        self.step_client_page.layout().addWidget(self.grp_client)
+        self.step_client_page.layout().addStretch(1)
+
+        self.step_order_page.layout().addWidget(self.grp_order)
+        self.step_order_page.layout().addWidget(self.grp_worker)
+        self.step_order_page.layout().addStretch(1)
+
+        # Ekran decyzyjny dla pozycji do wyceny (N3)
+        self.quote_mode_panel = QFrame(self.step_quote_page)
+        self.quote_mode_panel.setStyleSheet(
+            f"QFrame{{background:{self._colors['summary_strip_bg']};border:1px solid {self._colors['summary_strip_border']};border-radius:6px;}}"
+        )
+        quote_mode_layout = QVBoxLayout(self.quote_mode_panel)
+        quote_mode_layout.setContentsMargins(10, 8, 10, 8)
+        quote_mode_layout.setSpacing(6)
+        quote_mode_layout.addWidget(QLabel("Wybierz sposob wejscia do wyceny:", self.quote_mode_panel))
+        cards_row = QHBoxLayout()
+        cards_row.setSpacing(8)
+        self.btn_mode_project = QPushButton("Wycena projektu\nz Modulu / Kompletu / Sciany", self.quote_mode_panel)
+        self.btn_mode_quick = QPushButton("Szybka wycena\nszybka oferta z sekcji i wymiarow", self.quote_mode_panel)
+        self.btn_mode_import3d = QPushButton("Import 3D\nimport z pliku .project", self.quote_mode_panel)
+        for btn in (self.btn_mode_project, self.btn_mode_quick, self.btn_mode_import3d):
+            btn.setMinimumHeight(50)
+            btn.setMaximumHeight(60)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            cards_row.addWidget(btn, 1)
+        quote_mode_layout.addLayout(cards_row)
+        self.lab_quote_mode_selected = QLabel("Wybrany tryb: -", self.quote_mode_panel)
+        self.lab_quote_mode_stats = QLabel("Pozycje: 0 | Zalaczniki: 0 | Wstepna suma: 0.00 zl", self.quote_mode_panel)
+        quote_mode_layout.addWidget(self.lab_quote_mode_selected)
+        quote_mode_layout.addWidget(self.lab_quote_mode_stats)
+        self.step_quote_page.layout().addWidget(self.quote_mode_panel)
+        self.step_quote_page.layout().addWidget(self.grp_quote_items)
+        self.step_quote_page.layout().addWidget(self.grp_walls)
+        self.step_quote_page.layout().addStretch(1)
+
+        self.step_attachments_page.layout().addWidget(self.grp_architect)
+        self.step_attachments_page.layout().addStretch(1)
+
+        # Lokalne akcje N5: przejscie do projektu, eksport oferty
+        self.step_summary_local_actions = QHBoxLayout()
+        self.step_summary_local_actions.setSpacing(8)
+        self.btn_go_to_sciana = QPushButton("Dalej: Ściana", self.step_summary_page)
+        self.btn_export_offer = QPushButton("Eksport oferty", self.step_summary_page)
+        self.btn_export_offer_pdf = QPushButton("Eksport PDF", self.step_summary_page)
+        _local_btn_ss = (
+            f"QPushButton{{font-size:10px;font-weight:600;"
+            f"background:{self._colors['hero_bg_0']};color:{self._colors['muted']};"
+            f"border:1px solid {self._colors['hero_border']};border-radius:4px;"
+            f"padding:0px 10px;}}"
+            f"QPushButton:hover{{background:{self._colors['hero_bg_1']};"
+            f"color:{self._colors['hero_title']};}}"
+        )
+        for _lbtn in (self.btn_go_to_sciana, self.btn_export_offer, self.btn_export_offer_pdf):
+            self._make_compact_button(_lbtn, min_width=120, max_width=150)
+            _lbtn.setFixedHeight(22)
+            _lbtn.setStyleSheet(_local_btn_ss)
+            self.step_summary_local_actions.addWidget(_lbtn, 0)
+        self.step_summary_local_actions.addStretch(1)
+        self.step_summary_page.layout().addLayout(self.step_summary_local_actions)
+        self.step_summary_page.layout().addWidget(self.grp_summary)
+        self.step_summary_page.layout().addWidget(self.grp_material_choices)
+        self.step_summary_page.layout().addWidget(self.grp_customer_cash)
+        self.step_summary_page.layout().addStretch(1)
 
         for block in (
             self.grp_client,
             self.grp_order,
             self.grp_worker,
             self.grp_quote_items,
-            self.grp_actions,
             self.grp_architect,
             self.grp_material_choices,
             self.grp_customer_cash,
@@ -794,7 +952,6 @@ class TabNoweZamowienie(QWidget):
         self._build_client_group()
         self._build_order_group()
         self._build_worker_group()
-        self._build_actions_group()
         self._build_architect_group()
         self._build_quote_items_group()
         self._build_material_choices_group()
@@ -802,18 +959,26 @@ class TabNoweZamowienie(QWidget):
         self._build_walls_group()
         self._build_summary_group()
 
-        self.grp_architect.set_expanded(False)
-        self.grp_material_choices.set_expanded(False)
-        self.grp_customer_cash.set_expanded(False)
-        self.grp_walls.set_expanded(False)
-        self.grp_summary.set_expanded(False)
+        # Ukryj naglowki wszystkich CollapsibleBlock — zakladki glowne sa jedynym
+        # poziomem nawigacji; wnetrze ma byc plaskle i bez beżowych pasków.
+        for _block in (
+            self.grp_client,
+            self.grp_order,
+            self.grp_worker,
+            self.grp_quote_items,
+            self.grp_walls,
+            self.grp_architect,
+            self.grp_summary,
+            self.grp_material_choices,
+            self.grp_customer_cash,
+        ):
+            _block._btn.hide()
+            _block.set_expanded(True)
 
         self.lab_status = QLabel("")
         self.lab_status.setWordWrap(True)
         self.lab_status.setStyleSheet(f"color:{self._colors['muted']};")
         page_root.addWidget(self.lab_status)
-
-        page_root.addStretch(1)
 
         self.cb_client_name.currentTextChanged.connect(self._on_client_name_changed)
         self.cb_worker_name.currentTextChanged.connect(self._on_worker_name_changed)
@@ -853,9 +1018,15 @@ class TabNoweZamowienie(QWidget):
         self.btn_pick_client.clicked.connect(self._on_pick_client_from_base)
         self.btn_save_client.clicked.connect(self._on_save_client_to_base)
         self.btn_start_new_order.clicked.connect(self._on_start_new_order_clicked)
+        # Przyciski N1-N5 sa w pamieci (logika aktywnego kroku) ale nie w layoucie
         self.btn_step_client.clicked.connect(lambda: self._focus_workflow_step("client"))
         self.btn_step_order.clicked.connect(lambda: self._focus_workflow_step("order"))
         self.btn_step_quote.clicked.connect(lambda: self._focus_workflow_step("quote"))
+        self.btn_step_attachments.clicked.connect(lambda: self._focus_workflow_step("attachments"))
+        self.btn_step_summary.clicked.connect(lambda: self._focus_workflow_step("summary"))
+        self.workflow_tabs.currentChanged.connect(self._on_workflow_tab_changed)
+        self.btn_top_prev.clicked.connect(lambda: self._shift_step(-1))
+        self.btn_top_next.clicked.connect(lambda: self._shift_step(1))
         self.btn_pick_order.clicked.connect(self._on_pick_order_from_base)
         self.btn_save_order.clicked.connect(self._on_save_order_to_base)
         self.btn_pick_worker.clicked.connect(self._on_pick_worker_from_base)
@@ -884,6 +1055,9 @@ class TabNoweZamowienie(QWidget):
         self.btn_quote_to_sciana.clicked.connect(self._on_open_quote_item_as_sciana)
         self.btn_quote_to_komplet.clicked.connect(self._on_open_quote_item_as_komplet)
         self.btn_quote_set_fragment_target.clicked.connect(self._on_use_quote_item_as_fragment_target)
+        self.btn_mode_project.clicked.connect(lambda: self._set_quote_entry_mode("Wycena projektu"))
+        self.btn_mode_quick.clicked.connect(lambda: self._set_quote_entry_mode("Szybka wycena"))
+        self.btn_mode_import3d.clicked.connect(lambda: self._set_quote_entry_mode("Import 3D"))
         self.tbl_quote_items.itemSelectionChanged.connect(self._on_quote_item_selection_changed)
         self.btn_add_material_choice.clicked.connect(self._on_add_material_choice)
         self.btn_remove_material_choice.clicked.connect(self._on_remove_material_choice)
@@ -901,7 +1075,9 @@ class TabNoweZamowienie(QWidget):
         # UX: otwieraj zakladke od razu w trybie aktywnej edycji,
         # bez dodatkowego kroku "launcher".
         self.start_new_order(force_blank=False)
-        self._refresh_workflow_step_buttons("client")
+        self._remove_legacy_runtime_panels()
+        self._debug_runtime_widget_state()
+        self._focus_workflow_step("client")
 
     def _set_entry_editor_visible(self, visible: bool) -> None:
         self._entry_editor_visible = bool(visible)
@@ -909,6 +1085,66 @@ class TabNoweZamowienie(QWidget):
         self.scroll_area.setVisible(visible)
         if hasattr(self, "lab_status"):
             self.lab_status.setVisible(visible)
+
+    def _remove_legacy_runtime_panels(self) -> None:
+        """
+        Runtime guard:
+        hide stale subtitle/hero widgets if they appear in a loaded older UI variant.
+        """
+        patterns = [
+            "start projektu",
+            "premium order workspace",
+            "client / order / quote / attachment / summary",
+        ]
+        for label in self.findChildren(QLabel):
+            text = str(label.text() or "").strip().lower()
+            if not text:
+                continue
+            if any(pattern in text for pattern in patterns):
+                label.hide()
+                parent = label.parentWidget()
+                if parent is not None:
+                    parent.hide()
+
+    def _force_hide_internal_workflow_tabbar(self) -> None:
+        # Metoda zachowana dla kompatybilnosci wywolan zewnetrznych — workflow_tabs
+        # ma teraz widoczny pasek zakladek (glowna nawigacja), wiec nic nie ukrywamy.
+        pass
+
+    def _debug_runtime_widget_state(self) -> None:
+        has_subtitle = False
+        has_hero_workspace = False
+        has_secondary_workflow_bar = False
+
+        for label in self.findChildren(QLabel):
+            text = str(label.text() or "").strip().lower()
+            if not text:
+                continue
+            if "start projektu" in text:
+                has_subtitle = True
+            if "premium order workspace" in text:
+                has_hero_workspace = True
+            if "client / order / quote / attachment / summary" in text:
+                has_secondary_workflow_bar = True
+
+        has_workflow_top_bar = bool(hasattr(self, "workflow_top_bar"))
+        has_workflow_tabs = bool(hasattr(self, "workflow_tabs"))
+        has_workflow_tabs_tabbar = False
+        workflow_tabs_tabbar_visible = None
+        if has_workflow_tabs and isinstance(self.workflow_tabs, QTabWidget):
+            tabbar = self.workflow_tabs.tabBar()
+            has_workflow_tabs_tabbar = tabbar is not None
+            workflow_tabs_tabbar_visible = bool(tabbar.isVisible()) if tabbar is not None else None
+
+        _ = (
+            has_subtitle,
+            has_hero_workspace,
+            has_secondary_workflow_bar,
+            has_workflow_top_bar,
+            has_workflow_tabs,
+            has_workflow_tabs_tabbar,
+            workflow_tabs_tabbar_visible,
+        )
 
     def show_new_order_launcher(self) -> None:
         if self._testing_mode:
@@ -945,32 +1181,69 @@ class TabNoweZamowienie(QWidget):
 
     def _focus_workflow_step(self, step_key: str) -> None:
         key = str(step_key or "").strip().lower()
-        mapping = {
-            "client": getattr(self, "grp_client", None),
-            "order": getattr(self, "grp_order", None),
-            "quote": getattr(self, "grp_quote_items", None),
-        }
-        target = mapping.get(key)
-        if target is None:
+        if key not in getattr(self, "_step_index_map", {}):
             return
-
-        for group_key, block in mapping.items():
-            if block is None:
-                continue
-            try:
-                block.set_expanded(group_key == key)
-            except Exception:
-                pass
-
+        self._step_current = key
+        self.workflow_tabs.setCurrentIndex(self._step_index_map[key])
         self._refresh_workflow_step_buttons(key)
+        self._refresh_step_nav_buttons()
 
-        def _scroll_now() -> None:
-            try:
-                self.scroll_area.ensureWidgetVisible(target, 20, 20)
-            except Exception:
-                pass
+    def _on_workflow_tab_changed(self, index: int) -> None:
+        if not hasattr(self, "_step_order"):
+            return
+        if index < 0 or index >= len(self._step_order):
+            return
+        key = self._step_order[index]
+        self._step_current = key
+        self._refresh_workflow_step_buttons(key)
+        self._refresh_step_nav_buttons()
 
-        QTimer.singleShot(0, _scroll_now)
+    def _refresh_step_nav_buttons(self) -> None:
+        current_idx = int(self.workflow_tabs.currentIndex()) if hasattr(self, "workflow_tabs") else 0
+        last_idx = len(getattr(self, "_step_order", [])) - 1
+        if hasattr(self, "btn_top_prev"):
+            self.btn_top_prev.setEnabled(current_idx > 0)
+        if hasattr(self, "btn_top_next"):
+            self.btn_top_next.setEnabled(current_idx < last_idx)
+        if hasattr(self, "lab_top_step"):
+            _step_names = {
+                "client": "Klient",
+                "order": "Zamówienie",
+                "quote": "Pozycje do wyceny",
+                "attachments": "Załączniki",
+                "summary": "Podsumowanie",
+            }
+            _skey = self._step_order[current_idx] if hasattr(self, "_step_order") and 0 <= current_idx < len(self._step_order) else ""
+            _sname = _step_names.get(_skey, "")
+            _label = f"Krok {current_idx + 1}/{max(1, last_idx + 1)}"
+            if _sname:
+                _label += f"  —  {_sname}"
+            self.lab_top_step.setText(_label)
+        if hasattr(self, "lab_top_next_hint"):
+            step_key = ""
+            if hasattr(self, "_step_order") and 0 <= current_idx < len(self._step_order):
+                step_key = str(self._step_order[current_idx] or "")
+            hints = {
+                "client": "Co dalej: wybierz lub dodaj klienta i przejdź do zamówienia.",
+                "order": "Co dalej: uzupełnij dane zlecenia, potem przejdź do pozycji.",
+                "quote": "Co dalej: wybierz tryb wyceny i dodaj pozycje.",
+                "attachments": "Co dalej: dodaj potrzebne załączniki i przejdź do podsumowania.",
+                "summary": "Co dalej: zapisz zamówienie i przejdź do projektu lub wyceny.",
+            }
+            self.lab_top_next_hint.setText(hints.get(step_key, "Co dalej: uzupełnij dane kroku."))
+
+    def _shift_step(self, delta: int) -> None:
+        if not hasattr(self, "workflow_tabs"):
+            return
+        idx = int(self.workflow_tabs.currentIndex())
+        target = max(0, min(idx + int(delta), self.workflow_tabs.count() - 1))
+        self.workflow_tabs.setCurrentIndex(target)
+
+    def _set_quote_entry_mode(self, mode_name: str) -> None:
+        self._quote_entry_mode = str(mode_name or "").strip() or "-"
+        if hasattr(self, "lab_quote_mode_selected"):
+            self.lab_quote_mode_selected.setText(f"Wybrany tryb: {self._quote_entry_mode}")
+        self._refresh_summary()
 
     def _build_client_group(self) -> None:
         layout = self.grp_client.content_layout()
@@ -1127,7 +1400,7 @@ class TabNoweZamowienie(QWidget):
         content_parent = layout.parentWidget() or self.grp_order
 
         self.btn_pick_order = QPushButton("Wczytaj z bazy", self.grp_order)
-        self.btn_save_order = QPushButton("Zapisz zamowienie", self.grp_order)
+        self.btn_save_order = QPushButton("Zapisz zamówienie", self.grp_order)
         self.btn_open_orders_base = QPushButton("Bazy", self.grp_order)
         self._make_compact_button(self.btn_pick_order, min_width=120, max_width=150)
         self._make_compact_button(self.btn_save_order, min_width=130, max_width=160)
@@ -1290,10 +1563,6 @@ class TabNoweZamowienie(QWidget):
         terminy_label.setStyleSheet("font-weight: 700; color: #374151; margin-top: 6px;")
         layout.addWidget(terminy_label)
 
-        terminy_form = QFormLayout()
-        terminy_form.setSpacing(4)
-        terminy_form.setContentsMargins(0, 0, 0, 0)
-
         self.ed_date_wycena = self._new_calendar_date_edit(self.grp_order)
         self.ed_date_projekt = self._new_calendar_date_edit(self.grp_order)
         self.ed_date_probki = self._new_calendar_date_edit(self.grp_order)
@@ -1302,23 +1571,70 @@ class TabNoweZamowienie(QWidget):
         self.ed_date_montaz = self._new_calendar_date_edit(self.grp_order)
         self.ed_date_poprawki = self._new_calendar_date_edit(self.grp_order)
 
-        terminy_form.addRow("Wycena:", self.ed_date_wycena)
-        terminy_form.addRow("Projekt:", self.ed_date_projekt)
-        terminy_form.addRow("Probki materialow:", self.ed_date_probki)
-        terminy_form.addRow("Zakup materialow:", self.ed_date_zakup_mat)
-        terminy_form.addRow("Produkcja:", self.ed_date_produkcja)
-        terminy_form.addRow("Montaz:", self.ed_date_montaz)
-        terminy_form.addRow("Poprawki:", self.ed_date_poprawki)
-        layout.addLayout(terminy_form)
+        # 3-column grid: each cell = small label above date edit
+        terminy_grid = QGridLayout()
+        terminy_grid.setHorizontalSpacing(12)
+        terminy_grid.setVerticalSpacing(6)
+        terminy_grid.setContentsMargins(0, 4, 0, 4)
+
+        _terminy_fields = [
+            ("Wycena:", self.ed_date_wycena),
+            ("Projekt:", self.ed_date_projekt),
+            ("Probki materialow:", self.ed_date_probki),
+            ("Zakup materialow:", self.ed_date_zakup_mat),
+            ("Produkcja:", self.ed_date_produkcja),
+            ("Montaz:", self.ed_date_montaz),
+            ("Poprawki:", self.ed_date_poprawki),
+        ]
+        _tcols = 3
+        for _ti, (_tlbl_text, _twidget) in enumerate(_terminy_fields):
+            _tr, _tc = divmod(_ti, _tcols)
+            _tcell = QVBoxLayout()
+            _tcell.setSpacing(2)
+            _tcell.setContentsMargins(0, 0, 0, 0)
+            _tlbl = QLabel(_tlbl_text, self.grp_order)
+            _tlbl.setStyleSheet("font-size: 11px; color: #6b7280;")
+            _tcell.addWidget(_tlbl)
+            _tcell.addWidget(_twidget)
+            terminy_grid.addLayout(_tcell, _tr, _tc)
+
+        # equal column stretch so date edits share width evenly
+        for _tc in range(_tcols):
+            terminy_grid.setColumnStretch(_tc, 1)
+
+        layout.addLayout(terminy_grid)
 
         btn_open_calendar = QPushButton("Otworz kalendarz na date montazu", self.grp_order)
         btn_open_calendar.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_open_calendar.clicked.connect(self._on_open_calendar_for_montaz)
         layout.addWidget(btn_open_calendar)
 
-        # HISTORIA STATUSOW
+        # HISTORIA STATUSOW — lightweight inline style (overrides CollapsibleBlock defaults)
         self.blk_status_history = CollapsibleBlock("Historia statusow", self.grp_order)
         self.blk_status_history.set_expanded(False)
+        self.blk_status_history.setStyleSheet("""
+            QToolButton {
+                padding: 4px 8px;
+                font-size: 12px;
+                font-weight: 600;
+                text-align: left;
+                border: none;
+                border-top: 1px solid #e5e7eb;
+                border-radius: 0px;
+                background: transparent;
+                color: #6b7280;
+            }
+            QToolButton:hover {
+                color: #374151;
+                background: #f9fafb;
+            }
+            QFrame#contentPanel {
+                border: none;
+                border-top: 1px solid #f3f4f6;
+                border-radius: 0px;
+                background: transparent;
+            }
+        """)
         hist_content = QWidget()
         hist_vbox = QVBoxLayout(hist_content)
         hist_vbox.setContentsMargins(0, 4, 0, 4)
@@ -1464,45 +1780,6 @@ class TabNoweZamowienie(QWidget):
         note.setStyleSheet(f"color:{self._colors['muted']};")
         layout.addWidget(note)
 
-    def _build_actions_group(self) -> None:
-        layout = self.grp_actions.content_layout()
-
-        info = QLabel("Najpierw zapisz projekt, potem przejdz dalej do Sciana albo eksportu oferty.")
-        info.setWordWrap(True)
-        info.setStyleSheet(f"color:{self._colors['muted']};")
-        layout.addWidget(info)
-
-        self.btn_save_draft = QPushButton("Zapisz roboczo", self.grp_actions)
-        self.btn_save_new = QPushButton("Zapisz nowe", self.grp_actions)
-        self.btn_overwrite_all = QPushButton("Nadpisz wszystko", self.grp_actions)
-        self.btn_clear = QPushButton("Wyczysc karte", self.grp_actions)
-        self.btn_go_to_sciana = QPushButton("Dalej: Sciana", self.grp_actions)
-        self.btn_export_offer = QPushButton("Eksport oferte", self.grp_actions)
-        self.btn_export_offer_pdf = QPushButton("Eksport PDF", self.grp_actions)
-
-        for button in (
-                self.btn_save_draft,
-                self.btn_save_new,
-                self.btn_overwrite_all,
-                self.btn_clear,
-                self.btn_go_to_sciana,
-                self.btn_export_offer,
-                self.btn_export_offer_pdf,
-        ):
-            self._make_compact_button(button, min_width=130, max_width=160)
-
-        row = QHBoxLayout()
-        row.setSpacing(8)
-        row.addWidget(self.btn_save_draft, 0)
-        row.addWidget(self.btn_save_new, 0)
-        row.addWidget(self.btn_overwrite_all, 0)
-        row.addWidget(self.btn_clear, 0)
-        row.addWidget(self.btn_go_to_sciana, 0)
-        row.addWidget(self.btn_export_offer, 0)
-        row.addWidget(self.btn_export_offer_pdf, 0)
-        row.addStretch(1)
-        layout.addLayout(row)
-
     def _build_walls_group(self) -> None:
         layout = self.grp_walls.content_layout()
 
@@ -1522,7 +1799,7 @@ class TabNoweZamowienie(QWidget):
         layout.addLayout(btns)
 
         self.tbl_walls = QTableWidget(0, 4, self.grp_walls)
-        self.tbl_walls.setHorizontalHeaderLabels(["Sciana", "Typ", "Przeszkody", "Widok"])
+        self.tbl_walls.setHorizontalHeaderLabels(["Ściana", "Typ", "Przeszkody", "Widok"])
         self.tbl_walls.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tbl_walls.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.tbl_walls.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -1538,11 +1815,12 @@ class TabNoweZamowienie(QWidget):
     def _build_architect_group(self) -> None:
         layout = self.grp_architect.content_layout()
 
-        note = QLabel("PDF-y, zrzuty i referencje od architekta lub pomiarow z ImageMeter Pro do wyceny i oferty.")
+        note = QLabel("PDF-y, zrzuty i referencje od architekta lub pomiarow z ImageMeter Pro.")
         note.setWordWrap(True)
-        note.setStyleSheet(f"color:{self._colors['muted']};")
+        note.setStyleSheet(f"color:{self._colors['muted']}; margin-bottom: 2px;")
         layout.addWidget(note)
 
+        # --- Top add-controls strip (full width) ---
         self.ed_architect_file = QLineEdit(self.grp_architect)
         self.ed_architect_file.setPlaceholderText("Sciezka do PDF albo obrazu (architekt / ImageMeter Pro)...")
         self.btn_pick_architect_file = QPushButton("Wybierz plik", self.grp_architect)
@@ -1559,17 +1837,6 @@ class TabNoweZamowienie(QWidget):
         self._make_compact_button(self.btn_add_architect_attachment, min_width=130, max_width=160)
         self._make_compact_button(self.btn_remove_architect_attachment, min_width=130, max_width=160)
 
-        self.tbl_architect_attachments = QTableWidget(0, 3, self.grp_architect)
-        self.tbl_architect_attachments.setHorizontalHeaderLabels(["Plik", "Typ", "Opis"])
-        self.tbl_architect_attachments.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.tbl_architect_attachments.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.tbl_architect_attachments.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.tbl_architect_attachments.verticalHeader().setVisible(False)
-        self.tbl_architect_attachments.horizontalHeader().setStretchLastSection(True)
-        self.tbl_architect_attachments.setAlternatingRowColors(True)
-        self.tbl_architect_attachments.setMinimumHeight(150)
-        self.tbl_architect_attachments.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        self.tbl_architect_attachments.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         path_row = QHBoxLayout()
         path_row.setSpacing(8)
         path_row.addWidget(self.ed_architect_file, 1)
@@ -1590,23 +1857,46 @@ class TabNoweZamowienie(QWidget):
         add_buttons.addStretch(1)
         layout.addLayout(add_buttons)
 
-        layout.addWidget(self.tbl_architect_attachments)
+        # --- Horizontal workspace: file list (left) | preview + crop (right) ---
+        self.tbl_architect_attachments = QTableWidget(0, 3, self.grp_architect)
+        self.tbl_architect_attachments.setHorizontalHeaderLabels(["Plik", "Typ", "Opis"])
+        self.tbl_architect_attachments.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tbl_architect_attachments.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.tbl_architect_attachments.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl_architect_attachments.verticalHeader().setVisible(False)
+        self.tbl_architect_attachments.horizontalHeader().setStretchLastSection(True)
+        self.tbl_architect_attachments.setAlternatingRowColors(True)
+        self.tbl_architect_attachments.setMinimumHeight(150)
+        self.tbl_architect_attachments.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_architect_attachments.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
 
-        preview_note = QLabel(
-            "Po zaznaczeniu zalacznika PDF zobaczysz miniatury stron. To bedzie baza pod pozniejsze wycinanie fragmentow do Sciana, Komplet i oferty."
-        )
-        preview_note.setWordWrap(True)
-        preview_note.setStyleSheet(f"color:{self._colors['muted']};")
-        preview_box, preview_layout = self._make_work_panel("Podglad i wycinanie", "")
-        preview_layout.addWidget(preview_note)
+        # Left panel: attachment list
+        left_widget = QWidget(self.grp_architect)
+        left_vbox = QVBoxLayout(left_widget)
+        left_vbox.setContentsMargins(0, 0, 6, 0)
+        left_vbox.setSpacing(4)
+        list_lbl = QLabel("Lista zalacznikow:", left_widget)
+        list_lbl.setStyleSheet("font-size: 11px; color: #6b7280;")
+        left_vbox.addWidget(list_lbl)
+        left_vbox.addWidget(self.tbl_architect_attachments)
+
+        # Right panel: preview + crop + fragment controls
+        right_widget = QWidget(self.grp_architect)
+        right_vbox = QVBoxLayout(right_widget)
+        right_vbox.setContentsMargins(6, 0, 0, 0)
+        right_vbox.setSpacing(6)
+
+        preview_lbl = QLabel("Podglad i wycinanie:", right_widget)
+        preview_lbl.setStyleSheet("font-size: 11px; color: #6b7280;")
+        right_vbox.addWidget(preview_lbl)
 
         self.lab_architect_preview_info = QLabel("Wybierz zalacznik, aby zobaczyc podglad.")
         self.lab_architect_preview_info.setWordWrap(True)
         self.lab_architect_preview_info.setStyleSheet("color:#444444; font-weight:600;")
-        preview_layout.addWidget(self.lab_architect_preview_info)
+        right_vbox.addWidget(self.lab_architect_preview_info)
 
         preview_row = QHBoxLayout()
-
+        preview_row.setSpacing(8)
         self.lst_architect_pages = QListWidget(self.grp_architect)
         self.lst_architect_pages.setViewMode(QListWidget.ViewMode.IconMode)
         self.lst_architect_pages.setMovement(QListWidget.Movement.Static)
@@ -1621,18 +1911,17 @@ class TabNoweZamowienie(QWidget):
 
         self.architect_crop_preview = ArchitectCropPreview(self.grp_architect)
         preview_row.addWidget(self.architect_crop_preview, 2)
+        right_vbox.addLayout(preview_row)
 
-        preview_layout.addLayout(preview_row)
-        self.lst_architect_pages.currentRowChanged.connect(self._on_architect_preview_page_changed)
-
-        fragment_note = QLabel(
-            "Zaznacz fragment strony i zapisz go jako osobny obraz przypiety do zamowienia, Sciana, Kompletu albo oferty."
+        fragment_hint = QLabel(
+            "Zaznacz fragment strony i zapisz go jako osobny obraz do zamowienia, Sciana, Kompletu albo oferty."
         )
-        fragment_note.setWordWrap(True)
-        fragment_note.setStyleSheet(f"color:{self._colors['muted']};")
-        preview_layout.addWidget(fragment_note)
+        fragment_hint.setWordWrap(True)
+        fragment_hint.setStyleSheet(f"color:{self._colors['muted']}; font-size: 11px;")
+        right_vbox.addWidget(fragment_hint)
 
         fragment_row = QHBoxLayout()
+        fragment_row.setSpacing(8)
         self.cb_architect_fragment_target_kind = QComboBox(self.grp_architect)
         self.cb_architect_fragment_target_kind.addItems(list(ATTACHMENT_TARGET_ITEMS))
         self.cb_architect_fragment_target_kind.setMaximumWidth(150)
@@ -1640,13 +1929,14 @@ class TabNoweZamowienie(QWidget):
         self.ed_architect_fragment_target_name.setPlaceholderText("Nazwa celu, np. Kuchnia salon / Sciana A / Oferta klienta")
         fragment_row.addWidget(self.cb_architect_fragment_target_kind, 0)
         fragment_row.addWidget(self.ed_architect_fragment_target_name, 1)
-        preview_layout.addLayout(fragment_row)
+        right_vbox.addLayout(fragment_row)
 
         self.ed_architect_fragment_description = QLineEdit(self.grp_architect)
         self.ed_architect_fragment_description.setPlaceholderText("Opis fragmentu, np. wizualizacja wyspy albo front szafy")
-        preview_layout.addWidget(self.ed_architect_fragment_description)
+        right_vbox.addWidget(self.ed_architect_fragment_description)
 
         fragment_btns = QHBoxLayout()
+        fragment_btns.setSpacing(8)
         self.btn_save_architect_fragment = QPushButton("Zapisz zaznaczony fragment", self.grp_architect)
         self.btn_clear_architect_fragment = QPushButton("Wyczysc zaznaczenie", self.grp_architect)
         self._make_compact_button(self.btn_save_architect_fragment, min_width=180, max_width=220)
@@ -1654,8 +1944,18 @@ class TabNoweZamowienie(QWidget):
         fragment_btns.addWidget(self.btn_save_architect_fragment, 0)
         fragment_btns.addWidget(self.btn_clear_architect_fragment, 0)
         fragment_btns.addStretch(1)
-        preview_layout.addLayout(fragment_btns)
-        layout.addWidget(preview_box)
+        right_vbox.addLayout(fragment_btns)
+
+        # Splitter: list (35%) | preview+crop (65%)
+        main_splitter = QSplitter(Qt.Orientation.Horizontal, self.grp_architect)
+        main_splitter.addWidget(left_widget)
+        main_splitter.addWidget(right_widget)
+        main_splitter.setStretchFactor(0, 2)
+        main_splitter.setStretchFactor(1, 3)
+        main_splitter.setChildrenCollapsible(False)
+        layout.addWidget(main_splitter)
+
+        self.lst_architect_pages.currentRowChanged.connect(self._on_architect_preview_page_changed)
         self._set_architect_attachments([])
 
     def _build_quote_items_group(self) -> None:
@@ -3027,7 +3327,7 @@ class TabNoweZamowienie(QWidget):
 
         self.tbl_order_assemblies = QTableWidget(0, 6, self.grp_summary)
         self.tbl_order_assemblies.setHorizontalHeaderLabels(
-            ["Komplet", "Sciana", "Moduly", "Materialy", "Okleina", "RAZEM"]
+            ["Komplet", "Ściana", "Moduły", "Materiały", "Okleina", "RAZEM"]
         )
         self.tbl_order_assemblies.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tbl_order_assemblies.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -3170,9 +3470,7 @@ class TabNoweZamowienie(QWidget):
                 "}"
                 "QFrame#contentPanel {"
                 "border: 1px solid #243c5f;"
-                "border-top: 0px;"
-                "border-bottom-left-radius: 12px;"
-                "border-bottom-right-radius: 12px;"
+                "border-radius: 6px;"
                 "background: #0f172a;"
                 "}"
             )
@@ -3203,15 +3501,13 @@ class TabNoweZamowienie(QWidget):
                 "}"
                 "QFrame#contentPanel {"
                 "border: 1px solid #e7dccd;"
-                "border-top: 0px;"
-                "border-bottom-left-radius: 12px;"
-                "border-bottom-right-radius: 12px;"
+                "border-radius: 6px;"
                 "background: #fefcf8;"
                 "}"
             )
         content_layout = block.content_layout()
-        content_layout.setContentsMargins(16, 13, 16, 15)
-        content_layout.setSpacing(10)
+        content_layout.setContentsMargins(12, 10, 12, 12)
+        content_layout.setSpacing(8)
 
     def _make_client_field_cell(
         self,
@@ -3517,6 +3813,7 @@ class TabNoweZamowienie(QWidget):
             if not self.ed_order_id.text().strip():
                 self.ed_order_id.setText(self._generate_next_order_id())
             self.lab_status.clear()
+            self._focus_workflow_step("client")
             self.ed_order_code.setFocus()
             return
 
@@ -3595,9 +3892,9 @@ class TabNoweZamowienie(QWidget):
 
         self.lab_status.clear()
         self._refresh_summary()
+        self._focus_workflow_step("client")
         self.ed_order_code.setFocus()
         self._refresh_order_walls_table()
-        self._refresh_workflow_step_buttons("client")
 
         if force_blank:
             self._set_status("Wyczyszczono karte i zapis roboczy.", ok=True)
@@ -3712,6 +4009,7 @@ class TabNoweZamowienie(QWidget):
 
         self._refresh_summary()
         self._save_draft(show_status=False)
+        self._focus_workflow_step("client")
         self.ed_order_code.setFocus()
         self._set_status("Przywrocono dane zamowienia z kompletu.", ok=True)
 
@@ -3771,6 +4069,14 @@ class TabNoweZamowienie(QWidget):
             self.lab_progress_summary.setText(f"{progress_percent}%")
         if hasattr(self, "_hero_status_chip"):
             self._hero_status_chip.setText(f"{status_name} / {progress_percent}%")
+        if hasattr(self, "lab_top_client"):
+            self.lab_top_client.setText(f"Klient: {client_name}")
+        if hasattr(self, "lab_top_order"):
+            self.lab_top_order.setText(f"Nr: {order_code}")
+        if hasattr(self, "lab_top_status"):
+            self.lab_top_status.setText(f"Status: {status_name}")
+        if hasattr(self, "lab_top_progress"):
+            self.lab_top_progress.setText(f"Postęp: {progress_percent}%")
         payments_total = sum(float(item.get("amount", 0.0) or 0.0) for item in self._customer_payments)
         payments_paid_total = sum(
             float(item.get("amount", 0.0) or 0.0)
@@ -3824,6 +4130,13 @@ class TabNoweZamowienie(QWidget):
 
         self._refresh_order_walls_table()
         self._refresh_order_cost_summary()
+        if hasattr(self, "lab_quote_mode_selected"):
+            self.lab_quote_mode_selected.setText(f"Wybrany tryb: {self._quote_entry_mode}")
+        if hasattr(self, "lab_quote_mode_stats"):
+            self.lab_quote_mode_stats.setText(
+                f"Pozycje: {quote_item_count} | Zalaczniki: {attachment_count} | "
+                f"Wstepna suma: {float(getattr(self, '_order_commercial_total', 0.0) or 0.0):.2f} zl"
+            )
         self._refresh_offer_references()
         self._refresh_quote_item_references()
         self._autosave_draft()
@@ -4455,6 +4768,8 @@ class TabNoweZamowienie(QWidget):
             )
 
         grand_total = material_total + edgeband_total + hardware_total
+        self._order_commercial_total = float(commercial_total)
+        self._order_grand_total = float(grand_total)
         if hasattr(self, "lab_metric_total"):
             self.lab_metric_total.setText(f"{commercial_total:.2f} zl")
 
@@ -4778,6 +5093,7 @@ class TabNoweZamowienie(QWidget):
             self._is_restoring_draft = False
 
         self._refresh_summary()
+        self._focus_workflow_step("client")
         if show_status:
             self._set_status("Przywrocono zapis roboczy zamowienia.", ok=True)
         return True
@@ -5579,7 +5895,7 @@ class TabNoweZamowienie(QWidget):
             return
         picked, ok = QInputDialog.getItem(
             self,
-            "Wczytaj zamowienie",
+            "Wczytaj zamówienie",
             "Kod zamowienia:",
             codes,
             0,
@@ -5632,7 +5948,7 @@ class TabNoweZamowienie(QWidget):
         self._set_material_choices(list(getattr(order, "material_choices", []) or []))
         self._set_customer_payments(list(getattr(order, "customer_payments", []) or []))
         self._set_status_history(list(getattr(order, "status_history", []) or []))
-        self._set_status(f'Wczytano zamowienie "{order.code}".', ok=True)
+        self._set_status(f'Wczytano zamówienie "{order.code}".', ok=True)
 
     def _ensure_context_saved_for_next_step(self) -> tuple[bool, str]:
         client_name = self._client_from_form().name

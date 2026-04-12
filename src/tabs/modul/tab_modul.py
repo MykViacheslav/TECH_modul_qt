@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import json
 from dataclasses import replace
 from typing import Dict, Optional, Tuple
@@ -254,7 +254,7 @@ class TabModul(QWidget):
         self._apply_zone_splitter_sizes(self._zone_splitter_saved_sizes)
         self._zone_splitter.splitterMoved.connect(self._on_zone_splitter_moved)
 
-        # ---------- LEFT BLOCKS — CORPUS-style 3-tab panel ----------
+        # ---------- LEFT BLOCKS â€” CORPUS-style 3-tab panel ----------
         # blk_* = None dla kompatybilnosci z _apply_left_blocks_startup_visibility
         self.blk_dims = self.blk_mat = self.blk_fhw = self.blk_joint = None
         self.blk_shelves = self.blk_div = self.blk_ref = None
@@ -262,7 +262,7 @@ class TabModul(QWidget):
 
         self.dim = DimensionsBlock()   # kontrolki reparentowane do dim_strip
 
-        # Tworzymy widgety (bez CollapsibleBlock — zakladki sa kontenerem)
+        # Tworzymy widgety (bez CollapsibleBlock â€” zakladki sa kontenerem)
         self.mat      = MaterialsBlock(self._catalog)
         self.fhw      = FrontHardwareBlock(self._catalog)
         self.joint    = CarcassJointsBlock()
@@ -273,8 +273,8 @@ class TabModul(QWidget):
         self.vis      = VisiblePartsBlock()
         self.sessview = SessionAndViewBlock()
 
-        # QTabWidget — CORPUS-style: pionowy pasek zakładek po LEWEJ (West)
-        # Tab bar ~32px, treść obok — minimalny footprint
+        # QTabWidget â€” CORPUS-style: pionowy pasek zakĹ‚adek po LEWEJ (West)
+        # Tab bar ~32px, treĹ›Ä‡ obok â€” minimalny footprint
         _SS_LEFT_TABS = """
             QTabWidget::pane {
                 border: none;
@@ -309,7 +309,7 @@ class TabModul(QWidget):
         """
 
         def _make_scroll_tab(*widgets) -> QWidget:
-            """Opakowuje widgety w QScrollArea dla zakładki."""
+            """Opakowuje widgety w QScrollArea dla zakĹ‚adki."""
             container = QWidget()
             vl = QVBoxLayout(container)
             vl.setContentsMargins(4, 4, 4, 4)
@@ -324,7 +324,42 @@ class TabModul(QWidget):
             sc.setWidget(container)
             return sc
 
-        # Kompaktowy blok sesji — 3 przyciski poziomo na dole listy
+        def _make_sectioned_scroll_tab(sections: list[tuple[str, QWidget]]) -> QWidget:
+            """
+            Odciazenie gestego panelu:
+            ten sam zestaw widgetow, ale w wyraznych sekcjach.
+            """
+            container = QWidget()
+            vl = QVBoxLayout(container)
+            vl.setContentsMargins(4, 4, 4, 4)
+            vl.setSpacing(10)
+
+            for title, widget in sections:
+                section = QFrame(container)
+                section.setStyleSheet(
+                    "QFrame{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;}"
+                )
+                section_lay = QVBoxLayout(section)
+                section_lay.setContentsMargins(8, 6, 8, 8)
+                section_lay.setSpacing(6)
+
+                lab = QLabel(title, section)
+                lab.setStyleSheet(
+                    "color:#334155;font-size:10px;font-weight:800;letter-spacing:0.04em;"
+                )
+                section_lay.addWidget(lab, 0)
+                section_lay.addWidget(widget, 1)
+                vl.addWidget(section, 0)
+
+            vl.addStretch(1)
+            sc = QScrollArea()
+            sc.setWidgetResizable(True)
+            sc.setFrameShape(QFrame.Shape.NoFrame)
+            sc.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            sc.setWidget(container)
+            return sc
+
+        # Kompaktowy blok sesji â€” 3 przyciski poziomo na dole listy
         _sess_wrap = QWidget()
         _sess_lay = QHBoxLayout(_sess_wrap)
         _sess_lay.setContentsMargins(0, 0, 0, 0)
@@ -335,30 +370,52 @@ class TabModul(QWidget):
 
         self.left_tabs = QTabWidget()
         self.left_tabs.setStyleSheet(_SS_LEFT_TABS)
-        # CORPUS-style: zakładki PIONOWO po lewej stronie panelu
+        # CORPUS-style: zakĹ‚adki PIONOWO po lewej stronie panelu
         self.left_tabs.setTabPosition(QTabWidget.TabPosition.West)
         self.left_tabs.setDocumentMode(True)
 
-        # Zakladka 1: Materialy — główna, najczesciej uzywana
-        # Tekst zakładki: pionowo (Qt obraca automatycznie przy West)
-        self.left_tabs.addTab(_make_scroll_tab(self.mat, self.fhw), "MAT")
+        # Zakladka 1: Materialy â€” gĹ‚Ăłwna, najczesciej uzywana
+        # Tekst zakĹ‚adki: pionowo (Qt obraca automatycznie przy West)
+        self.left_tabs.addTab(_make_scroll_tab(self.mat), "MateriaĹ‚")
+        self.left_tabs.addTab(_make_scroll_tab(self.fhw), "Front")
         # Zakladka 2: Opcje korpusu
         self.left_tabs.addTab(
-            _make_scroll_tab(self.joint, self.shelves, self.dividers, self.ref),
-            "OPC"
+            _make_sectioned_scroll_tab(
+                [
+                    ("Konstrukcja korpusu", self.joint),
+                    ("Polki", self.shelves),
+                    ("Podzialy", self.dividers),
+                ]
+            ),
+            "Okucia",
         )
-        # Zakladka 3: Lista formatek (pełna wysokość)
-        _tab_lista = QWidget()
-        _tab_lista_lay = QVBoxLayout(_tab_lista)
-        _tab_lista_lay.setContentsMargins(4, 4, 4, 4)
-        _tab_lista_lay.setSpacing(4)
-        _tab_lista_lay.addWidget(self.tree, 1)
-        _tab_lista_lay.addWidget(_sess_wrap, 0)
-        self.left_tabs.addTab(_tab_lista, "LST")
+        self.left_tabs.addTab(
+            _make_sectioned_scroll_tab(
+                [
+                    ("Punkt odniesienia", self.ref),
+                    ("Widoczne elementy", self.vis),
+                ]
+            ),
+            "Struktura",
+        )
+        # Zakladka 3: Lista formatek (peĹ‚na wysokoĹ›Ä‡)
+        _tab_bom = QWidget()
+        _tab_bom_lay = QVBoxLayout(_tab_bom)
+        _tab_bom_lay.setContentsMargins(4, 4, 4, 4)
+        _tab_bom_lay.setSpacing(4)
+        _tab_bom_lay.addWidget(self.tree, 1)
+        _tab_bom_lay.addWidget(_sess_wrap, 0)
+        self.left_tabs.addTab(_tab_bom, "BOM")
+
+        self.left_tabs.setTabToolTip(0, "Materialy i okleiny")
+        self.left_tabs.setTabToolTip(1, "Ustawienia frontu i luzow")
+        self.left_tabs.setTabToolTip(2, "Okucia, polki i podzialy")
+        self.left_tabs.setTabToolTip(3, "Punkt odniesienia i widocznosc elementow")
+        self.left_tabs.setTabToolTip(4, "Lista formatek i sesja")
 
         self.zone_left.body_lay.addWidget(self.left_tabs, 1)
 
-        # TECH: blok ustawien rysunku — ukryty, tylko do synchronizacji
+        # TECH: blok ustawien rysunku â€” ukryty, tylko do synchronizacji
         self.draw_settings = ExtractedDrawingSettingsBlock(self)
         self.draw_settings.hide()
 
@@ -422,7 +479,7 @@ class TabModul(QWidget):
             s.setStyleSheet(_SS_SEP); return s
 
         # -- Przycisk zwijania lewego panelu (CORPUS-style) --
-        self.btn_q_toggle_left = _ico("<<", self._toggle_left_panel, "Zwiń / rozwiń panel lewy")
+        self.btn_q_toggle_left = _ico("<<", self._toggle_left_panel, "ZwiĹ„ / rozwiĹ„ panel lewy")
         quick_lay.addWidget(self.btn_q_toggle_left)
         quick_lay.addWidget(_sep())
 
@@ -485,7 +542,7 @@ class TabModul(QWidget):
         self.cb_grain_style.currentIndexChanged.connect(self._on_grain_style_changed)
         quick_lay.addWidget(self.cb_grain_style)
 
-        self.btn_load_texture = QPushButton("📁", self)
+        self.btn_load_texture = QPushButton("đź“", self)
         self.btn_load_texture.setToolTip("Wczytaj teksture drewna z pliku")
         self.btn_load_texture.setStyleSheet(
             "QPushButton{color:#cbd5e1;background:#1e293b;font-size:14px;padding:2px 6px;"
@@ -497,16 +554,16 @@ class TabModul(QWidget):
 
         quick_lay.addStretch(1)
         # -- Przycisk zwijania prawego panelu --
-        self.btn_q_toggle_right = _ico(">>", self._toggle_right_panel, "Zwiń / rozwiń panel prawy")
+        self.btn_q_toggle_right = _ico(">>", self._toggle_right_panel, "ZwiĹ„ / rozwiĹ„ panel prawy")
         quick_lay.addWidget(self.btn_q_toggle_right)
 
         self.zone_center.body_lay.addWidget(self.quick_bar, 0)
 
-        # ── DIM STRIP ─────────────────────────────────────────────────
+        # â”€â”€ DIM STRIP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         # Kompaktowy pasek z nazwa/grupa modulu + wymiary L/H/W + offsety.
-        # Kontrolki sa reparentowane z DimensionsBlock — self.dim.sp_w itp.
+        # Kontrolki sa reparentowane z DimensionsBlock â€” self.dim.sp_w itp.
         # nadal dzialaja normalnie, tylko wyswietlaja sie tutaj.
-        # ──────────────────────────────────────────────────────────────
+        # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         self.dim_strip = QFrame(self.zone_center)
         self.dim_strip.setObjectName("modul_dim_strip")
         self.dim_strip.setFixedHeight(42)
@@ -519,7 +576,7 @@ class TabModul(QWidget):
         _dlay.setContentsMargins(12, 3, 12, 3)
         _dlay.setSpacing(6)
 
-        # Jasniejsze kolory — CZYTELNE na ciemnym tle
+        # Jasniejsze kolory â€” CZYTELNE na ciemnym tle
         _DS_LBL  = "QLabel{color:#e2e8f0;font-size:11px;font-weight:700;letter-spacing:0.03em;}"
         _DS_UNIT = "QLabel{color:#94a3b8;font-size:10px;}"
         _DS_LINE = (
@@ -566,7 +623,7 @@ class TabModul(QWidget):
 
         # --- Nazwa modulu ---
         self.dim.ed_name.setStyleSheet(_DS_LINE)
-        self.dim.ed_name.setPlaceholderText("Nazwa modułu…")
+        self.dim.ed_name.setPlaceholderText("Nazwa moduĹ‚uâ€¦")
         _dlay.addWidget(_dlbl("NAZWA:"))
         _dlay.addWidget(self.dim.ed_name)
 
@@ -578,7 +635,7 @@ class TabModul(QWidget):
         # --- L / H / W ---
         for _lbl_txt, _sp in [("L", self.dim.sp_w), ("H", self.dim.sp_h), ("W", self.dim.sp_d)]:
             _sp.setStyleSheet(_DS_SPIN)
-            _sp.setSuffix("")          # bez "mm" — unit osobno
+            _sp.setSuffix("")          # bez "mm" â€” unit osobno
             _dlay.addWidget(_dlbl(_lbl_txt + ":"))
             _dlay.addWidget(_sp)
             _dlay.addWidget(_dunit())
@@ -591,15 +648,15 @@ class TabModul(QWidget):
         self.dim.sp_bottom_rail_offset.setStyleSheet(_DS_SPIN_SM)
         self.dim.sp_bottom_rail_offset.setSuffix("")
 
-        _dlay.addWidget(_dlbl("⬆:"))
+        _dlay.addWidget(_dlbl("â¬†:"))
         _dlay.addWidget(self.dim.sp_top_rail_offset)
-        _dlay.addWidget(_dlbl("⬇:"))
+        _dlay.addWidget(_dlbl("â¬‡:"))
         _dlay.addWidget(self.dim.sp_bottom_rail_offset)
         _dlay.addWidget(_dunit())
         _dlay.addStretch(1)
 
         self.zone_center.body_lay.addWidget(self.dim_strip, 0)
-        # ── koniec DIM STRIP ───────────────────────────────────────────
+        # â”€â”€ koniec DIM STRIP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
         self.canvas = ViewsCanvas()
         self.canvas.set_preview_mode(True)
@@ -974,7 +1031,7 @@ class TabModul(QWidget):
     def _apply_left_blocks_startup_visibility(self) -> None:
         """
         Poprzednio ustawiala widocznosc blokow akordeonowych.
-        Teraz panel lewy uzywa QTabWidget — metoda jest no-op.
+        Teraz panel lewy uzywa QTabWidget â€” metoda jest no-op.
         Startowo aktywna jest zakladka 0 (Materialy).
         """
         if hasattr(self, "left_tabs"):
@@ -1059,7 +1116,9 @@ class TabModul(QWidget):
         super().closeEvent(event)
 
     def _default_zone_splitter_sizes(self) -> list[int]:
-        return [195, 1050, 255]
+        # STEP 43: layout-balance only (no widget/logic changes):
+        # left a bit wider, center more dominant, right constrained.
+        return [210, 1080, 210]
 
     def _normalize_zone_splitter_sizes(self, sizes) -> list[int]:
         fallback = list(getattr(self, "_zone_splitter_saved_sizes", self._default_zone_splitter_sizes()) or self._default_zone_splitter_sizes())
@@ -1081,7 +1140,8 @@ class TabModul(QWidget):
         sizes = self._normalize_zone_splitter_sizes(load_modul_splitter_sizes(self._default_zone_splitter_sizes()))
         # Jesli lewy panel (sizes[0]) jest zapisany jako > 300px (stary layout),
         # resetuj do nowych wartosci domyslnych.
-        if sizes and sizes[0] > 260:
+        old_defaults = [195, 1050, 255]
+        if sizes == old_defaults or (sizes and sizes[0] > 260):
             sizes = self._default_zone_splitter_sizes()
             save_modul_splitter_sizes(sizes)
         return sizes
@@ -1108,7 +1168,7 @@ class TabModul(QWidget):
         if hasattr(self, "_zone_splitter_save_timer"):
             self._zone_splitter_save_timer.start(180)
 
-    # ── CORPUS-style: animowane zwijanie lewego panelu ──────────────────
+    # â”€â”€ CORPUS-style: animowane zwijanie lewego panelu â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     _left_panel_expanded: bool = True
 
     def _toggle_left_panel(self) -> None:
@@ -1121,7 +1181,7 @@ class TabModul(QWidget):
         anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
 
         if self._left_panel_expanded:
-            # Chowamy — zapamiętaj bieżącą szerokość
+            # Chowamy â€” zapamiÄ™taj bieĹĽÄ…cÄ… szerokoĹ›Ä‡
             self._left_panel_last_width = max(
                 self.zone_left.width(), 180
             )
@@ -1129,10 +1189,10 @@ class TabModul(QWidget):
             anim.setEndValue(0)
             anim.finished.connect(lambda: self.zone_left.setVisible(False))
             self.btn_q_toggle_left.setText(">>")
-            self.btn_q_toggle_left.setToolTip("Rozwiń panel lewy")
+            self.btn_q_toggle_left.setToolTip("RozwiĹ„ panel lewy")
             self._left_panel_expanded = False
         else:
-            # Pokazujemy — przywróć szerokość
+            # Pokazujemy â€” przywrĂłÄ‡ szerokoĹ›Ä‡
             target = getattr(self, "_left_panel_last_width", 210)
             self.zone_left.setVisible(True)
             self.zone_left.setMaximumWidth(0)
@@ -1142,12 +1202,12 @@ class TabModul(QWidget):
                 lambda: self.zone_left.setMaximumWidth(16777215)
             )
             self.btn_q_toggle_left.setText("<<")
-            self.btn_q_toggle_left.setToolTip("Zwiń panel lewy")
+            self.btn_q_toggle_left.setToolTip("ZwiĹ„ panel lewy")
             self._left_panel_expanded = True
 
         anim.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
-    # ── CORPUS-style: zwijanie PRAWEGO panelu ────────────────────────────
+    # â”€â”€ CORPUS-style: zwijanie PRAWEGO panelu â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     _right_panel_expanded: bool = True
 
     def _toggle_right_panel(self) -> None:
@@ -1165,7 +1225,7 @@ class TabModul(QWidget):
             anim.setEndValue(0)
             anim.finished.connect(lambda: self.zone_right.setVisible(False))
             self.btn_q_toggle_right.setText("<<")
-            self.btn_q_toggle_right.setToolTip("Rozwiń panel prawy")
+            self.btn_q_toggle_right.setToolTip("RozwiĹ„ panel prawy")
             self._right_panel_expanded = False
         else:
             target = getattr(self, "_right_panel_last_width", 260)
@@ -1177,11 +1237,11 @@ class TabModul(QWidget):
                 lambda: self.zone_right.setMaximumWidth(16777215)
             )
             self.btn_q_toggle_right.setText(">>")
-            self.btn_q_toggle_right.setToolTip("Zwiń panel prawy")
+            self.btn_q_toggle_right.setToolTip("ZwiĹ„ panel prawy")
             self._right_panel_expanded = True
 
         anim.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
-    # ────────────────────────────────────────────────────────────────────
+    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def _run_startup_canvas_fit(self) -> None:
         """
@@ -1263,7 +1323,7 @@ class TabModul(QWidget):
 
         # okleina ma osobny handler (nie przebudowuje czesci)
         self.edge.sig_changed.connect(self._on_edge_changed)
-        # przyciski "Zastosuj do zaznaczonych" / "Zastosuj do wszystkich półek"
+        # przyciski "Zastosuj do zaznaczonych" / "Zastosuj do wszystkich pĂłĹ‚ek"
         if hasattr(self.edge, "sig_apply_to_selected"):
             self.edge.sig_apply_to_selected.connect(self._apply_edgeband_to_selected)
         if hasattr(self.edge, "sig_apply_to_all_shelves"):
@@ -2439,6 +2499,13 @@ class TabModul(QWidget):
 
         self._session_save_request()
 
+    def _snapshot_current_module_state(self) -> ModuleDef:
+        self._pull_ui_to_draft()
+        return ModuleDef.from_dict(self._draft.to_dict())
+
+    def _restore_module_state(self, snapshot: ModuleDef) -> None:
+        self._apply_loaded_module(ModuleDef.from_dict(snapshot.to_dict()))
+
     def _on_part_material_changed(self, material_key: str) -> None:
         if not getattr(self, "_draft", None) or not getattr(self._draft, "parts", None):
             return
@@ -2596,7 +2663,7 @@ class TabModul(QWidget):
             self._session_save_request()
 
     def _on_parts_table_visibility_changed(self, part_key: str, visible: bool) -> None:
-        """Obsluга klikniecia ikony oka w tabeli formatek — toggluje widocznosc elementu."""
+        """ObsluĐłĐ° klikniecia ikony oka w tabeli formatek â€” toggluje widocznosc elementu."""
         if not getattr(self, "_draft", None):
             return
         from dataclasses import replace as _dc_replace
@@ -2619,7 +2686,7 @@ class TabModul(QWidget):
             self._session_save_request()
 
     def _on_parts_table_grain_changed(self, part_key: str, grain_direction: str) -> None:
-        """Obsluга klikniecia komorki uslojenia w tabeli — zmienia grain_direction w PartDef."""
+        """ObsluĐłĐ° klikniecia komorki uslojenia w tabeli â€” zmienia grain_direction w PartDef."""
         if not getattr(self, "_draft", None):
             return
         from dataclasses import replace as _dc_replace
@@ -3039,6 +3106,7 @@ class TabModul(QWidget):
 
     def _on_load_from_base_preview(self) -> None:
         try:
+            previous_state = self._snapshot_current_module_state()
             dlg = LoadModuleDialog(self, self._store)
             if dlg.exec() != dlg.DialogCode.Accepted:
                 return
@@ -3056,6 +3124,12 @@ class TabModul(QWidget):
                     QMessageBox.StandardButton.No,
                 )
                 if answer != QMessageBox.StandardButton.Yes:
+                    self._restore_module_state(previous_state)
+                    QMessageBox.information(
+                        self,
+                        "Wczytywanie anulowane",
+                        "Wczytywanie anulowane. Przywrocono poprzedni stan.",
+                    )
                     return
 
             self._apply_loaded_module(res.module)

@@ -139,6 +139,7 @@ def _normalize_customer_payments(raw: Any) -> List[Dict[str, Any]]:
 
 @dataclass
 class OrderDef:
+    id: str = ""
     code: str = ""
     order_name: str = ""
     order_id: str = ""
@@ -175,9 +176,12 @@ class OrderDef:
     material_choices: List[Dict[str, str]] = field(default_factory=list)
     status_history: List[Dict[str, str]] = field(default_factory=list)
     customer_payments: List[Dict[str, Any]] = field(default_factory=list)
+    created_at: str = ""
+    updated_at: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "id": self.id,
             "code": self.code,
             "order_name": self.order_name,
             "order_id": self.order_id,
@@ -214,15 +218,20 @@ class OrderDef:
             "material_choices": _normalize_material_choices(self.material_choices),
             "status_history": _normalize_status_history(self.status_history),
             "customer_payments": _normalize_customer_payments(self.customer_payments),
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
         }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "OrderDef":
         data = data or {}
+        raw_id = str(data.get("id", "") or "")
+        raw_order_id = str(data.get("order_id", "") or "")
         return cls(
+            id=raw_id or raw_order_id,
             code=str(data.get("code", "") or ""),
             order_name=str(data.get("order_name", "") or ""),
-            order_id=str(data.get("order_id", "") or ""),
+            order_id=raw_order_id or raw_id,
             client_name=str(data.get("client_name", "") or ""),
             worker_name=str(data.get("worker_name", "") or ""),
             status=str(data.get("status", "Nowe") or "Nowe"),
@@ -256,4 +265,6 @@ class OrderDef:
             material_choices=_normalize_material_choices(data.get("material_choices", [])),
             status_history=_normalize_status_history(data.get("status_history", [])),
             customer_payments=_normalize_customer_payments(data.get("customer_payments", [])),
+            created_at=str(data.get("created_at", "") or ""),
+            updated_at=str(data.get("updated_at", "") or ""),
         )

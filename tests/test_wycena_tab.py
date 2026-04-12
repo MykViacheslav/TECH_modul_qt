@@ -62,6 +62,9 @@ def test_wycena_tab_filters_by_order_name(tmp_path, monkeypatch):
     assembly_store.save_new(FurnitureAssemblyDef(name="KOMPLET-B", order_name="ORDER-B", client_name="Klient B"))
 
     w = TabWycena(assembly_store=assembly_store)
+    mode_idx = w.cb_quote_mode.findData("assemblies")
+    if mode_idx >= 0:
+        w.cb_quote_mode.setCurrentIndex(mode_idx)
 
     idx = w.cb_order.findData("ORDER-B")
     assert idx >= 0
@@ -69,6 +72,31 @@ def test_wycena_tab_filters_by_order_name(tmp_path, monkeypatch):
 
     assert w.tbl_assemblies.rowCount() == 1
     assert w.tbl_assemblies.item(0, 0).text() == "KOMPLET-B"
+
+
+def test_wycena_tab_open_assembly_locks_order_context(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.domain.assembly_models import FurnitureAssemblyDef
+    from src.storage.assembly_store_json import AssemblyStoreJson
+    from src.tabs.wycena.tab_wycena import TabWycena
+
+    assembly_store = AssemblyStoreJson(path=tmp_path / "assemblies.json")
+    assembly_store.save_new(FurnitureAssemblyDef(name="KOMPLET-A", order_name="ORDER-A", client_name="Klient A"))
+    assembly_store.save_new(FurnitureAssemblyDef(name="KOMPLET-B", order_name="ORDER-B", client_name="Klient B"))
+
+    w = TabWycena(assembly_store=assembly_store)
+
+    w.open_assembly_for_pricing("KOMPLET-B")
+
+    assert str(w.cb_quote_mode.currentData() or "") == "assemblies"
+    assert str(w.cb_order.currentData() or "") == "ORDER-B"
+    assert w.tbl_assemblies.rowCount() == 1
+    assert w.tbl_assemblies.item(0, 0).text() == "KOMPLET-B"
+    assert w._selected_name() == "KOMPLET-B"
 
 
 def test_wycena_tab_can_load_labor_from_work_time(tmp_path, monkeypatch):

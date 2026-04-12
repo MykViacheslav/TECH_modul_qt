@@ -1,0 +1,57 @@
+{
+  "types": [
+    {
+      "id": "T0001",
+      "typ": "korpus",
+      "nazwa": "Korpus",
+      "producent": ""
+    },
+    {
+      "id": "T0002",
+      "typ": "front",
+      "nazwa": "Front",
+      "producent": ""
+    },
+    {
+      "id": "T0003",
+      "typ": "plecy",
+      "nazwa": "Plecy",
+      "producent": ""
+    },
+    {
+      "id": "T0004",
+      "typ": "okleina",
+      "nazwa": "Okleina",
+      "producent": ""
+    },
+    {
+      "id": "T0005",
+      "typ": "okucie",
+      "nazwa": "Okucie",
+      "producent": ""
+    },
+    {
+      "id": "T0006",
+      "typ": "plyta",
+      "nazwa": "Plyta",
+      "producent": ""
+    },
+    {
+      "id": "T0007",
+      "typ": "profil",
+      "nazwa": "Profil",
+      "producent": ""
+    },
+    {
+      "id": "T0008",
+      "typ": "lakier",
+      "nazwa": "Lakier",
+      "producent": ""
+    }
+  ],
+  "pracownicy": [],
+  "rows": [],
+  "main_table_layout": {
+    "header_state_b64": "AAAA/wAAAAAAAAABAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB2wAAAATAQEBAAAAAAAAAAAAAAAAAGT/////AAAAhAAAAAAAAAAAAAAD6AAAAAAAAAAAAAAAAAAAAAATAAAAAA=="
+  }
+}

@@ -1,0 +1,1 @@
+"""Zakladka sekcja do wyceny."""

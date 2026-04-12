@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from src.domain.permissions import Permission, has_permission, normalize_role
 from src.storage.company_expenses_store_json import CompanyExpensesStoreJson
 from src.storage.order_store_json import OrderStoreJson
 from src.storage.worker_store_json import WorkerStoreJson
@@ -457,6 +458,9 @@ class TabDashboard(QWidget):
         self._expenses_store = expenses_store or CompanyExpensesStoreJson()
         self._worker_store = worker_store or WorkerStoreJson()
         self._service_store = ServiceStoreJson()
+        self._current_role = ""
+        self._current_worker = ""
+        self._can_view_finance_data = True
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -493,6 +497,18 @@ class TabDashboard(QWidget):
         hdr.addWidget(self._btn_refresh)
         root.addLayout(hdr)
 
+        self._lab_finance_limited = QLabel(
+            "Czesc finansowa dashboardu jest ukryta dla tej roli. Szczegoly sa dostepne tylko dla uprawnionych osob.",
+            self,
+        )
+        self._lab_finance_limited.setWordWrap(True)
+        self._lab_finance_limited.setStyleSheet(
+            "QLabel{background:#f8fafc;border:1px solid #d7e1ef;border-radius:10px;"
+            "padding:8px 10px;color:#475569;font-size:12px;font-weight:600;}"
+        )
+        self._lab_finance_limited.hide()
+        root.addWidget(self._lab_finance_limited, 0)
+
         # ── KPI cards ────────────────────────────────────────────────────────
         kpi_row = QHBoxLayout()
         kpi_row.setSpacing(12)
@@ -522,9 +538,16 @@ class TabDashboard(QWidget):
         ):
             kpi_row.addWidget(card, 1)
         root.addLayout(kpi_row)
+        self._finance_cards = [
+            self._card_income,
+            self._card_pending,
+            self._card_costs,
+            self._card_real_hour,
+        ]
 
         # ── Charts row ───────────────────────────────────────────────────────
-        charts_row = QHBoxLayout()
+        self._charts_container = QWidget(content)
+        charts_row = QHBoxLayout(self._charts_container)
         charts_row.setSpacing(12)
 
         # Bar chart section
@@ -547,7 +570,7 @@ class TabDashboard(QWidget):
         donut_lay.addLayout(donut_inner, 1)
         charts_row.addWidget(donut_frame, 2)
 
-        root.addLayout(charts_row, 1)
+        root.addWidget(self._charts_container, 1)
 
         # ── Status breakdown ─────────────────────────────────────────────────
         status_frame, status_lay = _section("Zlecenia wg statusu", content)
@@ -709,6 +732,30 @@ class TabDashboard(QWidget):
 
         # Workers
         self._rebuild_workers_row(active)
+        self._apply_finance_visibility()
+
+    def set_current_user(self, worker_name: str, role: str) -> None:
+        self._current_worker = str(worker_name or "").strip()
+        self._current_role = normalize_role(str(role or ""))
+        self._can_view_finance_data = self._can_view_finance_details()
+        self._apply_finance_visibility()
+
+    def _can_view_finance_details(self) -> bool:
+        role = str(self._current_role or "").strip()
+        if not role:
+            return True
+        return has_permission(role, Permission.VIEW_FINANCE_DASHBOARD) or has_permission(
+            role, Permission.VIEW_FINANCE
+        )
+
+    def _apply_finance_visibility(self) -> None:
+        can_view = bool(self._can_view_finance_data)
+        self._charts_container.setVisible(can_view)
+        self._lab_finance_limited.setVisible(not can_view)
+        if can_view:
+            return
+        for card in self._finance_cards:
+            card.set_raw_text("—", sub="Brak uprawnien")
 
     def _rebuild_status_row(self, active_orders: list) -> None:
         while self._status_row.count():

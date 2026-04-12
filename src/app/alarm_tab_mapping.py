@@ -11,11 +11,11 @@ from src.domain.alarm_models import AlarmDef
 # Mapowanie: kategoria alarmu -> lista zakładek które powinny pokazać wskaźnik
 ALARM_CATEGORY_TO_TABS = {
     "terminy": ["Nowe zamowienie", "Kalendarz"],
-    "projekty": ["Wycena", "Uslugi", "Sekcje do wyceny"],
+    "projekty": ["Wycena", "OPERACJE"],  # OPERACJE zbiera sprawy wykonawcze i blokady
     "pracownicy": ["Pracownik", "Czas pracy"],
     "materialy": ["Baza materialu", "Bazy"],
-    "platnosci": ["Nowe zamowienie", "Bazy"],
-    "kasa": ["Wydatki stale firmy", "Wydatki zmienne"],
+    "platnosci": ["Nowe zamowienie", "Finanse", "OPERACJE"],
+    "kasa": ["Finanse", "OPERACJE"],
     "faktury": ["Bazy"],
     "inne": ["Dashboard"],
 }

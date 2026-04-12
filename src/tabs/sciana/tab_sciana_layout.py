@@ -1188,14 +1188,17 @@ class TabScianaLayout(QWidget):
             """
         )
         for block in (
-            getattr(self, "blk_main", None),
+            getattr(self, "blk_identity", None),
+            getattr(self, "blk_dims", None),
             getattr(self, "blk_store", None),
             getattr(self, "blk_obstacles", None),
             getattr(self, "blk_photos", None),
             getattr(self, "blk_measurements", None),
             getattr(self, "blk_notes", None),
             getattr(self, "blk_summary", None),
+            getattr(self, "blk_collisions", None),
             getattr(self, "blk_obstacle_details", None),
+            # blk_suggestions and blk_room are None after Step 27 — skipped by `if block is not None`
             getattr(self, "blk_suggestions", None),
         ):
             if block is not None:
@@ -1208,14 +1211,13 @@ class TabScianaLayout(QWidget):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
 
-        title = QLabel("PARAMETRY")
-        title.setObjectName("sciana_zone_title")
-        layout.addWidget(title)
+        # internal zone label removed (Step 23)
 
-        self.blk_main = CollapsibleBlock("Uklad sciany", panel)
-        main_body = QWidget(self.blk_main)
-        form = QFormLayout(main_body)
-        self._layout_form = form
+        # --- blk_identity: core identity + wall type ---
+        self.blk_identity = CollapsibleBlock("Sciana: Podstawowe", panel)
+        identity_body = QWidget(self.blk_identity)
+        identity_form = QFormLayout(identity_body)
+        identity_form.setSpacing(6)
 
         self.ed_name = QLineEdit()
         self.cb_client = QComboBox()
@@ -1234,6 +1236,25 @@ class TabScianaLayout(QWidget):
             self.cb_front_wall.addItem(label, key)
 
         self.chk_island = QCheckBox("Dodaj wyspe / polwysep")
+
+        identity_form.addRow("Nazwa", self.ed_name)
+        identity_form.addRow("Klient", self.cb_client)
+        identity_form.addRow("Zamowienie", self.cb_order)
+        identity_form.addRow("ID zamowienia", self.ed_order_id)
+        identity_form.addRow("Pracownik", self.cb_worker)
+        identity_form.addRow("Typ ukladu", self.cb_layout_type)
+        identity_form.addRow("Widok z przodu", self.cb_front_wall)
+        identity_form.addRow("", self.chk_island)
+
+        self.blk_identity.content_layout().addWidget(identity_body)
+        layout.addWidget(self.blk_identity)
+
+        # --- blk_dims: wall dimensions, clearances, offsets, island ---
+        self.blk_dims = CollapsibleBlock("Wymiary i offsets", panel)
+        dims_body = QWidget(self.blk_dims)
+        dims_form = QFormLayout(dims_body)
+        dims_form.setSpacing(6)
+        self._layout_form = dims_form  # used by _set_form_row_visible for island/wall_b/wall_c
 
         self.sp_wall_a = QDoubleSpinBox()
         self.sp_wall_a.setRange(500.0, SCIANA_MM_MAX)
@@ -1320,31 +1341,26 @@ class TabScianaLayout(QWidget):
         self.sp_island_y.setDecimals(1)
         self.sp_island_y.setSuffix(" mm")
 
-        form.addRow("Nazwa", self.ed_name)
-        form.addRow("Klient", self.cb_client)
-        form.addRow("Zamowienie", self.cb_order)
-        form.addRow("ID zamowienia", self.ed_order_id)
-        form.addRow("Pracownik", self.cb_worker)
-        form.addRow("Typ ukladu", self.cb_layout_type)
-        form.addRow("Widok z przodu", self.cb_front_wall)
-        form.addRow("", self.chk_island)
-        form.addRow("Sciana A", self.sp_wall_a)
-        form.addRow("Sciana B", self.sp_wall_b)
-        form.addRow("Sciana C", self.sp_wall_c)
-        form.addRow("Wysokosc pomieszczenia", self.sp_room_height)
-        form.addRow("Glebokosc zabudowy", self.sp_base_depth)
-        form.addRow("Dolny cokol", self.sp_base_plinth)
-        form.addRow("Gorny odstep", self.sp_upper_clearance)
-        form.addRow("Gorny offset", self.sp_top_offset)
-        form.addRow("Dolny offset", self.sp_bottom_offset)
-        form.addRow("Dolne od lewej", self.sp_base_offset_left)
-        form.addRow("Dolne od prawej", self.sp_base_offset_right)
-        form.addRow("Gorne od lewej", self.sp_upper_offset_left)
-        form.addRow("Gorne od prawej", self.sp_upper_offset_right)
-        form.addRow("Szerokosc wyspy", self.sp_island_w)
-        form.addRow("Glebokosc wyspy", self.sp_island_d)
-        form.addRow("Wyspa X", self.sp_island_x)
-        form.addRow("Wyspa Y", self.sp_island_y)
+        dims_form.addRow("Sciana A", self.sp_wall_a)
+        dims_form.addRow("Sciana B", self.sp_wall_b)
+        dims_form.addRow("Sciana C", self.sp_wall_c)
+        dims_form.addRow("Wysokosc pomieszczenia", self.sp_room_height)
+        dims_form.addRow("Glebokosc zabudowy", self.sp_base_depth)
+        dims_form.addRow("Dolny cokol", self.sp_base_plinth)
+        dims_form.addRow("Gorny odstep", self.sp_upper_clearance)
+        dims_form.addRow("Gorny offset", self.sp_top_offset)
+        dims_form.addRow("Dolny offset", self.sp_bottom_offset)
+        dims_form.addRow("Dolne od lewej", self.sp_base_offset_left)
+        dims_form.addRow("Dolne od prawej", self.sp_base_offset_right)
+        dims_form.addRow("Gorne od lewej", self.sp_upper_offset_left)
+        dims_form.addRow("Gorne od prawej", self.sp_upper_offset_right)
+        dims_form.addRow("Szerokosc wyspy", self.sp_island_w)
+        dims_form.addRow("Glebokosc wyspy", self.sp_island_d)
+        dims_form.addRow("Wyspa X", self.sp_island_x)
+        dims_form.addRow("Wyspa Y", self.sp_island_y)
+
+        self.blk_dims.content_layout().addWidget(dims_body)
+        layout.addWidget(self.blk_dims)
 
         self.btn_save = QPushButton("Zapisz")
         self.btn_load = QPushButton("Wczytaj")
@@ -1371,9 +1387,6 @@ class TabScianaLayout(QWidget):
         self.lab_store_status.setWordWrap(True)
 
         self.lab_store_status.setStyleSheet(f"color:{get_muted_color()};")
-
-        self.blk_main.content_layout().addWidget(main_body)
-        layout.addWidget(self.blk_main)
 
         self.blk_store = CollapsibleBlock("Zapis i przejscie", panel)
         store_body = QWidget(self.blk_store)
@@ -1655,70 +1668,80 @@ class TabScianaLayout(QWidget):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
 
-        title = QLabel("SCIANA KONSTRUKTORSKA")
-        title.setObjectName("sciana_zone_title")
-        layout.addWidget(title)
+        # internal zone label removed (Step 23)
 
         self.quick_actions_bar = QFrame(panel)
         self.quick_actions_bar.setObjectName("sciana_layout_quick_bar")
         mark_ui_card(self.quick_actions_bar, elevated=False)
-        quick_layout = QHBoxLayout(self.quick_actions_bar)
-        quick_layout.setContentsMargins(10, 8, 10, 8)
-        quick_layout.setSpacing(10)
+
+        # Two-row layout: file/session row | navigation/tools row
+        quick_vbox = QVBoxLayout(self.quick_actions_bar)
+        quick_vbox.setContentsMargins(10, 8, 10, 8)
+        quick_vbox.setSpacing(6)
+
+        # --- Row 1: file / session actions ---
+        quick_row1 = QHBoxLayout()
+        quick_row1.setSpacing(8)
 
         self.btn_q_save = QPushButton("Zapisz")
         self.btn_q_save.clicked.connect(self._shortcut_save_wall)
         set_ui_variant(self.btn_q_save, "primary")
-        self.btn_q_save.setMinimumHeight(30)
-        quick_layout.addWidget(self.btn_q_save)
 
         self.btn_q_overwrite = QPushButton("Nadpisz")
         self.btn_q_overwrite.clicked.connect(self._on_overwrite)
         set_ui_variant(self.btn_q_overwrite, "ghost")
-        self.btn_q_overwrite.setMinimumHeight(30)
-        quick_layout.addWidget(self.btn_q_overwrite)
 
         self.btn_q_load = QPushButton("Wczytaj")
         self.btn_q_load.clicked.connect(self._on_load)
         set_ui_variant(self.btn_q_load, "ghost")
-        self.btn_q_load.setMinimumHeight(30)
-        quick_layout.addWidget(self.btn_q_load)
 
-        self.btn_q_new = QPushButton("Nowa")
+        self.btn_q_new = QPushButton("Nowa sciana")
         self.btn_q_new.clicked.connect(self.start_new_wall)
         set_ui_variant(self.btn_q_new, "ghost")
-        self.btn_q_new.setMinimumHeight(30)
-        quick_layout.addWidget(self.btn_q_new)
 
-        self.btn_q_focus_name = QPushButton("Nazwa")
+        for btn, min_w, max_w in (
+            (self.btn_q_save, 96, 124),
+            (self.btn_q_overwrite, 102, 132),
+            (self.btn_q_load, 96, 124),
+            (self.btn_q_new, 110, 144),
+        ):
+            btn.setMinimumWidth(min_w)
+            btn.setMaximumWidth(max_w)
+            btn.setMinimumHeight(32)
+            btn.setMaximumHeight(32)
+
+        quick_row1.addWidget(self.btn_q_save)
+        quick_row1.addWidget(self.btn_q_overwrite)
+        quick_row1.addWidget(self.btn_q_load)
+        quick_row1.addWidget(self.btn_q_new)
+        quick_row1.addStretch(1)
+        quick_vbox.addLayout(quick_row1)
+
+        # --- Row 2: navigation / tools ---
+        quick_row2 = QHBoxLayout()
+        quick_row2.setSpacing(8)
+
+        self.btn_q_focus_name = QPushButton("Focusuj nazwe")
         self.btn_q_focus_name.clicked.connect(self._shortcut_focus_wall_name)
         set_ui_variant(self.btn_q_focus_name, "ghost")
-        self.btn_q_focus_name.setMinimumHeight(30)
-        quick_layout.addWidget(self.btn_q_focus_name)
 
         self.btn_q_order = QPushButton("Zamowienie")
         self.btn_q_order.clicked.connect(self._on_back_to_order)
         set_ui_variant(self.btn_q_order, "ghost")
-        self.btn_q_order.setMinimumHeight(30)
-        quick_layout.addWidget(self.btn_q_order)
 
-        self.btn_q_next = QPushButton("Dalej")
+        self.btn_q_next = QPushButton("Dalej →")
         self.btn_q_next.clicked.connect(self._on_go_to_komplet)
         set_ui_variant(self.btn_q_next, "success")
-        self.btn_q_next.setMinimumHeight(30)
-        quick_layout.addWidget(self.btn_q_next)
 
         self.btn_q_shortcuts = QPushButton("Skroty")
         self.btn_q_shortcuts.clicked.connect(self._open_shortcuts_dialog)
         set_ui_variant(self.btn_q_shortcuts, "ghost")
-        self.btn_q_shortcuts.setMinimumHeight(30)
-        quick_layout.addWidget(self.btn_q_shortcuts)
 
+        # keep btn_q_more as an object (referenced elsewhere) but keep it hidden
         self.btn_q_more = QToolButton(self.quick_actions_bar)
         self.btn_q_more.setText("Wiecej")
         self.btn_q_more.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         set_ui_variant(self.btn_q_more, "ghost")
-        self.btn_q_more.setMinimumHeight(30)
         self._quick_more_menu = QMenu(self.btn_q_more)
         self._quick_more_menu.addAction("Nadpisz", self._on_overwrite)
         self._quick_more_menu.addAction("Wczytaj", self._on_load)
@@ -1727,49 +1750,26 @@ class TabScianaLayout(QWidget):
         self._quick_more_menu.addAction("Zamowienie", self._on_back_to_order)
         self._quick_more_menu.addAction("Skroty", self._open_shortcuts_dialog)
         self.btn_q_more.setMenu(self._quick_more_menu)
-        quick_layout.addWidget(self.btn_q_more)
+        self.btn_q_more.hide()
 
         for btn, min_w, max_w in (
-            (self.btn_q_save, 96, 124),
-            (self.btn_q_overwrite, 102, 132),
-            (self.btn_q_load, 96, 124),
-            (self.btn_q_new, 90, 114),
-            (self.btn_q_focus_name, 92, 116),
-            (self.btn_q_order, 126, 162),
-            (self.btn_q_next, 92, 116),
-            (self.btn_q_shortcuts, 98, 126),
+            (self.btn_q_focus_name, 116, 150),
+            (self.btn_q_order, 110, 144),
+            (self.btn_q_next, 90, 116),
+            (self.btn_q_shortcuts, 88, 114),
         ):
             btn.setMinimumWidth(min_w)
             btn.setMaximumWidth(max_w)
-        self.btn_q_more.setMinimumWidth(90)
-        self.btn_q_more.setMaximumWidth(120)
-        for btn in (
-            self.btn_q_save,
-            self.btn_q_overwrite,
-            self.btn_q_load,
-            self.btn_q_new,
-            self.btn_q_focus_name,
-            self.btn_q_order,
-            self.btn_q_next,
-            self.btn_q_shortcuts,
-            self.btn_q_more,
-        ):
-            btn.setMinimumHeight(36)
-            btn.setMaximumHeight(36)
+            btn.setMinimumHeight(32)
+            btn.setMaximumHeight(32)
 
-        # Desktop-first: keep all key actions visible.
-        for btn in (
-            self.btn_q_overwrite,
-            self.btn_q_load,
-            self.btn_q_new,
-            self.btn_q_focus_name,
-            self.btn_q_order,
-            self.btn_q_shortcuts,
-        ):
-            btn.show()
-        self.btn_q_more.hide()
+        quick_row2.addWidget(self.btn_q_focus_name)
+        quick_row2.addWidget(self.btn_q_order)
+        quick_row2.addWidget(self.btn_q_next)
+        quick_row2.addWidget(self.btn_q_shortcuts)
+        quick_row2.addStretch(1)
+        quick_vbox.addLayout(quick_row2)
 
-        quick_layout.addStretch(1)
         layout.addWidget(self.quick_actions_bar, 0)
 
         grp_front = QGroupBox("Widok z przodu", panel)
@@ -1818,63 +1818,41 @@ class TabScianaLayout(QWidget):
         panel.setObjectName("sciana_zone_right")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+        layout.setSpacing(10)
 
-        title = QLabel("PODSUMOWANIE")
-        title.setObjectName("sciana_zone_title")
-        layout.addWidget(title)
-
+        # --- blk_summary: wall state + room info combined (open by default) ---
+        # blk_room was a separate block before Step 27; merged here to reduce density.
         self.blk_summary = CollapsibleBlock("Podsumowanie sciany", panel)
         summary_body = QWidget(self.blk_summary)
-        summary_layout = QVBoxLayout(summary_body)
+        summary_vbox = QVBoxLayout(summary_body)
+        summary_vbox.setContentsMargins(0, 0, 0, 0)
+        summary_vbox.setSpacing(6)
+
         self.lab_summary = QLabel("-")
         self.lab_summary.setObjectName("sciana_side_note")
         self.lab_summary.setWordWrap(True)
-        summary_layout.addWidget(self.lab_summary)
-        self.blk_summary.content_layout().addWidget(summary_body)
-        layout.addWidget(self.blk_summary)
+        summary_vbox.addWidget(self.lab_summary)
 
-        self.blk_obstacle_details = CollapsibleBlock("Detale przeszkod", panel)
-        obstacle_details_body = QWidget(self.blk_obstacle_details)
-        obstacle_details_layout = QVBoxLayout(obstacle_details_body)
-        self.lab_obstacle_details = QLabel("-")
-        self.lab_obstacle_details.setObjectName("sciana_side_note")
-        self.lab_obstacle_details.setWordWrap(True)
-        obstacle_details_layout.addWidget(self.lab_obstacle_details)
-        self.blk_obstacle_details.content_layout().addWidget(obstacle_details_body)
-        layout.addWidget(self.blk_obstacle_details)
+        _room_divider = QFrame(summary_body)
+        _room_divider.setFrameShape(QFrame.Shape.HLine)
+        _room_divider.setFrameShadow(QFrame.Shadow.Plain)
+        _room_divider.setStyleSheet("color: #e0d8cc; margin: 2px 0;")
+        summary_vbox.addWidget(_room_divider)
 
-        self.blk_suggestions = CollapsibleBlock("Dalsze parametry", panel)
-        suggestions_body = QWidget(self.blk_suggestions)
-        suggestions_layout = QVBoxLayout(suggestions_body)
-        self.lab_suggestions = QLabel(
-            "W kolejnych krokach warto dodac:\n"
-            "- punkty elektryczne i wod-kan\n"
-            "- parapet i wysokosci okien\n"
-            "- wentylacje, grzejniki i listwy\n"
-            "- montaz AGD stalego\n"
-            "- powiazanie ze zdjeciami i pomiarami z miejsca"
-        )
-        self.lab_suggestions.setObjectName("sciana_side_note")
-        self.lab_suggestions.setWordWrap(True)
-        suggestions_layout.addWidget(self.lab_suggestions)
-        self.blk_suggestions.content_layout().addWidget(suggestions_body)
-        layout.addWidget(self.blk_suggestions)
+        _room_header = QLabel("Pomieszczenie", summary_body)
+        _room_header.setStyleSheet("font-size: 11px; font-weight: 600; color: #6b7280;")
+        summary_vbox.addWidget(_room_header)
 
-        # -- PANEL POMIESZCZENIA --
-        self.blk_room = CollapsibleBlock("Panel pomieszczenia", panel)
-        room_body = QWidget(self.blk_room)
-        room_vbox = QVBoxLayout(room_body)
-        room_vbox.setContentsMargins(4, 4, 4, 4)
-        room_vbox.setSpacing(3)
         self.lab_room_info = QLabel("-")
         self.lab_room_info.setObjectName("sciana_side_note")
         self.lab_room_info.setWordWrap(True)
-        room_vbox.addWidget(self.lab_room_info)
-        self.blk_room.content_layout().addWidget(room_body)
-        layout.addWidget(self.blk_room)
+        summary_vbox.addWidget(self.lab_room_info)
 
-        # -- KOLIZJE --
+        self.blk_summary.content_layout().addWidget(summary_body)
+        layout.addWidget(self.blk_summary)
+        self.blk_room = None  # merged into blk_summary
+
+        # --- blk_collisions: warnings (open by default) ---
         self.blk_collisions = CollapsibleBlock("Kolizje i ostrzezenia", panel)
         coll_body = QWidget(self.blk_collisions)
         coll_vbox = QVBoxLayout(coll_body)
@@ -1887,6 +1865,42 @@ class TabScianaLayout(QWidget):
         coll_vbox.addWidget(self.lab_collisions)
         self.blk_collisions.content_layout().addWidget(coll_body)
         layout.addWidget(self.blk_collisions)
+
+        # --- blk_obstacle_details: detail view (collapsed by default) ---
+        self.blk_obstacle_details = CollapsibleBlock("Detale przeszkod", panel)
+        obstacle_details_body = QWidget(self.blk_obstacle_details)
+        obstacle_details_layout = QVBoxLayout(obstacle_details_body)
+        self.lab_obstacle_details = QLabel("-")
+        self.lab_obstacle_details.setObjectName("sciana_side_note")
+        self.lab_obstacle_details.setWordWrap(True)
+        obstacle_details_layout.addWidget(self.lab_obstacle_details)
+        self.blk_obstacle_details.content_layout().addWidget(obstacle_details_body)
+        layout.addWidget(self.blk_obstacle_details)
+
+        # --- flat hint note (was blk_suggestions CollapsibleBlock — static text only) ---
+        # Demoted to a flat muted note to reduce same-weight block stacking.
+        _hint_frame = QFrame(panel)
+        _hint_frame.setFrameShape(QFrame.Shape.NoFrame)
+        _hint_vbox = QVBoxLayout(_hint_frame)
+        _hint_vbox.setContentsMargins(8, 6, 8, 4)
+        _hint_vbox.setSpacing(3)
+        _hint_header = QLabel("Dalsze parametry", _hint_frame)
+        _hint_header.setStyleSheet("font-size: 11px; font-weight: 600; color: #9ca3af;")
+        _hint_vbox.addWidget(_hint_header)
+        self.lab_suggestions = QLabel(
+            "W kolejnych krokach warto dodac:\n"
+            "- punkty elektryczne i wod-kan\n"
+            "- parapet i wysokosci okien\n"
+            "- wentylacje, grzejniki i listwy\n"
+            "- montaz AGD stalego\n"
+            "- powiazanie ze zdjeciami i pomiarami z miejsca"
+        )
+        self.lab_suggestions.setObjectName("sciana_side_note")
+        self.lab_suggestions.setWordWrap(True)
+        self.lab_suggestions.setStyleSheet("font-size: 11px; color: #9ca3af;")
+        _hint_vbox.addWidget(self.lab_suggestions)
+        layout.addWidget(_hint_frame)
+        self.blk_suggestions = None  # no longer a CollapsibleBlock — replaced with flat hint
 
         layout.addStretch(1)
         return panel
@@ -2537,15 +2551,18 @@ class TabScianaLayout(QWidget):
             body.setVisible(bool(visible))
 
     def _apply_block_startup_visibility(self) -> None:
-        self._set_collapsible_block_body_visible(getattr(self, "blk_main", None), True)
+        # left zone
+        self._set_collapsible_block_body_visible(getattr(self, "blk_identity", None), True)
+        self._set_collapsible_block_body_visible(getattr(self, "blk_dims", None), False)
         self._set_collapsible_block_body_visible(getattr(self, "blk_store", None), True)
         self._set_collapsible_block_body_visible(getattr(self, "blk_obstacles", None), True)
         self._set_collapsible_block_body_visible(getattr(self, "blk_photos", None), False)
         self._set_collapsible_block_body_visible(getattr(self, "blk_measurements", None), True)
         self._set_collapsible_block_body_visible(getattr(self, "blk_notes", None), False)
+        # right zone — blk_room and blk_suggestions are None after Step 27 (merged/replaced)
         self._set_collapsible_block_body_visible(getattr(self, "blk_summary", None), True)
+        self._set_collapsible_block_body_visible(getattr(self, "blk_collisions", None), True)
         self._set_collapsible_block_body_visible(getattr(self, "blk_obstacle_details", None), False)
-        self._set_collapsible_block_body_visible(getattr(self, "blk_suggestions", None), False)
 
     def _refresh_obstacle_field_context(self) -> None:
         kind_key = str(self.cb_obstacle_kind.currentData() or "projection").strip().lower()

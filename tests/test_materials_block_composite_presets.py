@@ -1,7 +1,33 @@
 from PyQt6.QtWidgets import QApplication
 
 
-def test_materials_block_applies_composite_preset_for_front(tmp_path):
+def test_materials_block_shows_composite_total_thickness_in_labels(tmp_path):
+    app = QApplication.instance() or QApplication([])
+
+    from src.storage.catalog_store_json import CatalogStoreJson
+    from src.tabs.modul.materials_block import MaterialsBlock
+
+    catalog = CatalogStoreJson(tmp_path / "catalog.json")
+    catalog.replace_catalog(
+        materials=[
+            {
+                "key": "FRONT_COMP",
+                "name_pl": "Front kompozyt",
+                "core": {"code": "mdf19", "name_pl": "MDF 19", "thickness_mm": 19.0},
+                "skins_left": [{"code": "veneer_06", "name_pl": "Fornir 0.6", "thickness_mm": 0.6}],
+                "skins_right": [{"code": "veneer_06", "name_pl": "Fornir 0.6", "thickness_mm": 0.6}],
+            }
+        ]
+    )
+
+    block = MaterialsBlock(catalog)
+    idx = block.cb_front.findData("FRONT_COMP")
+    assert idx >= 0
+    label = str(block.cb_front.itemText(idx) or "")
+    assert "(20.2 mm)" in label
+
+
+def test_materials_block_keeps_material_selection_after_catalog_reload(tmp_path):
     app = QApplication.instance() or QApplication([])
 
     from src.storage.catalog_store_json import CatalogStoreJson
@@ -9,58 +35,25 @@ def test_materials_block_applies_composite_preset_for_front(tmp_path):
 
     catalog = CatalogStoreJson(tmp_path / "catalog.json")
     block = MaterialsBlock(catalog)
+    block.set_materials({"carcass": "PB18", "front": "MDF19", "back": "HDF2.5"})
 
-    idx_target = block.cb_composite_target.findData("front")
-    assert idx_target >= 0
-    block.cb_composite_target.setCurrentIndex(idx_target)
+    catalog.replace_catalog(
+        materials=[
+            {
+                "key": "PB18",
+                "name_pl": "Korpus kompozyt",
+                "core": {"code": "pb18", "name_pl": "Plyta 18", "thickness_mm": 18.0},
+                "skins_left": [{"code": "hpl_08", "name_pl": "HPL 0.8", "thickness_mm": 0.8}],
+                "skins_right": [{"code": "hpl_08", "name_pl": "HPL 0.8", "thickness_mm": 0.8}],
+            },
+            {"key": "MDF19", "name_pl": "MDF", "thickness_mm": 19.0},
+            {"key": "HDF2.5", "name_pl": "HDF", "thickness_mm": 2.5},
+        ]
+    )
 
-    idx_preset = block.cb_composite_preset.findData("veneer_2s_06")
-    assert idx_preset >= 0
-    block.cb_composite_preset.setCurrentIndex(idx_preset)
-    block._apply_composite_preset()
+    block.reload_catalog()
+    selected = block.get_materials()
+    assert selected["carcass"] == "PB18"
+    assert selected["front"] == "MDF19"
+    assert selected["back"] == "HDF2.5"
 
-    front_key = str(block.cb_front.currentData() or "MDF19")
-    mat = catalog.get_material(front_key)
-    assert mat is not None
-    assert mat.composite_enabled is True
-    assert abs(float(mat.left_facing_thickness_mm) - 0.6) < 0.001
-    assert abs(float(mat.right_facing_thickness_mm) - 0.6) < 0.001
-    assert abs(catalog.material_thickness(front_key, mat.thickness_mm) - float(mat.thickness_mm)) < 0.001
-    assert "Zastosowano preset" in str(block.lab_composite_status.text() or "")
-
-
-def test_materials_block_can_clear_composite_preset(tmp_path):
-    app = QApplication.instance() or QApplication([])
-
-    from src.storage.catalog_store_json import CatalogStoreJson
-    from src.tabs.modul.materials_block import MaterialsBlock
-
-    catalog = CatalogStoreJson(tmp_path / "catalog.json")
-    block = MaterialsBlock(catalog)
-
-    idx_target = block.cb_composite_target.findData("carcass")
-    assert idx_target >= 0
-    block.cb_composite_target.setCurrentIndex(idx_target)
-
-    idx_hpl = block.cb_composite_preset.findData("hpl_1s_08")
-    assert idx_hpl >= 0
-    block.cb_composite_preset.setCurrentIndex(idx_hpl)
-    block._apply_composite_preset()
-
-    carcass_key = str(block.cb_carcass.currentData() or "PB18")
-    mat_before_clear = catalog.get_material(carcass_key)
-    assert mat_before_clear is not None
-    assert mat_before_clear.composite_enabled is True
-
-    idx_none = block.cb_composite_preset.findData("none")
-    assert idx_none >= 0
-    block.cb_composite_preset.setCurrentIndex(idx_none)
-    block._apply_composite_preset()
-
-    mat_after_clear = catalog.get_material(carcass_key)
-    assert mat_after_clear is not None
-    assert mat_after_clear.composite_enabled is False
-    assert abs(float(mat_after_clear.core_thickness_mm) - 0.0) < 0.001
-    assert abs(float(mat_after_clear.left_facing_thickness_mm) - 0.0) < 0.001
-    assert abs(float(mat_after_clear.right_facing_thickness_mm) - 0.0) < 0.001
-    assert "Wyczyszczono kompozyt" in str(block.lab_composite_status.text() or "")

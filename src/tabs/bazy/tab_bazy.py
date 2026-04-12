@@ -128,8 +128,8 @@ class TabBazy(QWidget):
         self.tabs = QTabWidget(self)
         root.addWidget(self.tabs, 1)
 
-        self.tabs.addTab(self._build_modules_tab(), "Moduly")
-        self.tabs.addTab(self._build_walls_tab(), "Sciany")
+        self.tabs.addTab(self._build_modules_tab(), "Moduły")
+        self.tabs.addTab(self._build_walls_tab(), "Ściany")
         self.tabs.addTab(self._build_assemblies_tab(), "Komplety")
         self.tabs.addTab(self._build_clients_tab(), "Klienci")
         self.tabs.addTab(self._build_orders_tab(), "Zamowienia")
@@ -373,7 +373,7 @@ class TabBazy(QWidget):
         layout = QVBoxLayout(panel)
 
         row = QHBoxLayout()
-        self.btn_new_wall = QPushButton("Nowa w Sciana")
+        self.btn_new_wall = QPushButton("Nowa w Ściana")
         self.btn_reload_walls = QPushButton("Odswiez")
         row.addWidget(self.btn_new_wall, 0)
         row.addStretch(1)
@@ -381,7 +381,7 @@ class TabBazy(QWidget):
         layout.addLayout(row)
 
         self.tbl_walls = QTableWidget(0, 6, panel)
-        self.tbl_walls.setHorizontalHeaderLabels(["Nazwa", "Klient", "Zamowienie", "Typ", "Przeszkody", "Zdjecia"])
+        self.tbl_walls.setHorizontalHeaderLabels(["Nazwa", "Klient", "Zamówienie", "Typ", "Przeszkody", "Zdjęcia"])
         self.tbl_walls.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tbl_walls.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.tbl_walls.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -392,7 +392,7 @@ class TabBazy(QWidget):
         btns = QHBoxLayout()
         self.btn_duplicate_wall = QPushButton("Duplikuj")
         self.btn_rename_wall = QPushButton("Zmien nazwe")
-        self.btn_open_wall = QPushButton("Otworz w Sciana")
+        self.btn_open_wall = QPushButton("Otwórz w Ściana")
         self.btn_delete_wall = QPushButton("Usun z bazy")
         for button in (
             self.btn_new_wall,
@@ -446,7 +446,7 @@ class TabBazy(QWidget):
 
         self.tbl_assemblies = QTableWidget(0, 6, panel)
         self.tbl_assemblies.setHorizontalHeaderLabels(
-            ["Nazwa", "Klient", "Zamowienie", "Pracownik", "Sciana", "Moduly"]
+            ["Nazwa", "Klient", "Zamówienie", "Pracownik", "Ściana", "Moduły"]
         )
         self.tbl_assemblies.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tbl_assemblies.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)

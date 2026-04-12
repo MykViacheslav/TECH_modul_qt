@@ -4,7 +4,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QRectF, QPointF, QEvent
 from PyQt6.QtGui import QBrush, QPen, QPainter, QColor, QPolygonF, QPalette
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QGraphicsView, QGraphicsScene, QGraphicsRectItem,
-    QGraphicsSimpleTextItem, QGraphicsItem
+    QGraphicsSimpleTextItem, QGraphicsItem, QSizePolicy
 )
 from src.domain.module_models import (
     GRAIN_HORIZONTAL,
@@ -37,6 +37,10 @@ class ViewsCanvas(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        # Front + top view need enough vertical room to stay readable.
+        self.setMinimumHeight(320)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(6)

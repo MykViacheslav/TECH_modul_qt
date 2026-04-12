@@ -178,7 +178,7 @@ class TabBazaSzybkichWycen(QWidget):
         row_filters.setSpacing(8)
         row_filters.addWidget(QLabel("Szukaj:", self), 0)
         self.ed_filter = QLineEdit(self)
-        self.ed_filter.setPlaceholderText("ID / oferta / klient / zamowienie / status")
+        self.ed_filter.setPlaceholderText("ID / oferta / klient / zamówienie / status")
         row_filters.addWidget(self.ed_filter, 1)
         row_filters.addWidget(QLabel("Sortuj:", self), 0)
         self.cb_sort = QComboBox(self)
@@ -194,8 +194,8 @@ class TabBazaSzybkichWycen(QWidget):
         actions = QHBoxLayout()
         self.btn_add = QPushButton("+ Dodaj wpis", self)
         self.btn_remove = QPushButton("- Usun wpis", self)
-        self.btn_create_order = QPushButton("Utworz zamowienie", self)
-        self.btn_open_order = QPushButton("Otworz zamowienie", self)
+        self.btn_create_order = QPushButton("Utwórz zamówienie", self)
+        self.btn_open_order = QPushButton("Otwórz zamówienie", self)
         self.btn_export_txt = QPushButton("Eksport TXT", self)
         self.btn_export_pdf = QPushButton("Eksport PDF", self)
         self.btn_save = QPushButton("Zapisz do bazy", self)
@@ -557,8 +557,8 @@ class TabBazaSzybkichWycen(QWidget):
         if order is None:
             QMessageBox.information(
                 self,
-                "Brak powiazania",
-                "Ta wycena nie ma jeszcze powiazanego zamowienia. Najpierw utworz zamowienie.",
+                "Brak powiązania",
+                "Ta wycena nie ma jeszcze powiązanego zamówienia. Najpierw utwórz zamówienie.",
             )
             return
 

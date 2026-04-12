@@ -34,6 +34,8 @@ class FrontHardwareBlock(QWidget):
         lay = QFormLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        lay.setVerticalSpacing(8)
+        lay.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
 
         self.cb_front_layout = QComboBox()
         self.cb_front_layout.addItem("Nakladany", "overlay")
@@ -280,21 +282,40 @@ class FrontHardwareBlock(QWidget):
         lay.addRow("Offset od dolu", self.sp_front_offset_bottom)
         lay.addRow("Strefa", self.zone_box)
 
-        lay.addRow("Luz lewy", self.sp_gap_left)
-        lay.addRow("Luz prawy", self.sp_gap_right)
-        lay.addRow("Luz gorny", self.sp_gap_top)
-        lay.addRow("Luz dolny", self.sp_gap_bottom)
-        lay.addRow("Luz miedzy frontami", self.sp_gap_between_vertical)
+        self.box_front_mode = QFrame()
+        self.box_front_mode.setObjectName("front_mode_box")
+        self.box_front_mode.setFrameShape(QFrame.Shape.StyledPanel)
+        self.box_front_mode.setStyleSheet(
+            "QFrame#front_mode_box {"
+            "border: 1px solid #d8d8d8;"
+            "border-radius: 6px;"
+            "background: #fafafa;"
+            "}"
+        )
 
-        lay.addRow("Uklad frontow", self.cb_facade_mode)
-        lay.addRow("Liczba szuflad", self.sp_drawer_count)
-        lay.addRow("Uklad szuflad", self.cb_drawer_layout_mode)
-        lay.addRow("Niski front szuflady", self.sp_drawer_small_front_h)
-        lay.addRow("Producent zawiasow", self.cb_hinge_vendor)
-        lay.addRow("Producent szuflad", self.cb_drawer_vendor)
-        lay.addRow("", self.chk_tipon)
-        lay.addRow("Luz za szuflada", self.sp_rear)
-        lay.addRow("Luz TIP-ON", self.sp_tip)
+        mode_lay = QVBoxLayout(self.box_front_mode)
+        mode_lay.setContentsMargins(10, 8, 10, 8)
+        mode_lay.setSpacing(6)
+
+        self.lab_front_mode_title = QLabel("Uklad i okucia frontu")
+        self.lab_front_mode_title.setStyleSheet("font-weight: 700;")
+        mode_lay.addWidget(self.lab_front_mode_title)
+
+        form_mode = QFormLayout()
+        form_mode.setContentsMargins(0, 0, 0, 0)
+        form_mode.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        form_mode.addRow("Uklad frontow", self.cb_facade_mode)
+        form_mode.addRow("Liczba szuflad", self.sp_drawer_count)
+        form_mode.addRow("Uklad szuflad", self.cb_drawer_layout_mode)
+        form_mode.addRow("Niski front szuflady", self.sp_drawer_small_front_h)
+        form_mode.addRow("Producent zawiasow", self.cb_hinge_vendor)
+        form_mode.addRow("Producent szuflad", self.cb_drawer_vendor)
+        form_mode.addRow("", self.chk_tipon)
+        form_mode.addRow("Luz za szuflada", self.sp_rear)
+        form_mode.addRow("Luz TIP-ON", self.sp_tip)
+        mode_lay.addLayout(form_mode)
+
+        lay.addRow("Tryb i okucia", self.box_front_mode)
         lay.addRow("Front", self.summary_box)
         lay.addRow("Podglad", self.preview_box)
         lay.addRow("Podpowiedz", self.lab_hint)

@@ -27,9 +27,8 @@ def build_tabs() -> list[tuple[str, QWidget]]:
     # --- Sprzedaż ---
     add("Start",           lambda: __import__("src.tabs.start.tab_start", fromlist=["TabStart"]).TabStart())
     add("Nowe zamowienie", lambda: __import__("src.tabs.zamowienie.tab_nowe_zamowienie", fromlist=["TabNoweZamowienie"]).TabNoweZamowienie())
-    add("Wycena",          lambda: __import__("src.tabs.wycena.tab_wycena", fromlist=["TabWycena"]).TabWycena())
-    add("Uslugi",          lambda: __import__("src.tabs.uslugi.tab_uslugi", fromlist=["TabUslugi"]).TabUslugi())
-    add("Sekcje do wyceny",lambda: __import__("src.tabs.szybka_wycena.tab_szybka_wycena", fromlist=["TabSzybkaWycena"]).TabSzybkaWycena())
+    # "Wycena" = hub z sześcioma podzakładkami (Wycena projektu / Szybka wycena / Import 3D / Usługi / Rozkrój / Podsumowanie)
+    add("Wycena",          lambda: __import__("src.tabs.wycena_hub.tab_wycena_hub", fromlist=["TabWycenaHub"]).TabWycenaHub())
 
     # --- Projekt ---
     add("Modul",   lambda: __import__("src.tabs.modul.tab_modul", fromlist=["TabModul"]).TabModul())
@@ -48,18 +47,24 @@ def build_tabs() -> list[tuple[str, QWidget]]:
     add("ALARMY",              lambda: __import__("src.tabs.alarmy.tab_alarmy", fromlist=["TabAlarmy"]).TabAlarmy())
     add("Kalendarz",           lambda: __import__("src.tabs.kalendarz.tab_kalendarz", fromlist=["TabKalendarz"]).TabKalendarz())
     add("Czas pracy",          lambda: __import__("src.tabs.czas_pracy.tab_czas_pracy", fromlist=["TabCzasPracy"]).TabCzasPracy())
-    add("Wydatki stale firmy", lambda: __import__("src.tabs.wydatki_stale.tab_wydatki_stale", fromlist=["TabWydatkiStale"]).TabWydatkiStale())
-    add("Wydatki zmienne",     lambda: __import__("src.tabs.wydatki_zmienne.tab_wydatki_zmienne", fromlist=["TabWydatkiZmienne"]).TabWydatkiZmienne())
     add("Pracownik",           lambda: __import__("src.tabs.pracownicy.tab_pracownicy", fromlist=["TabPracownicy"]).TabPracownicy())
-    add("Zakupy",              lambda: __import__("src.tabs.zakupy.tab_zakupy", fromlist=["TabZakupy"]).TabZakupy())
+
+    # --- Finanse ---
+    add("Finanse",             lambda: __import__("src.tabs.finanse_hub.tab_finanse_hub", fromlist=["TabFinanseHub"]).TabFinanseHub())
+    add("OPERACJE",            lambda: __import__("src.tabs.operations_hub.tab_operations_hub", fromlist=["TabOperationsHub"]).TabOperationsHub())
 
     # --- Bazy ---
     add("Bazy",               lambda: __import__("src.tabs.bazy.tab_bazy", fromlist=["TabBazy"]).TabBazy())
     add("BAZA_modul",         lambda: __import__("src.tabs.baza_modul.tab_baza_modul", fromlist=["TabBazaModul"]).TabBazaModul())
     add("Baza materialu",     lambda: __import__("src.tabs.baza_materialu.tab_baza_materialu", fromlist=["TabBazaMaterialu"]).TabBazaMaterialu())
     add("Baza szybkich wycen",lambda: __import__("src.tabs.baza_szybkich_wycen.tab_baza_szybkich_wycen", fromlist=["TabBazaSzybkichWycen"]).TabBazaSzybkichWycen())
+    add("Baza uslug",         lambda: __import__("src.tabs.baza_uslug.tab_baza_uslug", fromlist=["TabBazaUslug"]).TabBazaUslug())
 
-    # --- Inne ---
+    # --- Ustawienia ---
     add("Ustawienia", lambda: __import__("src.tabs.rysunek.tab_rysunek", fromlist=["TabRysunek"]).TabRysunek())
+    add("Ekrany",     lambda: __import__("src.tabs.ekrany.tab_ekrany", fromlist=["TabEkrany"]).TabEkrany())
+    add("Stanowiska", lambda: __import__("src.tabs.stanowiska.tab_stanowiska", fromlist=["TabStanowiska"]).TabStanowiska())
+    add("QR TELEFON", lambda: __import__("src.tabs.qr_telefon.tab_qr_telefon", fromlist=["TabQrTelefon"]).TabQrTelefon())
+    add("STRUKTURA",  lambda: __import__("src.tabs.struktura.tab_struktura", fromlist=["TabStruktura"]).TabStruktura())
 
     return tabs

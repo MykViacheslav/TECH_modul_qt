@@ -33,6 +33,7 @@ from PyQt6.QtWidgets import (
 
 from src.domain.client_models import ClientDef
 from src.domain.service_models import ServiceDef, new_service_id
+from src.domain.project_model import ProjectModel
 from src.domain.alarm_models import AlarmDef, new_alarm_id
 from src.domain.calendar_event import CalendarEvent
 from src.app.app_settings import load_ui_theme_settings
@@ -41,6 +42,7 @@ from src.storage.calendar_event_store_json import CalendarEventStoreJson
 from src.storage.client_store_json import ClientStoreJson
 from src.storage.data_paths import data_dir
 from src.storage.service_store_json import ServiceStoreJson
+from src.services.project_model_service_adapter import build_service_quote_project_model
 
 
 def _to_float(value: Any) -> float:
@@ -219,7 +221,7 @@ class _FormatkiDialog(QDialog):
 
         top = QHBoxLayout()
         self.btn_add = QPushButton("+ Dodaj formatke", self)
-        self.btn_remove = QPushButton("- Usun formatke", self)
+        self.btn_remove = QPushButton("- Usuń formatke", self)
         top.addWidget(self.btn_add, 0)
         top.addWidget(self.btn_remove, 0)
         top.addStretch(1)
@@ -588,7 +590,7 @@ class _UslugaQuoteStore:
         self._path.write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-class _CenikPanel(QWidget):
+class _CennikPanel(QWidget):
     sig_cennik_changed = pyqtSignal()
 
     _DEFAULT: tuple[tuple[str, str, str, float], ...] = (
@@ -606,14 +608,14 @@ class _CenikPanel(QWidget):
         super().__init__(parent)
         self._store = ServiceStoreJson()
         root = QVBoxLayout(self)
-        root.setContentsMargins(12, 12, 12, 12)
-        root.setSpacing(8)
+        root.setContentsMargins(16, 16, 16, 16)
+        root.setSpacing(12)
 
         top = QHBoxLayout()
         self.btn_add = QPushButton("+ Dodaj wpis", self)
-        self.btn_remove = QPushButton("- Usun wpis", self)
-        self.btn_save = QPushButton("Zapisz cenik", self)
-        self.btn_default = QPushButton("Wczytaj domyslny", self)
+        self.btn_remove = QPushButton("- Usuń wpis", self)
+        self.btn_save = QPushButton("Zapisz cennik", self)
+        self.btn_default = QPushButton("Wczytaj domyślny", self)
         for btn in (self.btn_add, self.btn_remove, self.btn_save, self.btn_default):
             top.addWidget(btn, 0)
         top.addStretch(1)
@@ -662,7 +664,7 @@ class _CenikPanel(QWidget):
     def _add(self) -> None:
         row = self.tbl.rowCount()
         self.tbl.insertRow(row)
-        self._set_row(row, ServiceDef(service_id=new_service_id(), name="Nowa usluga", category="robocizna", description="szt", price=0.0))
+        self._set_row(row, ServiceDef(service_id=new_service_id(), name="Nowa usługa", category="robocizna", description="szt", price=0.0))
 
     def _remove(self) -> None:
         rows = self.tbl.selectionModel().selectedRows() if self.tbl.selectionModel() is not None else []
@@ -695,7 +697,7 @@ class _CenikPanel(QWidget):
             self._store.save_service(svc)
         for stale in sorted(old_ids - new_ids):
             self._store.delete_service(stale)
-        self.lab.setText("Zapisano cenik.")
+        self.lab.setText("Zapisano cennik.")
         self.sig_cennik_changed.emit()
 
     def _default(self) -> None:
@@ -724,7 +726,7 @@ class _CenikPanel(QWidget):
         self.sig_cennik_changed.emit()
 
 
-class _KlijentyPanel(QWidget):
+class _KlienciPanel(QWidget):
     sig_clients_changed = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -736,9 +738,9 @@ class _KlijentyPanel(QWidget):
 
         top = QHBoxLayout()
         self.btn_add = QPushButton("+ Dodaj klienta", self)
-        self.btn_remove = QPushButton("- Usun klienta", self)
-        self.btn_save = QPushButton("Zapisz klijenty", self)
-        self.btn_reload = QPushButton("Odswiez", self)
+        self.btn_remove = QPushButton("- Usuń klienta", self)
+        self.btn_save = QPushButton("Zapisz klientów", self)
+        self.btn_reload = QPushButton("Odśwież", self)
         for btn in (self.btn_add, self.btn_remove, self.btn_save, self.btn_reload):
             top.addWidget(btn, 0)
         top.addStretch(1)
@@ -830,7 +832,7 @@ class _KlijentyPanel(QWidget):
             new_names.add(name)
         for stale_name in sorted(old_names - new_names):
             self._store.delete(stale_name)
-        self.lab.setText("Zapisano baze klijentow.")
+        self.lab.setText("Zapisano bazę klientów.")
         self.sig_clients_changed.emit()
 
 
@@ -885,22 +887,22 @@ class _UslugaPanel(QWidget):
         root.setSpacing(8)
 
         top_wrap = QVBoxLayout()
-        top_wrap.setSpacing(6)
+        top_wrap.setSpacing(10)
 
         top_row_1 = QHBoxLayout()
-        top_row_1.setSpacing(8)
-        top_row_1.addWidget(QLabel("Klijent:", self), 0)
+        top_row_1.setSpacing(10)
+        top_row_1.addWidget(QLabel("Klient:", self), 0)
         self.cb_client = QComboBox(self)
         self.cb_client.setEditable(False)
         self.cb_client.setMinimumWidth(220)
         top_row_1.addWidget(self.cb_client, 0)
 
-        top_row_1.addWidget(QLabel("Material:", self), 0)
+        top_row_1.addWidget(QLabel("Materiał:", self), 0)
         self.cb_material = QComboBox(self)
         self.cb_material.setMinimumWidth(280)
         top_row_1.addWidget(self.cb_material, 0)
 
-        top_row_1.addWidget(QLabel("USLUGA:", self), 0)
+        top_row_1.addWidget(QLabel("Usługa:", self), 0)
         self.cb_service = QComboBox(self)
         self.cb_service.setMinimumWidth(260)
         top_row_1.addWidget(self.cb_service, 0)
@@ -929,11 +931,11 @@ class _UslugaPanel(QWidget):
         top_wrap.addLayout(top_row_1)
 
         top_row_2 = QHBoxLayout()
-        top_row_2.setSpacing(8)
+        top_row_2.setSpacing(10)
         self.btn_add = QPushButton("+ Dodaj pozycje", self)
-        self.btn_remove = QPushButton("- Usun pozycje", self)
+        self.btn_remove = QPushButton("- Usuń pozycje", self)
         self.btn_formatki = QPushButton("Dodaj formatki", self)
-        self.btn_material_list = QPushButton("Spisz material", self)
+        self.btn_material_list = QPushButton("Spisz materiał", self)
         self.btn_invoice = QPushButton("Faktura", self)
         self.btn_save = QPushButton("Zapisz do bazy", self)
         for btn in (
@@ -958,13 +960,13 @@ class _UslugaPanel(QWidget):
             [
                 "#",
                 "ID",
-                "Material",
-                "Nazwa Uslugi",
+                "Materiał",
+                "Nazwa usługi",
                 "RAL",
                 "NCS",
                 "Model frontu",
-                "Ilosc",
-                "Cena materialu netto",
+                "Ilość",
+                "Cena materiału netto",
                 "Cena robocizny [zl]",
                 "VAT %",
                 "Suma netto",
@@ -1017,8 +1019,8 @@ class _UslugaPanel(QWidget):
         self.frame_formatki_preview = QFrame(self)
         self.frame_formatki_preview.setStyleSheet(self._card_style)
         preview_root = QVBoxLayout(self.frame_formatki_preview)
-        preview_root.setContentsMargins(8, 8, 8, 8)
-        preview_root.setSpacing(6)
+        preview_root.setContentsMargins(12, 12, 12, 12)
+        preview_root.setSpacing(8)
 
         preview_top = QHBoxLayout()
         self.lab_formatki_preview = QLabel("Brak wybranej pozycji.", self.frame_formatki_preview)
@@ -1066,8 +1068,8 @@ class _UslugaPanel(QWidget):
         bottom = QFrame(self)
         bottom.setStyleSheet(self._card_style)
         row = QHBoxLayout(bottom)
-        row.setContentsMargins(10, 8, 10, 8)
-        row.addWidget(QLabel("Tabela: material z bazy, usluga z cenika, RAL/NCS/model frontu.", self), 0)
+        row.setContentsMargins(12, 10, 12, 10)
+        row.addWidget(QLabel("Tabela: materiał z bazy, usługa z cennika, RAL/NCS/model frontu.", self), 0)
         row.addStretch(1)
         self.lab = QLabel("", self)
         self.lab.setStyleSheet(f"color:{self._status_color};")
@@ -1189,7 +1191,7 @@ class _UslugaPanel(QWidget):
         self.cb_client.blockSignals(True)
         try:
             self.cb_client.clear()
-            self.cb_client.addItem("[wybierz klijenta]", "")
+            self.cb_client.addItem("[wybierz klienta]", "")
             for client in self._client_store.list_clients():
                 name = str(client.name or "").strip()
                 if not name:
@@ -1251,7 +1253,7 @@ class _UslugaPanel(QWidget):
         self.cb_service.blockSignals(True)
         try:
             self.cb_service.clear()
-            self.cb_service.addItem("[wybierz usluge z cenika]", "")
+            self.cb_service.addItem("[wybierz usługę z cennika]", "")
             for entry in self._work_options:
                 service_id = str(entry.get("id", "") or "")
                 if not service_id:
@@ -1295,7 +1297,7 @@ class _UslugaPanel(QWidget):
         self._add_row()
         self._update_total()
         self._refresh_formatki_preview()
-        self.lab.setText("Nowa usluga.")
+        self.lab.setText("Nowa usługa.")
 
     def _combo_row(self, combo: QComboBox) -> int:
         for row in range(self.tbl.rowCount()):
@@ -1562,7 +1564,7 @@ class _UslugaPanel(QWidget):
         parts: list[str] = []
         for name, rec in grouped.items():
             parts.append(f"{name}: ilosc {rec['qty']:.2f}, netto {rec['net']:.2f} zl")
-        self.lab.setText("Spis materialu: " + " | ".join(parts))
+        self.lab.setText("Spis materiału: " + " | ".join(parts))
 
     def _faktura(self) -> None:
         client = str(self.cb_client.currentData() or self.cb_client.currentText() or "").strip() or "[brak klienta]"
@@ -1623,7 +1625,7 @@ class _UslugaPanel(QWidget):
             writer.writerow(
                 [
                     "Pozycja",
-                    "Material",
+                    "Materiał",
                     "ID",
                     "Nazwa",
                     "L_mm",
@@ -1831,7 +1833,7 @@ class _UslugaPanel(QWidget):
         event = CalendarEvent.new(
             event_type="zlecenie",
             station="Biuro",
-            title=f"Usluga: {service} | {client}",
+            title=f"Usługa: {service} | {client}",
             date=start,
             date_end=end,
             order_code=quote_id,
@@ -1857,7 +1859,7 @@ class _UslugaPanel(QWidget):
                 alarm_id=new_alarm_id(),
                 category="terminy",
                 severity="info",
-                title=f"Termin uslugi: {quote_id}",
+                title=f"Termin usługi: {quote_id}",
                 description=f"{service} | {client}",
                 related_order=quote_id,
                 related_client=client,
@@ -1886,13 +1888,13 @@ class _BazaUslugPanel(QWidget):
         root.setSpacing(8)
 
         top = QHBoxLayout()
-        self.btn_reload = QPushButton("Odswiez", self)
+        self.btn_reload = QPushButton("Odśwież", self)
         top.addWidget(self.btn_reload, 0)
         top.addStretch(1)
         root.addLayout(top)
 
         self.tbl = QTableWidget(0, 7, self)
-        self.tbl.setHorizontalHeaderLabels(["#", "ID", "Data", "Klijent", "Suma netto", "Suma brutto", "Data oddane"])
+        self.tbl.setHorizontalHeaderLabels(["#", "ID", "Data", "Klient", "Suma netto", "Suma brutto", "Data oddane"])
         self.tbl.verticalHeader().setVisible(False)
         self.tbl.setAlternatingRowColors(True)
         h = self.tbl.horizontalHeader()
@@ -1935,28 +1937,28 @@ class TabUslugi(QWidget):
         title_color = "#e8efff" if is_tech else "#111827"
         subtitle_color = "#9bb0cd" if is_tech else "#555555"
         root = QVBoxLayout(self)
-        root.setContentsMargins(14, 14, 14, 14)
-        root.setSpacing(10)
+        root.setContentsMargins(18, 18, 18, 18)
+        root.setSpacing(14)
 
-        title = QLabel("USLUGI", self)
+        title = QLabel("Usługi", self)
         title.setStyleSheet(f"font-size:22px; font-weight:800; color:{title_color};")
         root.addWidget(title, 0, Qt.AlignmentFlag.AlignLeft)
 
-        subtitle = QLabel("Cenik, klijenty, nowa usluga i baza uslug.", self)
+        subtitle = QLabel("Cennik, klienci, nowa usługa i baza usług.", self)
         subtitle.setStyleSheet(f"color:{subtitle_color};")
         subtitle.setWordWrap(True)
         root.addWidget(subtitle, 0, Qt.AlignmentFlag.AlignLeft)
 
         self.tabs = QTabWidget(self)
-        self.tab_cenik = _CenikPanel(self)
-        self.tab_klijenty = _KlijentyPanel(self)
+        self.tab_cenik = _CennikPanel(self)
+        self.tab_klijenty = _KlienciPanel(self)
         self.tab_nowa_usluga = _UslugaPanel(self)
         self.tab_usluga = self.tab_nowa_usluga
         self.tab_baza_uslug = _BazaUslugPanel(self)
-        self.tabs.addTab(self.tab_cenik, "Cenik")
-        self.tabs.addTab(self.tab_klijenty, "Klijenty")
-        self.tabs.addTab(self.tab_nowa_usluga, "Nowa USLUGA")
-        self.tabs.addTab(self.tab_baza_uslug, "BAZA USLUG")
+        self.tabs.addTab(self.tab_cenik, "Cennik")
+        self.tabs.addTab(self.tab_klijenty, "Klienci")
+        self.tabs.addTab(self.tab_nowa_usluga, "Nowa usługa")
+        self.tabs.addTab(self.tab_baza_uslug, "Baza usług")
         root.addWidget(self.tabs, 1)
 
         self.tab_cenik.sig_cennik_changed.connect(self.tab_nowa_usluga.reload_sources)
@@ -1969,3 +1971,18 @@ class TabUslugi(QWidget):
             self.tab_nowa_usluga.reload_sources()
         if idx == self.tabs.indexOf(self.tab_baza_uslug):
             self.tab_baza_uslug.reload_data()
+
+    def get_project_model(self) -> ProjectModel | None:
+        quotes = self.tab_nowa_usluga._quote_store.list_quotes()
+        quotes.sort(key=lambda r: str(r.get("updated_at", "") or ""), reverse=True)
+        if not quotes:
+            return None
+        payload = quotes[0]
+        if not isinstance(payload, dict):
+            return None
+        return build_service_quote_project_model(
+            payload,
+            source_path=str(data_dir() / "usluga_quotes.json"),
+            pricing_policy="services",
+            policy_multiplier=1.0,
+        )

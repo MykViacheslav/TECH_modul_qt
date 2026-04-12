@@ -51,6 +51,35 @@ class WallObstacleDef:
 
 
 @dataclass
+class WallMeasurementDef:
+    name: str = ""
+    kind: str = "distance"  # distance | width | height | depth
+    value_mm: float = 0.0
+    photo_path: str = ""
+    note: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "name": self.name,
+            "kind": self.kind,
+            "value_mm": float(self.value_mm),
+            "photo_path": self.photo_path,
+            "note": self.note,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "WallMeasurementDef":
+        data = data or {}
+        return cls(
+            name=str(data.get("name", "") or ""),
+            kind=str(data.get("kind", "distance") or "distance"),
+            value_mm=float(data.get("value_mm", 0.0) or 0.0),
+            photo_path=str(data.get("photo_path", "") or ""),
+            note=str(data.get("note", "") or ""),
+        )
+
+
+@dataclass
 class WallPhotoDef:
     path: str = ""
     caption: str = ""
@@ -100,6 +129,7 @@ class WallLayoutDef:
     notes: str = ""
     obstacles: List[WallObstacleDef] = field(default_factory=list)
     photos: List[WallPhotoDef] = field(default_factory=list)
+    measurements: List[WallMeasurementDef] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -131,6 +161,7 @@ class WallLayoutDef:
             "notes": self.notes,
             "obstacles": [item.to_dict() for item in (self.obstacles or [])],
             "photos": [item.to_dict() for item in (self.photos or [])],
+            "measurements": [item.to_dict() for item in (self.measurements or [])],
         }
 
     @classmethod
@@ -152,6 +183,14 @@ class WallLayoutDef:
                 photos.append(item)
             elif isinstance(item, dict):
                 photos.append(WallPhotoDef.from_dict(item))
+
+        raw_measurements = data.get("measurements") or []
+        measurements: List[WallMeasurementDef] = []
+        for item in raw_measurements:
+            if isinstance(item, WallMeasurementDef):
+                measurements.append(item)
+            elif isinstance(item, dict):
+                measurements.append(WallMeasurementDef.from_dict(item))
 
         return cls(
             wall_id=str(data.get("wall_id", "") or ""),
@@ -182,4 +221,5 @@ class WallLayoutDef:
             notes=str(data.get("notes", "") or ""),
             obstacles=obstacles,
             photos=photos,
+            measurements=measurements,
         )
