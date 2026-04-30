@@ -8,12 +8,18 @@ import {
   AlertCircle,
   ChevronLeft,
   ChevronRight,
+  Copy,
   Download,
+  Edit3,
   FileDown,
+  FileText,
   Loader2,
+  Package,
+  Plus,
   RotateCcw,
   Save,
   Search,
+  Trash2,
   Upload,
   X,
 } from "lucide-react";
@@ -1464,6 +1470,34 @@ export default function NewOrderPage() {
     }
   };
 
+  const duplicatePosition = (positionId: string) => {
+    const found = positions.find((p) => p.id === positionId);
+    if (!found) return;
+    const newId = crypto.randomUUID();
+    const copyName = `${found.name} kopia`;
+    setPositions((prev) => [
+      ...prev,
+      {
+        ...found,
+        id: newId,
+        name: copyName,
+        sourceType: found.sourceType ?? "manual",
+      },
+    ]);
+    setSpecByTarget((prev) => {
+      const sourceSpec = prev[positionId] ?? prev[TECH_SCOPE_DEFAULT];
+      if (!sourceSpec) return prev;
+      return {
+        ...prev,
+        [newId]: {
+          ...sourceSpec,
+          accessories: [...sourceSpec.accessories],
+        },
+      };
+    });
+    setActivePositionId(newId);
+  };
+
   const cancelEditPosition = () => {
     setEditingPositionId(null);
     setPositionDraft({
@@ -2785,6 +2819,7 @@ export default function NewOrderPage() {
                         }}
                         disabled={!activePositionId || !serviceModeKeys.has(valuationMethod)}
                       >
+                        <Save className="h-3.5 w-3.5" />
                         Zastosuj do aktywnego
                       </Button>
                     </div>
@@ -2857,6 +2892,7 @@ export default function NewOrderPage() {
                         void addPosition();
                       }}
                     >
+                      <Plus className="h-3.5 w-3.5" />
                       {editingPositionId ? "Zapisz" : "+ Dodaj"}
                     </Button>
                     <Button
@@ -2865,6 +2901,7 @@ export default function NewOrderPage() {
                       onClick={cancelEditPosition}
                       disabled={!editingPositionId}
                     >
+                      <X className="h-3.5 w-3.5" />
                       Anuluj
                     </Button>
                   </div>
@@ -3314,18 +3351,44 @@ export default function NewOrderPage() {
                 <div className="mb-2 text-lg font-bold">Lista pozycji</div>
                 {isServicesMode ? (
                   <div className="space-y-3">
-                    <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                    <div className="flex flex-wrap items-center gap-2 rounded border border-[#33445f] bg-[#101722] px-2 py-1.5 text-[11px]">
+                      <span className="mr-2 font-black uppercase tracking-wider text-blue-200">
+                        Aktywna pozycja: {activePosition?.name || "-"}
+                      </span>
                       <Button
                         className="h-8"
-                        variant="secondary"
-                        disabled={!activePositionId}
-                        onClick={() => activePositionId && startEditPosition(activePositionId)}
+                        title="Dodaj pozycje z wpisanych parametrow"
+                        onClick={() => {
+                          void addPosition();
+                        }}
                       >
-                        Edytuj aktywny wiersz
+                        <Plus className="h-3.5 w-3.5" />
+                        Dodaj
                       </Button>
                       <Button
                         className="h-8"
                         variant="secondary"
+                        title="Edytuj aktywna pozycje"
+                        disabled={!activePositionId}
+                        onClick={() => activePositionId && startEditPosition(activePositionId)}
+                      >
+                        <Edit3 className="h-3.5 w-3.5" />
+                        Edytuj
+                      </Button>
+                      <Button
+                        className="h-8"
+                        variant="secondary"
+                        title="Dodaj podobna pozycje przez skopiowanie aktywnej"
+                        disabled={!activePositionId}
+                        onClick={() => activePositionId && duplicatePosition(activePositionId)}
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                        Kopiuj
+                      </Button>
+                      <Button
+                        className="h-8"
+                        variant="secondary"
+                        title="Specyfikacja aktywnej pozycji"
                         disabled={!activePositionId}
                         onClick={() => {
                           if (!activePositionId) return;
@@ -3333,11 +3396,13 @@ export default function NewOrderPage() {
                           void goToStep(3);
                         }}
                       >
-                        Specyfikacja aktywnego
+                        <FileText className="h-3.5 w-3.5" />
+                        Spec.
                       </Button>
                       <Button
                         className="h-8"
                         variant="secondary"
+                        title="Materialy aktywnej pozycji"
                         disabled={!activePositionId}
                         onClick={() => {
                           if (!activePositionId) return;
@@ -3345,11 +3410,13 @@ export default function NewOrderPage() {
                           void goToStep(5);
                         }}
                       >
-                        Materialy aktywnego
+                        <Package className="h-3.5 w-3.5" />
+                        Mat.
                       </Button>
                       <Button
                         className="h-8"
                         variant="secondary"
+                        title="Usun aktywna pozycje"
                         disabled={!activePositionId}
                         onClick={() => {
                           if (!activePositionId) return;
@@ -3358,7 +3425,8 @@ export default function NewOrderPage() {
                           removePosition(activePositionId);
                         }}
                       >
-                        Usun aktywna pozycje
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Usun
                       </Button>
                     </div>
 
