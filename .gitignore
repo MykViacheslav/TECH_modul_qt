@@ -87,6 +87,36 @@ Zrzut ekranu*.png
 *.sqlite3
 *.db
 
+# Frontend
+node_modules/
+frontend/node_modules/
+frontend/.next/
+.next/
+
+# Data backups
+data_backups/
+exports/
+
+# Debug screenshots and temp artifacts
+_debug_*.png
+_screenshots_hubs/
+screenshot_*.png
+skriny TECH_modul/
+artifacts/
+scratch/
+brain/
+_teczki_typow/
+
+# Faktury (sensitive business data)
+Faktury/
+
+# Gemini config
+.gemini/
+
+# Env example (allow)
+!.env.example
+
 # OS
 Thumbs.db
 Desktop.ini
+.DS_Store
