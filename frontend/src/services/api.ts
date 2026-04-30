@@ -2361,7 +2361,7 @@ export const TechModulAPI = {
   },
 
   async getDashboardV2(): Promise<DashboardV2Response> {
-    const res = await fetch(`${API_BASE_URL}/dashboard/v2`);
+    const res = await fetch(`${API_BASE_URL}/api/dashboard/v2`);
     if (!res.ok) throw new Error("Failed to fetch Dashboard V2");
     return res.json();
   },
