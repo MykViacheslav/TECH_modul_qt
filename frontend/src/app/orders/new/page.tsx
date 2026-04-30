@@ -2686,13 +2686,36 @@ export default function NewOrderPage() {
 
           {step === 2 ? (
             <div className="space-y-3">
-              <Card padded={false} className="rounded-md border-[#333] bg-[#1e1e1e] px-3 py-2.5 shadow-none backdrop-blur-none">
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <div className="text-[11px] font-black uppercase tracking-widest text-slate-300">
+              <Card padded={false} className="rounded-md border-[#333] bg-[#1e1e1e] px-3 py-2 shadow-none backdrop-blur-none">
+                <div className="flex items-center gap-3">
+                  <div className="w-24 shrink-0 text-[11px] font-black uppercase tracking-widest text-slate-300">
                     {isServicesMode ? "Typ uslugi" : "Metoda wyceny"}
                   </div>
+                  <div
+                    className={clsx(
+                      "grid min-w-0 flex-1 grid-cols-1 gap-1.5",
+                      isServicesMode ? "md:grid-cols-2 xl:grid-cols-4" : "md:grid-cols-4"
+                    )}
+                  >
+                    {(isServicesMode ? SERVICE_METHOD_OPTIONS : ORDER_METHOD_OPTIONS).map((method) => (
+                      <button
+                        key={method.key}
+                        onClick={() => {
+                          void handleValuationMethodSelect(method.key);
+                        }}
+                        className={clsx(
+                          "h-11 rounded border px-2 text-center text-[10px] font-black uppercase tracking-widest whitespace-pre-line",
+                          valuationMethod === method.key
+                            ? "border-blue-500 bg-blue-600/20 text-white"
+                            : "border-[#39465a] bg-[#242a34] text-slate-300"
+                        )}
+                      >
+                        {method.label}
+                      </button>
+                    ))}
+                  </div>
                   {isServicesMode ? (
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="shrink-0">
                       <Button
                         className="h-8"
                         variant="secondary"
@@ -2724,29 +2747,6 @@ export default function NewOrderPage() {
                       />
                     </div>
                   ) : null}
-                </div>
-                <div
-                  className={clsx(
-                    "grid grid-cols-1 gap-1.5",
-                    isServicesMode ? "md:grid-cols-2 xl:grid-cols-5" : "md:grid-cols-4"
-                  )}
-                >
-                  {(isServicesMode ? SERVICE_METHOD_OPTIONS : ORDER_METHOD_OPTIONS).map((method) => (
-                    <button
-                      key={method.key}
-                      onClick={() => {
-                        void handleValuationMethodSelect(method.key);
-                      }}
-                      className={clsx(
-                        "min-h-[54px] rounded border px-3 py-2 text-center text-[10px] font-black uppercase tracking-widest whitespace-pre-line",
-                        valuationMethod === method.key
-                          ? "border-blue-500 bg-blue-600/20 text-white"
-                          : "border-[#39465a] bg-[#242a34] text-slate-300"
-                      )}
-                    >
-                      {method.label}
-                    </button>
-                  ))}
                 </div>
               </Card>
 
