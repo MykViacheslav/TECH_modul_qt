@@ -2731,8 +2731,8 @@ export default function NewOrderPage() {
           ) : null}
 
           {step === 2 ? (
-            <div className="space-y-3">
-              <Card padded={false} className="rounded-md border-[#333] bg-[#1e1e1e] px-3 py-2 shadow-none backdrop-blur-none">
+            <div className="flex flex-col gap-3">
+              <Card padded={false} className="order-2 rounded-md border-[#333] bg-[#1e1e1e] px-3 py-2 shadow-none backdrop-blur-none">
                 <div className="flex items-center gap-3">
                   <div className="w-24 shrink-0 text-[11px] font-black uppercase tracking-widest text-slate-300">
                     {isServicesMode ? "Typ uslugi" : "Metoda wyceny"}
@@ -2797,14 +2797,40 @@ export default function NewOrderPage() {
               </Card>
 
               {isServicesMode && (
-                <Card padded={false} className="rounded-md border-[#333] bg-[#1e1e1e] px-3 py-2.5 shadow-none backdrop-blur-none">
+                <Card padded={false} className="order-1 rounded-md border-[#333] bg-[#1e1e1e] px-3 py-2 shadow-none backdrop-blur-none">
+                  <div className="grid grid-cols-1 gap-2 text-[11px] md:grid-cols-[120px_1fr_120px_140px_140px]">
+                    <div className="font-black uppercase tracking-widest text-blue-200">I Dane zlecenia</div>
+                    <div className="rounded border border-[#33445f] bg-[#101722] px-2 py-1">
+                      <span className="text-slate-500">Klient: </span>
+                      <span className="font-semibold text-slate-100">{form.clientName || "-"}</span>
+                    </div>
+                    <div className="rounded border border-[#33445f] bg-[#101722] px-2 py-1">
+                      <span className="text-slate-500">Data: </span>
+                      <span className="font-semibold text-slate-100">
+                        {new Date().toISOString().slice(0, 10)}
+                      </span>
+                    </div>
+                    <div className="rounded border border-[#33445f] bg-[#101722] px-2 py-1">
+                      <span className="text-slate-500">Gotowe od: </span>
+                      <span className="font-semibold text-slate-100">{form.deadlineFrom || "-"}</span>
+                    </div>
+                    <div className="rounded border border-[#33445f] bg-[#101722] px-2 py-1">
+                      <span className="text-slate-500">Do: </span>
+                      <span className="font-semibold text-slate-100">{form.deadlineTo || "-"}</span>
+                    </div>
+                  </div>
+                </Card>
+              )}
+
+              {isServicesMode && (
+                <Card padded={false} className="order-4 rounded-md border-[#333] bg-[#1e1e1e] px-3 py-2.5 shadow-none backdrop-blur-none">
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <div className="text-[12px] font-black uppercase tracking-widest text-slate-300">
-                        Nowa pozycja / parametry uslugi
+                        III Formatki aktywnej pozycji
                       </div>
                       <div className="mt-0.5 text-[10px] text-slate-500">
-                        Jedna pozycja: nazwa, material, okleina, wymiary i kalkulacja w jednym miejscu.
+                        Wymiary, material, okleina, strony oklejania i kalkulacja dla wybranej pozycji.
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-[11px]">
@@ -3347,8 +3373,10 @@ export default function NewOrderPage() {
               </Card>
               ) : null}
 
-              <Card className="border-[#333] bg-[#1e1e1e] p-4">
-                <div className="mb-2 text-lg font-bold">Lista pozycji</div>
+              <Card className={clsx("border-[#333] bg-[#1e1e1e] p-4", isServicesMode && "order-3")}>
+                <div className="mb-2 text-lg font-bold">
+                  {isServicesMode ? "II Pozycje materialu" : "Lista pozycji"}
+                </div>
                 {isServicesMode ? (
                   <div className="space-y-3">
                     <div className="flex flex-wrap items-center gap-2 rounded border border-[#33445f] bg-[#101722] px-2 py-1.5 text-[11px]">
@@ -3525,7 +3553,9 @@ export default function NewOrderPage() {
                     )}
 
                     <div className="rounded border border-blue-500/25 bg-blue-500/5 p-3 text-[11px]">
-                      <div className="font-black uppercase tracking-widest text-blue-200">Podsumowanie operacji</div>
+                      <div className="font-black uppercase tracking-widest text-blue-200">
+                        IV Ilosc materialow w zamowieniu
+                      </div>
                       <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-3">
                         <div className="rounded border border-[#33445f] bg-[#101925] px-3 py-2">
                           Suma m2: <span className="font-black">{serviceMaterialTables.global.totalM2.toFixed(3)}</span>
