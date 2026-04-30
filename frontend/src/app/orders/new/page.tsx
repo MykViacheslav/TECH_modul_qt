@@ -2838,15 +2838,16 @@ export default function NewOrderPage() {
                         Aktywny: {activePosition?.name || "-"}
                       </span>
                       <Button
-                        className="h-8"
+                        className="h-8 w-9 px-0"
                         variant="secondary"
+                        title="Zastosuj parametry do aktywnej pozycji"
+                        aria-label="Zastosuj parametry do aktywnej pozycji"
                         onClick={() => {
                           void applyServiceParamsToActiveRow();
                         }}
                         disabled={!activePositionId || !serviceModeKeys.has(valuationMethod)}
                       >
                         <Save className="h-3.5 w-3.5" />
-                        Zastosuj do aktywnego
                       </Button>
                     </div>
                   </div>
@@ -2913,22 +2914,24 @@ export default function NewOrderPage() {
                       }
                     />
                     <Button
-                      className="h-8"
+                      className="h-8 w-9 px-0"
+                      title={editingPositionId ? "Zapisz pozycje" : "Dodaj pozycje"}
+                      aria-label={editingPositionId ? "Zapisz pozycje" : "Dodaj pozycje"}
                       onClick={() => {
                         void addPosition();
                       }}
                     >
                       <Plus className="h-3.5 w-3.5" />
-                      {editingPositionId ? "Zapisz" : "+ Dodaj"}
                     </Button>
                     <Button
-                      className="h-8"
+                      className="h-8 w-9 px-0"
                       variant="secondary"
+                      title="Anuluj edycje pozycji"
+                      aria-label="Anuluj edycje pozycji"
                       onClick={cancelEditPosition}
                       disabled={!editingPositionId}
                     >
                       <X className="h-3.5 w-3.5" />
-                      Anuluj
                     </Button>
                   </div>
                   <input
@@ -3384,39 +3387,40 @@ export default function NewOrderPage() {
                         Aktywna pozycja: {activePosition?.name || "-"}
                       </span>
                       <Button
-                        className="h-8"
+                        className="h-8 w-9 px-0"
                         title="Dodaj pozycje z wpisanych parametrow"
+                        aria-label="Dodaj pozycje z wpisanych parametrow"
                         onClick={() => {
                           void addPosition();
                         }}
                       >
                         <Plus className="h-3.5 w-3.5" />
-                        Dodaj
                       </Button>
                       <Button
-                        className="h-8"
+                        className="h-8 w-9 px-0"
                         variant="secondary"
                         title="Edytuj aktywna pozycje"
+                        aria-label="Edytuj aktywna pozycje"
                         disabled={!activePositionId}
                         onClick={() => activePositionId && startEditPosition(activePositionId)}
                       >
                         <Edit3 className="h-3.5 w-3.5" />
-                        Edytuj
                       </Button>
                       <Button
-                        className="h-8"
+                        className="h-8 w-9 px-0"
                         variant="secondary"
                         title="Dodaj podobna pozycje przez skopiowanie aktywnej"
+                        aria-label="Dodaj podobna pozycje przez skopiowanie aktywnej"
                         disabled={!activePositionId}
                         onClick={() => activePositionId && duplicatePosition(activePositionId)}
                       >
                         <Copy className="h-3.5 w-3.5" />
-                        Kopiuj
                       </Button>
                       <Button
-                        className="h-8"
+                        className="h-8 w-9 px-0"
                         variant="secondary"
                         title="Specyfikacja aktywnej pozycji"
+                        aria-label="Specyfikacja aktywnej pozycji"
                         disabled={!activePositionId}
                         onClick={() => {
                           if (!activePositionId) return;
@@ -3425,12 +3429,12 @@ export default function NewOrderPage() {
                         }}
                       >
                         <FileText className="h-3.5 w-3.5" />
-                        Spec.
                       </Button>
                       <Button
-                        className="h-8"
+                        className="h-8 w-9 px-0"
                         variant="secondary"
                         title="Materialy aktywnej pozycji"
+                        aria-label="Materialy aktywnej pozycji"
                         disabled={!activePositionId}
                         onClick={() => {
                           if (!activePositionId) return;
@@ -3439,12 +3443,12 @@ export default function NewOrderPage() {
                         }}
                       >
                         <Package className="h-3.5 w-3.5" />
-                        Mat.
                       </Button>
                       <Button
-                        className="h-8"
+                        className="h-8 w-9 px-0"
                         variant="secondary"
                         title="Usun aktywna pozycje"
+                        aria-label="Usun aktywna pozycje"
                         disabled={!activePositionId}
                         onClick={() => {
                           if (!activePositionId) return;
@@ -3454,7 +3458,6 @@ export default function NewOrderPage() {
                         }}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
-                        Usun
                       </Button>
                     </div>
 
