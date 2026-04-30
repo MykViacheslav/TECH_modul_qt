@@ -11,12 +11,19 @@ export default function RootPage() {
   useEffect(() => {
     if (!loading) {
       if (user) {
-        router.push("/dashboard");
+        router.replace("/dashboard");
       } else {
-        router.push("/login");
+        router.replace("/login");
       }
     }
   }, [user, loading, router]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      router.replace("/login");
+    }, 2500);
+    return () => window.clearTimeout(timer);
+  }, [router]);
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center">
