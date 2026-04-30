@@ -42,6 +42,7 @@ import {
   Factory,
   HardHat,
   MonitorCheck,
+  ChevronDown,
   ChevronRight,
   Wrench,
 } from "lucide-react";
@@ -148,6 +149,17 @@ const NAV_GROUPS: NavGroup[] = [
   }
 ];
 
+const QUICK_NAV_ITEMS: NavItem[] = [
+  { href: "/dashboard", label: "Dash", icon: Home },
+  { href: "/orders/new", label: "Zlecenia", icon: FileText },
+  { href: "/stations/cnc", label: "CNC", icon: Cpu },
+  { href: "/stations/oklejanie", label: "Oklej.", icon: Layers },
+  { href: "/stations/lakiernia", label: "Lakier.", icon: Droplets },
+  { href: "/stations/montaz", label: "Montaż", icon: Hammer },
+  { href: "/stations/pakowanie", label: "Pak.", icon: Box },
+  { href: "/notifications", label: "Alerty", icon: BellRing },
+];
+
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -156,6 +168,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [selectedProjectId, setSelectedProjectId] = useSelectedProjectId(1);
   const [currentUser, , , logout] = useCurrentUser();
   const [notifSummary, setNotifSummary] = React.useState<NotificationSummary | null>(null);
+  const [expandedGroup, setExpandedGroup] = React.useState<string>("system");
 
   React.useEffect(() => {
     let active = true;
@@ -201,6 +214,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     if (query) return pathname === basePath;
     return pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
   };
+  const activeGroupId = visibleGroups.find((group) =>
+    group.items.some((item) => isItemActive(item.href))
+  )?.id;
+
+  React.useEffect(() => {
+    if (activeGroupId) setExpandedGroup(activeGroupId);
+  }, [activeGroupId]);
 
   return (
     <div className="h-screen w-screen bg-[#070708] flex flex-col overflow-hidden relative">
@@ -222,13 +242,34 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         {/* TOP MENU BAR (CAD Style) */}
         <header className="h-10 shrink-0 bg-[#2d2d2d] border-b border-[#111] flex items-center justify-between px-4 text-[11px] select-none z-20 relative">
-          <div className="flex items-center gap-4">
+          <div className="flex min-w-0 items-center gap-3">
             <div className="font-bold text-blue-500 tracking-widest uppercase mr-4">TechModul CAD</div>
             <button className="hover:bg-[#3e3e42] px-2 py-1 rounded-sm transition-colors text-slate-300">Plik</button>
             <button className="hover:bg-[#3e3e42] px-2 py-1 rounded-sm transition-colors text-slate-300">Edycja</button>
             <button className="hover:bg-[#3e3e42] px-2 py-1 rounded-sm transition-colors text-slate-300">Widok</button>
             <button className="hover:bg-[#3e3e42] px-2 py-1 rounded-sm transition-colors text-slate-300">Wstaw</button>
             <button className="hover:bg-[#3e3e42] px-2 py-1 rounded-sm transition-colors text-slate-300">Narzedzia</button>
+            <div className="ml-2 flex min-w-0 items-center gap-1 border-l border-white/10 pl-3">
+              {QUICK_NAV_ITEMS.slice(1, 7).map((item) => {
+                const isActive = isItemActive(item.href);
+                const ItemIcon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={clsx(
+                      "flex h-7 items-center gap-1.5 rounded-sm border px-2 text-[10px] font-semibold transition-colors",
+                      isActive
+                        ? "border-blue-500/40 bg-blue-500/15 text-blue-300"
+                        : "border-[#3e3e42] bg-[#242424] text-slate-400 hover:border-blue-500/30 hover:text-slate-100"
+                    )}
+                  >
+                    <ItemIcon className="h-3.5 w-3.5 shrink-0" strokeWidth={1.6} />
+                    <span className="truncate">{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
           </div>
 
           {/* Project Selector embedded in Top Bar */}
@@ -294,45 +335,55 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         <div className="flex flex-1 overflow-hidden">
-          {/* LEFT TOOLBAR (visible tabs - dense) */}
-          <aside className="w-56 shrink-0 bg-[#252526] border-r border-[#111] flex flex-col py-2 z-10">
-            <nav className="flex-1 flex flex-col gap-2 w-full overflow-y-auto custom-scrollbar px-2">
+          {/* LEFT TOOLBAR (quick access + compact groups) */}
+          <aside className="w-52 shrink-0 bg-[#252526] border-r border-[#111] flex flex-col py-2 z-10">
+            <nav className="flex-1 flex flex-col gap-1 w-full overflow-y-auto custom-scrollbar px-2">
               {visibleGroups.map((group) => {
                 const isAnyActive = group.items.some((item) => isItemActive(item.href));
                 const GroupIcon = group.icon;
+                const isExpanded = expandedGroup === group.id;
 
                 return (
                   <section key={group.id} className="border-b border-white/5 pb-1 last:border-b-0">
-                    <div
+                    <button
+                      type="button"
+                      onClick={() => setExpandedGroup((prev) => (prev === group.id ? "" : group.id))}
                       className={clsx(
-                        "mb-1 flex h-7 items-center gap-2 rounded-sm px-2 text-[10px] font-black uppercase tracking-[0.16em]",
+                        "mb-1 flex h-7 w-full items-center gap-2 rounded-sm px-2 text-[10px] font-black uppercase tracking-[0.16em]",
                         isAnyActive ? "bg-[#303038] text-blue-300" : "text-slate-500"
                       )}
                     >
                       <GroupIcon className="h-4 w-4" strokeWidth={1.5} />
-                      <span className="truncate">{group.label}</span>
-                    </div>
-                    <div className="space-y-0.5">
-                      {group.items.map((item) => {
-                        const isActive = isItemActive(item.href);
-                        const ItemIcon = item.icon;
-                        return (
-                          <Link
-                            key={item.href}
-                            href={item.href}
-                            className={clsx(
-                              "flex h-8 items-center gap-2 rounded-sm px-2 text-[12px] transition-colors",
-                              isActive
-                                ? "bg-blue-500/15 text-blue-300 shadow-[inset_3px_0_0_rgba(59,130,246,0.95)]"
-                                : "text-slate-400 hover:bg-[#303033] hover:text-slate-100"
-                            )}
-                          >
-                            <ItemIcon className="h-4 w-4 shrink-0" strokeWidth={1.5} />
-                            <span className="truncate">{item.label}</span>
-                          </Link>
-                        );
-                      })}
-                    </div>
+                      <span className="min-w-0 flex-1 truncate text-left">{group.label}</span>
+                      {isExpanded ? (
+                        <ChevronDown className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
+                      ) : (
+                        <ChevronRight className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
+                      )}
+                    </button>
+                    {isExpanded ? (
+                      <div className="space-y-0.5">
+                        {group.items.map((item) => {
+                          const isActive = isItemActive(item.href);
+                          const ItemIcon = item.icon;
+                          return (
+                            <Link
+                              key={item.href}
+                              href={item.href}
+                              className={clsx(
+                                "flex h-7 items-center gap-2 rounded-sm px-2 pl-3 text-[11px] transition-colors",
+                                isActive
+                                  ? "bg-blue-500/15 text-blue-300 shadow-[inset_3px_0_0_rgba(59,130,246,0.95)]"
+                                  : "text-slate-400 hover:bg-[#303033] hover:text-slate-100"
+                              )}
+                            >
+                              <ItemIcon className="h-3.5 w-3.5 shrink-0" strokeWidth={1.5} />
+                              <span className="truncate">{item.label}</span>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    ) : null}
                   </section>
                 );
               })}
