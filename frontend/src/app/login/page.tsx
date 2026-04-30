@@ -31,8 +31,8 @@ export default function LoginPage() {
   const loadTechnicians = async () => {
     setFetchingTechs(true);
     try {
-      const data = await TechModulAPI.getKioskWorkers();
-      setTechnicians(data);
+      const data = await TechModulAPI.getTechnicians();
+      setTechnicians(data.filter((item: any) => item.is_active !== 0));
     } catch (e) {
       console.error("Failed to load technicians", e);
     } finally {
@@ -53,8 +53,7 @@ export default function LoginPage() {
     setError("");
     
     try {
-      // Sending empty PIN as it's no longer required by the backend
-      await TechModulAPI.login(nameToLogin, "");
+      await TechModulAPI.login(nameToLogin, "1");
       window.location.href = "/";
     } catch (err: any) {
       setError(err.message || "Nieprawidłowe dane logowania.");
@@ -105,7 +104,7 @@ export default function LoginPage() {
               ) : (
                 technicians.map(t => (
                   <button
-                    key={t.worker_id}
+                    key={t.id}
                     onClick={() => handleLogin(undefined, t.name)}
                     className="p-3 rounded-xl bg-white/5 border border-white/5 text-left hover:border-brand/50 hover:bg-brand/5 transition-all group"
                   >

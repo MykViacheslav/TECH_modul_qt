@@ -185,7 +185,9 @@ class TechModulDataManager:
                     role TEXT DEFAULT 'produkcja',
                     pin_code TEXT DEFAULT '',
                     avatar_color TEXT DEFAULT '#3b82f6',
-                    last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    is_active INTEGER DEFAULT 1,
+                    password_hash TEXT DEFAULT ''
                 )
             ''')
             # Tabela Sesji Auth
@@ -197,6 +199,7 @@ class TechModulDataManager:
                     expires_at TIMESTAMP
                 )
             ''')
+            self._ensure_login_users(cursor)
             
             # NOWA: Tabela Faktur Przychodowych (Koszty)
             cursor.execute('''
@@ -1518,6 +1521,35 @@ class TechModulDataManager:
                 ("Kowalski Jan", "ul. Lesna 3, Krakow", "person", "archived"),
             )
             conn.commit()
+
+    def _ensure_login_users(self, cursor):
+        allowed_users = [
+            ("Admin", "wlasciciel", "#1e3a5f"),
+            ("В'ячеслав Микитюк", "wlasciciel", "#2563eb"),
+            ("Ірина Микитюк", "biuro", "#16a34a"),
+            ("Андрій Борщ", "produkcja", "#f97316"),
+            ("Емілія Кміта", "biuro", "#a855f7"),
+        ]
+        allowed_names = [name for name, _role, _color in allowed_users]
+        placeholders = ",".join("?" for _ in allowed_names)
+        cursor.execute(
+            f"UPDATE technicians SET is_active = 0 WHERE name NOT IN ({placeholders})",
+            tuple(allowed_names),
+        )
+        for name, role, color in allowed_users:
+            cursor.execute(
+                """
+                INSERT INTO technicians (name, role, pin_code, avatar_color, is_active, password_hash)
+                VALUES (?, ?, '1', ?, 1, '')
+                ON CONFLICT(name) DO UPDATE SET
+                    role = excluded.role,
+                    pin_code = '1',
+                    avatar_color = excluded.avatar_color,
+                    is_active = 1,
+                    password_hash = ''
+                """,
+                (name, role, color),
+            )
 
     def get_technicians(self) -> List[Dict]:
         with sqlite3.connect(self.db_path) as conn:
