@@ -1,6 +1,12 @@
 const rawApiBase = (process.env.NEXT_PUBLIC_API_URL ?? "").trim();
 const normalizedApiBase = rawApiBase.replace(/\s+/g, "").replace(/\/+$/, "");
-export const API_BASE_URL = normalizedApiBase || "http://localhost:8000";
+const browserHost = typeof window !== "undefined" ? window.location.hostname : "";
+const browserProtocol = typeof window !== "undefined" ? window.location.protocol : "http:";
+const isLocalBrowser = browserHost === "localhost" || browserHost === "127.0.0.1";
+const browserApiBase = browserHost ? `${browserProtocol}//${browserHost}:8000` : "";
+export const API_BASE_URL = isLocalBrowser
+  ? "http://localhost:8000"
+  : (normalizedApiBase || browserApiBase || "http://localhost:8000");
 
 export type AgentChange = {
   id: number;

@@ -4,19 +4,28 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { TechModulAPI } from "@/services/api";
 import { Card, Button } from "@/components/ui";
-import { Lock, User, AlertCircle, ArrowRight } from "lucide-react";
-import clsx from "clsx";
+import { AlertCircle, ArrowRight, Lock, User } from "lucide-react";
 import { useCurrentUser } from "@/services/user-context";
+
+type Technician = {
+  id: number;
+  name: string;
+  role: string;
+  avatar_color?: string;
+  is_active?: number;
+};
+
+const TEMP_PIN = "1";
 
 export default function LoginPage() {
   const router = useRouter();
   const [user, , loading] = useCurrentUser();
-  
-  const [username, setUsername] = useState("");
+  const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [technicians, setTechnicians] = useState<any[]>([]);
-  const [fetchingTechs, setFetchingTechs] = useState(false);
+  const [selectedName, setSelectedName] = useState("");
+  const [manualName, setManualName] = useState("");
+  const [manualPin, setManualPin] = useState(TEMP_PIN);
 
   useEffect(() => {
     if (!loading && user) {
@@ -25,39 +34,50 @@ export default function LoginPage() {
   }, [user, loading, router]);
 
   useEffect(() => {
-    loadTechnicians();
-  }, []);
+    if (loading || user) return;
+    TechModulAPI.getTechnicians()
+      .then((items) => {
+        const active = items.filter((item: Technician) => item.is_active !== 0);
+        setTechnicians(active);
+      })
+      .catch((err: any) => setError(err.message || "Nie udalo sie pobrac uzytkownikow."));
+  }, [loading, user]);
 
-  const loadTechnicians = async () => {
-    setFetchingTechs(true);
+  const handleLogin = async (tech: Technician) => {
+    setIsSubmitting(true);
+    setSelectedName(tech.name);
+    setError("");
+
     try {
-      const data = await TechModulAPI.getTechnicians();
-      setTechnicians(data.filter((item: any) => item.is_active !== 0));
-    } catch (e) {
-      console.error("Failed to load technicians", e);
-    } finally {
-      setFetchingTechs(false);
+      await TechModulAPI.login(tech.name, TEMP_PIN);
+      window.location.href = "/";
+    } catch (err: any) {
+      setError(err.message || "Nieprawidlowe dane logowania.");
+      setIsSubmitting(false);
+      setSelectedName("");
     }
   };
 
-  const handleLogin = async (e?: React.FormEvent, selectedName?: string) => {
-    if (e) e.preventDefault();
-    const nameToLogin = selectedName || username;
-    
-    if (!nameToLogin) {
-      setError("Wybierz lub wpisz użytkownika.");
+  const handleManualLogin = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const name = manualName.trim();
+    const pin = manualPin.trim() || TEMP_PIN;
+    if (!name) {
+      setError("Wpisz nazwe uzytkownika.");
       return;
     }
-    
+
     setIsSubmitting(true);
+    setSelectedName(name);
     setError("");
-    
+
     try {
-      await TechModulAPI.login(nameToLogin, "1");
+      await TechModulAPI.login(name, pin);
       window.location.href = "/";
     } catch (err: any) {
-      setError(err.message || "Nieprawidłowe dane logowania.");
+      setError(err.message || "Nieprawidlowe dane logowania.");
       setIsSubmitting(false);
+      setSelectedName("");
     }
   };
 
@@ -65,24 +85,25 @@ export default function LoginPage() {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
         <div className="animate-pulse text-slate-500 font-mono tracking-widest uppercase text-sm">
-          Wczytywanie modułu...
+          Wczytywanie modulu...
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden">
-      {/* Background glow */}
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden">
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-brand/10 blur-[100px] rounded-full pointer-events-none" />
-      
+
       <Card className="w-full max-w-lg p-8 relative z-10 border-white/10 bg-slate-900/80 backdrop-blur-xl">
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-brand/20 text-brand rounded-2xl mx-auto flex items-center justify-center mb-4 border border-brand/30 shadow-glow shadow-brand/20">
-            <User className="w-8 h-8" />
+            <Lock className="w-8 h-8" />
           </div>
-          <h1 className="text-2xl font-black text-white tracking-tight font-orbitron uppercase italic">TECH_modul<span className="text-brand">.OS</span></h1>
-          <p className="text-slate-400 mt-2 text-sm italic uppercase font-bold tracking-widest text-[10px]">Autoryzacja uproszczona</p>
+          <h1 className="text-2xl font-black text-white tracking-tight font-orbitron">
+            TECH_modul<span className="text-brand">.OS</span>
+          </h1>
+          <p className="text-slate-400 mt-2 text-sm">Wybierz uzytkownika, aby wejsc do systemu.</p>
         </div>
 
         {error && (
@@ -92,74 +113,60 @@ export default function LoginPage() {
           </div>
         )}
 
-        <div className="space-y-6">
-          {/* Quick Selection */}
-          <div className="space-y-3">
-            <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] block">Szybki wybór pracownika</label>
-            <div className="grid grid-cols-2 gap-2 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
-              {fetchingTechs ? (
-                <div className="col-span-2 py-4 text-center text-xs text-slate-600 italic">Ładowanie listy...</div>
-              ) : technicians.length === 0 ? (
-                <div className="col-span-2 py-4 text-center text-xs text-slate-600 italic">Brak zdefiniowanych pracowników</div>
-              ) : (
-                technicians.map(t => (
-                  <button
-                    key={t.id}
-                    onClick={() => handleLogin(undefined, t.name)}
-                    className="p-3 rounded-xl bg-white/5 border border-white/5 text-left hover:border-brand/50 hover:bg-brand/5 transition-all group"
-                  >
-                    <div className="text-[9px] font-black uppercase text-slate-500 group-hover:text-brand-hover mb-0.5">{t.role}</div>
-                    <div className="text-xs font-bold text-white group-hover:text-brand-hover">{t.name}</div>
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center" aria-hidden="true">
-              <div className="w-full border-t border-white/5"></div>
-            </div>
-            <div className="relative flex justify-center">
-              <span className="px-2 bg-slate-900/0 text-[10px] font-black uppercase tracking-widest text-slate-600">lub wpisz ręcznie</span>
-            </div>
-          </div>
-
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div className="space-y-1.5">
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                <input
-                  type="text"
-                  value={username}
-                  onChange={e => setUsername(e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 rounded-lg pl-10 pr-4 py-2.5 text-white outline-none focus:border-brand focus:ring-1 focus:ring-brand/50 transition-all"
-                  placeholder="Nazwa użytkownika"
-                  autoComplete="username"
-                />
-              </div>
-            </div>
-
-            <Button 
-              type="submit" 
+        <div className="grid gap-3">
+          {technicians.map((tech) => (
+            <Button
+              key={tech.id}
+              type="button"
               disabled={isSubmitting}
-              className="w-full py-3 bg-brand text-white hover:bg-brand/90 font-black uppercase tracking-widest text-xs shadow-glow shadow-brand/20 rounded-xl"
+              onClick={() => handleLogin(tech)}
+              className="w-full justify-between py-4 bg-black/30 border border-white/10 text-white hover:bg-brand/20 hover:border-brand/50"
             >
-              {isSubmitting ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <span className="flex items-center gap-3 min-w-0">
+                <span
+                  className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+                  style={{ backgroundColor: tech.avatar_color || "#1e3a5f" }}
+                >
+                  <User className="w-4 h-4 text-white" />
+                </span>
+                <span className="text-left min-w-0">
+                  <span className="block font-bold truncate">{tech.name}</span>
+                  <span className="block text-xs text-slate-400 uppercase tracking-wide">{tech.role}</span>
+                </span>
+              </span>
+              {isSubmitting && selectedName === tech.name ? (
+                <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin shrink-0" />
               ) : (
-                <>Wejdź do systemu <ArrowRight className="w-4 h-4 ml-2" /></>
+                <ArrowRight className="w-4 h-4 shrink-0" />
               )}
             </Button>
-          </form>
+          ))}
         </div>
-      </Card>
 
-      <div className="mt-8 text-center">
-        <p className="text-[10px] text-slate-600 font-bold uppercase tracking-[0.2em]">
-          Tech Modul Professional v2.4 &middot; Industrial OS
-        </p>
-      </div>
+        <form onSubmit={handleManualLogin} className="mt-6 grid gap-3 border-t border-white/10 pt-5">
+          <div className="grid gap-2 sm:grid-cols-[1fr_120px]">
+            <input
+              type="text"
+              value={manualName}
+              onChange={(event) => setManualName(event.target.value)}
+              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2.5 text-white outline-none focus:border-brand focus:ring-1 focus:ring-brand/50 transition-all"
+              placeholder="Nazwa uzytkownika"
+              autoComplete="username"
+            />
+            <input
+              type="password"
+              value={manualPin}
+              onChange={(event) => setManualPin(event.target.value)}
+              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2.5 text-white outline-none focus:border-brand focus:ring-1 focus:ring-brand/50 transition-all"
+              placeholder="PIN"
+              autoComplete="current-password"
+            />
+          </div>
+          <Button type="submit" disabled={isSubmitting} className="w-full py-2.5 bg-brand text-white hover:bg-brand/90 font-bold">
+            Wejdz recznie
+          </Button>
+        </form>
+      </Card>
     </div>
   );
 }
