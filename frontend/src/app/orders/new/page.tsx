@@ -1233,10 +1233,13 @@ export default function NewOrderPage() {
     if (!positionDraft.name.trim()) return;
     const normalizedName = positionDraft.name.trim();
     const isServiceMethodSelected = serviceModeKeys.has(valuationMethod);
+    const normalizedQuantity = isServiceMethodSelected
+      ? Math.max(1, Number(serviceEstimator.qty) || 1)
+      : Math.max(1, Number(positionDraft.quantity) || 1);
     let pricingInput: Record<string, unknown> | undefined;
     let pricingResult: ServicePricingResult | null = null;
     if (isServiceMethodSelected) {
-      pricingInput = buildServicePricingInput({ mode: valuationMethod, qty: Number(positionDraft.quantity) || 1 });
+      pricingInput = buildServicePricingInput({ mode: valuationMethod, qty: normalizedQuantity });
       pricingResult = await requestServicePricingPreview(pricingInput);
       if (!pricingResult) return;
     }
@@ -1248,7 +1251,7 @@ export default function NewOrderPage() {
     const nextPayload = {
       name: normalizedName,
       type: positionDraft.type,
-      quantity: Number(positionDraft.quantity) || 1,
+      quantity: normalizedQuantity,
       vat: normalizedVat,
       description: positionDraft.description.trim(),
       textureOrColor: positionDraft.textureOrColor.trim(),
@@ -1511,6 +1514,15 @@ export default function NewOrderPage() {
               servicePricing: pricingResult,
               serviceEstimatedNet: pricingResult.buckets.net_total,
               serviceSummary: pricingResult.summary_text,
+              quantity: Math.max(1, Number(nextInput.quantity ?? row.quantity) || 1),
+              baseMaterialName: selectedServiceMaterial?.name || row.baseMaterialName,
+              lengthMm: Math.max(0, Number(nextInput.length_mm) || 0),
+              widthMm: Math.max(0, Number(nextInput.width_mm) || 0),
+              thicknessMm: Math.max(0, Number(nextInput.base_thickness_mm) || 0),
+              edgeTop: Boolean(nextInput.edge_top),
+              edgeBottom: Boolean(nextInput.edge_bottom),
+              edgeLeft: Boolean(nextInput.edge_left),
+              edgeRight: Boolean(nextInput.edge_right),
             }
           : row
       )
@@ -2778,25 +2790,13 @@ export default function NewOrderPage() {
                     </div>
                   </div>
 
-                  <div className="mb-2 grid grid-cols-1 gap-2 xl:grid-cols-[1fr_72px_80px_120px_150px_170px_120px_100px]">
+                  <div className="mb-2 grid grid-cols-1 gap-2 xl:grid-cols-[1fr_80px_120px_150px_170px_120px_100px]">
                     <input
                       className={baseInput}
                       placeholder="Nazwa pozycji, np. Kuchnia"
                       value={positionDraft.name}
                       onChange={(e) =>
                         setPositionDraft((prev) => ({ ...prev, name: e.target.value }))
-                      }
-                    />
-                    <input
-                      type="number"
-                      className={baseInput}
-                      title="Ilosc"
-                      value={positionDraft.quantity}
-                      onChange={(e) =>
-                        setPositionDraft((prev) => ({
-                          ...prev,
-                          quantity: Number(e.target.value) || 1,
-                        }))
                       }
                     />
                     <input
@@ -2888,7 +2888,7 @@ export default function NewOrderPage() {
                         <th className="px-2 py-1.5 text-left">Dl (mm)</th>
                         <th className="px-2 py-1.5 text-left">Sz (mm)</th>
                         <th className="px-2 py-1.5 text-left">Gr (mm)</th>
-                        <th className="px-2 py-1.5 text-left">Ilosc</th>
+                        <th className="px-2 py-1.5 text-left">Ilosc formatek</th>
                         <th className="px-2 py-1.5 text-left">Okleina</th>
                         <th className="px-2 py-1.5 text-center">Gora</th>
                         <th className="px-2 py-1.5 text-center">Dol</th>
@@ -3369,7 +3369,10 @@ export default function NewOrderPage() {
                               <span className="font-black uppercase tracking-wider text-blue-200">Material: </span>
                               <span className="font-semibold text-slate-100">{group.materialName}</span>
                             </div>
-                            <div className="text-slate-300">m2: {group.totalM2.toFixed(3)}</div>
+                            <div className="flex flex-wrap items-center gap-3 text-slate-300">
+                              <span>m2: {group.totalM2.toFixed(3)}</span>
+                              <span>netto: {group.totalNet.toFixed(2)} zl</span>
+                            </div>
                           </div>
                           <table className="w-full border-collapse">
                             <thead className="bg-[#bcc8da] text-[#0b1c39]">
@@ -3380,7 +3383,7 @@ export default function NewOrderPage() {
                                 <th className="px-2 py-2 text-left">Dl</th>
                                 <th className="px-2 py-2 text-left">Sz</th>
                                 <th className="px-2 py-2 text-left">Gr</th>
-                                <th className="px-2 py-2 text-left">Ilosc</th>
+                                <th className="px-2 py-2 text-left">Ilosc formatek</th>
                                 <th className="px-2 py-2 text-left">Tekstura/Kolor</th>
                                 <th className="px-2 py-2 text-left">Nazwa</th>
                                 <th className="px-2 py-2 text-center">OG</th>
@@ -3419,7 +3422,9 @@ export default function NewOrderPage() {
                                     <td className="px-2 py-2">{getRowNumberField(item, "length_mm", 0)}</td>
                                     <td className="px-2 py-2">{getRowNumberField(item, "width_mm", 0)}</td>
                                     <td className="px-2 py-2">{getRowNumberField(item, "base_thickness_mm", 0)}</td>
-                                    <td className="px-2 py-2">{item.quantity}</td>
+                                    <td className="px-2 py-2">
+                                      {Math.max(1, Number(input.quantity ?? item.quantity) || 1)}
+                                    </td>
                                     <td className="px-2 py-2">{item.textureOrColor || "-"}</td>
                                     <td className="px-2 py-2 font-semibold">{item.name}</td>
                                     <td className="px-2 py-2 text-center">{Boolean(input.edge_top) ? "✓" : ""}</td>
