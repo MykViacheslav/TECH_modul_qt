@@ -2773,12 +2773,24 @@ export default function NewOrderPage() {
                         Jedna pozycja: nazwa, material, okleina, wymiary i kalkulacja w jednym miejscu.
                       </div>
                     </div>
-                    <span className="rounded border border-[#33445f] bg-[#121b2b] px-2 py-1 text-[11px] text-slate-300">
-                      Aktywny: {activePosition?.name || "-"}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                      <span className="rounded border border-[#33445f] bg-[#121b2b] px-2 py-1 text-slate-300">
+                        Aktywny: {activePosition?.name || "-"}
+                      </span>
+                      <Button
+                        className="h-8"
+                        variant="secondary"
+                        onClick={() => {
+                          void applyServiceParamsToActiveRow();
+                        }}
+                        disabled={!activePositionId || !serviceModeKeys.has(valuationMethod)}
+                      >
+                        Zastosuj do aktywnego
+                      </Button>
+                    </div>
                   </div>
 
-                  <div className="mb-2 grid grid-cols-1 gap-2 xl:grid-cols-[1fr_80px_120px_150px_170px]">
+                  <div className="mb-2 grid grid-cols-1 gap-2 xl:grid-cols-[1fr_80px_120px_150px_170px_120px_100px]">
                     <input
                       className={baseInput}
                       placeholder="Nazwa pozycji, np. Kuchnia"
@@ -2839,6 +2851,22 @@ export default function NewOrderPage() {
                         }))
                       }
                     />
+                    <Button
+                      className="h-8"
+                      onClick={() => {
+                        void addPosition();
+                      }}
+                    >
+                      {editingPositionId ? "Zapisz" : "+ Dodaj"}
+                    </Button>
+                    <Button
+                      className="h-8"
+                      variant="secondary"
+                      onClick={cancelEditPosition}
+                      disabled={!editingPositionId}
+                    >
+                      Anuluj
+                    </Button>
                   </div>
                   <input
                     className={clsx(baseInput, "mb-2")}
@@ -2853,7 +2881,7 @@ export default function NewOrderPage() {
                   />
 
                 <div className="rounded border border-[#33445f] bg-[#101722] overflow-x-auto">
-                  <table className="w-full min-w-[1540px] text-[11px]">
+                  <table className="w-full min-w-[1360px] text-[11px]">
                     <thead className="bg-[#d4dde9] text-[#0f172a]">
                       <tr className="uppercase tracking-wide font-black">
                         <th className="px-2 py-1.5 text-left">Material bazowy</th>
@@ -2868,7 +2896,6 @@ export default function NewOrderPage() {
                         <th className="px-2 py-1.5 text-center">Prawa</th>
                         <th className="px-2 py-1.5 text-left">Wybrana okleina</th>
                         <th className="px-2 py-1.5 text-left">Status materialu</th>
-                        <th className="px-2 py-1.5 text-left">Akcja pozycji</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2979,26 +3006,6 @@ export default function NewOrderPage() {
                             : selectedServiceMaterial
                             ? `Material: ${selectedServiceMaterial.name}`
                             : "Material nie wybrany"}
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              className="h-8 min-w-[118px]"
-                              onClick={() => {
-                                void addPosition();
-                              }}
-                            >
-                              {editingPositionId ? "Zapisz pozycje" : "+ Dodaj pozycje"}
-                            </Button>
-                            <Button
-                              className="h-8 min-w-[90px]"
-                              variant="secondary"
-                              onClick={cancelEditPosition}
-                              disabled={!editingPositionId}
-                            >
-                              Anuluj
-                            </Button>
-                          </div>
                         </td>
                       </tr>
                     </tbody>
@@ -3340,6 +3347,19 @@ export default function NewOrderPage() {
                       >
                         Materialy aktywnego
                       </Button>
+                      <Button
+                        className="h-8"
+                        variant="secondary"
+                        disabled={!activePositionId}
+                        onClick={() => {
+                          if (!activePositionId) return;
+                          const activeName = activePosition?.name || "aktywny wiersz";
+                          if (!window.confirm(`Usunac pozycje "${activeName}"?`)) return;
+                          removePosition(activePositionId);
+                        }}
+                      >
+                        Usun aktywna pozycje
+                      </Button>
                     </div>
 
                     {serviceMaterialTables.groups.length === 0 ? (
@@ -3378,7 +3398,6 @@ export default function NewOrderPage() {
                                 <th className="px-2 py-2 text-left">Okleina</th>
                                 <th className="px-2 py-2 text-left">Kod</th>
                                 <th className="px-2 py-2 text-left">Opis</th>
-                                <th className="px-2 py-2 text-left">Akcja</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -3420,31 +3439,6 @@ export default function NewOrderPage() {
                                     <td className="px-2 py-2">{edgeName || "-"}</td>
                                     <td className="px-2 py-2">{String(input.part_code ?? input.code ?? "-")}</td>
                                     <td className="px-2 py-2">{item.description || "-"}</td>
-                                    <td className="px-2 py-2">
-                                      <div className="flex items-center gap-1.5">
-                                        <Button
-                                          className="h-7 px-2 text-[10px]"
-                                          variant="secondary"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            startEditPosition(item.id);
-                                          }}
-                                        >
-                                          Edytuj
-                                        </Button>
-                                        <Button
-                                          className="h-7 px-2 text-[10px]"
-                                          variant="secondary"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (!window.confirm(`Usunac pozycje "${item.name}"?`)) return;
-                                            removePosition(item.id);
-                                          }}
-                                        >
-                                          Usun
-                                        </Button>
-                                      </div>
-                                    </td>
                                   </tr>
                                 );
                               })}
