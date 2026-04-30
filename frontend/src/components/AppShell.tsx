@@ -151,6 +151,7 @@ const NAV_GROUPS: NavGroup[] = [
 
 const QUICK_NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dash", icon: Home },
+  { href: "/biuro", label: "BIURO", icon: Monitor },
   { href: "/orders/new", label: "Zlecenia", icon: FileText },
   { href: "/stations/cnc", label: "CNC", icon: Cpu },
   { href: "/stations/oklejanie", label: "Oklej.", icon: Layers },
@@ -250,7 +251,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <button className="hover:bg-[#3e3e42] px-2 py-1 rounded-sm transition-colors text-slate-300">Wstaw</button>
             <button className="hover:bg-[#3e3e42] px-2 py-1 rounded-sm transition-colors text-slate-300">Narzedzia</button>
             <div className="ml-2 flex min-w-0 items-center gap-1 border-l border-white/10 pl-3">
-              {QUICK_NAV_ITEMS.slice(1, 7).map((item) => {
+              {QUICK_NAV_ITEMS.slice(1, 8).map((item) => {
                 const isActive = isItemActive(item.href);
                 const ItemIcon = item.icon;
                 return (
