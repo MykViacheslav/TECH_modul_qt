@@ -2031,15 +2031,15 @@ export default function NewOrderPage() {
           </div>
         </div>
 
-        <div className="h-10 shrink-0 border-b border-[#1a1a1a] bg-[#252526] px-4">
-          <div className="flex h-full items-center justify-between gap-4">
+        <div className="h-10 shrink-0 border-b border-[#1a1a1a] bg-[#252526] px-3">
+          <div className="flex h-full items-center justify-between gap-2">
             <div className="text-[11px] font-black text-slate-300">
               {step}/{STEPS.length} {currentStepLabel}
             </div>
             <div className="flex items-center gap-2">
               <Button
                 variant="ghost"
-                className="h-9"
+                className="h-8"
                 onClick={() => {
                   void goToStep(step - 1);
                 }}
@@ -2048,14 +2048,14 @@ export default function NewOrderPage() {
               </Button>
               <Button
                 variant="ghost"
-                className="h-9"
+                className="h-8"
                 onClick={() => {
                   void goToStep(step + 1);
                 }}
               >
                 Dalej <ChevronRight className="h-4 w-4" />
               </Button>
-              <Button className="h-9" onClick={saveOrder} disabled={!canSaveOrder || savingOrder}>
+              <Button className="h-8" onClick={saveOrder} disabled={!canSaveOrder || savingOrder}>
                 {savingOrder ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
@@ -2064,22 +2064,22 @@ export default function NewOrderPage() {
                 Zapisz
               </Button>
               <Button
-                className="h-9"
+                className="h-8"
                 variant="secondary"
                 onClick={saveClientToDatabase}
                 disabled={savingClient || !clientDisplayName.trim()}
               >
                 Dodaj bazy
               </Button>
-              <Button className="h-9" variant="secondary" onClick={clearForm}>
+              <Button className="h-8" variant="secondary" onClick={clearForm}>
                 <RotateCcw className="h-4 w-4" /> Wyczysc
               </Button>
             </div>
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto custom-scrollbar p-4">
-          <div className="mb-4">
+        <div className="flex-1 overflow-auto custom-scrollbar px-3 py-2">
+          <div className="mb-2">
             <BusinessHealthStrip
               scope={isServicesMode ? "Uslugi i wyceny" : "Zamowienia i wyceny"}
               subtitle={
@@ -2113,9 +2113,9 @@ export default function NewOrderPage() {
           ) : null}
 
           {step === 1 ? (
-            <div className="space-y-4">
-              <Card className="border-[#111] bg-[#1e1e1e] p-3">
-                <div className="flex items-center gap-3">
+            <div className="space-y-2">
+              <Card padded={false} className="rounded-md border-[#1f1f1f] bg-[#202020] px-3 py-2 shadow-none backdrop-blur-none">
+                <div className="flex items-center gap-2">
                   <div className="relative flex-1">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                     <input
@@ -2155,7 +2155,7 @@ export default function NewOrderPage() {
                         }
                       }}
                       placeholder="Wybierz z bazy: zacznij pisac nazwisko, telefon lub adres..."
-                      className="w-full rounded-xl border border-[#444] bg-[#2d2d2d] py-2 pl-9 pr-3 text-[12px] outline-none focus:border-blue-500"
+                      className="w-full rounded-md border border-[#444] bg-[#2d2d2d] py-1.5 pl-9 pr-3 text-[12px] outline-none focus:border-blue-500"
                     />
                     {showClientDropdown && clientQuery.trim() && filteredClients.length > 0 ? (
                       <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-xl border border-[#444] bg-[#1e1e1e] shadow-lg">
@@ -2209,11 +2209,11 @@ export default function NewOrderPage() {
                   </button>
                 </div>
               </Card>
-              <Card className="border-[#111] bg-[#252526] p-4">
-                <div className="mb-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
+              <Card padded={false} className="rounded-md border-[#1f1f1f] bg-[#252526] px-3 py-2.5 shadow-none backdrop-blur-none">
+                <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
                   Dane kontrahenta
                 </div>
-                <div className="grid grid-cols-1 gap-3 xl:grid-cols-6">
+                <div className="grid grid-cols-1 gap-x-3 gap-y-2 xl:grid-cols-6">
                   <div className="xl:col-span-2">
                     <label className="mb-1 block text-[10px] uppercase tracking-wider text-slate-500">
                       Typ

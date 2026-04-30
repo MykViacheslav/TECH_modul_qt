@@ -95,11 +95,12 @@ export default function BusinessHealthStrip({
   const [summary, setSummary] = useState<GlobalSystemSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [collapsed, setCollapsed] = useState<boolean>(false);
+  const [collapsed, setCollapsed] = useState<boolean>(true);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    setCollapsed(window.localStorage.getItem("businessPulse.collapsed") === "1");
+    const stored = window.localStorage.getItem("businessPulse.collapsed");
+    setCollapsed(stored == null ? true : stored === "1");
   }, []);
 
   const toggleCollapsed = () => {
@@ -159,10 +160,10 @@ export default function BusinessHealthStrip({
       <button
         type="button"
         onClick={toggleCollapsed}
-        className="flex w-full items-center justify-between gap-3 rounded-2xl border border-cyan-500/15 bg-[#081223]/85 px-4 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-[#0d1830]/85"
+        className="flex w-full items-center justify-between gap-2 rounded-md border border-cyan-500/15 bg-[#101820] px-3 py-1.5 text-left text-sm text-slate-200 transition-colors hover:bg-[#14202b]"
         title="Rozwin Business Pulse"
       >
-        <span className="inline-flex items-center gap-3">
+        <span className="inline-flex items-center gap-2">
           <span className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-300/70">Business Pulse</span>
           <span className="text-sm font-bold text-white">{scope}</span>
         </span>
@@ -173,7 +174,7 @@ export default function BusinessHealthStrip({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-between rounded-2xl border border-cyan-500/20 bg-[#081221]/85 px-4 py-3 text-sm text-slate-300">
+      <div className="flex items-center justify-between rounded-md border border-cyan-500/20 bg-[#101820] px-3 py-2 text-sm text-slate-300">
         <span className="inline-flex items-center gap-2">
           <Loader2 className="h-4 w-4 animate-spin" /> Ladowanie pulsu firmy...
         </span>
@@ -191,7 +192,7 @@ export default function BusinessHealthStrip({
 
   if (error) {
     return (
-      <div className="flex items-center justify-between rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+      <div className="flex items-center justify-between rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
         <span className="inline-flex items-center gap-2 font-bold">
           <AlertTriangle className="h-4 w-4" /> {error}
         </span>
@@ -223,8 +224,8 @@ export default function BusinessHealthStrip({
       : "text-amber-300";
 
   return (
-    <section className="space-y-3 rounded-[28px] border border-cyan-500/15 bg-gradient-to-br from-[#081223] via-[#0d1830] to-[#0b1120] p-4 shadow-[0_18px_60px_rgba(3,10,24,0.4)]">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    <section className="space-y-2 rounded-md border border-cyan-500/15 bg-[#101820] p-3 shadow-[0_10px_28px_rgba(3,10,24,0.28)]">
+      <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <div className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-300/70">Business Pulse</div>
           <h2 className="text-2xl font-black text-white">{scope}</h2>
