@@ -60,6 +60,17 @@ type PositionItem = {
   edgeLeft?: boolean;
   edgeRight?: boolean;
   technologySummary?: ImportedTechnologySummary;
+  serviceFormatki?: ServiceFormatka[];
+};
+
+type ServiceFormatka = {
+  id: string;
+  name: string;
+  quantity: number;
+  servicePricingInput: Record<string, unknown>;
+  servicePricing?: ServicePricingResult;
+  serviceEstimatedNet?: number;
+  description?: string;
 };
 
 type AttachmentItem = {
@@ -446,6 +457,22 @@ export default function NewOrderPage() {
 
   const currentSpec = specByTarget[specTargetId] ?? specByTarget[TECH_SCOPE_DEFAULT];
   const activePosition = positions.find((p) => p.id === activePositionId) ?? null;
+  const activeServiceFormatki =
+    activePosition?.serviceFormatki && activePosition.serviceFormatki.length > 0
+      ? activePosition.serviceFormatki
+      : activePosition?.servicePricingInput
+      ? [
+          {
+            id: `${activePosition.id}-main-formatka`,
+            name: activePosition.name,
+            quantity: activePosition.quantity,
+            servicePricingInput: activePosition.servicePricingInput,
+            servicePricing: activePosition.servicePricing,
+            serviceEstimatedNet: activePosition.serviceEstimatedNet,
+            description: activePosition.description,
+          },
+        ]
+      : [];
 
   const setCurrentSpec = (updater: (prev: TechnicalSpecConfig) => TechnicalSpecConfig) => {
     setSpecByTarget((prev) => {
@@ -655,7 +682,25 @@ export default function NewOrderPage() {
     const globalEdges: Record<string, number> = {};
 
     for (const row of positions) {
-      const payload = getRowPricingInput(row);
+      const formatki =
+        row.serviceFormatki && row.serviceFormatki.length > 0
+          ? row.serviceFormatki
+          : row.servicePricingInput
+          ? [
+              {
+                id: `${row.id}-main-formatka`,
+                name: row.name,
+                quantity: row.quantity,
+                servicePricingInput: row.servicePricingInput,
+                servicePricing: row.servicePricing,
+                serviceEstimatedNet: row.serviceEstimatedNet,
+                description: row.description,
+              } satisfies ServiceFormatka,
+            ]
+          : [];
+
+      for (const formatka of formatki) {
+      const payload = formatka.servicePricingInput;
       const materialName =
         getRowStringField(row, "base_material_name", "").trim() ||
         resolveMaterialName(String(payload.base_material_id ?? "")) ||
@@ -682,10 +727,10 @@ export default function NewOrderPage() {
       globalM2 += areaM2;
 
       const rowNet =
-        typeof row.servicePricing?.buckets?.net_total === "number"
-          ? row.servicePricing.buckets.net_total
-          : typeof row.serviceEstimatedNet === "number"
-          ? row.serviceEstimatedNet
+        typeof formatka.servicePricing?.buckets?.net_total === "number"
+          ? formatka.servicePricing.buckets.net_total
+          : typeof formatka.serviceEstimatedNet === "number"
+          ? formatka.serviceEstimatedNet
           : 0;
       group.totalNet += rowNet;
       globalNet += rowNet;
@@ -707,6 +752,7 @@ export default function NewOrderPage() {
         const edgeName = resolveMaterialName(sideMaterialId) || "Nie wybrano okleiny";
         group.edgeByMaterial[edgeName] = (group.edgeByMaterial[edgeName] || 0) + side.lengthMb;
         globalEdges[edgeName] = (globalEdges[edgeName] || 0) + side.lengthMb;
+      }
       }
     }
 
@@ -1276,6 +1322,20 @@ export default function NewOrderPage() {
       edgeBottom: Boolean(serviceEstimator.edgeBottom),
       edgeLeft: Boolean(serviceEstimator.edgeLeft),
       edgeRight: Boolean(serviceEstimator.edgeRight),
+      serviceFormatki:
+        isServiceMethodSelected && pricingInput
+          ? [
+              {
+                id: crypto.randomUUID(),
+                name: normalizedName,
+                quantity: normalizedQuantity,
+                servicePricingInput: pricingInput,
+                servicePricing: pricingResult ?? undefined,
+                serviceEstimatedNet: pricingResult?.buckets?.net_total,
+                description: positionDraft.description.trim(),
+              } satisfies ServiceFormatka,
+            ]
+          : undefined,
     };
 
     if (editingPositionId) {
@@ -1496,6 +1556,47 @@ export default function NewOrderPage() {
       };
     });
     setActivePositionId(newId);
+  };
+
+  const addFormatkaToActivePosition = async () => {
+    if (!activePositionId || !serviceModeKeys.has(valuationMethod)) return;
+    const pricingInput = buildServicePricingInput({ mode: valuationMethod });
+    const pricingResult = await requestServicePricingPreview(pricingInput);
+    if (!pricingResult) return;
+    const nextFormatka: ServiceFormatka = {
+      id: crypto.randomUUID(),
+      name: positionDraft.name.trim() || `Formatka ${activeServiceFormatki.length + 1}`,
+      quantity: Math.max(1, Number(pricingInput.quantity) || 1),
+      servicePricingInput: pricingInput,
+      servicePricing: pricingResult,
+      serviceEstimatedNet: pricingResult.buckets.net_total,
+      description: positionDraft.description.trim(),
+    };
+    setPositions((prev) =>
+      prev.map((row) => {
+        if (row.id !== activePositionId) return row;
+        const existing =
+          row.serviceFormatki && row.serviceFormatki.length > 0
+            ? row.serviceFormatki
+            : row.servicePricingInput
+            ? [
+                {
+                  id: `${row.id}-main-formatka`,
+                  name: row.name,
+                  quantity: row.quantity,
+                  servicePricingInput: row.servicePricingInput,
+                  servicePricing: row.servicePricing,
+                  serviceEstimatedNet: row.serviceEstimatedNet,
+                  description: row.description,
+                } satisfies ServiceFormatka,
+              ]
+            : [];
+        return {
+          ...row,
+          serviceFormatki: [...existing, nextFormatka],
+        };
+      })
+    );
   };
 
   const cancelEditPosition = () => {
@@ -2797,9 +2898,9 @@ export default function NewOrderPage() {
               </Card>
 
               {isServicesMode && (
-                <Card padded={false} className="order-1 rounded-md border-[#333] bg-[#1e1e1e] px-3 py-2 shadow-none backdrop-blur-none">
+                <Card padded={false} className="order-1 rounded-none border-x-0 border-[#333] bg-[#1e1e1e] px-3 py-1.5 shadow-none backdrop-blur-none">
                   <div className="grid grid-cols-1 gap-2 text-[11px] md:grid-cols-[120px_1fr_120px_140px_140px]">
-                    <div className="font-black uppercase tracking-widest text-blue-200">I Dane zlecenia</div>
+                    <div className="font-black uppercase tracking-widest text-blue-200">Dane zlecenia</div>
                     <div className="rounded border border-[#33445f] bg-[#101722] px-2 py-1">
                       <span className="text-slate-500">Klient: </span>
                       <span className="font-semibold text-slate-100">{form.clientName || "-"}</span>
@@ -2823,14 +2924,11 @@ export default function NewOrderPage() {
               )}
 
               {isServicesMode && (
-                <Card padded={false} className="order-4 rounded-md border-[#333] bg-[#1e1e1e] px-3 py-2.5 shadow-none backdrop-blur-none">
+                <Card padded={false} className="order-4 rounded-none border-x-0 border-[#333] bg-[#1e1e1e] px-3 py-1.5 shadow-none backdrop-blur-none">
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <div className="text-[12px] font-black uppercase tracking-widest text-slate-300">
-                        III Formatki aktywnej pozycji
-                      </div>
-                      <div className="mt-0.5 text-[10px] text-slate-500">
-                        Wymiary, material, okleina, strony oklejania i kalkulacja dla wybranej pozycji.
+                        Formatki aktywnej pozycji
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-[11px]">
@@ -2855,7 +2953,7 @@ export default function NewOrderPage() {
                   <div className="mb-2 grid grid-cols-1 gap-2 xl:grid-cols-[1fr_80px_120px_150px_170px_120px_100px]">
                     <input
                       className={baseInput}
-                      placeholder="Nazwa pozycji, np. Kuchnia"
+                      placeholder="Nazwa formatki, np. Bok lewy"
                       value={positionDraft.name}
                       onChange={(e) =>
                         setPositionDraft((prev) => ({ ...prev, name: e.target.value }))
@@ -2915,11 +3013,12 @@ export default function NewOrderPage() {
                     />
                     <Button
                       className="h-8 w-9 px-0"
-                      title={editingPositionId ? "Zapisz pozycje" : "Dodaj pozycje"}
-                      aria-label={editingPositionId ? "Zapisz pozycje" : "Dodaj pozycje"}
+                      title="Dodaj formatke do aktywnej pozycji"
+                      aria-label="Dodaj formatke do aktywnej pozycji"
                       onClick={() => {
-                        void addPosition();
+                        void addFormatkaToActivePosition();
                       }}
+                      disabled={!activePositionId}
                     >
                       <Plus className="h-3.5 w-3.5" />
                     </Button>
@@ -3078,6 +3177,67 @@ export default function NewOrderPage() {
                   </table>
                 </div>
 
+                  <div className="mt-2 overflow-hidden rounded border border-[#33445f] bg-[#101722] text-[11px]">
+                    <div className="flex items-center justify-between border-b border-[#33445f] bg-[#1a2233] px-3 py-1.5">
+                      <span className="font-black uppercase tracking-wider text-blue-200">
+                        Formatki aktywnej pozycji
+                      </span>
+                      <span className="text-slate-300">Ilosc: {activeServiceFormatki.length}</span>
+                    </div>
+                    <table className="w-full border-collapse">
+                      <thead className="bg-[#d4dde9] text-[#0f172a]">
+                        <tr className="uppercase tracking-wide">
+                          <th className="px-2 py-1.5 text-left">Nr</th>
+                          <th className="px-2 py-1.5 text-left">DL</th>
+                          <th className="px-2 py-1.5 text-left">SZ</th>
+                          <th className="px-2 py-1.5 text-left">Il.</th>
+                          <th className="px-2 py-1.5 text-center">OG</th>
+                          <th className="px-2 py-1.5 text-center">OD</th>
+                          <th className="px-2 py-1.5 text-center">OL</th>
+                          <th className="px-2 py-1.5 text-center">OP</th>
+                          <th className="px-2 py-1.5 text-left">Nazwa</th>
+                          <th className="px-2 py-1.5 text-left">Okleina</th>
+                          <th className="px-2 py-1.5 text-right">Netto</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activeServiceFormatki.length === 0 ? (
+                          <tr>
+                            <td colSpan={11} className="px-3 py-6 text-center text-slate-500">
+                              Brak formatek. Wybierz pozycje i kliknij + w sekcji III.
+                            </td>
+                          </tr>
+                        ) : (
+                          activeServiceFormatki.map((formatka, idx) => {
+                            const input = formatka.servicePricingInput;
+                            const edgeId = String(input.edge_default_material_id ?? "");
+                            const edgeName =
+                              materialsDb.find((m) => String(m.id) === edgeId)?.name ||
+                              edgeId ||
+                              "-";
+                            return (
+                              <tr key={formatka.id} className="border-t border-white/5">
+                                <td className="px-2 py-1.5">{idx + 1}</td>
+                                <td className="px-2 py-1.5">{Number(input.length_mm) || 0}</td>
+                                <td className="px-2 py-1.5">{Number(input.width_mm) || 0}</td>
+                                <td className="px-2 py-1.5">{Number(input.quantity) || 1}</td>
+                                <td className="px-2 py-1.5 text-center">{Boolean(input.edge_top) ? "x" : ""}</td>
+                                <td className="px-2 py-1.5 text-center">{Boolean(input.edge_bottom) ? "x" : ""}</td>
+                                <td className="px-2 py-1.5 text-center">{Boolean(input.edge_left) ? "x" : ""}</td>
+                                <td className="px-2 py-1.5 text-center">{Boolean(input.edge_right) ? "x" : ""}</td>
+                                <td className="px-2 py-1.5 font-semibold">{formatka.name}</td>
+                                <td className="px-2 py-1.5">{edgeName}</td>
+                                <td className="px-2 py-1.5 text-right">
+                                  {(formatka.servicePricing?.buckets?.net_total ?? formatka.serviceEstimatedNet ?? 0).toFixed(2)} zl
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
                   {valuationMethod === "service-front-cnc-lacquer" && (
                     <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-4">
                       <select
@@ -3197,7 +3357,7 @@ export default function NewOrderPage() {
                     </div>
                   )}
 
-                  <div className="mt-3 rounded border border-blue-500/25 bg-blue-500/5 p-3 text-[11px]">
+                  <div className="mt-2 border-t border-[#333] pt-2 text-[11px]">
                     <div className="font-black uppercase tracking-widest text-blue-200">Podglad kalkulacji</div>
                     {servicePricingLoading ? (
                       <div className="mt-2 flex items-center gap-2 text-slate-300">
@@ -3376,13 +3536,13 @@ export default function NewOrderPage() {
               </Card>
               ) : null}
 
-              <Card className={clsx("border-[#333] bg-[#1e1e1e] p-4", isServicesMode && "order-3")}>
-                <div className="mb-2 text-lg font-bold">
-                  {isServicesMode ? "II Pozycje materialu" : "Lista pozycji"}
+              <Card className={clsx("border-[#333] bg-[#1e1e1e] p-3", isServicesMode && "order-3 rounded-none border-x-0 shadow-none")}>
+                <div className="mb-2 text-base font-bold">
+                  {isServicesMode ? "Pozycje materialu" : "Lista pozycji"}
                 </div>
                 {isServicesMode ? (
                   <div className="space-y-3">
-                    <div className="flex flex-wrap items-center gap-2 rounded border border-[#33445f] bg-[#101722] px-2 py-1.5 text-[11px]">
+                    <div className="flex flex-wrap items-center gap-2 border-b border-[#33445f] bg-[#101722] px-2 py-1.5 text-[11px]">
                       <span className="mr-2 font-black uppercase tracking-wider text-blue-200">
                         Aktywna pozycja: {activePosition?.name || "-"}
                       </span>
@@ -3555,9 +3715,9 @@ export default function NewOrderPage() {
                       ))
                     )}
 
-                    <div className="rounded border border-blue-500/25 bg-blue-500/5 p-3 text-[11px]">
+                    <div className="border-t border-[#33445f] pt-2 text-[11px]">
                       <div className="font-black uppercase tracking-widest text-blue-200">
-                        IV Ilosc materialow w zamowieniu
+                        Materialy w zamowieniu
                       </div>
                       <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-3">
                         <div className="rounded border border-[#33445f] bg-[#101925] px-3 py-2">
