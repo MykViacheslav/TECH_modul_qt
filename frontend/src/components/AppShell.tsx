@@ -53,7 +53,7 @@ import { useCurrentUser, clearUserFromStorage } from "@/services/user-context";
 import PersistentAgent from "./PersistentAgent";
 import { ModuleStatusDot } from "./ModuleStatusBadge";
 import { getModuleStatus, STATUS_LABEL } from "@/config/moduleStatus";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import { type NotificationSummary } from "@/services/api";
 
 type NavItem = {
@@ -156,19 +156,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [selectedProjectId, setSelectedProjectId] = useSelectedProjectId(1);
   const [currentUser, , , logout] = useCurrentUser();
   const [notifSummary, setNotifSummary] = React.useState<NotificationSummary | null>(null);
-  const [hoveredGroup, setHoveredGroup] = React.useState<string | null>(null);
-  const flyoutTimer = React.useRef<NodeJS.Timeout | null>(null);
-
-  const handleMouseEnter = (id: string) => {
-    if (flyoutTimer.current) clearTimeout(flyoutTimer.current);
-    setHoveredGroup(id);
-  };
-
-  const handleMouseLeave = () => {
-    flyoutTimer.current = setTimeout(() => {
-      setHoveredGroup(null);
-    }, 300);
-  };
 
   React.useEffect(() => {
     let active = true;
@@ -206,6 +193,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   const selectedProject = projects.find((p) => Number(p.id) === selectedProjectId) ?? null;
+  const visibleGroups = NAV_GROUPS.filter((group) =>
+    currentUser?.role !== "admin" ? !group.adminOnly : true
+  );
+  const isItemActive = (href: string) => {
+    const [basePath, query] = href.split("?");
+    if (query) return pathname === basePath;
+    return pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
+  };
 
   return (
     <div className="h-screen w-screen bg-[#070708] flex flex-col overflow-hidden relative">
@@ -299,77 +294,51 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         <div className="flex flex-1 overflow-hidden">
-          {/* LEFT TOOLBAR (Icons Only - Dense) */}
-          <aside className="w-14 shrink-0 bg-[#252526] border-r border-[#111] flex flex-col items-center py-2 z-10">
-            <nav className="flex-1 flex flex-col gap-1 w-full px-1">
-              {NAV_GROUPS.filter(group => currentUser?.role !== 'admin' ? !group.adminOnly : true).map((group) => {
-                const isAnyActive = group.items.some(item => 
-                  pathname.startsWith(item.href) || 
-                  (item.href === "/workspace" && (pathname.startsWith("/configuration") || pathname.startsWith("/assembly")))
-                );
+          {/* LEFT TOOLBAR (visible tabs - dense) */}
+          <aside className="w-56 shrink-0 bg-[#252526] border-r border-[#111] flex flex-col py-2 z-10">
+            <nav className="flex-1 flex flex-col gap-2 w-full overflow-y-auto custom-scrollbar px-2">
+              {visibleGroups.map((group) => {
+                const isAnyActive = group.items.some((item) => isItemActive(item.href));
                 const GroupIcon = group.icon;
-                const isHovered = hoveredGroup === group.id;
 
                 return (
-                  <div 
-                    key={group.id} 
-                    className="relative"
-                    onMouseEnter={() => handleMouseEnter(group.id)}
-                    onMouseLeave={handleMouseLeave}
-                  >
-                    <button
+                  <section key={group.id} className="border-b border-white/5 pb-1 last:border-b-0">
+                    <div
                       className={clsx(
-                        "group relative flex items-center justify-center rounded-sm w-full h-10 transition-colors",
-                        isAnyActive || isHovered
-                          ? "bg-[#37373d] text-blue-400 before:absolute before:left-0 before:top-1 before:bottom-1 before:w-1 before:bg-blue-500"
-                          : "text-slate-400 hover:text-white hover:bg-[#2a2d2e]"
+                        "mb-1 flex h-7 items-center gap-2 rounded-sm px-2 text-[10px] font-black uppercase tracking-[0.16em]",
+                        isAnyActive ? "bg-[#303038] text-blue-300" : "text-slate-500"
                       )}
                     >
-                      <GroupIcon className="w-5 h-5" strokeWidth={1.5} />
-                    </button>
-
-                    {/* FLYOUT MENU */}
-                    <AnimatePresence>
-                      {isHovered && (
-                        <motion.div
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          exit={{ opacity: 0, x: -10 }}
-                          transition={{ duration: 0.15 }}
-                          className="absolute left-14 top-0 min-w-[200px] bg-[#252526] border border-[#111] shadow-2xl rounded-md py-2 z-[100] backdrop-blur-xl bg-opacity-95"
-                        >
-                          <div className="px-4 py-2 border-b border-white/5 mb-1">
-                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">{group.label}</span>
-                          </div>
-                          {group.items.map((item) => {
-                            const isActive = pathname === item.href || (pathname + pathname.split('?')[1] === item.href);
-                            const ItemIcon = item.icon;
-                            return (
-                              <Link
-                                key={item.href}
-                                href={item.href}
-                                className={clsx(
-                                  "flex items-center gap-3 px-4 py-2 text-xs transition-colors",
-                                  isActive 
-                                    ? "bg-blue-500/10 text-blue-400" 
-                                    : "text-slate-400 hover:text-white hover:bg-white/5"
-                                )}
-                              >
-                                <ItemIcon className="w-4 h-4" strokeWidth={1.5} />
-                                <span>{item.label}</span>
-                                {isActive && <div className="ml-auto w-1 h-1 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]" />}
-                              </Link>
-                            );
-                          })}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
+                      <GroupIcon className="h-4 w-4" strokeWidth={1.5} />
+                      <span className="truncate">{group.label}</span>
+                    </div>
+                    <div className="space-y-0.5">
+                      {group.items.map((item) => {
+                        const isActive = isItemActive(item.href);
+                        const ItemIcon = item.icon;
+                        return (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            className={clsx(
+                              "flex h-8 items-center gap-2 rounded-sm px-2 text-[12px] transition-colors",
+                              isActive
+                                ? "bg-blue-500/15 text-blue-300 shadow-[inset_3px_0_0_rgba(59,130,246,0.95)]"
+                                : "text-slate-400 hover:bg-[#303033] hover:text-slate-100"
+                            )}
+                          >
+                            <ItemIcon className="h-4 w-4 shrink-0" strokeWidth={1.5} />
+                            <span className="truncate">{item.label}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </section>
                 );
               })}
             </nav>
 
-            <div className="mt-auto flex flex-col items-center gap-2 w-full px-1 mb-2">
+            <div className="mt-auto flex items-center gap-2 w-full px-2 pt-2 mb-2 border-t border-white/5">
               <button
                 onClick={() => {
                   if (window.confirm("Czy na pewno chcesz się wylogować?")) {
@@ -377,7 +346,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   }
                 }}
                 title={currentUser ? `${currentUser.name} - Wyloguj` : "Zaloguj"}
-                className="w-10 h-10 rounded-full bg-[#1e1e1e] border border-[#3e3e42] flex items-center justify-center text-[10px] font-bold ring-1 ring-transparent hover:ring-red-500 transition-all overflow-hidden"
+                className="h-9 w-9 rounded-full bg-[#1e1e1e] border border-[#3e3e42] flex items-center justify-center text-[10px] font-bold ring-1 ring-transparent hover:ring-red-500 transition-all overflow-hidden"
                 style={currentUser ? { color: currentUser.avatar_color, borderColor: currentUser.avatar_color } : {}}
               >
                 {currentUser ? currentUser.initials : <UserCircle2 className="w-4 h-4" />}
@@ -390,10 +359,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     setTimeout(() => { window.close(); window.location.href = "about:blank"; }, 500);
                   }
                 }}
-                className="w-10 h-10 rounded-sm flex items-center justify-center text-red-400 hover:bg-red-500 hover:text-white transition-colors"
+                className="h-9 flex-1 rounded-sm flex items-center justify-center gap-2 text-red-400 hover:bg-red-500 hover:text-white transition-colors text-[12px]"
                 title="Zamknij"
               >
                 <LogOut className="w-5 h-5" strokeWidth={1.5} />
+                Zamknij
               </button>
             </div>
           </aside>
