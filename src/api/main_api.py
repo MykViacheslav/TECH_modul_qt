@@ -758,6 +758,69 @@ async def get_project_wall_summary(project_id: int):
 async def get_project_material_summary(project_id: int):
     return data_manager.get_project_material_summary(project_id)
 
+
+@app.get("/projects/{project_id}/unified-summary")
+async def get_project_unified_summary(project_id: int):
+    """Skladane podsumowanie z 4 zrodel - zgodne z desktopowym UnifiedSummaryPanel."""
+    finance = data_manager.get_project_finance_summary(project_id)
+    assembly = data_manager.get_project_assembly_summary(project_id)
+    workspace = data_manager.get_project_workspace_summary(project_id)
+    materials = data_manager.get_project_material_summary(project_id)
+
+    base_cost = float(finance.get("base_cost") or 0.0)
+    total_net = float(finance.get("total_net") or 0.0)
+    total_gross = float(finance.get("total_gross") or 0.0)
+    profit = float(finance.get("profit") or 0.0)
+    vat = float(finance.get("vat") or 0.0)
+    margin = int(finance.get("margin") or 30)
+
+    pricing = {
+        "material_value": base_cost,
+        "services_total": 0.0,
+        "extras_total": 0.0,
+        "base_total": base_cost,
+        "sale_total": total_net,
+        "brutto_total": total_gross,
+        "profit_total": profit,
+        "technical_total": base_cost,
+        "vat": vat,
+        "margin_percent": margin,
+    }
+
+    sources: list[str] = []
+    if int(assembly.get("modules_count") or 0) > 0:
+        sources.append("assembly")
+    if int(workspace.get("orders_count") or 0) > 0:
+        sources.append("workspace")
+    if base_cost > 0:
+        sources.append("finance")
+    if materials:
+        sources.append("materials")
+
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    audit = {
+        "built_from": sources,
+        "adapter_name": "compose_summaries()",
+        "built_at": now,
+        "notes": f"Cross-tab compose: {len(sources)} source(s)",
+    }
+
+    return {
+        "project_id": int(project_id),
+        "project_title": str(workspace.get("project_title") or ""),
+        "client_name": str(workspace.get("client_name") or ""),
+        "pricing": pricing,
+        "scope": {
+            "modules_count": int(assembly.get("modules_count") or 0),
+            "orders_count": int(workspace.get("orders_count") or 0),
+            "draft_orders_count": int(workspace.get("draft_orders_count") or 0),
+            "materials_used": len(materials or []),
+        },
+        "audit": audit,
+        "computed_at": now,
+    }
+
+
 class ValuationSheetRequest(BaseModel):
     text: str
 
@@ -2959,17 +3022,13 @@ def login_web(body: TechnicianLogin, response: Response):
         samesite="lax",
         max_age=7 * 24 * 3600
     )
-    try:
-        from src.core.operations_store import log_action
-        log_action(user["name"], "LOGIN_SUCCESS", "Web login")
-    except Exception:
-        data_manager.log_action(
-            user_name=user["name"],
-            action="LOGIN_SUCCESS",
-            target_type="auth",
-            target_id=str(user["id"]),
-            details="Web login",
-        )
+    data_manager.log_action(
+        user_name=user["name"],
+        action="LOGIN_SUCCESS",
+        target_type="auth",
+        target_id=str(user["id"]),
+        details="Web login",
+    )
     return {"status": "ok", "user": user}
 
 @app.post("/api/auth/logout")
@@ -2979,17 +3038,13 @@ def logout_web(request: Request, response: Response):
         data_manager.logout_user(token)
         user = data_manager.get_user_by_token(token)
         if user:
-            try:
-                from src.core.operations_store import log_action
-                log_action(user["name"], "LOGOUT", "Web logout")
-            except Exception:
-                data_manager.log_action(
-                    user_name=user["name"],
-                    action="LOGOUT",
-                    target_type="auth",
-                    target_id=str(user["id"]),
-                    details="Web logout",
-                )
+            data_manager.log_action(
+                user_name=user["name"],
+                action="LOGOUT",
+                target_type="auth",
+                target_id=str(user["id"]),
+                details="Web logout",
+            )
     response.delete_cookie("session_token")
     return {"status": "ok"}
 
@@ -3018,8 +3073,7 @@ def admin_create_user(body: AdminCreateUserRequest, user: CurrentUser = Depends(
     require_permission(user, Action.CONFIG_MANAGE)
     try:
         uid = data_manager.admin_create_user(body.name, body.role, body.password)
-        from src.core.operations_store import log_action
-        log_action(user.name, "USER_CREATED", f"Created user {body.name} with role {body.role}")
+        data_manager.log_action(user.name, "USER_CREATED", details=f"Created user {body.name} with role {body.role}")
         return {"status": "ok", "id": uid}
     except Exception as e:
         raise HTTPException(status_code=400, detail=_error_detail(str(e)))
@@ -3041,8 +3095,7 @@ def admin_update_user(user_id: int, body: AdminUpdateUserRequest, user: CurrentU
         success = data_manager.admin_update_user(user_id, updates)
         if not success:
             raise HTTPException(status_code=404, detail="Użytkownik nie znaleziony")
-        from src.core.operations_store import log_action
-        log_action(user.name, "USER_UPDATED", f"Updated user {user_id} fields: {list(updates.keys())}")
+        data_manager.log_action(user.name, "USER_UPDATED", details=f"Updated user {user_id} fields: {list(updates.keys())}")
     return {"status": "ok"}
 
 # --- KIOSK / RCP ENDPOINTS ---
@@ -5055,9 +5108,22 @@ async def update_fulfillment_status(project_name: str, payload: Dict, user: Curr
             record.blocked_reason = payload.get("blocked_reason", record.blocked_reason)
         elif new_status == "installation_in_progress":
             record.installation_team = payload.get("installation_team", record.installation_team)
+            record.installation_progress = float(payload.get("installation_progress", record.installation_progress))
+        
+        # Always allow updating these fields regardless of status
+        if "package_count" in payload:
+            record.package_count = int(payload["package_count"])
+        if "carrier_name" in payload:
+            record.carrier_name = str(payload["carrier_name"])
+        if "tracking_number" in payload:
+            record.tracking_number = str(payload["tracking_number"])
+        if "installation_progress" in payload:
+            record.installation_progress = float(payload["installation_progress"])
+        if "installation_planned_date" in payload:
+            record.installation_planned_date = str(payload["installation_planned_date"])
             
         store.update_fulfillment(record)
-        log_action(user.name, "FULFILLMENT_UPDATE", f"{project_name} -> {new_status}")
+        data_manager.log_action(user.name, "FULFILLMENT_UPDATE", details=f"{project_name} -> {new_status}")
         return {"status": "ok"}
     except HTTPException:
         raise
