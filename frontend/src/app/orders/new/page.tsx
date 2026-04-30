@@ -2751,28 +2751,134 @@ export default function NewOrderPage() {
               </Card>
 
               {isServicesMode && (
-                <Card className="border-[#333] bg-[#1e1e1e] p-4">
-                  <div className="mb-2 text-[12px] font-black uppercase tracking-widest text-slate-300">
-                    Parametry realizacji uslugi
+                <Card padded={false} className="rounded-md border-[#333] bg-[#1e1e1e] px-3 py-2.5 shadow-none backdrop-blur-none">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="text-[12px] font-black uppercase tracking-widest text-slate-300">
+                        Nowa pozycja / parametry uslugi
+                      </div>
+                      <div className="mt-0.5 text-[10px] text-slate-500">
+                        Jedna pozycja: nazwa, material, okleina, wymiary i kalkulacja w jednym miejscu.
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                      <span className="rounded border border-[#33445f] bg-[#121b2b] px-2 py-1 text-slate-300">
+                        Aktywny: {activePosition?.name || "-"}
+                      </span>
+                      <Button
+                        className="h-8"
+                        variant="secondary"
+                        onClick={() => {
+                          void applyServiceParamsToActiveRow();
+                        }}
+                        disabled={!activePositionId || !serviceModeKeys.has(valuationMethod)}
+                      >
+                        Zastosuj do aktywnego
+                      </Button>
+                    </div>
                   </div>
-                <div className="mb-3 text-[11px] text-slate-400">
-                  Ustaw formatke, material i parametry technologii. Podglad ceny liczy backend (z walidacja i flagami recznego review).
-                </div>
-                <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px]">
-                  <span className="rounded border border-[#33445f] bg-[#121b2b] px-2 py-1 text-slate-300">
-                    Aktywny wiersz: {activePosition?.name || "-"}
-                  </span>
-                  <Button
-                    className="h-8"
-                    variant="secondary"
-                    onClick={() => {
-                      void applyServiceParamsToActiveRow();
-                    }}
-                    disabled={!activePositionId || !serviceModeKeys.has(valuationMethod)}
-                  >
-                    Zastosuj parametry do aktywnego wiersza
-                  </Button>
-                </div>
+
+                  <div className="mb-2 grid grid-cols-1 gap-2 xl:grid-cols-[1fr_72px_80px_120px_150px_170px_120px_100px]">
+                    <input
+                      className={baseInput}
+                      placeholder="Nazwa pozycji, np. Kuchnia"
+                      value={positionDraft.name}
+                      onChange={(e) =>
+                        setPositionDraft((prev) => ({ ...prev, name: e.target.value }))
+                      }
+                    />
+                    <input
+                      type="number"
+                      className={baseInput}
+                      title="Ilosc"
+                      value={positionDraft.quantity}
+                      onChange={(e) =>
+                        setPositionDraft((prev) => ({
+                          ...prev,
+                          quantity: Number(e.target.value) || 1,
+                        }))
+                      }
+                    />
+                    <input
+                      type="number"
+                      className={baseInput}
+                      title="VAT %"
+                      value={positionDraft.vat}
+                      onChange={(e) =>
+                        setPositionDraft((prev) => {
+                          const parsed = Number(e.target.value);
+                          return { ...prev, vat: Number.isFinite(parsed) ? parsed : 0 };
+                        })
+                      }
+                    />
+                    <input
+                      className={baseInput}
+                      placeholder="Typ"
+                      value={positionDraft.type}
+                      onChange={(e) =>
+                        setPositionDraft((prev) => ({ ...prev, type: e.target.value }))
+                      }
+                    />
+                    <select
+                      className={baseInput}
+                      value={positionDraft.purchaseType}
+                      onChange={(e) =>
+                        setPositionDraft((prev) => {
+                          const nextType = e.target.value as "invoice" | "cash" | "receipt" | "none";
+                          const shouldDefaultToZeroVat = nextType === "cash" && prev.vat === 23;
+                          return {
+                            ...prev,
+                            purchaseType: nextType,
+                            vat: shouldDefaultToZeroVat ? 0 : prev.vat,
+                          };
+                        })
+                      }
+                    >
+                      {POSITION_PURCHASE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      className={baseInput}
+                      placeholder="Kolor / tekstura"
+                      value={positionDraft.textureOrColor}
+                      onChange={(e) =>
+                        setPositionDraft((prev) => ({
+                          ...prev,
+                          textureOrColor: e.target.value,
+                        }))
+                      }
+                    />
+                    <Button
+                      className="h-8"
+                      onClick={() => {
+                        void addPosition();
+                      }}
+                    >
+                      {editingPositionId ? "Zapisz" : "+ Dodaj"}
+                    </Button>
+                    <Button
+                      className="h-8"
+                      variant="secondary"
+                      onClick={cancelEditPosition}
+                      disabled={!editingPositionId}
+                    >
+                      Anuluj
+                    </Button>
+                  </div>
+                  <input
+                    className={clsx(baseInput, "mb-2")}
+                    placeholder="Opis / uwagi do wyceny"
+                    value={positionDraft.description}
+                    onChange={(e) =>
+                      setPositionDraft((prev) => ({
+                        ...prev,
+                        description: e.target.value,
+                      }))
+                    }
+                  />
 
                 <div className="rounded border border-[#33445f] bg-[#101722] overflow-x-auto">
                   <table className="w-full min-w-[1360px] text-[11px]">
@@ -3085,6 +3191,7 @@ export default function NewOrderPage() {
                 </Card>
               )}
 
+              {!isServicesMode ? (
               <Card className="border-[#333] bg-[#1e1e1e] p-4">
                 <div className="mb-2 text-lg font-bold">
                   {editingPositionId ? "Edycja pozycji" : "Nowa pozycja"}
@@ -3201,6 +3308,7 @@ export default function NewOrderPage() {
                   </Button>
                 </div>
               </Card>
+              ) : null}
 
               <Card className="border-[#333] bg-[#1e1e1e] p-4">
                 <div className="mb-2 text-lg font-bold">Lista pozycji</div>
