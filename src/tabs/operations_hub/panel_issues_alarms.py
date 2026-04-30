@@ -244,7 +244,7 @@ class IssuesAlarmsPanel(QWidget):
         self.btn_note.clicked.connect(self._on_add_note)
 
     def _build_filters(self, root: QVBoxLayout) -> None:
-        box = QFrame(self)
+        box = QFrame(self); box.setProperty("uiCard", True)
         lay = QGridLayout(box)
         lay.setContentsMargins(8, 8, 8, 8)
         lay.setHorizontalSpacing(8)
@@ -338,12 +338,12 @@ class IssuesAlarmsPanel(QWidget):
             ("do_decyzji", "Do decyzji"),
         ]
         for i, (key, title) in enumerate(labels):
-            card = QFrame(wrap)
-            card.setStyleSheet("QFrame{background:#f8fafc;border:1px solid #d7e1ef;border-radius:10px;}")
+            card = QFrame(wrap); card.setProperty("uiCard", True)
+            card.setStyleSheet("QFrame{background:transparent;border:1px solid #d7e1ef;border-radius:10px;}")
             c_l = QVBoxLayout(card)
             lab_t = QLabel(title, card)
             lab_v = QLabel("0", card)
-            lab_t.setStyleSheet("font-size:11px;color:#475569;")
+            lab_t.setStyleSheet("font-size:11px;color:#94a3b8;")
             lab_v.setStyleSheet("font-size:18px;font-weight:700;color:#0f172a;")
             c_l.addWidget(lab_t)
             c_l.addWidget(lab_v)

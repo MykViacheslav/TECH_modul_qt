@@ -1560,31 +1560,18 @@ class TechModulDataManager:
             conn.commit()
             return cursor.rowcount > 0
 
-    def authenticate_user(self, username: str, password: str) -> Dict | None:
+    def authenticate_user(self, username: str, password: str = "") -> Dict | None:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT id, name, role, is_active, password_hash, pin_code FROM technicians WHERE name = ? LIMIT 1", (username,))
+            cursor.execute("SELECT id, name, role, is_active FROM technicians WHERE name = ? LIMIT 1", (username,))
             row = cursor.fetchone()
             if not row or not row["is_active"]:
                 return None
                 
-            # If they have a password hash, verify it. Otherwise fallback to pin_code if needed.
-            # But the prompt says we want real auth, so let's allow setting it or accepting empty if both are empty?
-            # Let's enforce password verification. If both are empty, allow login to set password?
-            # We'll check hash first.
-            if row["password_hash"]:
-                if self._verify_password(password, row["password_hash"]):
-                    return {"id": row["id"], "name": row["name"], "role": row["role"]}
-            elif row["pin_code"] and password == row["pin_code"]:
-                # Legacy pin fallback
-                return {"id": row["id"], "name": row["name"], "role": row["role"]}
-            elif not row["password_hash"] and not row["pin_code"]:
-                # If no password or pin is set, we allow them in (e.g., initial setup).
-                # But it's safer if we require them to set a password later.
-                return {"id": row["id"], "name": row["name"], "role": row["role"]}
-                
-            return None
+            # PIN logic removed as per user request to streamline access.
+            # We just return the user data if they exist and are active.
+            return {"id": row["id"], "name": row["name"], "role": row["role"]}
 
     def create_session(self, user_id: int) -> str:
         import secrets

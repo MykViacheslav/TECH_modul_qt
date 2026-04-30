@@ -42,9 +42,9 @@ def test_bom_block_shows_hardware_costs(tmp_path):
         divider_count=1,
         visible_parts={"front", "shelf", "divider"},
         parts={
-            "front": PartDef(key="front", name_pl="Front", material_key="MDF19", dims_mm={"w": 500.0, "h": 700.0, "t": 19.0}),
-            "shelf_1": PartDef(key="shelf_1", name_pl="Polka 1", material_key="PB18", dims_mm={"w": 464.0, "h": 500.0, "t": 18.0}),
-            "divider_1": PartDef(key="divider_1", name_pl="Pion 1", material_key="PB18", dims_mm={"w": 464.0, "h": 500.0, "t": 18.0}),
+            "front": PartDef(id="front", name_pl="Front", material_key="MDF19", dims_mm={"w": 500.0, "h": 700.0, "t": 19.0}),
+            "shelf_1": PartDef(id="shelf_1", name_pl="Polka 1", material_key="PB18", dims_mm={"w": 464.0, "h": 500.0, "t": 18.0}),
+            "divider_1": PartDef(id="divider_1", name_pl="Pion 1", material_key="PB18", dims_mm={"w": 464.0, "h": 500.0, "t": 18.0}),
         },
     )
 
@@ -120,8 +120,9 @@ def test_bom_block_shows_module_type_hardware_costs(tmp_path):
     bom.set_module(module)
 
     assert "Nozka meblowa [generic]: 6 szt, 48.00 zl" in bom.v_hw.text()
+    assert "Klips cokolu [generic]: 2 szt, 3.00 zl" in bom.v_hw.text()
     assert "Lacznik szafki naroznej [generic]: 1 kpl, 18.00 zl" in bom.v_hw.text()
-    assert "RAZEM: 66.00 zl" in bom.v_hw.text()
+    assert "RAZEM: 69.00 zl" in bom.v_hw.text()
 
     module.module_type = "legs_plinth"
     bom.set_module(module)

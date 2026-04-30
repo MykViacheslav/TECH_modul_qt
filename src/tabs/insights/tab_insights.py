@@ -97,7 +97,7 @@ class _InfoCard(QFrame):
         self.setStyleSheet(
             f"""
             QFrame {{
-                background: #ffffff;
+                background: transparent;
                 border: 1px solid #d7dee8;
                 border-top: 4px solid {accent};
                 border-radius: 14px;
@@ -113,7 +113,7 @@ class _InfoCard(QFrame):
         layout.addWidget(title_label)
 
         value_label = QLabel(value)
-        value_label.setStyleSheet("font-size: 22px; font-weight: 800; color: #1f2937;")
+        value_label.setStyleSheet("font-size: 22px; font-weight: 800; color: #e8efff;")
         layout.addWidget(value_label)
 
 
@@ -123,7 +123,7 @@ class _SectionBox(QFrame):
         self.setStyleSheet(
             """
             QFrame {
-                background: #ffffff;
+                background: transparent;
                 border: 1px solid #d7dee8;
                 border-radius: 16px;
             }
@@ -134,7 +134,7 @@ class _SectionBox(QFrame):
         self.layout_main.setSpacing(10)
 
         title_label = QLabel(title)
-        title_label.setStyleSheet("font-size: 18px; font-weight: 800; color: #1f2937;")
+        title_label.setStyleSheet("font-size: 18px; font-weight: 800; color: #e8efff;")
         self.layout_main.addWidget(title_label)
 
         if subtitle:
@@ -242,7 +242,7 @@ class TabInsights(QWidget):
                     border-radius: 12px;
                     padding: 8px 14px;
                     font-weight: 700;
-                    color: #1f2937;
+                    color: #e8efff;
                 }
                 """
             )

@@ -2,13 +2,17 @@ from __future__ import annotations
 
 
 MATERIAL_EDGE_GROUP_KEYS: dict[str, tuple[str, ...]] = {
-    "carcass": ("carcass", "side", "top", "bottom", "shelf", "divider"),
+    "carcass": ("carcass", "top", "bottom", "divider"),
+    "visible": ("side_left", "side_right"),
+    "shelf": ("shelf",),
     "front": ("front",),
     "back": ("back",),
 }
 
 PROFILE_GROUP_KEYS: dict[str, tuple[str, ...]] = {
-    "carcass": ("carcass", "side", "top", "bottom", "shelf", "divider"),
+    "carcass": ("carcass", "top", "bottom", "divider"),
+    "visible": ("side_left", "side_right"),
+    "shelf": ("shelf",),
     "front": ("front",),
     "back": ("back",),
 }
@@ -67,10 +71,12 @@ def get_material_edge_group_for_part_key(part_key: str) -> str:
     if base_key == "back":
         return "back"
     if base_key.startswith("shelf_") or base_key == "shelf":
-        return "carcass"
+        return "shelf"
     if base_key.startswith("divider_") or base_key == "divider":
         return "carcass"
-    if base_key in ("side_left", "side_right", "top", "bottom"):
+    if base_key in ("side_left", "side_right"):
+        return "visible"
+    if base_key in ("top", "bottom"):
         return "carcass"
 
     return "carcass"

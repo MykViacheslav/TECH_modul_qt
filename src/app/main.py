@@ -13,7 +13,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+import time as _time
+
 from src.app.main_window import MainWindow
+from src.core.perf.perf_timer import perf_log
 from src.domain.permissions import normalize_role
 from src.widgets.login_dialog import LoginDialog
 
@@ -131,9 +134,12 @@ def main() -> int:
         
         # Normal mode - show main window
         try:
+            _app_t0 = _time.perf_counter_ns()
             w = MainWindow()
+            perf_log("startup.to_main_window_constructed", _app_t0)
             w.set_current_user(current_worker, current_role)
             w.showMaximized()
+            perf_log("startup.to_show_maximized", _app_t0)
         except Exception as e:
             show_error(
                 "Błąd uruchomienia",

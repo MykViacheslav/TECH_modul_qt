@@ -80,7 +80,7 @@ class PrioritiesRoutesPanel(QWidget):
             self._on_data_changed_cb()
 
     def _build_priority_filters(self, root: QVBoxLayout) -> None:
-        box = QFrame(self)
+        box = QFrame(self); box.setProperty("uiCard", True)
         lay = QHBoxLayout(box)
         lay.setContentsMargins(8, 8, 8, 8)
         self.p_text = QLineEdit(self)
@@ -118,7 +118,7 @@ class PrioritiesRoutesPanel(QWidget):
         self.btn_create_route.clicked.connect(self._on_create_route_from_selected_issue)
 
     def _build_route_filters(self, root: QVBoxLayout) -> None:
-        box = QFrame(self)
+        box = QFrame(self); box.setProperty("uiCard", True)
         lay = QHBoxLayout(box)
         lay.setContentsMargins(8, 8, 8, 8)
         self.r_text = QLineEdit(self)

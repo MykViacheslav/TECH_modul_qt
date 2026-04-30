@@ -40,25 +40,34 @@ class CollapsibleBlock(QWidget):
 
         self.setStyleSheet("""
             QToolButton {
-                padding: 10px 12px;
-                font-size: 14px;
-                font-weight: 700;
+                padding: 12px 16px;
+                font-size: 13px;
+                font-weight: 800;
                 text-align: left;
-                border: 1px solid #d7cfbf;
-                border-radius: 12px;
-                background: #fffdfa;
-                color: #213042;
+                border: 1px solid #e5e7eb;
+                border-radius: 8px;
+                background: white;
+                color: #374151;
+                text-transform: uppercase;
+                letter-spacing: 0.03em;
             }
             QToolButton:hover {
-                background: #f6efe4;
-                border-color: #cdbca0;
+                background: #f9fafb;
+                border-color: #d1d5db;
+                color: #005596;
+            }
+            QToolButton:checked {
+                border-bottom-left-radius: 0px;
+                border-bottom-right-radius: 0px;
+                background: #f8fafc;
+                border-color: #e2e8f0;
             }
             QFrame#contentPanel {
-                border: 1px solid #e2d8c9;
+                border: 1px solid #e2e8f0;
                 border-top: 0px;
-                border-bottom-left-radius: 12px;
-                border-bottom-right-radius: 12px;
-                background: #fcfaf6;
+                border-bottom-left-radius: 8px;
+                border-bottom-right-radius: 8px;
+                background: white;
             }
         """)
 

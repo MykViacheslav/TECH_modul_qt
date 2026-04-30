@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
 )
 
 from src.storage.catalog_store_json import CatalogStoreJson
+from src.app.app_settings import load_ui_theme_settings
 
 
 def _default_data_dir() -> Path:
@@ -111,12 +112,24 @@ class TabBazaModul(QWidget):
         self._store_path = _default_data_dir() / "quick_quote_baza_modul.json"
         self._store_path.parent.mkdir(parents=True, exist_ok=True)
 
+        theme = load_ui_theme_settings()
+        is_tech = str(theme.motif or "").strip().lower() == "tech" and str(theme.mode or "").strip().lower() == "night"
+        
+        # Color palette
+        c_text = "#e8efff" if is_tech else "#0f172a"
+        c_muted = "#9bb0cd" if is_tech else "#64748b"
+        c_border = "#2a3b59" if is_tech else "#d1d5db"
+        c_bg_card = "#111b30" if is_tech else "#ffffff"
+        c_header_bg = "#1e293b" if is_tech else "#f8fafc"
+        c_alternate_bg = "#162035" if is_tech else "#f9fafb"
+        c_grid = "#1e293b" if is_tech else "#e2e8f0"
+
         root = QVBoxLayout(self)
         root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(8)
 
         title = QLabel("BAZA_modul", self)
-        title.setStyleSheet("font-size:18px; font-weight:700; color:#1f2937;")
+        title.setStyleSheet(f"font-size:18px; font-weight:700; color:{c_text};")
         root.addWidget(title, 0, Qt.AlignmentFlag.AlignLeft)
 
         subtitle = QLabel(
@@ -124,28 +137,32 @@ class TabBazaModul(QWidget):
             self,
         )
         subtitle.setWordWrap(True)
-        subtitle.setStyleSheet("color:#667085; font-size:12px;")
+        subtitle.setStyleSheet(f"color:{c_muted}; font-size:12px;")
         root.addWidget(subtitle, 0, Qt.AlignmentFlag.AlignLeft)
 
-        controls_frame = QFrame(self)
+        controls_frame = QFrame(self); controls_frame.setProperty("uiCard", True)
         controls_frame.setObjectName("bazaModulControls")
         controls_frame.setStyleSheet(
-            """
-            QFrame#bazaModulControls {
-                border: 1px solid #d8dee8;
+            f"""
+            QFrame#bazaModulControls {{
+                border: 1px solid {c_border};
                 border-radius: 10px;
-                background: #f8fafc;
-            }
-            QLabel {
-                color:#334155;
-            }
-            QDoubleSpinBox, QComboBox {
+                background: {c_bg_card};
+            }}
+            QLabel {{
+                color:{c_text};
+            }}
+            QDoubleSpinBox, QComboBox {{
                 min-height: 30px;
-            }
-            QPushButton {
+                background: {'#0f172a' if is_tech else '#ffffff'};
+                color: {c_text};
+                border: 1px solid {c_border};
+                border-radius: 4px;
+            }}
+            QPushButton {{
                 min-height: 30px;
                 padding: 0 10px;
-            }
+            }}
             """
         )
         controls = QHBoxLayout(controls_frame)
@@ -210,7 +227,7 @@ class TabBazaModul(QWidget):
         root.addWidget(controls_frame, 0)
 
         info_expand = QLabel("Kliknij strzalke przy ID, aby rozwinac modul i zobaczyc rozpiske elementow.", self)
-        info_expand.setStyleSheet("color:#475467; font-size:12px; font-weight:600;")
+        info_expand.setStyleSheet(f"color:{c_muted}; font-size:12px; font-weight:600;")
         root.addWidget(info_expand, 0, Qt.AlignmentFlag.AlignLeft)
 
         self.tbl = QTreeWidget(self)
@@ -224,32 +241,32 @@ class TabBazaModul(QWidget):
         self.tbl.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.tbl.setIndentation(18)
         self.tbl.setStyleSheet(
-            """
-            QTreeWidget {
-                border: 1px solid #d8dee8;
+            f"""
+            QTreeWidget {{
+                border: 1px solid {c_border};
                 border-radius: 10px;
-                background: white;
-                color: #1f2937;
-                gridline-color: #e7ecf2;
-                alternate-background-color: #f8fbff;
-            }
-            QTreeWidget::item {
+                background: {c_bg_card};
+                color: {c_text};
+                gridline-color: {c_grid};
+                alternate-background-color: {c_alternate_bg};
+            }}
+            QTreeWidget::item {{
                 padding-top: 4px;
                 padding-bottom: 4px;
-            }
-            QTreeWidget::item:selected {
-                background: #dbeafe;
-                color: #0f172a;
-            }
-            QHeaderView::section {
-                background: #eef3f8;
-                color: #1f2937;
+            }}
+            QTreeWidget::item:selected {{
+                background: #3b82f6;
+                color: #ffffff;
+            }}
+            QHeaderView::section {{
+                background: {c_header_bg};
+                color: {c_text};
                 border: none;
-                border-right: 1px solid #d8dee8;
-                border-bottom: 1px solid #d8dee8;
+                border-right: 1px solid {c_border};
+                border-bottom: 1px solid {c_border};
                 padding: 6px 8px;
                 font-weight: 700;
-            }
+            }}
             """
         )
         self.tbl.setEditTriggers(
@@ -265,14 +282,14 @@ class TabBazaModul(QWidget):
         self._configure_tree_columns()
         root.addWidget(self.tbl, 1)
 
-        summary_frame = QFrame(self)
+        summary_frame = QFrame(self); summary_frame.setProperty("uiCard", True)
         summary_frame.setStyleSheet(
-            """
-            QFrame {
-                border: 1px solid #d8dee8;
+            f"""
+            QFrame {{
+                border: 1px solid {c_border};
                 border-radius: 10px;
-                background: #fbfcfe;
-            }
+                background: {c_bg_card};
+            }}
             """
         )
         summary_layout = QVBoxLayout(summary_frame)
@@ -280,7 +297,7 @@ class TabBazaModul(QWidget):
         summary_layout.setSpacing(6)
 
         summary_title = QLabel("Podsumowanie materialow", self)
-        summary_title.setStyleSheet("font-size:13px; font-weight:700; color:#334155;")
+        summary_title.setStyleSheet(f"font-size:13px; font-weight:700; color:{c_text};")
         summary_layout.addWidget(summary_title, 0, Qt.AlignmentFlag.AlignLeft)
 
         self.tbl_summary = QTableWidget(0, 3, self)
@@ -291,28 +308,24 @@ class TabBazaModul(QWidget):
         self.tbl_summary.setAlternatingRowColors(True)
         self.tbl_summary.setMaximumHeight(160)
         self.tbl_summary.setStyleSheet(
-            """
-            QTableWidget {
-                border: 1px solid #d8dee8;
+            f"""
+            QTableWidget {{
+                border: 1px solid {c_border};
                 border-radius: 8px;
-                background: white;
-                color: #1f2937;
-                gridline-color: #e7ecf2;
-                alternate-background-color: #f8fbff;
-            }
-            QTableWidget::item:selected {
-                background: #dbeafe;
-                color: #0f172a;
-            }
-            QHeaderView::section {
-                background: #eef3f8;
-                color: #1f2937;
+                background: {c_bg_card};
+                color: {c_text};
+                gridline-color: {c_grid};
+                alternate-background-color: {c_alternate_bg};
+            }}
+            QHeaderView::section {{
+                background: {c_header_bg};
+                color: {c_text};
                 border: none;
-                border-right: 1px solid #d8dee8;
-                border-bottom: 1px solid #d8dee8;
+                border-right: 1px solid {c_border};
+                border-bottom: 1px solid {c_border};
                 padding: 6px 8px;
                 font-weight: 700;
-            }
+            }}
             """
         )
         self.tbl_summary.horizontalHeader().setStretchLastSection(True)
@@ -322,7 +335,7 @@ class TabBazaModul(QWidget):
         summary_layout.addWidget(self.tbl_summary)
 
         self.lab_total = QLabel("RAZEM: 0.000 m2", self)
-        self.lab_total.setStyleSheet("font-size:13px; font-weight:800; color:#1f2937;")
+        self.lab_total.setStyleSheet(f"font-size:13px; font-weight:800; color:{c_text};")
         summary_layout.addWidget(self.lab_total, 0, Qt.AlignmentFlag.AlignRight)
 
         summary_frame.setVisible(False)

@@ -13,6 +13,8 @@ from src.storage.safe_json_io import read_json_file, write_json_atomic
 
 
 _CALLBACK_PREFIX = "shopchk"
+_PROD_CALLBACK_PREFIX = "prodhub"
+_WORKTIME_CALLBACK_PREFIX = "worktime"
 _MAX_ITEMS_PER_MESSAGE = 40
 _STATE_TODO = "todo"
 _STATE_PARTIAL = "partial"
@@ -279,7 +281,7 @@ def _edit_checklist_message(bot_token: str, list_state: dict[str, Any]) -> None:
     _post_json(bot_token=bot_token, method="editMessageText", payload=payload)
 
 
-def sync_shopping_checklist_callbacks(bot_token: str) -> dict[str, Any]:
+def sync_telegram_hub_callbacks(bot_token: str) -> dict[str, Any]:
     state = _load_state()
     last_update_id = int(state.get("last_update_id", 0) or 0)
     lists = dict(state.get("lists", {}) or {})
@@ -291,7 +293,8 @@ def sync_shopping_checklist_callbacks(bot_token: str) -> dict[str, Any]:
     )
     updates = result if isinstance(result, list) else []
 
-    applied: list[dict[str, Any]] = []
+    applied_shopping: list[dict[str, Any]] = []
+    applied_other: list[dict[str, Any]] = []
     max_update_id = last_update_id
 
     for upd in updates:
@@ -305,105 +308,107 @@ def sync_shopping_checklist_callbacks(bot_token: str) -> dict[str, Any]:
         if not isinstance(cq, dict):
             continue
         data = str(cq.get("data", "") or "").strip()
-        if not data.startswith(f"{_CALLBACK_PREFIX}|"):
-            continue
-
-        parts = data.split("|")
-        if len(parts) != 3:
-            continue
-        _, list_id, selector = parts
-        list_state = lists.get(list_id)
-        if not isinstance(list_state, dict):
-            _answer_callback(bot_token=bot_token, callback_query_id=str(cq.get("id", "") or ""), text="Lista wygasla")
-            continue
-
-        items = list(list_state.get("items", []) or [])
-        changed = False
-        callback_note = ""
-        history = list(list_state.get("history", []) or [])
-        if selector == "u":
-            if history:
+        
+        # Dispatch by prefix
+        if data.startswith(f"{_CALLBACK_PREFIX}|"):
+            # Existing shopping logic
+            parts = data.split("|")
+            if len(parts) != 3: continue
+            _, list_id, selector = parts
+            list_state = lists.get(list_id)
+            if not isinstance(list_state, dict):
+                _answer_callback(bot_token, cq.get("id", ""), "Lista wygasla")
+                continue
+            
+            items = list(list_state.get("items", []) or [])
+            changed = False
+            history = list(list_state.get("history", []) or [])
+            
+            if selector == "u" and history:
                 last = history.pop()
-                idx = int(last.get("idx", -1) or -1)
-                prev_state = _normalize_item_state(last.get("prev_state"), last.get("prev_checked", False))
+                idx = int(last.get("idx", -1))
+                prev = _normalize_item_state(last.get("prev_state"), last.get("prev_checked", False))
                 if 0 <= idx < len(items):
-                    items[idx]["state"] = prev_state
-                    items[idx]["checked"] = prev_state == _STATE_DONE
-                    list_state["items"] = items
-                    list_state["history"] = history
-                    list_state["updated_at"] = datetime.now().isoformat(timespec="seconds")
+                    items[idx]["state"] = prev
+                    items[idx]["checked"] = (prev == _STATE_DONE)
                     changed = True
-                    label = str(items[idx].get("label", "") or "").strip()
-                    applied.append(
-                        {
-                            "list_id": list_id,
-                            "item_id": str(items[idx].get("item_id", "") or "").strip(),
-                            "label": label,
-                            "state": _normalize_item_state(items[idx].get("state"), items[idx].get("checked", False)),
-                            "checked": bool(items[idx].get("checked", False)),
-                        }
-                    )
-                    callback_note = "Cofnieto ostatnia zmiane."
-            else:
-                callback_note = "Brak zmian do cofniecia."
-        elif selector != "r":
-            try:
-                idx = int(selector)
-            except ValueError:
-                idx = -1
-            if 0 <= idx < len(items):
-                current_state = _normalize_item_state(items[idx].get("state"), items[idx].get("checked", False))
-                next_state = _next_state(current_state)
-                items[idx]["state"] = next_state
-                items[idx]["checked"] = next_state == _STATE_DONE
-                list_state["items"] = items
-                history.append(
-                    {
-                        "idx": idx,
-                        "prev_state": current_state,
-                        "new_state": next_state,
-                        "prev_checked": current_state == _STATE_DONE,
-                        "new_checked": next_state == _STATE_DONE,
-                        "at": datetime.now().isoformat(timespec="seconds"),
-                    }
-                )
-                list_state["history"] = history[-100:]
-                list_state["updated_at"] = datetime.now().isoformat(timespec="seconds")
-                changed = True
-                label = str(items[idx].get("label", "") or "").strip()
-                applied.append(
-                        {
-                            "list_id": list_id,
-                            "item_id": str(items[idx].get("item_id", "") or "").strip(),
-                            "label": label,
-                            "state": next_state,
-                            "checked": bool(items[idx].get("checked", False)),
-                        }
-                    )
-            else:
-                callback_note = "Nieprawidlowy indeks pozycji."
-
-        try:
+                    applied_shopping.append({"item_id": items[idx].get("item_id"), "state": prev})
+            elif selector != "r" and selector != "u":
+                try: idx = int(selector)
+                except: idx = -1
+                if 0 <= idx < len(items):
+                    curr = _normalize_item_state(items[idx].get("state"), items[idx].get("checked", False))
+                    nxt = _next_state(curr)
+                    items[idx]["state"] = nxt
+                    items[idx]["checked"] = (nxt == _STATE_DONE)
+                    history.append({"idx": idx, "prev_state": curr, "new_state": nxt})
+                    changed = True
+                    applied_shopping.append({"item_id": items[idx].get("item_id"), "state": nxt})
+            
             if changed:
-                _edit_checklist_message(bot_token=bot_token, list_state=list_state)
-            _answer_callback(
-                bot_token=bot_token,
-                callback_query_id=str(cq.get("id", "") or ""),
-                text=callback_note,
-            )
-        except Exception:
-            _answer_callback(
-                bot_token=bot_token,
-                callback_query_id=str(cq.get("id", "") or ""),
-                text="Nie udalo sie odswiezyc listy",
-            )
-        if changed:
-            lists[list_id] = list_state
+                list_state["items"] = items
+                list_state["history"] = history[-50:]
+                list_state["updated_at"] = datetime.now().isoformat()
+                _edit_checklist_message(bot_token, list_state)
+                lists[list_id] = list_state
+            _answer_callback(bot_token, cq.get("id", ""), "Zaktualizowano")
+
+        elif data.startswith(f"{_PROD_CALLBACK_PREFIX}|"):
+            # Production stage logic
+            parts = data.split("|")
+            if len(parts) != 3: continue
+            _, list_id, selector = parts
+            list_state = lists.get(list_id)
+            if not isinstance(list_state, dict):
+                _answer_callback(bot_token, cq.get("id", ""), "Lista wygasla")
+                continue
+            
+            items = list(list_state.get("items", []) or [])
+            try: idx = int(selector)
+            except: idx = -1
+            
+            if 0 <= idx < len(items):
+                curr = items[idx].get("state", _STATE_TODO)
+                nxt = _STATE_DONE if curr != _STATE_DONE else _STATE_TODO
+                items[idx]["state"] = nxt
+                list_state["items"] = items
+                list_state["updated_at"] = datetime.now().isoformat()
+                
+                # Update visual representation for Telegram
+                title = str(list_state.get("title", "Status Produkcji"))
+                text_lines = [f"🏭 {title}", f"Aktualizacja: {datetime.now().strftime('%H:%M')}", "", "Statusy:"]
+                for i, it in enumerate(items, start=1):
+                    mark = "✅" if it["state"] == _STATE_DONE else "⚪"
+                    text_lines.append(f"{i}. {mark} {it['label']}")
+                
+                payload = {
+                    "chat_id": list_state["chat_id"],
+                    "message_id": list_state["message_id"],
+                    "text": "\n".join(text_lines),
+                    "reply_markup": cq.get("message", {}).get("reply_markup")
+                }
+                _post_json(bot_token, "editMessageText", payload)
+                
+                applied_other.append({"type": "production", "order_id": items[idx].get("order_id"), "state": nxt})
+                lists[list_id] = list_state
+            _answer_callback(bot_token, cq.get("id", ""), "Status zmieniony")
+
+        elif data.startswith(f"{_WORKTIME_CALLBACK_PREFIX}|"):
+            # Attendance logic
+            parts = data.split("|")
+            if len(parts) == 3 and parts[1] == "punch":
+                worker_id = parts[2]
+                applied_other.append({"type": "worktime_punch", "worker_id": worker_id})
+                _answer_callback(bot_token, cq.get("id", ""), "Odbito karte!")
 
     state["last_update_id"] = max_update_id
     state["lists"] = lists
     _save_state(state)
-    return {"processed_updates": len(updates), "applied": applied}
+    return {
+        "processed_updates": len(updates),
+        "applied": applied_shopping,
+        "applied_other": applied_other
+    }
 
 
 def collect_latest_item_checks() -> dict[str, bool]:

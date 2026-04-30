@@ -1,48 +1,59 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import traceback
 from typing import Any
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QColor, QFont
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QDoubleSpinBox,
+    QFormLayout,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
-    QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
+from src.app.app_settings import load_ui_theme_settings
+
+# Explicit global definition to fix potential namespace shadowing issues
+from PyQt6 import QtWidgets as _qw
+QHeaderView = _qw.QHeaderView
+QDialog = _qw.QDialog
+QMessageBox = _qw.QMessageBox
 
 from src.domain.permissions import Permission, has_permission, normalize_role
 from src.storage.company_expenses_store_json import CompanyExpensesStoreJson
 from src.storage.invoice_store_json import InvoiceStoreJson
 from src.storage.order_store_json import OrderStoreJson
+from src.storage.worker_store_json import WorkerStoreJson
+from src.storage.work_time_store_json import WorkTimeStoreJson
 from src.tabs.finanse_hub.panel_operations_finance_ready import OperationsFinanceReadyPanel
+from src.tabs.baza_faktur.tab_baza_faktur import TabBazaFaktur
 
 
-TABLE_TEXT_STYLE = """
-QTableWidget {
-    color: #1f2937;
-    selection-color: #0f172a;
-}
-QTableWidget::item:selected {
-    background: #dbeafe;
-    color: #0f172a;
-}
-"""
+TABLE_TEXT_STYLE = "font-size: 12px;"
 
 
 def _fmt_pln(value: float) -> str:
-    return f"{float(value or 0.0):.2f} zl"
+    """Formatuje kwote jako PLN z separatorem tysiecy."""
+    val = float(value or 0.0)
+    return f"{val:,.2f} zl".replace(",", " ")
 
 
 def _safe_sub_tab(title: str, factory) -> QWidget:
@@ -60,32 +71,279 @@ def _safe_sub_tab(title: str, factory) -> QWidget:
 
 
 def _make_placeholder(title: str, description: str, next_step: str) -> QWidget:
-    box = QFrame()
-    box.setStyleSheet(
-        "QFrame{background:#ffffff;border:1px solid #d7e1ef;border-radius:14px;}"
-    )
+    box = QFrame(); box.setProperty("uiCard", True)
     lay = QVBoxLayout(box)
     lay.setContentsMargins(18, 18, 18, 18)
     lay.setSpacing(8)
 
+    theme = load_ui_theme_settings()
+    is_tech_night = str(theme.motif or "").strip().lower() == "tech" and str(theme.mode or "").strip().lower() == "night"
+    c_text = "#e8efff" if is_tech_night else "#0f172a"
+
     lab_title = QLabel(title, box)
-    lab_title.setStyleSheet("font-size:18px; font-weight:800; color:#10233f;")
+    lab_title.setStyleSheet(f"font-size:18px; font-weight:800; color:{c_text};")
     lay.addWidget(lab_title, 0)
 
     lab_desc = QLabel(description, box)
     lab_desc.setWordWrap(True)
-    lab_desc.setStyleSheet("color:#475569; font-size:12px;")
+    lab_desc.setStyleSheet("color:#94a3b8; font-size:12px;")
     lay.addWidget(lab_desc, 0)
 
     hint = QLabel(f"Co dalej: {next_step}", box)
     hint.setWordWrap(True)
     hint.setStyleSheet(
-        "QLabel{background:#f8fafc;border:1px solid #d7e1ef;border-radius:10px;"
-        "padding:8px 10px;color:#334155;font-size:12px;font-weight:600;}"
+        "QLabel{background:rgba(59, 130, 246, 0.1); border:1px solid rgba(59, 130, 246, 0.2); border-radius:10px;"
+        "padding:10px 12px; color:#60a5fa; font-size:12px; font-weight:600;}"
     )
     lay.addWidget(hint, 0)
     lay.addStretch(1)
     return box
+
+
+# --- KPI CARD CLASS (STOLEN FROM DASHBOARD) ---
+
+class FinancialKpiCard(QFrame):
+    def __init__(self, title: str, accent: str, icon: str = "", parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._accent = accent
+        self._target = 0.0
+        self._displayed = 0.0
+        self._timer = QTimer(self)
+        self._timer.setInterval(16)
+        self._timer.timeout.connect(self._tick)
+
+        self.setFixedHeight(110)
+        self.setMinimumWidth(220)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setProperty("uiCard", True)
+
+        main_lay = QVBoxLayout(self)
+        main_lay.setContentsMargins(0, 0, 0, 0)
+        main_lay.setSpacing(0)
+
+        # Top Accent Line
+        self.accent_line = QFrame(self)
+        self.accent_line.setFixedHeight(3)
+        self.accent_line.setStyleSheet(f"background: {accent}; border-top-left-radius: 8px; border-top-right-radius: 8px;")
+        main_lay.addWidget(self.accent_line)
+
+        content = QVBoxLayout()
+        content.setContentsMargins(16, 12, 16, 12)
+        content.setSpacing(4)
+
+        top = QHBoxLayout()
+        lab_title = QLabel(title.upper())
+        lab_title.setStyleSheet("font-size:10px; font-weight:800; color:#64748b; letter-spacing:1.2px;")
+        top.addWidget(lab_title)
+        top.addStretch()
+        if icon:
+            lab_icon = QLabel(icon)
+            lab_icon.setStyleSheet(f"font-size:16px; color:{accent}; background:{accent}15; border-radius:8px; padding:4px 6px;")
+            top.addWidget(lab_icon)
+        content.addLayout(top)
+
+        self._lab_value = QLabel("0.00 zl")
+        self._lab_value.setStyleSheet("font-size:24px; font-weight:900; color:#1e293b; margin-top:2px;")
+        content.addWidget(self._lab_value)
+
+        self._lab_sub = QLabel("")
+        self._lab_sub.setStyleSheet("font-size:11px; font-weight:600; color:#94a3b8;")
+        content.addWidget(self._lab_sub)
+        
+        main_lay.addLayout(content)
+
+    def set_value(self, value: float, sub: str = "", animate: bool = True) -> None:
+        self._target = value
+        self._lab_sub.setText(sub)
+        if not animate or abs(value - self._displayed) < 1:
+            self._displayed = value
+            self._lab_value.setText(_fmt_pln(value))
+            return
+        self._timer.start()
+
+    def _tick(self) -> None:
+        diff = self._target - self._displayed
+        if abs(diff) < 0.1:
+            self._displayed = self._target
+            self._lab_value.setText(_fmt_pln(self._displayed))
+            self._timer.stop()
+            return
+        self._displayed += diff * 0.2
+        self._lab_value.setText(_fmt_pln(self._displayed))
+
+# --- PAYROLL PANEL ---
+
+class PayrollPanel(QWidget):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._worker_store = WorkerStoreJson()
+        self._work_time_store = WorkTimeStoreJson()
+        
+        root = QVBoxLayout(self)
+        root.setContentsMargins(12, 12, 12, 12)
+        root.setSpacing(12)
+        
+        hdr = QHBoxLayout()
+        title = QLabel("WYNAGRODZENIA I CZAS PRACY")
+        title.setStyleSheet("font-size: 18px; font-weight: 900; color: #60a5fa;")
+        hdr.addWidget(title)
+        hdr.addStretch()
+        self.btn_refresh = QPushButton("Odswiez")
+        hdr.addWidget(self.btn_refresh)
+        root.addLayout(hdr)
+        
+        info = QLabel("Aktualne naliczenia pracownikow na podstawie zarejestrowanego czasu pracy i stawek godzinowych.")
+        info.setStyleSheet("color:#94a3b8; font-size:12px;")
+        root.addWidget(info)
+        
+        self.tbl = QTableWidget(0, 7, self)
+        self.tbl.setStyleSheet(TABLE_TEXT_STYLE)
+        self.tbl.setHorizontalHeaderLabels([
+            "Pracownik", "Rola", "Stawka [zl/h]", "Godziny", "Nadgodziny", "Bonusy", "KWOTA BRUTTO"
+        ])
+        self.tbl.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tbl.verticalHeader().setVisible(False)
+        self.tbl.setAlternatingRowColors(True)
+        hh = self.tbl.horizontalHeader()
+        hh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for i in range(1, 7):
+            hh.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
+        root.addWidget(self.tbl)
+        
+        self.btn_refresh.clicked.connect(self.refresh)
+        self.refresh()
+        
+    def refresh(self) -> None:
+        import datetime
+        now = datetime.datetime.now()
+        year, month = now.year, now.month
+        
+        workers = self._worker_store.list_workers()
+        self.tbl.setRowCount(0)
+        
+        for w in workers:
+            sheet = self._work_time_store.get_sheet(w.name, year, month)
+            total_h = 0.0
+            total_ot = 0.0
+            total_extra = 0.0
+            for e in sheet.entries:
+                total_h += float(getattr(e, "hours", 0.0) or 0.0)
+                total_ot += float(getattr(e, "overtime_hours", 0.0) or 0.0)
+                total_extra += float(getattr(e, "extra_pay", 0.0) or 0.0)
+            
+            rate = float(w.hourly_rate or 0.0)
+            mult = float(w.overtime_multiplier or 1.0)
+            brutto = (total_h * rate) + (total_ot * rate * mult) + total_extra
+            
+            row = self.tbl.rowCount()
+            self.tbl.insertRow(row)
+            self.tbl.setItem(row, 0, QTableWidgetItem(str(w.name)))
+            self.tbl.setItem(row, 1, QTableWidgetItem(str(w.role)))
+            self.tbl.setItem(row, 2, QTableWidgetItem(f"{rate:.2f}"))
+            self.tbl.setItem(row, 3, QTableWidgetItem(f"{total_h:.2f}"))
+            self.tbl.setItem(row, 4, QTableWidgetItem(f"{total_ot:.2f}"))
+            self.tbl.setItem(row, 5, QTableWidgetItem(f"{total_extra:.2f}"))
+            
+            item_brutto = QTableWidgetItem(_fmt_pln(brutto))
+            item_brutto.setFont(QFont("", -1, QFont.Weight.Bold))
+            item_brutto.setForeground(QColor("#34d399"))
+            self.tbl.setItem(row, 6, item_brutto)
+
+
+# --- REPORTS PANEL ---
+
+class ReportsPanel(QWidget):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(20, 20, 20, 20)
+        root.setSpacing(15)
+        
+        hdr = QLabel("CENTRUM RAPORTOWE")
+        hdr.setStyleSheet("font-size: 22px; font-weight: 900; color: #f8fafc;")
+        root.addWidget(hdr)
+        
+        desc = QLabel("Wybierz rodzaj raportu i zakres dat, aby wygenerowac zestawienie analityczne.")
+        desc.setStyleSheet("color:#94a3b8; font-size:13px;")
+        root.addWidget(desc)
+        
+        # Grid of report types
+        grid = QGridLayout()
+        grid.setSpacing(15)
+        
+        reports = [
+            ("Analiza Rentownosci", "Zestawienie przychodow i kosztow operacyjnych per miesiac.", "📈"),
+            ("Rozliczenia Pracownikow", "Pelna historia wynagrodzen, zaliczek i premii.", "👥"),
+            ("Rejestr Dokumentow VAT", "Lista faktur zakupowych z podzialem na stawki i status.", "🧾"),
+            ("Zestawienie Naleznosci", "Szczegolowy raport zaleglych platnosci od klientow.", "⏳"),
+        ]
+        
+        for i, (name, dsc, icon) in enumerate(reports):
+            card = QFrame()
+            card.setProperty("uiCard", True)
+            card.setMinimumHeight(140)
+            lay = QVBoxLayout(card)
+            lay.setContentsMargins(15, 15, 15, 15)
+            
+            t_lay = QHBoxLayout()
+            l_icon = QLabel(icon)
+            l_icon.setStyleSheet("font-size: 24px; background: rgba(59, 130, 246, 0.1); border-radius: 8px; padding: 5px;")
+            t_lay.addWidget(l_icon)
+            
+            l_name = QLabel(name)
+            l_name.setStyleSheet("font-size: 16px; font-weight: 700; color: #3b82f6;")
+            t_lay.addWidget(l_name, 1)
+            lay.addLayout(t_lay)
+            
+            l_desc = QLabel(dsc)
+            l_desc.setWordWrap(True)
+            l_desc.setStyleSheet("color: #64748b; font-size: 12px; margin-top: 5px;")
+            lay.addWidget(l_desc)
+            
+            btn = QPushButton("Generuj Raport")
+            btn.setProperty("uiVariant", "secondary")
+            lay.addWidget(btn)
+            
+            grid.addWidget(card, i // 2, i % 2)
+            
+        root.addLayout(grid)
+        root.addStretch()
+
+
+
+class AddPaymentDialog(QDialog):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Dodaj wplate klienta")
+        root = QVBoxLayout(self)
+        form = QFormLayout()
+        self.ed_stage = QLineEdit(self)
+        self.ed_stage.setPlaceholderText("np. Zaliczka, Koncowa")
+        self.sp_amount = QDoubleSpinBox(self)
+        self.sp_amount.setRange(0.0, 1_000_000_000.0)
+        self.sp_amount.setDecimals(2)
+        self.cb_account = QComboBox(self)
+        self.cb_account.addItem("🏦 Bank (Przelew / Faktura)", "bank")
+        self.cb_account.addItem("💵 Gotowka (Do reki)", "cash")
+        self.ed_note = QLineEdit(self)
+        form.addRow("Etap platnosci", self.ed_stage)
+        form.addRow("Kwota [zl]", self.sp_amount)
+        form.addRow("Konto docelowe", self.cb_account)
+        form.addRow("Notatka", self.ed_note)
+        root.addLayout(form)
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self)
+        btns.accepted.connect(self.accept)
+        btns.rejected.connect(self.reject)
+        root.addWidget(btns)
+
+    def payload(self) -> dict[str, Any]:
+        return {
+            "stage": self.ed_stage.text().strip() or "Inne",
+            "amount": float(self.sp_amount.value()),
+            "account_type": str(self.cb_account.currentData() or "bank"),
+            "note": self.ed_note.text().strip(),
+            "paid": False,
+        }
 
 
 class SalesRevenuePanel(QWidget):
@@ -106,15 +364,15 @@ class SalesRevenuePanel(QWidget):
             self,
         )
         info.setWordWrap(True)
-        info.setStyleSheet("color:#475569; font-size:12px;")
+        info.setStyleSheet("color:#94a3b8; font-size:12px;")
         root.addWidget(info, 0)
 
-        self._kpi = QLabel(self)
-        self._kpi.setWordWrap(True)
-        self._kpi.setStyleSheet(
-            "QLabel{background:#f8fafc;border:1px solid #d7e1ef;border-radius:10px;"
-            "padding:8px 10px;color:#334155;font-size:12px;font-weight:700;}"
-        )
+        self._kpi = QFrame(self); self._kpi.setProperty("uiCard", True)
+        kpi_lay = QHBoxLayout(self._kpi)
+        kpi_lay.setContentsMargins(12, 10, 12, 10)
+        self.lab_kpi_text = QLabel("Wczytywanie danych...", self._kpi)
+        self.lab_kpi_text.setStyleSheet("color:#60a5fa; font-size:13px; font-weight:800;")
+        kpi_lay.addWidget(self.lab_kpi_text)
         root.addWidget(self._kpi, 0)
 
         actions = QHBoxLayout()
@@ -165,14 +423,18 @@ class SalesRevenuePanel(QWidget):
 
         right = QVBoxLayout()
         right.setSpacing(6)
+        theme = load_ui_theme_settings()
+        is_tech_night = str(theme.motif or "").strip().lower() == "tech" and str(theme.mode or "").strip().lower() == "night"
+        c_text = "#e8efff" if is_tech_night else "#0f172a"
+
         self.lab_order = QLabel("Platnosci klienta: wybierz zamowienie z listy.", self)
         self.lab_order.setWordWrap(True)
-        self.lab_order.setStyleSheet("font-weight:700; color:#1f2937;")
+        self.lab_order.setStyleSheet(f"font-weight:700; color:{c_text};")
         right.addWidget(self.lab_order, 0)
 
-        self.tbl_payments = QTableWidget(0, 4, self)
+        self.tbl_payments = QTableWidget(0, 5, self)
         self.tbl_payments.setStyleSheet(TABLE_TEXT_STYLE)
-        self.tbl_payments.setHorizontalHeaderLabels(["Etap", "Kwota", "Oplacone", "Uwagi"])
+        self.tbl_payments.setHorizontalHeaderLabels(["Etap", "Kwota", "Konto", "Oplacone", "Uwagi"])
         self.tbl_payments.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tbl_payments.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.tbl_payments.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -181,12 +443,13 @@ class SalesRevenuePanel(QWidget):
         self.tbl_payments.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.tbl_payments.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.tbl_payments.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        self.tbl_payments.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.tbl_payments.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_payments.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         right.addWidget(self.tbl_payments, 1)
 
         self.lab_invoice = QLabel("", self)
         self.lab_invoice.setWordWrap(True)
-        self.lab_invoice.setStyleSheet("color:#475569; font-size:12px;")
+        self.lab_invoice.setStyleSheet("color:#94a3b8; font-size:12px;")
         right.addWidget(self.lab_invoice, 0)
 
         content.addLayout(right, 2)
@@ -260,7 +523,7 @@ class SalesRevenuePanel(QWidget):
                 self.tbl_orders.setItem(row, col, QTableWidgetItem(val))
             self._order_codes.append(code)
 
-        self._kpi.setText(
+        self.lab_kpi_text.setText(
             f"Zamowienia: {self.tbl_orders.rowCount()} | "
             f"Etapy platnosci: {payments_count} | "
             f"Oplacone: {_fmt_pln(paid_sum)} | Naleznosc: {_fmt_pln(pending_sum)} | Plan: {_fmt_pln(planned_sum)}"
@@ -309,12 +572,15 @@ class SalesRevenuePanel(QWidget):
             self.tbl_payments.insertRow(row)
             stage = str(item.get("stage", "") or "").strip() or "Inne"
             amount = float(item.get("amount", 0.0) or 0.0)
+            account = str(item.get("account_type", "bank") or "bank").strip().lower()
             paid = "Tak" if bool(item.get("paid", False)) else "Nie"
             note = str(item.get("note", "") or "").strip()
             self.tbl_payments.setItem(row, 0, QTableWidgetItem(stage))
             self.tbl_payments.setItem(row, 1, QTableWidgetItem(_fmt_pln(amount)))
-            self.tbl_payments.setItem(row, 2, QTableWidgetItem(paid))
-            self.tbl_payments.setItem(row, 3, QTableWidgetItem(note))
+            acc_text = "🏦 Bank" if account == "bank" else "💵 Gotowka"
+            self.tbl_payments.setItem(row, 2, QTableWidgetItem(acc_text))
+            self.tbl_payments.setItem(row, 3, QTableWidgetItem(paid))
+            self.tbl_payments.setItem(row, 4, QTableWidgetItem(note))
             self._payment_indices.append(idx)
 
     def _selected_payment_index(self) -> int:
@@ -349,35 +615,20 @@ class SalesRevenuePanel(QWidget):
         order = self._load_selected_order_for_edit()
         if order is None:
             return
-        stage, ok = QInputDialog.getText(self, "Nowa wplata", "Etap platnosci:")
-        if not ok:
+        dlg = AddPaymentDialog(self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return
-        stage = str(stage or "").strip() or "Inne"
-        amount, ok = QInputDialog.getDouble(
-            self, "Nowa wplata", "Kwota [zl]:", 0.0, 0.0, 1_000_000_000.0, 2
-        )
-        if not ok:
-            return
-        note, _ = QInputDialog.getText(self, "Nowa wplata", "Uwagi (opcjonalnie):")
-        paid_answer = QMessageBox.question(
-            self,
-            "Nowa wplata",
-            "Czy ta wplata jest juz oplacona?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        payments = list(getattr(order, "customer_payments", []) or [])
-        payments.append(
-            {
-                "stage": stage,
-                "amount": float(amount or 0.0),
-                "paid": paid_answer == QMessageBox.StandardButton.Yes,
-                "note": str(note or "").strip(),
-            }
-        )
-        order.customer_payments = payments
+        payload = dlg.payload()
+        if not hasattr(order, "customer_payments") or order.customer_payments is None:
+            order.customer_payments = []
+        
+        plist = list(order.customer_payments)
+        plist.append(payload)
+        order.customer_payments = plist
+        
         if self._save_order(order):
             self.refresh()
+            self._refresh_payments_table(order)
 
     def _on_toggle_paid(self) -> None:
         order = self._load_selected_order_for_edit()
@@ -437,16 +688,16 @@ class CashAndAccountsPanel(QWidget):
             self,
         )
         info.setWordWrap(True)
-        info.setStyleSheet("color:#475569; font-size:12px;")
+        info.setStyleSheet("color:#94a3b8; font-size:12px;")
         root.addWidget(info, 0)
 
-        self.lab_summary = QLabel(self)
-        self.lab_summary.setWordWrap(True)
-        self.lab_summary.setStyleSheet(
-            "QLabel{background:#f8fafc;border:1px solid #d7e1ef;border-radius:10px;"
-            "padding:8px 10px;color:#334155;font-size:12px;font-weight:700;}"
-        )
-        root.addWidget(self.lab_summary, 0)
+        self._kpi = QFrame(self); self._kpi.setProperty("uiCard", True)
+        kpi_lay = QHBoxLayout(self._kpi)
+        kpi_lay.setContentsMargins(12, 10, 12, 10)
+        self.lab_summary = QLabel("Wczytywanie...", self._kpi)
+        self.lab_summary.setStyleSheet("color:#1e293b; font-size:13px; font-weight:800;")
+        kpi_lay.addWidget(self.lab_summary)
+        root.addWidget(self._kpi, 0)
 
         row = QHBoxLayout()
         self.cb_type = QComboBox(self)
@@ -461,9 +712,9 @@ class CashAndAccountsPanel(QWidget):
         row.addWidget(self.btn_refresh, 0)
         root.addLayout(row)
 
-        self.tbl = QTableWidget(0, 6, self)
+        self.tbl = QTableWidget(0, 7, self)
         self.tbl.setStyleSheet(TABLE_TEXT_STYLE)
-        self.tbl.setHorizontalHeaderLabels(["Typ", "Zrodlo", "Projekt / koszt", "Kwota [zl]", "Status", "Opis"])
+        self.tbl.setHorizontalHeaderLabels(["Typ", "Konto", "Zrodlo", "Projekt / koszt", "Kwota [zl]", "Status", "Opis"])
         self.tbl.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tbl.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.tbl.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -471,21 +722,22 @@ class CashAndAccountsPanel(QWidget):
         self.tbl.setAlternatingRowColors(True)
         self.tbl.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.tbl.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.tbl.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        self.tbl.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self.tbl.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        self.tbl.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        self.tbl.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
         root.addWidget(self.tbl, 1)
 
         self.btn_refresh.clicked.connect(self.refresh)
         self.cb_type.currentIndexChanged.connect(self.refresh)
-        self.refresh()
-
     def refresh(self) -> None:
-        rows: list[dict[str, str | float]] = []
-        income = 0.0
+        rows: list[dict[str, Any]] = []
+        bank_income = 0.0
+        bank_costs = 0.0
+        cash_income = 0.0
+        cash_costs = 0.0
         receivable = 0.0
-        costs = 0.0
 
         for order in self._order_store.list_orders():
             code = str(getattr(order, "code", "") or "").strip()
@@ -495,73 +747,84 @@ class CashAndAccountsPanel(QWidget):
                     continue
                 amount = float(item.get("amount", 0.0) or 0.0)
                 stage = str(item.get("stage", "") or "").strip() or "Etap"
-                note = str(item.get("note", "") or "").strip()
+                account = str(item.get("account_type", "bank") or "bank").strip().lower()
                 paid = bool(item.get("paid", False))
+                note = str(item.get("note", "") or "").strip()
+
                 if paid:
-                    income += amount
-                    rows.append(
-                        {
-                            "flow": "income",
-                            "typ": "Przychod",
-                            "zrodlo": "Wplata klienta",
-                            "projekt": f"{code} / {client}",
-                            "kwota": amount,
-                            "status": "Zaksiegowano",
-                            "opis": stage if not note else f"{stage} | {note}",
-                        }
-                    )
+                    if account == "bank":
+                        bank_income += amount
+                    else:
+                        cash_income += amount
+                    
+                    rows.append({
+                        "flow": "income",
+                        "typ": "Przychod",
+                        "konto": "🏦 Bank" if account == "bank" else "💵 Gotowka",
+                        "zrodlo": "Wplata klienta",
+                        "projekt": f"{code} / {client}",
+                        "kwota": amount,
+                        "status": "Zaksiegowano",
+                        "opis": stage if not note else f"{stage} | {note}",
+                    })
                 else:
                     receivable += amount
-                    rows.append(
-                        {
-                            "flow": "receivable",
-                            "typ": "Naleznosc",
-                            "zrodlo": "Harmonogram klienta",
-                            "projekt": f"{code} / {client}",
-                            "kwota": amount,
-                            "status": "Oczekuje",
-                            "opis": stage if not note else f"{stage} | {note}",
-                        }
-                    )
+                    rows.append({
+                        "flow": "receivable",
+                        "typ": "Naleznosc",
+                        "konto": "🏦 Bank" if account == "bank" else "💵 Gotowka",
+                        "zrodlo": "Harmonogram",
+                        "projekt": f"{code} / {client}",
+                        "kwota": amount,
+                        "status": "Oczekuje",
+                        "opis": stage if not note else f"{stage} | {note}",
+                    })
 
         for item in self._expenses_store.list_items("fixed", []):
             name = str(item.get("name", "") or "").strip() or "Koszt staly"
             amount = float(item.get("amount", 0.0) or 0.0)
-            costs += amount
-            rows.append(
-                {
-                    "flow": "cost",
-                    "typ": "Koszt",
-                    "zrodlo": "Wydatki stale",
-                    "projekt": "Koszt firmowy",
-                    "kwota": amount,
-                    "status": "Plan miesieczny",
-                    "opis": name,
-                }
-            )
+            account = str(item.get("account_type", "bank") or "bank").strip().lower()
+            if account == "bank":
+                bank_costs += amount
+            else:
+                cash_costs += amount
+                
+            rows.append({
+                "flow": "cost",
+                "typ": "Koszt",
+                "konto": "🏦 Bank" if account == "bank" else "💵 Gotowka",
+                "zrodlo": "Wydatki stale",
+                "projekt": "Koszt firmowy",
+                "kwota": amount,
+                "status": "Zaksiegowano",
+                "opis": name,
+            })
 
         for item in self._expenses_store.list_items("variable", []):
             name = str(item.get("name", "") or "").strip() or "Koszt zmienny"
             amount = float(item.get("amount", 0.0) or 0.0)
-            costs += amount
-            rows.append(
-                {
-                    "flow": "cost",
-                    "typ": "Koszt",
-                    "zrodlo": "Wydatki zmienne",
-                    "projekt": "Koszt firmowy",
-                    "kwota": amount,
-                    "status": "Do kontroli",
-                    "opis": name,
-                }
-            )
+            account = str(item.get("account_type", "bank") or "bank").strip().lower()
+            if account == "bank":
+                bank_costs += amount
+            else:
+                cash_costs += amount
 
-        saldo = income - costs
+            rows.append({
+                "flow": "cost",
+                "typ": "Koszt",
+                "konto": "🏦 Bank" if account == "bank" else "💵 Gotowka",
+                "zrodlo": "Wydatki zmienne",
+                "projekt": "Koszt firmowy",
+                "kwota": amount,
+                "status": "Zaksiegowano",
+                "opis": name,
+            })
+
+        bank_saldo = bank_income - bank_costs
+        cash_saldo = cash_income - cash_costs
         self.lab_summary.setText(
-            f"Wplaty klienta: {_fmt_pln(income)} | "
-            f"Naleznosci: {_fmt_pln(receivable)} | "
-            f"Koszty: {_fmt_pln(costs)} | "
-            f"Saldo operacyjne: {_fmt_pln(saldo)}"
+            f"🏦 RACHUNEK BANKOWY: {_fmt_pln(bank_saldo)} (In: {_fmt_pln(bank_income)} | Out: {_fmt_pln(bank_costs)})  |  "
+            f"💵 KASA GOTÓWKOWA: {_fmt_pln(cash_saldo)} (In: {_fmt_pln(cash_income)} | Out: {_fmt_pln(cash_costs)})"
         )
 
         selected_flow = str(self.cb_type.currentData() or "all")
@@ -573,11 +836,12 @@ class CashAndAccountsPanel(QWidget):
             row = self.tbl.rowCount()
             self.tbl.insertRow(row)
             self.tbl.setItem(row, 0, QTableWidgetItem(str(item.get("typ", ""))))
-            self.tbl.setItem(row, 1, QTableWidgetItem(str(item.get("zrodlo", ""))))
-            self.tbl.setItem(row, 2, QTableWidgetItem(str(item.get("projekt", ""))))
-            self.tbl.setItem(row, 3, QTableWidgetItem(_fmt_pln(float(item.get("kwota", 0.0) or 0.0))))
-            self.tbl.setItem(row, 4, QTableWidgetItem(str(item.get("status", ""))))
-            self.tbl.setItem(row, 5, QTableWidgetItem(str(item.get("opis", ""))))
+            self.tbl.setItem(row, 1, QTableWidgetItem(str(item.get("konto", ""))))
+            self.tbl.setItem(row, 2, QTableWidgetItem(str(item.get("zrodlo", ""))))
+            self.tbl.setItem(row, 3, QTableWidgetItem(str(item.get("projekt", ""))))
+            self.tbl.setItem(row, 4, QTableWidgetItem(_fmt_pln(float(item.get("kwota", 0.0) or 0.0))))
+            self.tbl.setItem(row, 5, QTableWidgetItem(str(item.get("status", ""))))
+            self.tbl.setItem(row, 6, QTableWidgetItem(str(item.get("opis", ""))))
 
 
 class FinancialSummaryPanel(QWidget):
@@ -589,29 +853,46 @@ class FinancialSummaryPanel(QWidget):
 
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
-        root.setSpacing(8)
+        root.setSpacing(12)
+
+        # Title
+        hdr = QHBoxLayout()
+        title = QLabel("PODSUMOWANIE FINANSOWE")
+        title.setStyleSheet("font-size: 20px; font-weight: 900; color: #3b82f6; letter-spacing: 0.5px;")
+        hdr.addWidget(title)
+        hdr.addStretch()
+        self.btn_refresh = QPushButton("⟳ Odswiez wszystko")
+        self.btn_refresh.setProperty("uiVariant", "primary")
+        self.btn_refresh.setMinimumWidth(160)
+        hdr.addWidget(self.btn_refresh)
+        root.addLayout(hdr)
 
         intro = QLabel(
-            "Podsumowanie finansowe: szybki obraz przychodow, naleznosci, kosztow i dokumentow.",
+            "Szybki obraz przychodow ze zlecen, kosztow operacyjnych oraz biezacego salda firmy.",
             self,
         )
-        intro.setWordWrap(True)
-        intro.setStyleSheet("color:#475569; font-size:12px;")
+        intro.setStyleSheet("color:#64748b; font-size:12px; margin-bottom: 4px;")
         root.addWidget(intro, 0)
 
-        self.lab_kpi = QLabel(self)
-        self.lab_kpi.setWordWrap(True)
-        self.lab_kpi.setStyleSheet(
-            "QLabel{background:#f8fafc;border:1px solid #d7e1ef;border-radius:10px;"
-            "padding:8px 10px;color:#334155;font-size:12px;font-weight:700;}"
-        )
-        root.addWidget(self.lab_kpi, 0)
+        # KPI Cards Grid
+        self._kpi_grid = QGridLayout()
+        self._kpi_grid.setSpacing(12)
+        
+        self.card_paid = FinancialKpiCard("Oplacone klienta", "#16a34a", "💰")
+        self.card_receivable = FinancialKpiCard("Naleznosci (do pobrania)", "#fbbf24", "⏳")
+        self.card_planned = FinancialKpiCard("Plan laczny (zlecenia)", "#60a5fa", "📊")
+        self.card_costs = FinancialKpiCard("Koszty miesieczne", "#f87171", "📉")
+        self.card_saldo = FinancialKpiCard("Saldo operacyjne", "#a78bfa", "⚖️")
+        self.card_vat = FinancialKpiCard("VAT z dokumentow", "#94a3b8", "🧾")
 
-        actions = QHBoxLayout()
-        self.btn_refresh = QPushButton("Odswiez", self)
-        actions.addStretch(1)
-        actions.addWidget(self.btn_refresh, 0)
-        root.addLayout(actions)
+        self._kpi_grid.addWidget(self.card_paid, 0, 0)
+        self._kpi_grid.addWidget(self.card_receivable, 0, 1)
+        self._kpi_grid.addWidget(self.card_planned, 0, 2)
+        self._kpi_grid.addWidget(self.card_costs, 1, 0)
+        self._kpi_grid.addWidget(self.card_saldo, 1, 1)
+        self._kpi_grid.addWidget(self.card_vat, 1, 2)
+        
+        root.addLayout(self._kpi_grid)
 
         content = QHBoxLayout()
         content.setSpacing(10)
@@ -626,11 +907,15 @@ class FinancialSummaryPanel(QWidget):
         self.tbl_receivables.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tbl_receivables.verticalHeader().setVisible(False)
         self.tbl_receivables.setAlternatingRowColors(True)
-        self.tbl_receivables.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_receivables.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
         self.tbl_receivables.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.tbl_receivables.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        self.tbl_receivables.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        self.tbl_receivables.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_receivables.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        self.tbl_receivables.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        self.tbl_receivables.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
+        self.tbl_receivables.setColumnWidth(0, 140)
+        self.tbl_receivables.setColumnWidth(2, 110)
+        self.tbl_receivables.setColumnWidth(3, 110)
+        self.tbl_receivables.setColumnWidth(4, 120)
         content.addWidget(self.tbl_receivables, 3)
 
         right = QVBoxLayout()
@@ -643,14 +928,16 @@ class FinancialSummaryPanel(QWidget):
         self.tbl_costs.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tbl_costs.verticalHeader().setVisible(False)
         self.tbl_costs.setAlternatingRowColors(True)
-        self.tbl_costs.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.tbl_costs.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_costs.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+        self.tbl_costs.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
         self.tbl_costs.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.tbl_costs.setColumnWidth(0, 160)
+        self.tbl_costs.setColumnWidth(1, 100)
         right.addWidget(self.tbl_costs, 1)
 
         self.lab_info = QLabel("", self)
         self.lab_info.setWordWrap(True)
-        self.lab_info.setStyleSheet("color:#475569; font-size:12px;")
+        self.lab_info.setStyleSheet("color:#94a3b8; font-size:12px;")
         right.addWidget(self.lab_info, 0)
         content.addLayout(right, 2)
 
@@ -696,14 +983,18 @@ class FinancialSummaryPanel(QWidget):
         costs_total = fixed_total + variable_total
         saldo_oper = paid_total - costs_total
 
-        total_vat = sum(float(row.get("total_vat", 0.0) or 0.0) for row in invoices)
+        vat_in = sum(float(row.get("total_vat", 0.0) or 0.0) for row in invoices)
+        vat_out = paid_total * 0.23 / 1.23  # Assuming 23% VAT included in gross payments
+        vat_net = vat_out - vat_in
+
         pending_export = self._invoice_store.count_pending_export()
 
-        self.lab_kpi.setText(
-            f"Oplacone: {_fmt_pln(paid_total)} | Naleznosci: {_fmt_pln(receivable_total)} | "
-            f"Plan wplat: {_fmt_pln(planned_total)} | Koszty: {_fmt_pln(costs_total)} | "
-            f"Saldo operacyjne: {_fmt_pln(saldo_oper)} | VAT z dokumentow: {_fmt_pln(total_vat)}"
-        )
+        self.card_paid.set_value(paid_total, sub=f"Przychod zrealizowany")
+        self.card_receivable.set_value(receivable_total, sub=f"Czeka na wplate")
+        self.card_planned.set_value(planned_total, sub=f"Wartosc aktywnych zlecen")
+        self.card_costs.set_value(costs_total, sub=f"Stale: {_fmt_pln(fixed_total)}")
+        self.card_saldo.set_value(saldo_oper, sub="Oplacone - Koszty")
+        self.card_vat.set_value(vat_net, sub=f"Do zaplaty (Out:{_fmt_pln(vat_out)})")
 
         receivable_rows.sort(key=lambda x: x[2], reverse=True)
         self.tbl_receivables.setRowCount(0)
@@ -722,6 +1013,7 @@ class FinancialSummaryPanel(QWidget):
             ("Wydatki zmienne", variable_total, f"Pozycji: {len(variable_items)}"),
             ("Koszt laczny", costs_total, "Stale + zmienne"),
             ("Saldo operacyjne", saldo_oper, "Oplacone - koszty"),
+            ("Podatek VAT (est.)", vat_net, f"Nalezny: {_fmt_pln(vat_out)} | Naliczony: {_fmt_pln(vat_in)}"),
         ):
             row = self.tbl_costs.rowCount()
             self.tbl_costs.insertRow(row)
@@ -750,13 +1042,13 @@ class TaxesSettlementsPanel(QWidget):
             self,
         )
         intro.setWordWrap(True)
-        intro.setStyleSheet("color:#475569; font-size:12px;")
+        intro.setStyleSheet("color:#94a3b8; font-size:12px;")
         root.addWidget(intro, 0)
 
         self.lab_kpi = QLabel(self)
         self.lab_kpi.setWordWrap(True)
         self.lab_kpi.setStyleSheet(
-            "QLabel{background:#f8fafc;border:1px solid #d7e1ef;border-radius:10px;"
+            "QLabel{background:transparent;border:1px solid #d7e1ef;border-radius:10px;"
             "padding:8px 10px;color:#334155;font-size:12px;font-weight:700;}"
         )
         root.addWidget(self.lab_kpi, 0)
@@ -828,7 +1120,7 @@ class TaxesSettlementsPanel(QWidget):
 
         self.lab_info = QLabel("Wybierz dokument, aby zobaczyc pozycje i status VAT.", self)
         self.lab_info.setWordWrap(True)
-        self.lab_info.setStyleSheet("color:#475569; font-size:12px;")
+        self.lab_info.setStyleSheet("color:#94a3b8; font-size:12px;")
         root.addWidget(self.lab_info, 0)
 
         self.btn_refresh.clicked.connect(self.refresh)
@@ -987,7 +1279,7 @@ class TabFinanseHub(QWidget):
         self.lab_guide = QLabel(self)
         self.lab_guide.setWordWrap(True)
         self.lab_guide.setStyleSheet(
-            "QLabel{background:#f8fafc;border:1px solid #d7e1ef;border-radius:12px;"
+            "QLabel{background:transparent;border:1px solid #d7e1ef;border-radius:12px;"
             "padding:8px 12px;color:#334155;font-size:12px;font-weight:600;}"
         )
         root.addWidget(self.lab_guide, 0)
@@ -1019,7 +1311,7 @@ class TabFinanseHub(QWidget):
             self._tab_costs,
         )
         info.setWordWrap(True)
-        info.setStyleSheet("color:#475569; font-size:12px; padding:2px 2px;")
+        info.setStyleSheet("color:#94a3b8; font-size:12px; padding:2px 2px;")
         info_row.addWidget(info, 1)
         costs_root.addLayout(info_row)
 
@@ -1056,21 +1348,13 @@ class TabFinanseHub(QWidget):
         self._tab_cash = CashAndAccountsPanel(self)
         self._tabs.addTab(self._tab_cash, "Kasa i rachunki")
 
-        self._tab_payroll = _make_placeholder(
-            "Wynagrodzenia",
-            "Naliczenia, wyplaty przelewem i gotowka, zaliczki oraz saldo pracownika.",
-            "Uzupelnij naliczenia i wyplaty, aby kontrolowac saldo pracownikow.",
-        )
+        self._tab_payroll = PayrollPanel(self)
         self._tabs.addTab(self._tab_payroll, "Wynagrodzenia")
 
-        self._tab_taxes = TaxesSettlementsPanel(self)
-        self._tabs.addTab(self._tab_taxes, "Podatki i rozrachunki")
+        self._tab_taxes = TabBazaFaktur(self)
+        self._tabs.addTab(self._tab_taxes, "Faktury i rozrachunki (Baza)")
 
-        self._tab_reports = _make_placeholder(
-            "Raporty",
-            "Raporty finansowe i eksporty przekrojowe. Widok przygotowany pod dalszy etap wdrozenia.",
-            "Wybierz okres i zakres raportu po uzupelnieniu danych finansowych.",
-        )
+        self._tab_reports = ReportsPanel(self)
         self._tabs.addTab(self._tab_reports, "Raporty")
 
         self._tabs.currentChanged.connect(self._on_tab_changed)

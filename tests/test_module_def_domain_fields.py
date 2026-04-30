@@ -5,7 +5,7 @@ def test_module_def_new_domain_fields_have_defaults():
     m = ModuleDef()
 
     assert m.module_family == "kitchen_lower"
-    assert m.base_group == "kitchen"
+    assert m.base_group == "kitchen_lower"
     assert m.material_profile_key == ""
     assert m.module_type == "legacy"
 

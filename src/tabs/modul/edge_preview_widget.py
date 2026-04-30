@@ -20,7 +20,7 @@ _EDGE_COLORS: list[str] = [
 ]
 
 _NO_EDGE_COLOR = "#d1d5db"   # szary â€” brak obrzeza
-_BOARD_FILL    = "#f8fafc"   # wypelnienie formatki
+_BOARD_FILL    = "transparent"   # wypelnienie formatki
 _BOARD_BORDER  = "#374151"   # ramka formatki
 _STRIP_W       = 10          # grubosc paska obrzeza (px)
 _LABEL_FONT_SZ = 7           # rozmiar czcionki etykiety
@@ -230,7 +230,7 @@ class EdgePreviewWidget(QWidget):
 
         # kontrast tekstu
         luma = 0.299 * color.red() + 0.587 * color.green() + 0.114 * color.blue()
-        text_color = QColor("#ffffff") if luma < 160 else QColor("#1f2937")
+        text_color = QColor("#ffffff") if luma < 160 else QColor("#e8efff")
         p.setPen(QPen(text_color))
 
         # obrot dla bocznych paskow

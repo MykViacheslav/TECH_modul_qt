@@ -4,6 +4,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QFormLayout, QComboBox, QPushButton, QHBoxLayout
 from src.domain.module_models import ModuleDef, PartDef
 from src.storage.catalog_store_json import CatalogStoreJson
+from src.tabs.modul.part_detail_dialog import PartDetailDialog
 from src.core.costing.module_costs import calculate_module_cost_breakdown
 from src.app.app_settings import load_drawing_settings
 from src.tabs.modul.edge_banding_block import EDGE_SIDES_PL
@@ -15,6 +16,7 @@ if TYPE_CHECKING:
 class BomBlock(QWidget):
     sig_material_changed = pyqtSignal(str)
     sig_material_reset_requested = pyqtSignal()
+    sig_part_details_requested = pyqtSignal(PartDef)
 
     def __init__(self, catalog: CatalogStoreJson, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -28,7 +30,7 @@ class BomBlock(QWidget):
 
         self.setStyleSheet("""
             QLabel {
-                color: #1f2937;
+                color: #e8efff;
             }
             QLabel[bom_meta="true"] {
                 color: #64748b;
@@ -69,6 +71,12 @@ class BomBlock(QWidget):
         material_row_lay.addWidget(self.btn_reset_part_material, 0)
 
         self.form.addRow("Material detalu", material_row)
+
+        self.btn_details = QPushButton("🔍 SZCZEGÓŁY DETALU (Okleiny, Fornir, Lakier)")
+        self.btn_details.setStyleSheet("background: #f1f5f9; font-weight: 700; color: #1e293b; padding: 6px;")
+        self.btn_details.setEnabled(False)
+        self.btn_details.clicked.connect(self._on_details_clicked)
+        self.form.addRow("", self.btn_details)
 
         lay.addLayout(self.form)
 
@@ -203,6 +211,7 @@ class BomBlock(QWidget):
 
             self.cb_part_material.setEnabled(bool(enabled))
             self.btn_reset_part_material.setEnabled(bool(enabled and override_active))
+            self.btn_details.setEnabled(bool(enabled))
 
             tooltip = ""
             if default_material_key:
@@ -218,6 +227,11 @@ class BomBlock(QWidget):
         self.v_edge.setText("-")
         self.v_offsets.setText("-")
         self._set_material_editor_state("", enabled=False, override_active=False)
+        self._current_part_state = None
+
+    def _on_details_clicked(self) -> None:
+        if hasattr(self, "_current_part_state") and self._current_part_state:
+            self.sig_part_details_requested.emit(self._current_part_state)
 
     def _material_label(self, key: str) -> str:
         name = self._mat_name.get(key, "")
@@ -252,6 +266,7 @@ class BomBlock(QWidget):
                 bool(default_material_key) and current_material_key != default_material_key
             ),
         )
+        self._current_part_state = part
 
     def set_module(self, m: ModuleDef) -> None:
         vp = set(getattr(m, "visible_parts", set()) or set())

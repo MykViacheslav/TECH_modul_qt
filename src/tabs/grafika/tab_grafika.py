@@ -47,7 +47,7 @@ class _HeroCard(QFrame):
             """
             QFrame {
                 background: #0f172a;
-                border: 1px solid #1f2937;
+                border: 1px solid #e8efff;
                 border-radius: 24px;
             }
             """
@@ -98,7 +98,7 @@ class _HeroCard(QFrame):
             ("Ekrany", "6", "#34d399"),
             ("Boty", "5", "#a78bfa"),
         ):
-            card = QFrame()
+            card = QFrame(); card.setProperty("uiCard", True)
             card.setStyleSheet("QFrame{background:#111827;border:1px solid #243041;border-radius:16px;}")
             card_layout = QVBoxLayout(card)
             card_layout.setContentsMargins(14, 12, 14, 12)
@@ -119,7 +119,7 @@ class _VisualLaunchCard(QFrame):
         self.setStyleSheet(
             """
             QFrame {
-                background: #ffffff;
+                background: transparent;
                 border: 1px solid #dbe4f0;
                 border-radius: 18px;
             }
@@ -146,7 +146,7 @@ class _VisualLaunchCard(QFrame):
 
         hint = QLabel(spec.hint)
         hint.setWordWrap(True)
-        hint.setStyleSheet("color:#475569;font-size:12px;")
+        hint.setStyleSheet("color:#94a3b8;font-size:12px;")
         layout.addWidget(hint)
 
         btn = QPushButton("Otworz ekran")
@@ -165,7 +165,7 @@ class _ScreenThumbCard(QFrame):
         self.setStyleSheet(
             """
             QFrame {
-                background: #ffffff;
+                background: transparent;
                 border: 1px solid #dbe4f0;
                 border-radius: 16px;
             }
@@ -223,7 +223,7 @@ class _InstructionCardWidget(QFrame):
         self.setStyleSheet(
             """
             QFrame {
-                background: #f8fafc;
+                background: transparent;
                 border: 1px solid #dbe4f0;
                 border-radius: 18px;
             }
@@ -270,13 +270,13 @@ class _InstructionCardWidget(QFrame):
 
         impact = QLabel(f"Wplyw: {card.impact or '-'}")
         impact.setWordWrap(True)
-        impact.setStyleSheet("color:#475569;font-size:12px;")
+        impact.setStyleSheet("color:#94a3b8;font-size:12px;")
         layout.addWidget(impact)
 
         steps = QLabel(card.steps or "-")
         steps.setWordWrap(True)
         steps.setStyleSheet(
-            "background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;"
+            "background:transparent;border:1px solid #e2e8f0;border-radius:12px;"
             "padding:10px;color:#334155;font-size:12px;line-height:1.4;"
         )
         layout.addWidget(steps)
@@ -350,7 +350,7 @@ class TabGrafika(QWidget):
         self.btn_refresh = QPushButton("Odswiez")
         self.btn_refresh.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_refresh.setStyleSheet(
-            "QPushButton{background:#f8fafc;border:1px solid #cbd5e1;color:#334155;font-weight:700;padding:7px 11px;border-radius:10px;}"
+            "QPushButton{background:transparent;border:1px solid #cbd5e1;color:#334155;font-weight:700;padding:7px 11px;border-radius:10px;}"
             "QPushButton:hover{background:#eef2f7;}"
         )
         self.btn_refresh.clicked.connect(self.refresh_data)
@@ -370,7 +370,7 @@ class TabGrafika(QWidget):
         instruction_layout.addLayout(filter_row)
 
         self.lab_instruction_count = QLabel("")
-        self.lab_instruction_count.setStyleSheet("color:#475569;font-size:12px;font-weight:600;")
+        self.lab_instruction_count.setStyleSheet("color:#94a3b8;font-size:12px;font-weight:600;")
         instruction_layout.addWidget(self.lab_instruction_count)
 
         self._instruction_scroll = QScrollArea(self)
@@ -415,7 +415,7 @@ class TabGrafika(QWidget):
         self.btn_open_screens_index = QPushButton("Index MD")
         self.btn_open_screens_index.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_open_screens_index.setStyleSheet(
-            "QPushButton{background:#f8fafc;border:1px solid #cbd5e1;color:#334155;font-weight:700;padding:6px 10px;border-radius:10px;}"
+            "QPushButton{background:transparent;border:1px solid #cbd5e1;color:#334155;font-weight:700;padding:6px 10px;border-radius:10px;}"
             "QPushButton:hover{background:#eef2f7;}"
         )
         self.btn_open_screens_index.clicked.connect(self._open_screens_index)
@@ -435,7 +435,7 @@ class TabGrafika(QWidget):
         gallery_layout.addLayout(gallery_filter_row)
 
         self.lab_screen_count = QLabel("")
-        self.lab_screen_count.setStyleSheet("color:#475569;font-size:12px;font-weight:600;")
+        self.lab_screen_count.setStyleSheet("color:#94a3b8;font-size:12px;font-weight:600;")
         gallery_layout.addWidget(self.lab_screen_count)
 
         self._screen_scroll = QScrollArea(self)
@@ -479,7 +479,7 @@ class TabGrafika(QWidget):
         ):
             line = QLabel(text)
             line.setWordWrap(True)
-            line.setStyleSheet("color:#475569;font-size:12px;")
+            line.setStyleSheet("color:#94a3b8;font-size:12px;")
             rules_layout.addWidget(line)
         right_col.addWidget(rules_panel)
 
@@ -494,7 +494,7 @@ class TabGrafika(QWidget):
             ("Instrukcje: montaz, okucia i poprawki", "#059669"),
         ):
             row = QFrame()
-            row.setStyleSheet("QFrame{background:#f8fafc;border:1px solid #dbe4f0;border-radius:12px;}")
+            row.setStyleSheet("QFrame{background:transparent;border:1px solid #dbe4f0;border-radius:12px;}")
             row_layout = QHBoxLayout(row)
             row_layout.setContentsMargins(12, 10, 12, 10)
             row_layout.setSpacing(8)
@@ -708,11 +708,11 @@ class TabGrafika(QWidget):
         )
 
     def _make_panel(self) -> QFrame:
-        panel = QFrame(self)
+        panel = QFrame(self); panel.setProperty("uiCard", True)
         panel.setStyleSheet(
             """
             QFrame {
-                background: #ffffff;
+                background: transparent;
                 border: 1px solid #dbe4f0;
                 border-radius: 22px;
             }

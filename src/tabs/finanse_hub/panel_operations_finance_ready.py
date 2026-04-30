@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from PyQt6.QtGui import QColor
 
 from src.core.finance_operations_daily_report import build_daily_report, build_daily_summary_text
 from src.core.finance_operations_followup_store import (
@@ -237,35 +238,44 @@ class OperationsFinanceReadyPanel(QWidget):
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
         self._kpi_widgets: dict[str, QLabel] = {}
-        kpi_wrap = QFrame(self)
+        kpi_wrap = QFrame(self); kpi_wrap.setProperty("uiCard", True)
         kpi_l = QGridLayout(kpi_wrap)
+        kpi_l.setSpacing(8)
+        kpi_l.setContentsMargins(8, 8, 8, 8)
+        
         labels = [
-            ("ready", "Gotowe do fakturowania"),
-            ("settlement", "Wymaga rozliczenia"),
-            ("confirm", "Czeka na potwierdzenie"),
-            ("blocking", "Odblokowuje platnosc"),
-            ("amount", "Szacowana kwota"),
-            ("office_new", "Nowe"),
-            ("office_stale", "Zalegle"),
-            ("office_today", "Do reakcji dzis"),
-            ("office_high_prio", "Wysoki priorytet"),
-            ("office_no_move_3d", "Bez ruchu > 3 dni"),
-            ("action_due_today", "Akcja na dzis"),
-            ("action_tomorrow", "Na jutro"),
-            ("action_overdue", "Po terminie akcji"),
-            ("action_snoozed", "Odlozone"),
-            ("office_sent", "Przekazane do fakturowania"),
-            ("office_invoiced", "Zafakturowane"),
-            ("office_paid", "Oplacone"),
-            ("office_settled", "Rozliczone"),
-            ("office_closed", "Zamkniete biurowo"),
-            ("office_fin_closed", "Domkniete finansowo"),
+            ("ready", "Gotowe", "#60a5fa"),
+            ("settlement", "Rozliczenia", "#fbbf24"),
+            ("confirm", "Potwierdzenia", "#a78bfa"),
+            ("blocking", "Blokujace", "#f87171"),
+            ("amount", "Suma PLN", "#34d399"),
+            ("office_new", "Nowe", "#60a5fa"),
+            ("office_sent", "Przekaz.", "#60a5fa"),
+            ("office_invoiced", "Zafakt.", "#60a5fa"),
+            ("office_paid", "Oplac.", "#60a5fa"),
+            ("office_settled", "Rozlicz.", "#60a5fa"),
+            ("office_closed", "Biur. Zamk.", "#60a5fa"),
+            ("office_fin_closed", "Fin. Zamk.", "#60a5fa"),
+            ("office_stale", "Zalegle", "#f87171"),
+            ("office_high_prio", "Wys. Prio", "#f87171"),
+            ("office_no_move_3d", "Stagnacja", "#f87171"),
+            ("office_today", "Do reakcji", "#fbbf24"),
+            ("action_due_today", "Na dzis", "#fbbf24"),
+            ("action_tomorrow", "Jutro", "#fbbf24"),
+            ("action_overdue", "Po term.", "#f87171"),
+            ("action_snoozed", "Odl.", "#94a3b8"),
         ]
-        for i, (k, t) in enumerate(labels):
-            card = QFrame(self)
+        
+        for i, (k, t, color) in enumerate(labels):
+            card = QFrame(kpi_wrap)
+            card.setStyleSheet(f"QFrame {{ background: rgba(15, 23, 42, 0.4); border: 1px solid {color}33; border-radius: 8px; padding: 4px; }}")
             cl = QVBoxLayout(card)
-            cl.addWidget(QLabel(t, self))
-            v = QLabel("0", self)
+            cl.setSpacing(2)
+            title_lab = QLabel(t.upper(), card)
+            title_lab.setStyleSheet(f"color: {color}; font-size: 9px; font-weight: 700; border: none; background:transparent;")
+            cl.addWidget(title_lab)
+            v = QLabel("0", card)
+            v.setStyleSheet("color: #f1f5f9; font-size: 14px; font-weight: 800; border: none; background:transparent;")
             cl.addWidget(v)
             self._kpi_widgets[k] = v
             kpi_l.addWidget(card, i // 4, i % 4)
@@ -350,7 +360,7 @@ class OperationsFinanceReadyPanel(QWidget):
         self.f_needs_check.stateChanged.connect(self.refresh_data)
         self.btn_refresh.clicked.connect(self.refresh_data)
 
-        report_frame = QFrame(self)
+        report_frame = QFrame(self); report_frame.setProperty("uiCard", True)
         report_layout = QVBoxLayout(report_frame)
         report_top = QHBoxLayout()
         self.btn_report_refresh = QPushButton("Odswiez raport", self)
@@ -437,7 +447,7 @@ class OperationsFinanceReadyPanel(QWidget):
         self.txt_history.setMinimumHeight(160)
         right.addWidget(QLabel("Historia zmian", self))
         right.addWidget(self.txt_history, 1)
-        box = QFrame(self)
+        box = QFrame(self); box.setProperty("uiCard", True)
         form = QFormLayout(box)
         self.cb_office_status = QComboBox(self)
         for key, label in OFFICE_STATUS_VALUES.items():
@@ -637,7 +647,12 @@ class OperationsFinanceReadyPanel(QWidget):
                 str(row.get("office_note", "") or row.get("finance_followup_note", "") or ""),
             ]
             for c, val in enumerate(vals):
-                self.tbl_daily_top.setItem(r, c, QTableWidgetItem(val))
+                item = QTableWidgetItem(val)
+                if c == 2: # Priority
+                    p_low = val.lower()
+                    if "krytyczny" in p_low: item.setForeground(QColor("#f87171"))
+                    elif "wysoki" in p_low: item.setForeground(QColor("#fbbf24"))
+                self.tbl_daily_top.setItem(r, c, item)
 
     def _report_row_by_index(self, idx: int) -> dict | None:
         rows = list(self._daily_report.get("top_items", []) or [])

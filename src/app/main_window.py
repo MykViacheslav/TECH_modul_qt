@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import time
+import traceback
+
 from PyQt6.QtCore import QEvent, QPoint, QSize, Qt, QTimer
 from PyQt6.QtGui import QColor, QFont, QPalette
 from PyQt6.QtWidgets import (
@@ -7,6 +10,8 @@ from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -29,11 +34,13 @@ from src.services.alarm_generator import AlarmGenerator
 from src.storage.alarm_store_json import AlarmStoreJson
 from src.core.assistant_context import AssistantContext
 from src.storage.access_control_store_json import AccessControlStoreJson
-from src.tabs.registry import build_tabs
+from src.tabs.registry import build_tab_factories
 from src.widgets.assistant_avatar import FloatingAssistantAvatar
 from src.widgets.assistant_panel import AssistantPanel
 from src.widgets.login_dialog import QuickSwitchDialog
 from src.widgets.time_clock_kiosk import TimeClockKioskWindow
+from src.widgets.step_indicator import StepIndicator
+from src.core.perf.perf_timer import perf_scope, perf_log
 
 
 # ---------------------------------------------------------------------------
@@ -41,6 +48,11 @@ from src.widgets.time_clock_kiosk import TimeClockKioskWindow
 # Klucze w registry/GROUPS celowo nie mają polskich znaków (legacy identifiers).
 # Ta mapa nadpisuje tylko etykietę wizualną — całe wewnętrzne routing działa po kluczu.
 _TAB_DISPLAY_NAMES: dict[str, str] = {
+    "Sprzedaz":           "Sprzedaż",
+    "ProjektHub":         "Projekt",
+    "FirmaHub":           "Firma",
+    "BazyHub":            "Bazy",
+    "UstawieniaHub":      "Ustawienia",
     "Nowe zamowienie":    "Zamówienie",
     "Sciana":             "Ściana",
     "Modul":              "Moduł",
@@ -254,20 +266,19 @@ def _theme_palette(mode: str, motif: str) -> dict[str, str]:
             "header_bg": "#1e293b",
             "scroll_bg": "#0b1220",
             "scroll_handle": "#f59e0b",
-        },
-        "tech": {
-            "window_bg": "#0b1120",
-            "pane_bg": "#10172a",
-            "tab_bg": "#15213a",
-            "tab_hover": "#1c2c49",
-            "text": "#e8efff",
-            "muted": "#94a3b8",
-            "btn_bg": "#16223a",
-            "input_bg": "#0f1a2f",
-            "table_bg": "#0d172a",
-            "header_bg": "#1a2843",
-            "scroll_bg": "#0a1324",
-            "scroll_handle": "#2f6feb",
+        },        "tech": {
+            "window_bg": "#020617",      # Deep midnight black/blue
+            "pane_bg": "#0f172a",        # Slate navy
+            "tab_bg": "#1e293b",         # Lighter navy for tabs
+            "tab_hover": "rgba(59, 130, 246, 0.1)",
+            "text": "#f8fafc",           # Crisp white
+            "muted": "#94a3b8",          # Slate blue
+            "btn_bg": "#1e293b",
+            "input_bg": "#020617",
+            "table_bg": "#0f172a",
+            "header_bg": "#1e293b",
+            "scroll_bg": "#020617",
+            "scroll_handle": "#3b82f6",  # Electric Blue accent
         },
     }
 
@@ -296,14 +307,14 @@ def _build_app_stylesheet(mode: str, motif: str, ui_scale: float = 1.0) -> str:
     tab_selected_bg = _blend_hex(p["pane_bg"], p["scroll_handle"], 0.22 if is_night else 0.16)
     tab_selected_border = _blend_hex(border_soft, p["scroll_handle"], 0.58 if is_night else 0.45)
     tab_selected_bottom = _blend_hex(p["scroll_handle"], p["text"], 0.2 if is_night else 0.1)
-    sidebar_bg = _blend_hex(p["window_bg"], p["tab_bg"], 0.88 if is_tech else 0.85)
+    sidebar_bg = "#010413" if is_tech else _blend_hex(p["window_bg"], p["tab_bg"], 0.85)
     sidebar_text = p["text"]
     sidebar_text_muted = p["text"]
     group_btn_hover_bg = _blend_hex(sidebar_bg, p["scroll_handle"], 0.28 if is_tech else 0.22)
     group_btn_active_bg = _blend_hex(sidebar_bg, p["scroll_handle"], 0.56 if is_tech else 0.50)
     group_btn_active_border = _blend_hex(p["scroll_handle"], p["text"], 0.35)
     group_btn_active_text = p["text"]
-    sidebar_title_font = px(15, 8)
+    sidebar_title_font = px(18, 10)
     sidebar_title_pad_top = px(4, 1)
     sidebar_title_pad_bottom = px(8, 2)
     group_btn_pad_v = px(8, 2)
@@ -311,18 +322,19 @@ def _build_app_stylesheet(mode: str, motif: str, ui_scale: float = 1.0) -> str:
     group_btn_border_left = px(4, 1)
     group_btn_font = px(10, 6)
     group_btn_min_h = px(64, 36)
-    tab_min_h = px(36, 18)
-    tab_min_w = px(70, 30)
-    tab_pad_v = px(4, 1)
-    tab_pad_h = px(12, 3)
-    tab_margin_r = px(2, 1)
-    tab_radius = px(7, 2)
-    tab_bottom_border = px(2, 1)
+    tab_title_font = px(14, 9)
+    tab_min_h = px(42, 24)
+    tab_min_w = px(120, 60)
+    tab_pad_v = px(6, 2)
+    tab_pad_h = px(16, 4)
+    tab_margin_r = px(4, 1)
+    tab_radius = px(8, 2)
+    tab_bottom_border = px(3, 1)
     scroller_width = px(54, 22)
     tab_tool_w = px(24, 12)
     tab_tool_h = px(30, 16)
     tab_tool_margin = px(2, 1)
-    common_font = px(13, 7)
+    common_font = px(14, 10)
     control_min_h = px(34, 18)
     control_radius = px(10, 4)
     button_pad_v = px(4, 1)
@@ -349,13 +361,21 @@ def _build_app_stylesheet(mode: str, motif: str, ui_scale: float = 1.0) -> str:
     ghost_hover = _blend_hex(ghost_bg, p["scroll_handle"], 0.18)
     accent_border = _blend_hex(button_border, p["scroll_handle"], 0.45)
     return f"""
-        QMainWindow {{
-            background: {p["window_bg"]};
+        /* --- GLOBALNE WYMUSZENIE CIEMNEGO TŁA --- */
+        QMainWindow, 
+        QStackedWidget, 
+        QScrollArea, 
+        #CentralWidget,
+        QTabWidget::pane {{
+            background-color: #020617 !important;
+            border: none;
         }}
-        /* ---- Sidebar ---- */
+        /* --- Pasek Boczny Premium --- */
         QWidget#Sidebar {{
-            background: {sidebar_bg};
-            border-right: 2px solid {border_soft};
+            background: #000000 !important;
+            border-right: 1px solid rgba(59, 130, 246, 0.2);
+            min-width: 80px !important;
+            max-width: 80px !important;
         }}
         QLabel#SidebarTitle {{
             color: {sidebar_text};
@@ -376,8 +396,8 @@ def _build_app_stylesheet(mode: str, motif: str, ui_scale: float = 1.0) -> str:
             border-left: {group_btn_border_left}px solid transparent;
             border-radius: 0px;
             background: transparent;
-            font-weight: 500;
-            font-size: {group_btn_font}px;
+            font-weight: 700;
+            font-size: 11px;
             min-height: {group_btn_min_h}px;
             min-width: 72px;
             color: {sidebar_text_muted};
@@ -385,9 +405,13 @@ def _build_app_stylesheet(mode: str, motif: str, ui_scale: float = 1.0) -> str:
         QToolButton#GroupBtn:hover {{
             background: {group_btn_hover_bg};
             color: {sidebar_text};
+            border-left: {group_btn_border_left}px solid {_blend_hex(group_btn_active_border, sidebar_bg, 0.7)};
         }}
         QToolButton#GroupBtn:checked {{
-            background: {group_btn_active_bg};
+            background: qlineargradient(
+                x1:0, y1:0, x2:1, y2:0,
+                stop:0 {group_btn_active_bg}, stop:1 transparent
+            );
             font-weight: 700;
             font-size: {group_btn_font}px;
             border-left: {group_btn_border_left}px solid {group_btn_active_border};
@@ -399,7 +423,8 @@ def _build_app_stylesheet(mode: str, motif: str, ui_scale: float = 1.0) -> str:
             border: none;
             border-radius: 4px;
             color: {sidebar_text_muted};
-            font-size: {group_btn_font}px;
+            font-size: 11px;
+            font-weight: 700;
             padding: 2px 4px;
         }}
         QToolButton#SidebarSwitchUser:hover,
@@ -411,41 +436,43 @@ def _build_app_stylesheet(mode: str, motif: str, ui_scale: float = 1.0) -> str:
         QWidget#Sidebar QToolButton:pressed {{
             background: {group_btn_active_bg};
         }}
-        /* ---- Zakładki w grupach ---- */
-        QTabWidget::tab-bar {{
-            alignment: left;
-            left: 0px;
+        /* ---- Zakładki w grupach (LISTA PIONOWA) ---- */
+        QListWidget[objectName^="SubNavList"] {{
+            background: {sidebar_bg};
+            border: none;
+            border-right: 1px solid {border_soft};
+            outline: 0;
+            padding: 5px 0px;
         }}
-        QTabBar {{
-            background: {p["pane_bg"]};
+        QListWidget[objectName^="SubNavList"]::item {{
+            height: {tab_min_h}px;
+            padding-left: 12px;
+            color: {p["muted"]};
+            font-weight: 700;
+            font-size: {tab_title_font}px;
+            border-left: 4px solid transparent;
+            margin-bottom: 2px;
         }}
-        QTabWidget::pane {{
-            border: 1px solid {border_soft};
-            background: {p["pane_bg"]};
-            top: -1px;
-        }}
-        QTabBar::tab {{
-            min-height: {tab_min_h}px;
-            min-width: {tab_min_w}px;
-            padding: {tab_pad_v}px {tab_pad_h}px;
-            margin-right: {tab_margin_r}px;
-            border: 1px solid {border_soft};
-            border-bottom: {tab_bottom_border}px solid transparent;
-            border-radius: {tab_radius}px;
-            background: {p["tab_bg"]};
+        QListWidget[objectName^="SubNavList"]::item:hover {{
+            background: {p["tab_hover"]};
             color: {p["text"]};
-            font-weight: 500;
         }}
-        QTabBar::tab:selected {{
+        QListWidget[objectName^="SubNavList"]::item:selected {{
             background: {tab_selected_bg};
             color: {p["text"]};
-            border: 1px solid {tab_selected_border};
-            border-bottom: {tab_bottom_border}px solid {tab_selected_bottom};
-            font-weight: 650;
+            border-left: 4px solid {p["scroll_handle"]};
         }}
-        QTabBar::tab:hover:!selected {{
-            background: {p["tab_hover"]};
-            border-color: {border_soft};
+        QTabWidget::tab-bar {{
+            height: 0px;
+            visibility: hidden;
+        }}
+        QTabBar {{
+            height: 0px;
+            visibility: hidden;
+        }}
+        QTabWidget::pane {{
+            border: none;
+            background: {p["pane_bg"]};
         }}
         QTabWidget::right-corner {{
             background: {p["pane_bg"]};
@@ -522,10 +549,22 @@ def _build_app_stylesheet(mode: str, motif: str, ui_scale: float = 1.0) -> str:
             background: {disabled_bg};
             border-color: {border_soft};
         }}
-        QWidget[uiCard="true"] {{
-            border: 1px solid {card_border};
-            border-radius: {control_radius + 4}px;
-            background: {card_bg};
+        /* ---- Szklane Karty (Wysoki Kontrast i Widoczność) ---- */
+        QWidget[uiCard="true"], QFrame[uiCard="true"], 
+        QWidget[uiCard="True"], QFrame[uiCard="True"],
+        .uiCard {{
+             background: #0f172a !important; /* Mocniejszy granat, by nie prześwitywało */
+             border: 2px solid rgba(59, 130, 246, 0.4) !important;
+             border-left: 8px solid #3b82f6 !important; /* Mocny niebieski pasek */
+             border-radius: 16px;
+        }}
+
+        [uiCard="true"] QLabel {{
+            color: #ffffff !important; /* Wymuszony biały tekst */
+        }}
+
+        QLabel {{ 
+            color: #f8fafc; 
         }}
         QLabel[uiMuted="true"] {{
             color: {p["muted"]};
@@ -738,6 +777,9 @@ class _TabsCompat:
         g = self._w._active_group
         if g < 0 or g >= len(self._w._group_tabwidgets):
             return None
+        title = self._w._current_tab_title()
+        if title:
+            self._w._ensure_tab_initialized(title)
         current = self._w._group_tabwidgets[g].currentWidget()
         return self._w._tab_container_to_widget.get(current, current)
 
@@ -754,25 +796,32 @@ class _TabsCompat:
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
+        _t0 = time.perf_counter_ns()
         super().__init__()
         theme = load_ui_theme_settings()
         _apply_accessible_ui_scale(theme.mode, theme.motif)
-        self.setWindowTitle("TECH_modul")
-        # Okno startuje zmaksymalizowane; resize() jest tylko fallbackiem
-        # gdy showMaximized() nie zadziala (np. w testach)
-        self.resize(1400, 860)
+        self.setWindowTitle("TechModul Professional 2.0")
+        # Okno startuje zmaksymalizowane dla pełnej produktywności
+        self.setWindowState(Qt.WindowState.WindowMaximized)
+        self.setMinimumSize(1200, 800)
+        self.resize(1600, 900)
 
-        # Mapowania: tytuł → widget i tytuł → lokalizacja w grupie
+        # Mapowania: tytul -> widget i tytul -> lokalizacja w grupie
         self._tabs_by_title: dict[str, QWidget] = {}
+        self._tab_factories: dict[str, object] = {}
+        self._tab_shell_by_title: dict[str, QWidget] = {}
+        self._tab_group_local_to_title: dict[tuple[int, int], str] = {}
         self._tab_container_to_widget: dict[QWidget, QWidget] = {}
         self._tab_title_to_group: dict[str, int] = {}
         self._tab_title_to_local_idx: dict[str, int] = {}
         self._group_tabwidgets: list[QTabWidget] = []
+        self._group_subnavs: list[QListWidget] = []
         self._active_group: int = 0
         self._sidebar_visible: bool = True
         self._time_kiosk_window: TimeClockKioskWindow | None = None
         self._access_store = AccessControlStoreJson()
         self._return_to_order_available: bool = False
+        self._wired_tabs: set[str] = set()
 
         # Historia nawigacji (lista tytułów zakładek)
         self._nav_history: list[str] = []
@@ -783,8 +832,8 @@ class MainWindow(QMainWindow):
         self._instruction_bubble_timeout_ms: int = 8000
         self._tab_bar_to_group_idx: dict[int, int] = {}
         self._group_button_to_group_idx: dict[int, int] = {}
-        self._tab_instruction_guide: dict[str, dict[str, str]] = self._build_tab_instruction_guide()
-        self._tab_walkthrough_guide: dict[str, list[str]] = self._build_tab_walkthrough_guide()
+        self._tab_instruction_guide: dict[str, dict[str, str]] | None = None
+        self._tab_walkthrough_guide: dict[str, list[str]] | None = None
         self._onboarding_active: bool = False
         self._onboarding_steps: list[str] = [
             "Start",
@@ -807,21 +856,35 @@ class MainWindow(QMainWindow):
 
         central = QWidget(self)
         self.setCentralWidget(central)
-        main_layout = QHBoxLayout(central)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
+        # Create a horizontal layout for Sidebar + Main Content Area
+        self._body_layout = QHBoxLayout(central)
+        self._body_layout.setContentsMargins(0, 0, 0, 0)
+        self._body_layout.setSpacing(0)
 
-        self._sidebar = self._build_sidebar()
-        main_layout.addWidget(self._sidebar)
+        with perf_scope("startup.sidebar_build"):
+            self._sidebar = self._build_sidebar()
+        self._body_layout.addWidget(self._sidebar)
 
         self.btn_sidebar_toggle = QPushButton("◀")
         self.btn_sidebar_toggle.setFixedWidth(22)
         self.btn_sidebar_toggle.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         self.btn_sidebar_toggle.clicked.connect(self._toggle_sidebar_visibility)
-        main_layout.addWidget(self.btn_sidebar_toggle)
+        self._body_layout.addWidget(self.btn_sidebar_toggle)
 
-        self._content_stack = QStackedWidget(central)
-        main_layout.addWidget(self._content_stack, 1)
+        # Right-side vertical area: StepIndicator (Top) + StackedContent (Body)
+        self._right_container = QWidget()
+        self._right_v_layout = QVBoxLayout(self._right_container)
+        self._right_v_layout.setContentsMargins(0, 0, 0, 0)
+        self._right_v_layout.setSpacing(0)
+        
+        self.step_indicator = StepIndicator(self)
+        self.step_indicator.sig_step_clicked.connect(self._navigate_to_tab)
+        self._right_v_layout.addWidget(self.step_indicator)
+
+        self._content_stack = QStackedWidget()
+        self._right_v_layout.addWidget(self._content_stack, 1)
+
+        self._body_layout.addWidget(self._right_container, 1)
 
         # Przycisk toggle dla panelu asystenta (zawsze widoczny)
         self.btn_assistant_toggle = QPushButton("A")
@@ -829,7 +892,7 @@ class MainWindow(QMainWindow):
         self.btn_assistant_toggle.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         self.btn_assistant_toggle.setToolTip("Pokaz / ukryj asystenta")
         self.btn_assistant_toggle.clicked.connect(self._toggle_assistant_panel)
-        main_layout.addWidget(self.btn_assistant_toggle)
+        self._body_layout.addWidget(self.btn_assistant_toggle)
 
         # Assistant panel (right side, collapsible)
         self._assistant_panel = AssistantPanel(self)
@@ -837,47 +900,85 @@ class MainWindow(QMainWindow):
         self._assistant_panel.setMinimumWidth(250)
         self._assistant_panel.setVisible(True)
         self._assistant_panel.sig_close_requested.connect(self._toggle_assistant_panel)
-        main_layout.addWidget(self._assistant_panel)
+        self._body_layout.addWidget(self._assistant_panel)
 
         # Zbierz wszystkie zakładki (z obsługą błędów)
         try:
-            tabs_list = build_tabs()
-            for title, widget in tabs_list:
-                self._tabs_by_title[title] = widget
+            self._tab_factories = dict(build_tab_factories())
         except Exception as e:
-            print(f"Warning building tabs: {e}")
-            # Fallback - create at least Start tab
-            from src.tabs.start.tab_start import TabStart
-            self._tabs_by_title["Start"] = TabStart()
+            print(f"Warning building tab factories: {e}")
+            self._tab_factories = {}
 
-        # Utwórz QTabWidget dla każdej grupy
+        # Utwórz QTabWidget dla każdej grupy ukryty za nowym, eleganckim QListWidget
         for g_idx, (group_name, tab_titles) in enumerate(GROUPS):
+            hub_widget = QWidget()
+            hub_layout = QHBoxLayout(hub_widget)
+            hub_layout.setContentsMargins(0, 0, 0, 0)
+            hub_layout.setSpacing(0)
+
+            # Lewy sub-sidebar dla wewnętrznych zakładek w Hubie
+            sub_nav = QListWidget()
+            sub_nav.setFixedWidth(180)
+            sub_nav.setObjectName(f"SubNavList_{g_idx}")
+            sub_nav.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            if len(tab_titles) <= 1:
+                sub_nav.setVisible(False)  # Ukryj podrzędne menu jeżeli Hub ma tylko 1 okno główne
+
             gtw = QTabWidget()
-            tab_bar = gtw.tabBar()
-            tab_bar.setExpanding(False)
-            tab_bar.setMovable(False)
-            tab_bar.setUsesScrollButtons(True)
-            tab_bar.setElideMode(Qt.TextElideMode.ElideNone)
-            tab_bar.setCursor(Qt.CursorShape.PointingHandCursor)
-            tab_bar.setObjectName(f"MainGroupTabBar_{g_idx}")
-            tab_bar.setMouseTracking(True)
-            tab_bar.installEventFilter(self)
-            self._tab_bar_to_group_idx[id(tab_bar)] = g_idx
-            gtw.setIconSize(QSize(14, 14))
+            gtw.tabBar().hide()  # Chowamy natywny, brzydki pasek
+            
+            hub_layout.addWidget(sub_nav)
+            
+            # Przycisk zwijania sub-nawigacji
+            btn_sub_toggle = QPushButton("◀")
+            btn_sub_toggle.setFixedWidth(16)
+            btn_sub_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn_sub_toggle.setStyleSheet("QPushButton { background: transparent; border: none; font-weight: 800; color: #94a3b8; }")
+            btn_sub_toggle.clicked.connect(lambda _, sn=sub_nav, b=btn_sub_toggle: self._toggle_subnav(sn, b))
+            hub_layout.addWidget(btn_sub_toggle)
+
+            hub_layout.addWidget(gtw, 1)
+
             self._group_tabwidgets.append(gtw)
-            self._content_stack.addWidget(gtw)
+            self._group_subnavs.append(sub_nav)
+            self._content_stack.addWidget(hub_widget)
+
+            # Podpinanie eventów pomiędzy Listą a ukrytymi Tabami
+            sub_nav.currentRowChanged.connect(gtw.setCurrentIndex)
+            gtw.currentChanged.connect(sub_nav.setCurrentRow)
+
             for tab_title in tab_titles:
-                widget = self._tabs_by_title.get(tab_title)
-                if widget is not None:
-                    tab_container = self._wrap_tab_widget(widget, tab_title)
-                    display_name = _TAB_DISPLAY_NAMES.get(tab_title, tab_title)
-                    local_idx = gtw.addTab(tab_container, display_name)
-                    gtw.setTabToolTip(local_idx, self._instruction_tooltip_for_tab(tab_title))
-                    self._tab_title_to_group[tab_title] = g_idx
-                    self._tab_title_to_local_idx[tab_title] = local_idx
+                factory = self._tab_factories.get(tab_title)
+                if factory is None:
+                    continue
+                tab_shell = self._create_lazy_tab_shell(tab_title)
+                display_name = _TAB_DISPLAY_NAMES.get(tab_title, tab_title)
+                local_idx = gtw.addTab(tab_shell, display_name)
+
+                item = QListWidgetItem(display_name)
+                item.setSizeHint(QSize(130, 36))
+                sub_nav.addItem(item)
+
+                self._tab_title_to_group[tab_title] = g_idx
+                self._tab_title_to_local_idx[tab_title] = local_idx
+                self._tab_group_local_to_title[(g_idx, local_idx)] = tab_title
+                self._tab_shell_by_title[tab_title] = tab_shell
+            
+            if gtw.count() > 0:
+                sub_nav.setCurrentRow(0)
+
             gtw.currentChanged.connect(
                 lambda idx, g=g_idx: self._on_group_tab_changed(g, idx)
             )
+            gtw.currentChanged.connect(self._update_step_indicator)
+
+        preload_tabs = (
+            "Start",
+        )
+        with perf_scope("startup.preload.total"):
+            for tab_title in preload_tabs:
+                with perf_scope(f"preload.{tab_title.replace(' ', '_')}"):
+                    self._ensure_tab_initialized(tab_title)
 
         # Awatar asystenta
         self.assistant_avatar = FloatingAssistantAvatar(self)
@@ -899,8 +1000,10 @@ class MainWindow(QMainWindow):
             self._nav_history_pos = 0
 
         self._update_navigation_buttons()
-        self._wire_cross_tab_signals()
-        self._configure_cross_hub_navigation()
+        with perf_scope("startup.wire_cross_tab_signals"):
+            self._wire_cross_tab_signals()
+        with perf_scope("startup.configure_cross_hub_nav"):
+            self._configure_cross_hub_navigation()
         # Compat shim must exist immediately (tests and signal handlers use it right away).
         self.tabs = _TabsCompat(self)
         self._install_instruction_hover_sources()
@@ -909,9 +1012,14 @@ class MainWindow(QMainWindow):
         # ------ ALARMY I BACKUP (opóźnione) ------
         # Wszystkie cięższe inicjalizacje są opóźnione aby uniknąć crasha
         QTimer.singleShot(2000, self._init_services_delayed)
+        perf_log("startup.main_window_init", _t0)
     
     def _init_services_delayed(self) -> None:
         """Initialize heavy services after window is shown."""
+        with perf_scope("startup.delayed_services"):
+            self._init_services_delayed_inner()
+
+    def _init_services_delayed_inner(self) -> None:
         try:
             # Alarm store
             self._alarm_store = AlarmStoreJson()
@@ -945,6 +1053,23 @@ class MainWindow(QMainWindow):
         if hasattr(self, "statusBar") and self.statusBar():
             self.statusBar().showMessage(f"⚠ Błąd backupu: {error}", 10000)
     
+        self._refresh_all_tab_badges()
+    
+    def _update_step_indicator(self) -> None:
+        """Update the step indicator with the currently active tab key."""
+        if not hasattr(self, "step_indicator"):
+            return
+        g = self._active_group
+        if 0 <= g < len(self._group_tabwidgets):
+            gtw = self._group_tabwidgets[g]
+            local_idx = gtw.currentIndex()
+            if local_idx >= 0:
+                # Find the key by searching in _tab_title_to_group and _tab_title_to_local_idx
+                for title, g_idx in self._tab_title_to_group.items():
+                    if g_idx == g and self._tab_title_to_local_idx.get(title) == local_idx:
+                        self.step_indicator.set_current_step(title)
+                        break
+
     def _on_critical_alarm(self, alarm) -> None:
         """Handle new critical alarm - show notification."""
         if hasattr(self, "statusBar") and self.statusBar():
@@ -1070,6 +1195,50 @@ class MainWindow(QMainWindow):
             self.btn_sidebar_toggle.setText("▶")
             self.btn_sidebar_toggle.setToolTip("Pokaz lewy pasek aplikacji")
 
+    def _create_lazy_tab_shell(self, tab_title: str) -> QWidget:
+        shell = QWidget(self)
+        shell.setObjectName(f"LazyTabShell::{tab_title}")
+        lay = QVBoxLayout(shell)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        loading = QLabel("Ladowanie...", shell)
+        loading.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        loading.setStyleSheet("color:#64748b; font-size:12px;")
+        lay.addWidget(loading)
+        return shell
+
+    def _ensure_tab_initialized(self, title: str) -> QWidget | None:
+        existing = self._tabs_by_title.get(title)
+        if existing is not None:
+            return existing
+        factory = self._tab_factories.get(title)
+        shell = self._tab_shell_by_title.get(title)
+        if factory is None or shell is None:
+            return existing
+        _init_t0 = time.perf_counter_ns()
+        try:
+            widget = factory()
+        except Exception as exc:
+            traceback_text = f"[{title}]\n\nNie udalo sie zaladowac zakladki.\n\n{type(exc).__name__}: {exc}"
+            widget = QLabel(traceback_text, shell)
+            widget.setWordWrap(True)
+            widget.setStyleSheet("color:#b91c1c; padding:24px; font-size:12px;")
+        wrapped = self._wrap_tab_widget(widget, title)
+        lay = shell.layout()
+        if isinstance(lay, QVBoxLayout):
+            while lay.count():
+                item = lay.takeAt(0)
+                child = item.widget()
+                if child is not None:
+                    child.setParent(None)
+            lay.addWidget(wrapped)
+        self._tabs_by_title[title] = widget
+        perf_log(f"tab.{title.replace(' ', '_')}.init", _init_t0)
+        return widget
+
+    def _get_tab_widget(self, title: str) -> QWidget | None:
+        return self._ensure_tab_initialized(title)
+
     def _wrap_tab_widget(self, widget: QWidget, tab_title: str) -> QWidget:
         # Keep real tab widget references in _tabs_by_title, but render each tab inside
         # a scroll container so content is always reachable on smaller displays.
@@ -1094,7 +1263,15 @@ class MainWindow(QMainWindow):
         self._sidebar_visible = not self._sidebar_visible
         if hasattr(self, "_sidebar"):
             self._sidebar.setVisible(self._sidebar_visible)
+        # Ukryj/pokaż sub-nav (lista zakładek wewnątrz aktywnego huba)
+        # UWAGA: to toggluje globalnie, ale przycisk wewnątrz huba toggluje lokalnie.
         self._refresh_sidebar_toggle_button()
+
+    def _toggle_subnav(self, sub_nav: QListWidget, button: QPushButton) -> None:
+        visible = sub_nav.isVisible()
+        sub_nav.setVisible(not visible)
+        button.setText("▶" if visible else "◀")
+        button.setToolTip("Pokaz" if visible else "Ukryj")
 
     def _toggle_assistant_panel(self) -> None:
         if not hasattr(self, "_assistant_panel"):
@@ -1231,6 +1408,16 @@ class MainWindow(QMainWindow):
         else:
             self.assistant_avatar.say("Tryb instrukcji wylaczony.", 3500)
 
+    def _get_instruction_guide(self) -> dict[str, dict[str, str]]:
+        if self._tab_instruction_guide is None:
+            self._tab_instruction_guide = self._build_tab_instruction_guide()
+        return self._tab_instruction_guide
+
+    def _get_walkthrough_guide(self) -> dict[str, list[str]]:
+        if self._tab_walkthrough_guide is None:
+            self._tab_walkthrough_guide = self._build_tab_walkthrough_guide()
+        return self._tab_walkthrough_guide
+
     def _build_tab_instruction_guide(self) -> dict[str, dict[str, str]]:
         return {
             "Start": {
@@ -1361,7 +1548,7 @@ class MainWindow(QMainWindow):
 
     def _instruction_tab_walkthrough_message(self, title: str) -> str:
         key = self._normalize_instruction_tab_title(title)
-        steps = self._tab_walkthrough_guide.get(key, [])
+        steps = self._get_walkthrough_guide().get(key, [])
         if not steps:
             return ""
         first = steps[0]
@@ -1448,14 +1635,14 @@ class MainWindow(QMainWindow):
 
     def _instruction_tooltip_for_tab(self, title: str) -> str:
         key = self._normalize_instruction_tab_title(title)
-        entry = self._tab_instruction_guide.get(key)
+        entry = self._get_instruction_guide().get(key)
         if not entry:
             return f"{key}: pomoc kontekstowa w trybie instrukcji."
         return f"{key}: {entry['what']} Wplywa na: {entry['impact']}"
 
     def _instruction_message_for_tab(self, title: str) -> str:
         key = self._normalize_instruction_tab_title(title)
-        entry = self._tab_instruction_guide.get(key)
+        entry = self._get_instruction_guide().get(key)
         related = self._instruction_related_tabs(key)
         if not entry:
             return (
@@ -1483,7 +1670,7 @@ class MainWindow(QMainWindow):
 
     def _instruction_inner_tab_message(self, title: str) -> str:
         key = self._normalize_instruction_tab_title(title)
-        entry = self._tab_instruction_guide.get(key)
+        entry = self._get_instruction_guide().get(key)
         if entry:
             return (
                 f"Zakladka wewnetrzna: {key}\n"
@@ -1552,6 +1739,7 @@ class MainWindow(QMainWindow):
             if local_idx is None:
                 return
             self._set_active_group(g_idx)
+            self._ensure_tab_initialized(title)
             gtw = self._group_tabwidgets[g_idx]
             if gtw.currentIndex() == local_idx:
                 # setCurrentIndex nie emituje currentChanged gdy indeks się nie zmienia
@@ -1568,7 +1756,7 @@ class MainWindow(QMainWindow):
         local_idx = gtw.currentIndex()
         if local_idx < 0:
             return None
-        return gtw.tabText(local_idx)
+        return self._tab_group_local_to_title.get((self._active_group, local_idx), gtw.tabText(local_idx))
 
     def _on_group_tab_changed(self, group_idx: int, local_idx: int) -> None:
         try:
@@ -1578,10 +1766,24 @@ class MainWindow(QMainWindow):
             if group_idx != self._active_group:
                 return
             gtw = self._group_tabwidgets[group_idx]
-            title = gtw.tabText(local_idx)
+            title = self._tab_group_local_to_title.get((group_idx, local_idx), gtw.tabText(local_idx))
+            _tab_t0 = time.perf_counter_ns()
+            _is_first = title not in self._tabs_by_title
+            self._ensure_tab_initialized(title)
+
+            # Deferred cross-tab wiring for tabs initialized after startup
+            if title not in self._wired_tabs:
+                self._wire_cross_tab_signals()
+                if title == "Finanse":
+                    self._configure_cross_hub_navigation()
+                self._wired_tabs.add(title)
+
             self._install_instruction_hover_sources()
             self._announce_tab_walkthrough(title)
             self._sync_onboarding_with_active_tab(title)
+
+            _tab_key = f"tab.{title.replace(' ', '_')}"
+            perf_log(f"{_tab_key}.first_open" if _is_first else f"{_tab_key}.repeat_open", _tab_t0)
 
             if self._is_history_navigation:
                 self._update_navigation_buttons()
@@ -1669,7 +1871,7 @@ class MainWindow(QMainWindow):
     def navigate_to_operations(self, payload: dict | None = None) -> None:
         context = dict(payload or {})
         self._navigate_to_tab("OPERACJE")
-        tab_ops = self._tabs_by_title.get("OPERACJE")
+        tab_ops = self._get_tab_widget("OPERACJE")
         if tab_ops is None or not hasattr(tab_ops, "navigate_to_context"):
             return
         try:
@@ -1682,7 +1884,7 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _open_module_in_modul(self, module_name: str) -> None:
-        tab = self._tabs_by_title.get("Modul")
+        tab = self._get_tab_widget("Modul")
         if tab is None or not hasattr(tab, "load_module_from_store_name"):
             return
         try:
@@ -1692,21 +1894,21 @@ class MainWindow(QMainWindow):
             self._show_runtime_error("otwarcie modulu", exc)
 
     def _open_wall_in_sciana(self, wall_name: str) -> None:
-        tab = self._tabs_by_title.get("Sciana")
+        tab = self._get_tab_widget("Sciana")
         if tab is None or not hasattr(tab, "load_wall_from_store_name"):
             return
         if bool(tab.load_wall_from_store_name(str(wall_name or ""))):
             self._navigate_to_tab("Sciana")
 
     def _open_assembly_in_komplet(self, assembly_name: str) -> None:
-        tab = self._tabs_by_title.get("Komplet")
+        tab = self._get_tab_widget("Komplet")
         if tab is None or not hasattr(tab, "load_assembly_from_store_name"):
             return
         if bool(tab.load_assembly_from_store_name(str(assembly_name or ""))):
             self._navigate_to_tab("Komplet")
 
     def _open_new_module(self) -> None:
-        tab = self._tabs_by_title.get("Modul")
+        tab = self._get_tab_widget("Modul")
         if tab is None:
             return
         try:
@@ -1720,7 +1922,7 @@ class MainWindow(QMainWindow):
         self._navigate_to_tab("Wycena")
 
     def _open_assembly_in_wycena(self, assembly_name: str) -> None:
-        tab = self._tabs_by_title.get("Wycena")
+        tab = self._get_tab_widget("Wycena")
         if tab is not None and hasattr(tab, "open_assembly_for_pricing"):
             tab.open_assembly_for_pricing(str(assembly_name or ""))
         self._navigate_to_tab("Wycena")
@@ -1741,13 +1943,13 @@ class MainWindow(QMainWindow):
             from datetime import date
             try:
                 d = date.fromisoformat(str(target_date).strip())
-                tab = self._tabs_by_title.get("Kalendarz")
+                tab = self._get_tab_widget("Kalendarz")
                 if tab is not None and hasattr(tab, "open_with_date"):
                     from PyQt6.QtCore import QTimer
                     QTimer.singleShot(50, lambda: tab.open_with_date(d))
             except (ValueError, AttributeError):
                 pass
-        tab = self._tabs_by_title.get("Kalendarz")
+        tab = self._get_tab_widget("Kalendarz")
         if tab is not None and hasattr(tab, "refresh_data"):
             tab.refresh_data()
 
@@ -1755,8 +1957,43 @@ class MainWindow(QMainWindow):
         self._capture_order_return_state()
         self._open_calendar(target_date)
 
+    def _open_stanowiska_for_order(self, calendar_stage: str | None = None, reference_date: str | None = None) -> None:
+        """Minimalny handoff: otwiera Stanowiska i wybiera podstanowisko wg etapu."""
+        tab = self._get_tab_widget("Stanowiska")
+        if tab is None:
+            return
+
+        stage = str(calendar_stage or "").strip()
+        normalized = (
+            stage.lower()
+            .replace("ą", "a")
+            .replace("ć", "c")
+            .replace("ę", "e")
+            .replace("ł", "l")
+            .replace("ń", "n")
+            .replace("ó", "o")
+            .replace("ś", "s")
+            .replace("ż", "z")
+            .replace("ź", "z")
+        )
+        stage_to_station = {
+            "produkcja": "cnc",
+            "lakiernia": "lakiernia",
+            "montaz": "montaz",
+            "poprawki": "montaz",
+            "projekt": "biuro",
+            "wycena": "biuro",
+            "zakup materialow": "biuro",
+            "probki": "biuro",
+        }
+        station_key = stage_to_station.get(normalized, "biuro")
+
+        self._navigate_to_tab("Stanowiska")
+        if hasattr(tab, "open_station"):
+            tab.open_station(station_key, reference_date=reference_date)
+
     def _open_new_wall(self, context: dict | None = None) -> None:
-        tab = self._tabs_by_title.get("Sciana")
+        tab = self._get_tab_widget("Sciana")
         if tab is None:
             return
         if context and hasattr(tab, "start_new_wall_from_order_context"):
@@ -1766,7 +2003,7 @@ class MainWindow(QMainWindow):
         self._navigate_to_tab("Sciana")
 
     def _open_new_assembly(self, context: dict | None = None) -> None:
-        tab = self._tabs_by_title.get("Komplet")
+        tab = self._get_tab_widget("Komplet")
         if tab is None:
             return
         if context and hasattr(tab, "start_new_assembly_from_wall_context"):
@@ -1776,7 +2013,7 @@ class MainWindow(QMainWindow):
         self._navigate_to_tab("Komplet")
 
     def _open_new_order(self, context: dict | None = None) -> None:
-        tab = self._tabs_by_title.get("Nowe zamowienie")
+        tab = self._get_tab_widget("Nowe zamowienie")
         if tab is None:
             return
         if context and hasattr(tab, "start_new_order_from_context"):
@@ -1785,16 +2022,20 @@ class MainWindow(QMainWindow):
             tab.show_new_order_launcher()
         self._navigate_to_tab("Nowe zamowienie")
 
+    def _back_to_order(self) -> None:
+        """Nawigacja powrotna bez resetowania pól (pokazuje aktualny draft)."""
+        self._navigate_to_tab("Nowe zamowienie")
+
     def _open_clients_in_bazy(self) -> None:
         self._capture_order_return_state()
-        tab = self._tabs_by_title.get("Klienci")
+        tab = self._get_tab_widget("Klienci")
         if tab is not None and hasattr(tab, "open_clients_tab"):
             tab.open_clients_tab(clear_form=False)
         self._navigate_to_tab("Klienci")
 
     def _open_orders_in_bazy(self) -> None:
         self._capture_order_return_state()
-        tab = self._tabs_by_title.get("Zamowienia")
+        tab = self._get_tab_widget("Zamowienia")
         if tab is not None and hasattr(tab, "open_orders_tab"):
             tab.open_orders_tab(clear_form=False)
         self._navigate_to_tab("Zamowienia")
@@ -1805,7 +2046,7 @@ class MainWindow(QMainWindow):
 
     def _open_workers_in_bazy(self) -> None:
         self._capture_order_return_state()
-        tab = self._tabs_by_title.get("Pracownicy")
+        tab = self._get_tab_widget("Pracownicy")
         if tab is not None and hasattr(tab, "open_workers_tab"):
             tab.open_workers_tab(clear_form=False)
         self._navigate_to_tab("Pracownicy")
@@ -1819,7 +2060,7 @@ class MainWindow(QMainWindow):
         self._navigate_to_tab("Baza faktur")
 
     def _capture_order_return_state(self) -> None:
-        tab_order = self._tabs_by_title.get("Nowe zamowienie")
+        tab_order = self._get_tab_widget("Nowe zamowienie")
         has_context = self._current_tab_title() == "Nowe zamowienie"
         if tab_order is not None and hasattr(tab_order, "save_draft_for_navigation"):
             try:
@@ -1836,17 +2077,17 @@ class MainWindow(QMainWindow):
     def _set_bazy_return_to_order_enabled(self, enabled: bool) -> None:
         self._return_to_order_available = bool(enabled)
         for title in ("Klienci", "Zamowienia", "Pracownicy", "Bazy"):
-            tab_bazy = self._tabs_by_title.get(title)
+            tab_bazy = self._get_tab_widget(title)
             if tab_bazy is not None and hasattr(tab_bazy, "set_return_to_order_enabled"):
                 tab_bazy.set_return_to_order_enabled(self._return_to_order_available)
-        tab_kalendarz = self._tabs_by_title.get("Kalendarz")
+        tab_kalendarz = self._get_tab_widget("Kalendarz")
         if tab_kalendarz is not None and hasattr(tab_kalendarz, "set_return_to_order_enabled"):
             tab_kalendarz.set_return_to_order_enabled(self._return_to_order_available)
 
     def _return_to_order_from_bazy(self) -> None:
         if not self._return_to_order_available:
             return
-        tab_order = self._tabs_by_title.get("Nowe zamowienie")
+        tab_order = self._get_tab_widget("Nowe zamowienie")
         if tab_order is not None and hasattr(tab_order, "start_new_order"):
             tab_order.start_new_order(force_blank=False)
         self._navigate_to_tab("Nowe zamowienie")

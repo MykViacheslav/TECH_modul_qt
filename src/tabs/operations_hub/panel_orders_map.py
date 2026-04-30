@@ -210,8 +210,8 @@ class OrdersMapPanel(QWidget):
         self.lbl_navigation_info.setWordWrap(True)
         self.lbl_navigation_info.setVisible(False)
         self.lbl_navigation_info.setStyleSheet(
-            "QLabel{background:#f8fafc;border:1px solid #d7e1ef;border-radius:8px;"
-            "padding:6px 8px;color:#475569;font-size:12px;font-weight:600;}"
+            "QLabel{background:transparent;border:1px solid #d7e1ef;border-radius:8px;"
+            "padding:6px 8px;color:#94a3b8;font-size:12px;font-weight:600;}"
         )
         root.addWidget(self.lbl_navigation_info, 0)
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
@@ -375,14 +375,14 @@ class OrdersMapPanel(QWidget):
         root.addWidget(title)
 
         hero = QFrame(self)
-        hero.setStyleSheet("QFrame{background:#f8fafc;border:1px solid #d7e1ef;border-radius:10px;}")
+        hero.setStyleSheet("QFrame{background:transparent;border:1px solid #d7e1ef;border-radius:10px;}")
         hero_l = QFormLayout(hero)
         hero_l.setContentsMargins(10, 8, 10, 8)
         hero_l.setVerticalSpacing(6)
         self.lab_client = QLabel("Brak danych", self)
         self.lab_client.setStyleSheet("font-size:14px;font-weight:700;color:#0f172a;")
         self.lab_address = QLabel("Brak adresu", self)
-        self.lab_address.setStyleSheet("font-size:13px;font-weight:600;color:#1f2937;")
+        self.lab_address.setStyleSheet("font-size:13px;font-weight:600;color:#e8efff;")
         self.lab_phone = QLabel("Brak danych kontaktowych", self)
         self.lab_phone.setStyleSheet("font-size:13px;font-weight:700;color:#0f172a;")
         self.lab_status_chip = QLabel("Status wizyty: do ustalenia", self)
@@ -415,7 +415,7 @@ class OrdersMapPanel(QWidget):
         scope_wrap = QHBoxLayout()
         scope_wrap.setSpacing(8)
         scope_left = QFrame(self)
-        scope_left.setStyleSheet("QFrame{background:#ffffff;border:1px solid #d7e1ef;border-radius:10px;}")
+        scope_left.setStyleSheet("QFrame{background:transparent;border:1px solid #d7e1ef;border-radius:10px;}")
         scope_left_l = QVBoxLayout(scope_left)
         scope_left_l.setContentsMargins(8, 6, 8, 6)
         scope_left_l.addWidget(QLabel("Zakres robot", self))
@@ -426,7 +426,7 @@ class OrdersMapPanel(QWidget):
         scope_wrap.addWidget(scope_left, 1)
 
         scope_right = QFrame(self)
-        scope_right.setStyleSheet("QFrame{background:#ffffff;border:1px solid #d7e1ef;border-radius:10px;}")
+        scope_right.setStyleSheet("QFrame{background:transparent;border:1px solid #d7e1ef;border-radius:10px;}")
         scope_right_l = QVBoxLayout(scope_right)
         scope_right_l.setContentsMargins(8, 6, 8, 6)
         scope_right_l.addWidget(QLabel("Co zabrac", self))
@@ -443,7 +443,7 @@ class OrdersMapPanel(QWidget):
         root.addWidget(self.txt_details, 0)
 
         finance = QFrame(self)
-        finance.setStyleSheet("QFrame{background:#ffffff;border:1px solid #d7e1ef;border-radius:10px;}")
+        finance.setStyleSheet("QFrame{background:transparent;border:1px solid #d7e1ef;border-radius:10px;}")
         fin_l = QFormLayout(finance)
         fin_l.setContentsMargins(8, 6, 8, 6)
         fin_l.addRow(QLabel("Rozliczenie po wizycie", self))

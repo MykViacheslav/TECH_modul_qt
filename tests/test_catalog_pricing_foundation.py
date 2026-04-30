@@ -85,14 +85,14 @@ def test_bom_block_shows_material_costs(tmp_path):
     module = ModuleDef(
         parts={
             "side_left": PartDef(
-                key="side_left",
+                id="side_left",
                 name_pl="Bok lewy",
                 material_key="PB18",
                 dims_mm={"w": 500.0, "h": 700.0, "t": 18.0},
                 edge_banding={},
             ),
             "front": PartDef(
-                key="front",
+                id="front",
                 name_pl="Front",
                 material_key="MDF19",
                 dims_mm={"w": 500.0, "h": 700.0, "t": 19.0},

@@ -131,27 +131,41 @@ class QuoteBlock(OrderFormBlock):
         # Tabela pozycji
         self.tbl_quote_items = self._create_quote_items_table()
         
-        # Formularz
+        # Formularz - jeden wiersz (lepiej pasuje do mniejszych ekranów)
         entry_box, entry_layout = self.make_work_panel(
             "Nowa pozycja do wyceny",
             "Tutaj dodajesz pojedyncza pozycje do wyceny z opisem i iloscia.",
         )
         
         row1 = QHBoxLayout()
-        row1.addWidget(self.ed_quote_item_name, 1)
-        row1.addWidget(self.cb_quote_item_kind, 0)
+        row1.setSpacing(10)
+        
+        row1.addWidget(QLabel("Nazwa:"), 0)
+        self.ed_quote_item_name.setPlaceholderText("np. Kuchnia")
+        row1.addWidget(self.ed_quote_item_name, 2)
+        
+        row1.addWidget(QLabel("Typ:"), 0)
+        self.cb_quote_item_kind.setEditable(True)
+        self.cb_quote_item_kind.setMinimumWidth(100)
+        row1.addWidget(self.cb_quote_item_kind, 1)
+        
+        row1.addWidget(QLabel("Ilość:"), 0)
+        self.sp_quote_item_quantity.setMinimumWidth(70)
         row1.addWidget(self.sp_quote_item_quantity, 0)
+        
+        row1.addWidget(QLabel("ID:"), 0)
         row1.addWidget(self.ed_quote_item_id, 0)
+        
         entry_layout.addLayout(row1)
         
-        entry_layout.addWidget(self.ed_quote_item_description)
+        desc_row = QHBoxLayout()
+        self.ed_quote_item_description.setPlaceholderText("Szczegóły / Opis wykonania...")
+        desc_row.addWidget(self.ed_quote_item_description, 1)
         
-        btns = QHBoxLayout()
-        btns.setSpacing(8)
-        btns.addWidget(self.btn_add_quote_item, 0)
-        btns.addWidget(self.btn_remove_quote_item, 0)
-        btns.addStretch(1)
-        entry_layout.addLayout(btns)
+        self.btn_add_quote_item.setText("+ DODAJ")
+        self.btn_add_quote_item.setMinimumHeight(26)
+        desc_row.addWidget(self.btn_add_quote_item, 0)
+        entry_layout.addLayout(desc_row)
         
         layout.addWidget(entry_box)
         

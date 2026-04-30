@@ -20,6 +20,16 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from src.app.app_settings import load_telegram_settings
+from src.storage.order_store_json import OrderStoreJson
+from src.storage.worker_store_json import WorkerStoreJson
+from src.integrations.telegram_production_hub import (
+    send_production_status_checklist,
+    send_worker_attendance_poll
+)
+from src.services.telegram_hub_service import TelegramHubService
+from src.integrations.telegram_checklist import _load_state, _save_state
+
 
 @dataclass(frozen=True)
 class _ScreenshotItem:
@@ -35,7 +45,7 @@ class _HeaderCard(QFrame):
             """
             QFrame {
                 background: #0f172a;
-                border: 1px solid #1f2937;
+                border: 1px solid #e8efff;
                 border-radius: 24px;
             }
             """
@@ -89,7 +99,7 @@ class _HeaderCard(QFrame):
             ("Sekcje", "8", "#34d399"),
             ("Pliki lokalne", "100%", "#fbbf24"),
         ):
-            card = QFrame()
+            card = QFrame(); card.setProperty("uiCard", True)
             card.setStyleSheet("QFrame{background:#111827;border:1px solid #243041;border-radius:16px;}")
             card_layout = QVBoxLayout(card)
             card_layout.setContentsMargins(14, 12, 14, 12)
@@ -110,7 +120,7 @@ class _GuideCard(QFrame):
         self.setStyleSheet(
             """
             QFrame {
-                background: #ffffff;
+                background: transparent;
                 border: 1px solid #dbe4f0;
                 border-radius: 20px;
             }
@@ -144,7 +154,7 @@ class _ScreenshotCard(QFrame):
         self.setStyleSheet(
             """
             QFrame {
-                background: #ffffff;
+                background: transparent;
                 border: 1px solid #dbe4f0;
                 border-radius: 16px;
             }
@@ -195,6 +205,87 @@ class _ScreenshotCard(QFrame):
         root.addWidget(open_btn, 0, Qt.AlignmentFlag.AlignLeft)
 
 
+class _TelegramHubPanel(QFrame):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setStyleSheet(
+            """
+            QFrame {
+                background: #ffffff;
+                border: 1px solid #dbe4f0;
+                border-radius: 20px;
+            }
+            """
+        )
+        root = QVBoxLayout(self)
+        root.setContentsMargins(18, 18, 18, 18)
+        root.setSpacing(12)
+
+        title = QLabel("TELEGRAM HUB")
+        title.setStyleSheet("color:#111827;font-size:18px;font-weight:900;")
+        root.addWidget(title)
+
+        desc = QLabel("Zarzadzanie produkcja i czasem pracy przez Telegram.")
+        desc.setStyleSheet("color:#6b7280;font-size:12px;")
+        root.addWidget(desc)
+
+        self.btn_prod_status = QPushButton("Wyslij Status Produkcji")
+        self.btn_attendance = QPushButton("Wyslij Liste Obecnosci")
+        self.btn_sync = QPushButton("Synchronizuj Dane")
+        
+        for btn, color in [
+            (self.btn_prod_status, "#1e40af"),
+            (self.btn_attendance, "#15803d"),
+            (self.btn_sync, "#0f172a"),
+        ]:
+            btn.setStyleSheet(
+                f"QPushButton{{background:{color};color:#ffffff;font-weight:800;padding:10px;border-radius:12px;}}"
+                f"QPushButton:hover{{background:#111827;}}"
+            )
+            root.addWidget(btn)
+
+        self.lab_status = QLabel("Oczekiwanie...")
+        self.lab_status.setStyleSheet("color:#94a3b8;font-size:11px;font-weight:600;")
+        root.addWidget(self.lab_status)
+
+        self.btn_prod_status.clicked.connect(self._send_prod)
+        self.btn_attendance.clicked.connect(self._send_attendance)
+        self.btn_sync.clicked.connect(self._sync)
+
+    def _send_prod(self) -> None:
+        settings = load_telegram_settings()
+        if not settings.enabled: return
+        orders = OrderStoreJson().list_orders()
+        try:
+            send_production_status_checklist(settings.bot_token, settings.chat_id, orders)
+            self.lab_status.setText("Wyslano status produkcji.")
+        except Exception as e:
+            self.lab_status.setText(f"Blad: {str(e)}")
+
+    def _send_attendance(self) -> None:
+        settings = load_telegram_settings()
+        if not settings.enabled: return
+        workers = WorkerStoreJson().list_workers()
+        try:
+            send_worker_attendance_poll(settings.bot_token, settings.chat_id, workers)
+            self.lab_status.setText("Wyslano liste obecnosci.")
+        except Exception as e:
+            self.lab_status.setText(f"Blad: {str(e)}")
+
+    def _sync(self) -> None:
+        try:
+            res = TelegramHubService.sync_all()
+            if not res.get("ok"):
+                self.lab_status.setText(f"Info: {res.get('message')}")
+                return
+            
+            processed = res.get("processed", 0)
+            db_upd = res.get("db_updates", 0)
+            self.lab_status.setText(f"Sync OK: {processed} msg, {db_upd} zmian w bazie.")
+        except Exception as e:
+            self.lab_status.setText(f"Blad sync: {str(e)}")
+
+
 class TabTechModul(QWidget):
     sig_open_tab_requested = pyqtSignal(str)
 
@@ -240,7 +331,7 @@ class TabTechModul(QWidget):
         self.btn_open_index = QPushButton("Otworz index")
         self.btn_open_index.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_open_index.setStyleSheet(
-            "QPushButton{background:#f8fafc;border:1px solid #cbd5e1;color:#334155;font-weight:700;padding:7px 11px;border-radius:10px;}"
+            "QPushButton{background:transparent;border:1px solid #cbd5e1;color:#334155;font-weight:700;padding:7px 11px;border-radius:10px;}"
             "QPushButton:hover{background:#eef2f7;}"
         )
         self.btn_open_index.clicked.connect(self._open_index)
@@ -260,7 +351,7 @@ class TabTechModul(QWidget):
         top_layout.addLayout(filter_row)
 
         self.lab_count = QLabel("")
-        self.lab_count.setStyleSheet("color:#475569;font-size:12px;font-weight:600;")
+        self.lab_count.setStyleSheet("color:#94a3b8;font-size:12px;font-weight:600;")
         top_layout.addWidget(self.lab_count)
 
         self._scroll = QScrollArea(self)
@@ -294,7 +385,7 @@ class TabTechModul(QWidget):
             ("Jedno miejsce na lokalne pliki, bez mieszania z biznesem.", "#7c3aed"),
         ):
             row = QFrame()
-            row.setStyleSheet("QFrame{background:#f8fafc;border:1px solid #dbe4f0;border-radius:12px;}")
+            row.setStyleSheet("QFrame{background:transparent;border:1px solid #dbe4f0;border-radius:12px;}")
             row_layout = QHBoxLayout(row)
             row_layout.setContentsMargins(12, 10, 12, 10)
             row_layout.setSpacing(8)
@@ -339,6 +430,10 @@ class TabTechModul(QWidget):
         right.addWidget(actions_panel, 0)
 
         content.addLayout(right, 2)
+        
+        # Add Telegram Hub Panel below info
+        right.addWidget(_TelegramHubPanel(self))
+        
         root.addLayout(content, 1)
 
         self.refresh_data()
@@ -477,11 +572,11 @@ class TabTechModul(QWidget):
         return [item for item in items if item.path.exists()]
 
     def _make_panel(self) -> QFrame:
-        panel = QFrame(self)
+        panel = QFrame(self); panel.setProperty("uiCard", True)
         panel.setStyleSheet(
             """
             QFrame {
-                background: #ffffff;
+                background: transparent;
                 border: 1px solid #dbe4f0;
                 border-radius: 22px;
             }

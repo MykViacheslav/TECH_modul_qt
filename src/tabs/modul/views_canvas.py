@@ -13,6 +13,7 @@ from src.domain.module_models import (
 )
 from src.app.app_settings import DrawingSettings, load_drawing_settings
 from src.tabs.modul.module_defaults import normalize_rail_offsets_mm
+from PyQt6.QtGui import QLinearGradient, QGradient
 
 if TYPE_CHECKING:
     pass
@@ -40,6 +41,7 @@ class ViewsCanvas(QWidget):
         # Front + top view need enough vertical room to stay readable.
         self.setMinimumHeight(320)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self._is_resizing = False
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -47,13 +49,13 @@ class ViewsCanvas(QWidget):
 
         self.view = ZoomGraphicsView(self)
         self.scene = QGraphicsScene(self)
-        self.scene.setBackgroundBrush(QColor("#f9fbff"))
+        self.scene.setBackgroundBrush(QColor("#ffffff")) # Pure white for premium look
         self.view.setScene(self.scene)
         self.view.setStyleSheet("""
             QGraphicsView {
-                border: 1px solid #d8e3f2;
-                border-radius: 14px;
-                background: #f9fbff;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                background: #ffffff;
             }
         """)
 
@@ -85,7 +87,13 @@ class ViewsCanvas(QWidget):
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
-        self._fit_scene_to_view()
+        if self._is_resizing:
+            return
+        self._is_resizing = True
+        try:
+            self._fit_scene_to_view()
+        finally:
+            self._is_resizing = False
 
     @staticmethod
     def _is_front_zone_handle_key(handle_key: str) -> bool:
@@ -538,6 +546,11 @@ class ViewsCanvas(QWidget):
             show_dimensions: bool = True,
             show_view_labels: bool = True,
     ) -> None:
+        import os, time as _time
+        from src.core.perf.perf_timer import perf_log
+        _PERF = os.environ.get("TECH_PERF") == "1"
+        _rm_t0 = _time.perf_counter_ns() if _PERF else 0
+
         s = load_drawing_settings()
         self.scene.clear()
 
@@ -709,10 +722,18 @@ class ViewsCanvas(QWidget):
                 self._normal_pen = pen
                 self._normal_brush = brush
 
+                # Premium Styling
                 self.setPen(pen)
-                self.setBrush(brush)
+                
+                # Dynamic Gradient for different parts
+                grad = self._create_premium_gradient(key)
+                self.setBrush(grad if grad else brush)
+                
                 self.setZValue(float(z))
                 self.setToolTip(self.key)
+
+                # Add a subtle shadow effect for depth
+                self._shadow = None # Could add QGraphicsDropShadowEffect here
 
                 self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
 
@@ -720,6 +741,27 @@ class ViewsCanvas(QWidget):
                     self.setCursor(Qt.CursorShape.SizeVerCursor)
                     self.setAcceptHoverEvents(True)
                     self._apply_handle_style(active=self._active_handle, hot=False)
+            
+            def _create_premium_gradient(self, key: str) -> QLinearGradient:
+                rect = self.rect()
+                grad = QLinearGradient(rect.topLeft(), rect.bottomRight())
+                
+                if "front" in key:
+                    grad.setColorAt(0, QColor("#fdfdfd"))
+                    grad.setColorAt(1, QColor("#f0f4f8")) # Sleek front
+                elif "side" in key:
+                    grad.setColorAt(0, QColor("#f8fafc"))
+                    grad.setColorAt(1, QColor("#e2e8f0")) # Technical side
+                elif "bottom" in key or "top" in key:
+                    grad.setColorAt(0, QColor("#f1f5f9"))
+                    grad.setColorAt(1, QColor("#cbd5e1")) # Depth for top/bottom
+                elif "glass" in key:
+                    grad.setColorAt(0, QColor("#e0f2fe")) # Glass blue
+                    grad.setColorAt(1, QColor("#7dd3fc"))
+                else:
+                    grad.setColorAt(0, QColor("#ffffff"))
+                    grad.setColorAt(1, QColor("#f1f5f9"))
+                return grad
 
             def _apply_handle_style(self, active: bool = False, hot: bool = False) -> None:
                 if not self._canvas._is_preview_handle_key(self.key):
@@ -1575,6 +1617,60 @@ class ViewsCanvas(QWidget):
                 )
                 handle.setZValue(10)
 
+        # ---------------- INTERNAL DRAWERS (X-RAY) ----------------
+        if facade_mode == "drawers":
+            d_count = drawer_count
+            # Find drawer parts in the module
+            drawer_parts = {k: v for k, v in (m.parts or {}).items() if k.startswith("drawer_")}
+            
+            # Simple X-ray pen
+            xray_pen = self._pen("#94a3b8", 1, dashed=True) # Light slate dashed
+            
+            for i in range(1, d_count + 1):
+                bottom_key = f"drawer_{i}_bottom"
+                rear_key = f"drawer_{i}_rear"
+                
+                # We can deduce positions from the front_rect and heights
+                # Or use the calculated part dimensions if available
+                p_bottom = drawer_parts.get(bottom_key)
+                p_rear = drawer_parts.get(rear_key)
+                
+                if p_bottom:
+                    # In Front View: draw as a shelf-like line
+                    # Calculate y position based on equal distribution for now
+                    # (In a real app, we'd use the resolved positions from rules)
+                    y_step = door_h / d_count
+                    y_base = door_top + (i * y_step) - 16.0 # 16mm from bottom of front
+                    
+                    add_part_rect(
+                        bottom_key, 
+                        QRectF(door_left + t, y_base, door_w - 2.0*t, 16.0), 
+                        dashed=True, 
+                        z=5
+                    )
+                    
+                    # In Top View: draw as board inside carcass
+                    # Shift slightly for each drawer to see stacking? No, just overlap is fine.
+                    add_part_rect(
+                        bottom_key,
+                        QRectF(top_view.left() + t + 2.0, top_view.top() + 30.0, L - 2.0*t - 4.0, W - 40.0),
+                        dashed=True,
+                        z=5
+                    )
+
+                if p_rear:
+                    # In Front View: draw as rectangle behind front
+                    y_step = door_h / d_count
+                    y_base = door_top + ((i-1) * y_step) + 50.0 # start of rear
+                    r_h = y_step - 70.0 # height of rear
+                    
+                    add_part_rect(
+                        rear_key,
+                        QRectF(door_left + t + 20.0, y_base, door_w - 2.0*t - 40.0, max(10.0, r_h)),
+                        dashed=True,
+                        z=5
+                    )
+
         # ---------------- GORA: boki + front/plecy ----------------
         # boki jako pasy
         if "side_left" in vp:
@@ -1636,3 +1732,6 @@ class ViewsCanvas(QWidget):
         self.scene.setSceneRect(scene_bounds.adjusted(-20, -20, 20, 20))
         if fit:
             self._fit_scene_to_view()
+
+        if _PERF:
+            perf_log("canvas.Modul.render_module", _rm_t0)

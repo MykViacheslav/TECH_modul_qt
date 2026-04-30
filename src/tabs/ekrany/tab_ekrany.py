@@ -33,7 +33,7 @@ class _PreviewShell(QFrame):
         self.setStyleSheet(
             """
             QFrame#previewShell {
-                background: #f8fafc;
+                background: transparent;
                 border: 1px solid #dbe4f0;
                 border-radius: 22px;
             }
@@ -89,7 +89,7 @@ class _WorkstationPreview(QWidget):
         board.setStyleSheet(
             """
             QFrame {
-                background: #ffffff;
+                background: transparent;
                 border: 1px solid #d9e2ec;
                 border-radius: 18px;
             }
@@ -107,8 +107,8 @@ class _WorkstationPreview(QWidget):
             ("Planowane", "08", "#60a5fa"),
         )
         for idx, (label, value, color) in enumerate(metrics):
-            card = QFrame()
-            card.setStyleSheet("QFrame{background:#f8fafc;border:1px solid #dbe4f0;border-radius:16px;}")
+            card = QFrame(); card.setProperty("uiCard", True)
+            card.setStyleSheet("QFrame{background:transparent;border:1px solid #dbe4f0;border-radius:16px;}")
             card_layout = QVBoxLayout(card)
             card_layout.setContentsMargins(14, 14, 14, 14)
             card_layout.setSpacing(3)
@@ -121,7 +121,7 @@ class _WorkstationPreview(QWidget):
             board_layout.addWidget(card, 0, idx)
 
         left = QFrame()
-        left.setStyleSheet("QFrame{background:#f8fafc;border:1px solid #dbe4f0;border-radius:16px;}")
+        left.setStyleSheet("QFrame{background:transparent;border:1px solid #dbe4f0;border-radius:16px;}")
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(14, 14, 14, 14)
         left_layout.setSpacing(8)
@@ -165,7 +165,7 @@ class _WorkstationPreview(QWidget):
         footer = QLabel(
             "Ten ekran pokazuje tylko podglad. Wlasciwe odhaczanie moze zostac w bocie albo przy stanowisku."
         )
-        footer.setStyleSheet("color:#475569;font-size:12px;")
+        footer.setStyleSheet("color:#94a3b8;font-size:12px;")
         footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
         root.addWidget(footer)
 
@@ -286,7 +286,7 @@ class TabEkrany(QWidget):
         root.addWidget(header)
 
         sub = QLabel("Osobny podglad: stanowisko, boty dla stanowisk i widok wszystkich botow razem.")
-        sub.setStyleSheet("font-size:12px;color:#475569;")
+        sub.setStyleSheet("font-size:12px;color:#94a3b8;")
         root.addWidget(sub)
 
         plan_hint = QLabel(
@@ -295,7 +295,7 @@ class TabEkrany(QWidget):
         )
         plan_hint.setWordWrap(True)
         plan_hint.setStyleSheet(
-            "QLabel{background:#f8fafc;border:1px solid #d7e1ef;border-radius:8px;"
+            "QLabel{background:transparent;border:1px solid #d7e1ef;border-radius:8px;"
             "padding:7px 10px;color:#334155;font-size:11px;font-weight:600;}"
         )
         root.addWidget(plan_hint)

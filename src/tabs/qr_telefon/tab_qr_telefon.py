@@ -108,7 +108,7 @@ class TabQrTelefon(QWidget):
         )
         info.setWordWrap(True)
         info.setStyleSheet(
-            "background:#f8fafc; border:1px solid #dbe4ee; border-radius:10px; padding:10px; color:#475569;"
+            "background:transparent; border:1px solid #dbe4ee; border-radius:10px; padding:10px; color:#94a3b8;"
         )
         root.addWidget(info)
 
@@ -123,8 +123,8 @@ class TabQrTelefon(QWidget):
         open_text: str,
         kind: str,
     ) -> QFrame:
-        card = QFrame(self)
-        card.setStyleSheet("QFrame { border:1px solid #e3e9f1; border-radius:16px; background:#ffffff; }")
+        card = QFrame(self); card.setProperty("uiCard", True)
+        card.setStyleSheet("QFrame { border:1px solid #e3e9f1; border-radius:16px; background:transparent; }")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(8)

@@ -1,3 +1,4 @@
+﻿from tests._qt_teardown_local import qt_canvas_teardown  # noqa: F401
 from PyQt6.QtWidgets import QApplication, QGraphicsRectItem
 
 from src.domain.module_models import ModuleDef

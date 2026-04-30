@@ -1,8 +1,84 @@
 from __future__ import annotations
-
+import traceback
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
-from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QStyle, QVBoxLayout, QWidget
-from src.app.app_settings import load_ui_theme_settings
+from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import (
+    QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QListWidget,
+    QPushButton, QStyle, QVBoxLayout, QWidget, QGridLayout, QScrollArea,
+    QGraphicsDropShadowEffect,
+)
+
+
+class ActionCard(QFrame):
+    clicked = pyqtSignal()
+
+    def __init__(self, title: str, description: str, icon_kind: QStyle.StandardPixmap, parent=None):
+        super().__init__(parent)
+        self.setProperty("uiCard", True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setMinimumSize(280, 140)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(8)
+
+        self.setStyleSheet("""
+            ActionCard {
+                background: white;
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
+            }
+            ActionCard:hover {
+                border-color: #3b82f6;
+                background: #f8fafc;
+            }
+        """)
+
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(20)
+        shadow.setColor(QColor(0, 0, 0, 20))
+        shadow.setOffset(0, 4)
+        self.setGraphicsEffect(shadow)
+
+        header = QHBoxLayout()
+        icon_label = QLabel(self._get_emoji_for_kind(icon_kind))
+        icon_label.setStyleSheet("font-size: 28px;")
+        header.addWidget(icon_label)
+
+        title_label = QLabel(title)
+        title_label.setStyleSheet("font-size: 19px; font-weight: 800; color: #0f172a; margin-left: 8px;")
+        header.addWidget(title_label)
+        header.addStretch()
+        layout.addLayout(header)
+
+        desc_label = QLabel(description)
+        desc_label.setWordWrap(True)
+        desc_label.setStyleSheet("font-size: 13px; color: #475569; line-height: 1.4;")
+        layout.addWidget(desc_label)
+
+        layout.addStretch()
+
+    def _get_emoji_for_kind(self, kind: QStyle.StandardPixmap) -> str:
+        mapping = {
+            QStyle.StandardPixmap.SP_FileIcon: "📄",
+            QStyle.StandardPixmap.SP_DialogApplyButton: "🏷️",
+            QStyle.StandardPixmap.SP_FileDialogDetailedView: "📅",
+            QStyle.StandardPixmap.SP_DriveHDIcon: "🗄️",
+        }
+        return mapping.get(kind, "✨")
+
+    def mousePressEvent(self, event):
+        self.clicked.emit()
+        super().mousePressEvent(event)
+
+
+_ONBOARDING_STEPS = [
+    "Dodaj pierwszego klienta",
+    "Utwórz zamówienie",
+    "Otwórz wycenę",
+    "Skonfiguruj materiały",
+    "Zatwierdź i wyślij ofertę",
+]
 
 
 class TabStart(QWidget):
@@ -17,238 +93,249 @@ class TabStart(QWidget):
     sig_new_module_requested = pyqtSignal()
     sig_open_bazy_requested = pyqtSignal()
     sig_open_settings_requested = pyqtSignal()
+    sig_instruction_mode_toggled = pyqtSignal(bool)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        theme = load_ui_theme_settings()
-        self._is_tech = str(theme.motif or "").strip().lower() == "tech" and str(theme.mode or "").strip().lower() == "night"
-        self._colors = {
-            "title": "#e8efff" if self._is_tech else "#14263d",
-            "subtitle": "#9bb2d3" if self._is_tech else "#5f6c7c",
-            "section": "#cbdaf3" if self._is_tech else "#203047",
-            "panel_border": "#2a4368" if self._is_tech else "#e6ebf1",
-            "panel_bg": "#111b30" if self._is_tech else "#ffffff",
-            "panel_title": "#dbe9ff" if self._is_tech else "#203047",
-            "primary_border": "#3f64a1" if self._is_tech else "#d7dfeb",
-            "primary_bg": "#1a2b4a" if self._is_tech else "#f7f9fc",
-            "primary_bg_hover": "#24406f" if self._is_tech else "#eef3f9",
-            "primary_text": "#eaf2ff" if self._is_tech else "#132640",
-            "secondary_border": "#2f4f80" if self._is_tech else "#e1e7ef",
-            "secondary_bg": "#13233f" if self._is_tech else "#ffffff",
-            "secondary_bg_hover": "#1d335a" if self._is_tech else "#f7f9fc",
-            "secondary_text": "#dce9ff" if self._is_tech else "#203047",
-            "card_border": "#2e4b78" if self._is_tech else "#e3e9f1",
-            "card_bg": "#15253f" if self._is_tech else "#fbfcfe",
-            "badge_bg": "#274b82" if self._is_tech else "#dce8f6",
-            "badge_text": "#f2f7ff" if self._is_tech else "#173355",
-            "body_text": "#9cb1cf" if self._is_tech else "#667484",
-            "info_title": "#dbe9ff" if self._is_tech else "#243243",
-            "info_text": "#9bb0cd" if self._is_tech else "#5d6a79",
-        }
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(28, 28, 28, 28)
-        root.setSpacing(18)
+        outer_root = QVBoxLayout(self)
+        outer_root.setContentsMargins(0, 0, 0, 0)
 
-        title = QLabel("PANEL STARTOWY")
-        title.setStyleSheet(f"font-size: 26px; font-weight: 900; color:{self._colors['title']};")
-        root.addWidget(title, 0, Qt.AlignmentFlag.AlignLeft)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet("background: transparent;")
 
-        subtitle = QLabel("Tu zaczynasz prace. Najpierw zakladasz zamowienie, potem przechodzisz dalej.")
-        subtitle.setWordWrap(True)
-        subtitle.setStyleSheet(f"color:{self._colors['subtitle']}; font-size:14px;")
-        root.addWidget(subtitle, 0, Qt.AlignmentFlag.AlignLeft)
+        content_widget = QWidget()
+        content_widget.setStyleSheet("background: transparent;")
+        root = QVBoxLayout(content_widget)
+        root.setContentsMargins(40, 60, 40, 40)
+        root.setSpacing(40)
+        root.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
 
-        start_panel = self._make_panel()
-        start_layout = QVBoxLayout(start_panel)
-        start_layout.setContentsMargins(18, 18, 18, 18)
-        start_layout.setSpacing(12)
-        start_layout.addWidget(self._make_panel_title("Szybki start"))
+        container = QWidget()
+        container.setMaximumWidth(1100)
+        root.addWidget(container)
 
-        self.btn_new_order = self._make_primary_button("Nowe zamowienie", "Klient, pozycje do wyceny i start projektu.")
-        self.btn_quote = self._make_primary_button("Wycena", "Koszt techniczny, cena handlowa i oferta.")
-        self.btn_calendar = self._make_primary_button("Kalendarz", "Statusy, terminy i prowadzenie pracy.")
-        self.btn_work_time = self._make_secondary_button("Czas pracy", "Godziny, dniowki i koszt ludzi.")
-        self.btn_time_kiosk = self._make_secondary_button("Tablet QR", "Szybkie odbicia czasu pracy na tablecie.")
+        c_lay = QVBoxLayout(container)
+        c_lay.setSpacing(40)
 
-        start_actions = QVBoxLayout()
-        start_actions.setContentsMargins(0, 0, 0, 0)
-        start_actions.setSpacing(8)
-        start_actions.addWidget(self.btn_new_order, 0)
-        start_actions.addWidget(self.btn_quote, 0)
-        start_actions.addWidget(self.btn_calendar, 0)
-        start_actions.addWidget(self.btn_work_time, 0)
-        start_actions.addWidget(self.btn_time_kiosk, 0)
-        start_actions.addStretch(0)
-        start_layout.addLayout(start_actions)
-        root.addWidget(start_panel)
+        # --- HEADER ---
+        header_layout = QVBoxLayout()
+        welcome = QLabel("SYSTEM OPERACYJNY GIBLAB")
+        welcome.setStyleSheet("font-size: 13px; font-weight: 900; color: #2563eb; letter-spacing: 3px;")
+        header_layout.addWidget(welcome)
 
-        section = QLabel("Pozostale narzedzia")
-        section.setStyleSheet(f"font-size: 15px; font-weight: 800; color:{self._colors['section']};")
-        root.addWidget(section, 0, Qt.AlignmentFlag.AlignLeft)
+        title = QLabel("Twoje Centrum Dowodzenia")
+        title.setStyleSheet("font-size: 42px; font-weight: 900; color: #0f172a; margin-top: 4px;")
+        header_layout.addWidget(title)
+        c_lay.addLayout(header_layout)
 
-        tools_panel = self._make_panel()
-        tools_layout = QVBoxLayout(tools_panel)
-        tools_layout.setContentsMargins(18, 18, 18, 18)
-        tools_layout.setSpacing(8)
+        # --- ACTION CARDS ---
+        grid = QGridLayout()
+        grid.setSpacing(20)
 
-        self.btn_clients = self._make_secondary_button("Klienci", "Baza klientow.")
-        self.btn_sciana = self._make_secondary_button("Sciana", "Nowa sciana lub pomiar.")
-        self.btn_komplet = self._make_secondary_button("Komplet", "Uklad modulow.")
-        self.btn_modul = self._make_secondary_button("Modul", "Pojedynczy modul.")
-        self.btn_bazy = self._make_secondary_button("Bazy", "Materialy, pracownicy i dane.")
-        self.btn_settings = self._make_secondary_button("Ustawienia", "Rysunek i program.")
+        self.card_new_order = ActionCard(
+            "Nowe Zamówienie", "Rozpocznij proces od klienta i wyceny.",
+            QStyle.StandardPixmap.SP_FileIcon,
+        )
+        self.card_quote = ActionCard(
+            "Centrum Wycen", "Zarządzaj kosztami i ofertami handlowymi.",
+            QStyle.StandardPixmap.SP_DialogApplyButton,
+        )
+        self.card_calendar = ActionCard(
+            "Harmonogram", "Sprawdź terminy montaży i statusy prac.",
+            QStyle.StandardPixmap.SP_FileDialogDetailedView,
+        )
+        self.card_bazy = ActionCard(
+            "Bazy i Zasoby", "Zarządzaj materiałami, okuciami i ludźmi.",
+            QStyle.StandardPixmap.SP_DriveHDIcon,
+        )
 
-        self._set_button_icon(self.btn_new_order, QStyle.StandardPixmap.SP_FileIcon)
-        self._set_button_icon(self.btn_quote, QStyle.StandardPixmap.SP_DialogApplyButton)
-        self._set_button_icon(self.btn_calendar, QStyle.StandardPixmap.SP_FileDialogDetailedView)
-        self._set_button_icon(self.btn_work_time, QStyle.StandardPixmap.SP_BrowserReload)
-        self._set_button_icon(self.btn_time_kiosk, QStyle.StandardPixmap.SP_DialogYesButton)
-        self._set_button_icon(self.btn_clients, QStyle.StandardPixmap.SP_DirHomeIcon)
-        self._set_button_icon(self.btn_sciana, QStyle.StandardPixmap.SP_FileDialogContentsView)
-        self._set_button_icon(self.btn_komplet, QStyle.StandardPixmap.SP_DirOpenIcon)
-        self._set_button_icon(self.btn_modul, QStyle.StandardPixmap.SP_FileDialogListView)
-        self._set_button_icon(self.btn_bazy, QStyle.StandardPixmap.SP_DriveHDIcon)
-        self._set_button_icon(self.btn_settings, QStyle.StandardPixmap.SP_FileDialogInfoView)
+        grid.addWidget(self.card_new_order, 0, 0)
+        grid.addWidget(self.card_quote, 0, 1)
+        grid.addWidget(self.card_calendar, 1, 0)
+        grid.addWidget(self.card_bazy, 1, 1)
+        c_lay.addLayout(grid)
 
-        tools_layout.addWidget(self.btn_clients, 0)
-        tools_layout.addWidget(self.btn_sciana, 0)
-        tools_layout.addWidget(self.btn_komplet, 0)
-        tools_layout.addWidget(self.btn_modul, 0)
-        tools_layout.addWidget(self.btn_bazy, 0)
-        tools_layout.addWidget(self.btn_settings, 0)
-        root.addWidget(tools_panel)
+        # --- TOOL BUTTONS ---
+        tools_label = QLabel("NARZĘDZIA EKSPERCKIE")
+        tools_label.setStyleSheet("font-size: 13px; font-weight: 900; color: #94a3b8; letter-spacing: 2px; margin-top: 20px;")
+        c_lay.addWidget(tools_label)
 
-        root.addStretch(1)
+        tools_layout = QHBoxLayout()
+        tools_layout.setSpacing(20)
 
-        self.btn_new_order.clicked.connect(self.sig_new_order_requested.emit)
-        self.btn_quote.clicked.connect(self.sig_open_quote_requested.emit)
-        self.btn_clients.clicked.connect(self.sig_open_clients_requested.emit)
-        self.btn_calendar.clicked.connect(self.sig_open_calendar_requested.emit)
-        self.btn_work_time.clicked.connect(self.sig_open_work_time_requested.emit)
-        self.btn_time_kiosk.clicked.connect(self.sig_open_time_kiosk_requested.emit)
+        self.btn_sciana = self._make_tool_btn("🧱 System Ścian", QStyle.StandardPixmap.SP_FileDialogContentsView)
+        self.btn_komplet = self._make_tool_btn("📦 Zestawy", QStyle.StandardPixmap.SP_DirOpenIcon)
+        self.btn_modul = self._make_tool_btn("📐 Konstruktor", QStyle.StandardPixmap.SP_FileDialogListView)
+        self.btn_settings = self._make_tool_btn("⚙️ System", QStyle.StandardPixmap.SP_FileDialogInfoView)
+
+        tools_layout.addWidget(self.btn_sciana)
+        tools_layout.addWidget(self.btn_komplet)
+        tools_layout.addWidget(self.btn_modul)
+        tools_layout.addWidget(self.btn_settings)
+        tools_layout.addStretch()
+        c_lay.addLayout(tools_layout)
+
+        # --- ONBOARDING ---
+        onboarding_label = QLabel("ONBOARDING")
+        onboarding_label.setStyleSheet("font-size: 13px; font-weight: 900; color: #94a3b8; letter-spacing: 2px;")
+        c_lay.addWidget(onboarding_label)
+
+        ob_status_row = QHBoxLayout()
+        self.lab_onboarding_global_status = QLabel("nieaktywny")
+        self.lab_onboarding_progress = QLabel("0/5")
+        ob_status_row.addWidget(self.lab_onboarding_global_status)
+        ob_status_row.addStretch()
+        ob_status_row.addWidget(self.lab_onboarding_progress)
+        c_lay.addLayout(ob_status_row)
+
+        self._onboarding_checks: list[QCheckBox] = []
+        for step in _ONBOARDING_STEPS:
+            cb = QCheckBox(step)
+            cb.stateChanged.connect(self._update_onboarding_progress)
+            self._onboarding_checks.append(cb)
+            c_lay.addWidget(cb)
+
+        ob_btn_row = QHBoxLayout()
+        self.btn_onboarding_start = QPushButton("Rozpocznij")
+        self.btn_onboarding_next = QPushButton("Dalej")
+        self.btn_onboarding_stop = QPushButton("Zakończ")
+        self.btn_onboarding_next.setEnabled(False)
+        self.btn_onboarding_stop.setEnabled(False)
+        ob_btn_row.addWidget(self.btn_onboarding_start)
+        ob_btn_row.addWidget(self.btn_onboarding_next)
+        ob_btn_row.addWidget(self.btn_onboarding_stop)
+        ob_btn_row.addStretch()
+        c_lay.addLayout(ob_btn_row)
+
+        # --- INSTRUCTION LIBRARY ---
+        instr_label = QLabel("BIBLIOTEKA INSTRUKCJI")
+        instr_label.setStyleSheet("font-size: 13px; font-weight: 900; color: #94a3b8; letter-spacing: 2px;")
+        c_lay.addWidget(instr_label)
+
+        instr_controls = QHBoxLayout()
+        self.btn_instruction_mode = QPushButton("Tryb instrukcji: WYLACZONY")
+        self.btn_instruction_mode.setCheckable(True)
+        self.btn_instruction_mode.toggled.connect(self._on_instruction_mode_toggled)
+
+        self.cb_instruction_filter = QComboBox()
+        self._populate_instruction_filter()
+        self.cb_instruction_filter.currentIndexChanged.connect(self._on_filter_changed)
+
+        instr_controls.addWidget(self.btn_instruction_mode)
+        instr_controls.addWidget(self.cb_instruction_filter)
+        instr_controls.addStretch()
+        c_lay.addLayout(instr_controls)
+
+        self.lst_instruction_cards = QListWidget()
+        self._load_instruction_cards()
+        c_lay.addWidget(self.lst_instruction_cards)
+
+        root.addStretch()
+
+        scroll.setWidget(content_widget)
+        outer_root.addWidget(scroll)
+
+        # Signals
+        self.card_new_order.clicked.connect(self.sig_new_order_requested.emit)
+        self.card_quote.clicked.connect(self.sig_open_quote_requested.emit)
+        self.card_calendar.clicked.connect(self.sig_open_calendar_requested.emit)
+        self.card_bazy.clicked.connect(self.sig_open_bazy_requested.emit)
+
         self.btn_sciana.clicked.connect(self.sig_new_wall_requested.emit)
         self.btn_komplet.clicked.connect(self.sig_new_assembly_requested.emit)
         self.btn_modul.clicked.connect(self.sig_new_module_requested.emit)
-        self.btn_bazy.clicked.connect(self.sig_open_bazy_requested.emit)
         self.btn_settings.clicked.connect(self.sig_open_settings_requested.emit)
 
-    def _make_panel(self) -> QFrame:
-        panel = QFrame(self)
-        panel.setStyleSheet(
-            "QFrame {"
-            f"border: 1px solid {self._colors['panel_border']};"
-            "border-radius: 18px;"
-            f"background: {self._colors['panel_bg']};"
-            "}"
-        )
-        return panel
+    # ------------------------------------------------------------------
+    # Instruction library
+    # ------------------------------------------------------------------
 
-    def _make_panel_title(self, text: str) -> QLabel:
-        label = QLabel(text, self)
-        label.setStyleSheet(f"font-size: 15px; font-weight: 800; color:{self._colors['panel_title']};")
-        return label
+    def _populate_instruction_filter(self) -> None:
+        self.cb_instruction_filter.clear()
+        self.cb_instruction_filter.addItem("Wszystkie", None)
+        try:
+            from src.storage.instruction_store_json import InstructionStoreJson
+            categories = sorted(set(c.category for c in InstructionStoreJson().list_cards()))
+            for cat in categories:
+                self.cb_instruction_filter.addItem(cat.upper(), cat)
+        except Exception:
+            traceback.print_exc()
 
-    def _make_primary_button(self, title: str, description: str) -> QPushButton:
-        btn = QPushButton(f"  {title}", self)
-        btn.setToolTip(f"{title}\n{description}")
-        btn.setAccessibleName(title)
-        btn.setMinimumHeight(48)
-        btn.setMaximumHeight(48)
-        btn.setMinimumWidth(260)
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.setStyleSheet(
-            "QPushButton {"
-            "text-align: left;"
-            "padding: 0 12px;"
-            "border-radius: 12px;"
-            f"border: 1px solid {self._colors['primary_border']};"
-            f"background: {self._colors['primary_bg']};"
-            f"color: {self._colors['primary_text']};"
-            "font-size: 14px;"
-            "font-weight: 700;"
-            "}"
-            "QPushButton:hover {"
-            f"border-color: {self._colors['primary_border']};"
-            f"background: {self._colors['primary_bg_hover']};"
-            "}"
-        )
-        btn.setIconSize(QSize(22, 22))
-        return btn
+    def _load_instruction_cards(self, category: str = "") -> None:
+        self.lst_instruction_cards.clear()
+        try:
+            from src.storage.instruction_store_json import InstructionStoreJson
+            cards = InstructionStoreJson().list_cards(category=category)
+            for card in cards:
+                self.lst_instruction_cards.addItem(f"[{card.category.upper()}] {card.title}")
+        except Exception:
+            traceback.print_exc()
 
-    def _make_secondary_button(self, title: str, description: str) -> QPushButton:
-        btn = QPushButton(f"  {title}", self)
-        btn.setToolTip(f"{title}\n{description}")
-        btn.setAccessibleName(title)
-        btn.setMinimumHeight(44)
-        btn.setMaximumHeight(44)
-        btn.setMinimumWidth(260)
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.setStyleSheet(
-            "QPushButton {"
-            "text-align: left;"
-            "padding: 0 12px;"
-            "border-radius: 12px;"
-            f"border: 1px solid {self._colors['secondary_border']};"
-            f"background: {self._colors['secondary_bg']};"
-            f"color: {self._colors['secondary_text']};"
-            "font-size: 13px;"
-            "font-weight: 700;"
-            "}"
-            "QPushButton:hover {"
-            f"border-color: {self._colors['secondary_border']};"
-            f"background: {self._colors['secondary_bg_hover']};"
-            "}"
+    def _on_filter_changed(self) -> None:
+        cat = self.cb_instruction_filter.currentData() or ""
+        self._load_instruction_cards(category=cat)
+
+    def _on_instruction_mode_toggled(self, checked: bool) -> None:
+        self.btn_instruction_mode.setText(
+            "Tryb instrukcji: WLACZONY" if checked else "Tryb instrukcji: WYLACZONY"
         )
+        self.sig_instruction_mode_toggled.emit(checked)
+
+    # ------------------------------------------------------------------
+    # Onboarding
+    # ------------------------------------------------------------------
+
+    def _update_onboarding_progress(self) -> None:
+        done = sum(1 for cb in self._onboarding_checks if cb.isChecked())
+        total = len(self._onboarding_checks)
+        self.lab_onboarding_progress.setText(f"{done}/{total}")
+
+    def set_onboarding_status(
+        self,
+        active: bool,
+        current_step: int = 0,
+        total_steps: int = 0,
+        current_title: str = "",
+    ) -> None:
+        if active:
+            self.lab_onboarding_global_status.setText(
+                f"Krok {current_step}/{total_steps}: {current_title}"
+            )
+            self.btn_onboarding_start.setEnabled(False)
+            self.btn_onboarding_next.setEnabled(True)
+            self.btn_onboarding_stop.setEnabled(True)
+        else:
+            self.lab_onboarding_global_status.setText("nieaktywny")
+            self.btn_onboarding_start.setEnabled(True)
+            self.btn_onboarding_next.setEnabled(False)
+            self.btn_onboarding_stop.setEnabled(False)
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _make_tool_btn(self, text: str, icon_kind: QStyle.StandardPixmap) -> QPushButton:
+        btn = QPushButton(text)
+        btn.setIcon(self.style().standardIcon(icon_kind))
         btn.setIconSize(QSize(20, 20))
+        btn.setMinimumHeight(44)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setStyleSheet("""
+            QPushButton {
+                background: #f1f5f9;
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
+                color: #475569;
+                font-weight: 640;
+                padding: 0 20px;
+            }
+            QPushButton:hover {
+                background: rgba(59, 130, 246, 0.1);
+                border-color: #3b82f6;
+                color: #f8fafc;
+            }
+        """)
         return btn
-
-    def _set_button_icon(self, button: QPushButton, icon_kind: QStyle.StandardPixmap) -> None:
-        button.setIcon(self.style().standardIcon(icon_kind))
-
-    def _make_step_card(self, number: str, title: str, description: str) -> QFrame:
-        card = QFrame(self)
-        card.setStyleSheet(
-            "QFrame {"
-            f"border: 1px solid {self._colors['card_border']};"
-            "border-radius: 16px;"
-            f"background: {self._colors['card_bg']};"
-            "}"
-        )
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(16, 14, 16, 14)
-        layout.setSpacing(6)
-        badge = QLabel(number, card)
-        badge.setFixedWidth(28)
-        badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        badge.setStyleSheet(
-            f"background:{self._colors['badge_bg']};"
-            f"color:{self._colors['badge_text']};"
-            "border-radius: 14px;"
-            "font-weight: 800;"
-            "padding: 4px 0;"
-        )
-        layout.addWidget(badge, 0, Qt.AlignmentFlag.AlignLeft)
-        label = QLabel(title, card)
-        label.setStyleSheet(f"font-size: 15px; font-weight: 800; color:{self._colors['panel_title']};")
-        layout.addWidget(label)
-        text = QLabel(description, card)
-        text.setWordWrap(True)
-        text.setStyleSheet(f"color:{self._colors['body_text']};")
-        layout.addWidget(text)
-        return card
-
-    def _make_info_card(self, title: str, description: str) -> QFrame:
-        card = QFrame(self)
-        card.setStyleSheet("QFrame { background: transparent; border: none; }")
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
-        label = QLabel(title, card)
-        label.setStyleSheet(f"font-weight: 800; color:{self._colors['info_title']};")
-        text = QLabel(description, card)
-        text.setWordWrap(True)
-        text.setStyleSheet(f"color:{self._colors['info_text']};")
-        layout.addWidget(label)
-        layout.addWidget(text)
-        return card

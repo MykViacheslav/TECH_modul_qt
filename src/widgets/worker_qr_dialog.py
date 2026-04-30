@@ -13,16 +13,24 @@ from PyQt6.QtWidgets import (
 )
 
 from src.domain.worker_models import WorkerDef
-from src.widgets.qr_utils import qr_pixmap_from_text, save_qr_pixmap_to_path, worker_qr_payload
+from src.widgets.qr_utils import qr_pixmap_from_text, save_qr_pixmap_to_path, build_worker_qr_payload
+
+def worker_qr_payload(worker_id: str, worker_name: str = "", bot_username: str = "") -> str:
+    return build_worker_qr_payload(worker_id, worker_name, bot_username=bot_username)
 
 
 class WorkerQrDialog(QDialog):
     def __init__(self, worker: WorkerDef, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._worker = worker
+        from src.app.app_settings import load_telegram_settings
+        t_settings = load_telegram_settings()
+        bot_uname = t_settings.bot_username if t_settings.enabled else ""
+        
         self._payload = worker_qr_payload(
             str(getattr(worker, "worker_id", "") or ""),
             str(getattr(worker, "name", "") or ""),
+            bot_username=bot_uname
         )
 
         self.setWindowTitle("Karta QR pracownika")

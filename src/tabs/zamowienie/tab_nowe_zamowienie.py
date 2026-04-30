@@ -42,6 +42,7 @@ from PyQt6.QtWidgets import (
     QTabWidget,
     QVBoxLayout,
     QWidget,
+    QCalendarWidget,
 )
 
 from src.app.app_settings import (
@@ -78,7 +79,7 @@ from src.services.order_calendar_sync import sync_single_order
 
 def _make_summary_card(title: str, value: str, palette: dict[str, str] | None = None) -> tuple[QFrame, QLabel]:
     colors = palette or {}
-    card = QFrame()
+    card = QFrame(); card.setProperty("uiCard", True)
     card.setStyleSheet(
         "QFrame{"
         f"background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 {colors.get('summary_card_bg_0', '#ffffff')},"
@@ -402,10 +403,10 @@ class ClientFieldCell(QFrame):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(2)
+        layout.setSpacing(4)
 
         self.label = ClientFieldDragLabel(self.field_key, label_text, self)
-        self.label.setStyleSheet("color:#5b6470; font-size:11px;")
+        self.label.setStyleSheet("color:#475569; font-size:11px; font-weight:700;")
         layout.addWidget(self.label)
         layout.addWidget(editor)
 
@@ -462,7 +463,12 @@ class TabNoweZamowienie(QWidget):
         calendar_store: CalendarEventStoreJson | None = None,
     ) -> None:
         super().__init__(parent)
+        import time as _time
+        from src.core.perf.perf_timer import perf_log
+        _nz_t0 = _time.perf_counter_ns()
+        _PERF = os.environ.get("TECH_PERF") == "1"
 
+        _data_t0 = _time.perf_counter_ns() if _PERF else 0
         self._testing_mode = str(os.environ.get("TECH_MODUL_TESTING", "")).strip() == "1"
         self._client_store = client_store if client_store is not None else ClientStoreJson()
         self._order_store = order_store if order_store is not None else OrderStoreJson()
@@ -494,11 +500,12 @@ class TabNoweZamowienie(QWidget):
         self._is_tech = str(theme.motif).strip().lower() == "tech" and str(theme.mode).strip().lower() == "night"
         self._colors = (
             {
-                "page_bg": "#0b1020",
+                "page_bg": "#080c14",
                 "title": "#e8efff",
                 "subtitle": "#9cb7dc",
-                "muted": "#9bb0cd",
-                "hero_bg_0": "#111b30",
+                "muted": "#e2eeff",
+                "muted_dim": "#a5b4fc",
+                "hero_bg_0": "#0f172a",
                 "hero_bg_1": "#15253f",
                 "hero_border": "#2e4b78",
                 "hero_title": "#f2f7ff",
@@ -516,11 +523,11 @@ class TabNoweZamowienie(QWidget):
                 "summary_card_value": "#f2f7ff",
                 "entry_bar_bg": "rgba(18,30,52,0.98)",
                 "entry_bar_border": "#2e4b78",
-                "work_panel_bg": "#111b30",
+                "work_panel_bg": "#0f172a",
                 "work_panel_border": "#2a4368",
                 "work_panel_title": "#e8efff",
                 "work_panel_subtitle": "#9bb0cd",
-                "metric_card_bg": "#111b30",
+                "metric_card_bg": "#0f172a",
                 "metric_card_border": "#2a4368",
                 "metric_card_title": "#9cb7dc",
                 "metric_card_value": "#f2f7ff",
@@ -532,7 +539,7 @@ class TabNoweZamowienie(QWidget):
                 "cost_box_text": "#e8efff",
                 "accent_title": "#e8efff",
                 "cash_box_bg": "#1f2639",
-                "cash_box_border": "#48506b",
+                "cash_box_border": "#3b82f6",
                 "cash_box_text": "#e3e8f5",
                 "offer_box_bg": "#221e30",
                 "offer_box_border": "#5c4f76",
@@ -540,18 +547,19 @@ class TabNoweZamowienie(QWidget):
                 "preview_bg": "#0f172a",
                 "preview_border": "#2a4368",
                 "preview_text": "#9cb7dc",
+                "text": "#e2eeff",
             }
             if self._is_tech
             else {
                 "page_bg": "#f4f7fb",
                 "title": "#0f172a",
-                "subtitle": "#526174",
+                "subtitle": "#94a3b8",
                 "muted": "#666666",
                 "hero_bg_0": "#ffffff",
                 "hero_bg_1": "#eef4ff",
                 "hero_border": "#d7e1ef",
                 "hero_title": "#10263d",
-                "hero_desc": "#526174",
+                "hero_desc": "#94a3b8",
                 "hero_chip_bg": "#0f172a",
                 "hero_chip_border": "#0f172a",
                 "hero_chip_text": "#ffffff",
@@ -569,7 +577,7 @@ class TabNoweZamowienie(QWidget):
                 "work_panel_border": "#e6d9c8",
                 "work_panel_title": "#2f241b",
                 "work_panel_subtitle": "#6b5b4b",
-                "metric_card_bg": "#f8fafc",
+                "metric_card_bg": "transparent",
                 "metric_card_border": "#e2e8f0",
                 "metric_card_title": "#64748b",
                 "metric_card_value": "#0f172a",
@@ -582,16 +590,21 @@ class TabNoweZamowienie(QWidget):
                 "accent_title": "#0f172a",
                 "cash_box_bg": "#fffaf3",
                 "cash_box_border": "#eadfcb",
-                "cash_box_text": "#1f2937",
+                "cash_box_text": "#e8efff",
                 "offer_box_bg": "#fffdf7",
                 "offer_box_border": "#eadfcb",
                 "offer_box_text": "#334155",
                 "preview_bg": "#fcfaf6",
                 "preview_border": "#e5dccd",
                 "preview_text": "#6b7280",
+                "text": "#1e293b",
             }
         )
 
+        if _PERF:
+            perf_log("tab.Nowe_zamowienie.data_load", _data_t0)
+
+        _ui_t0 = _time.perf_counter_ns() if _PERF else 0
         root = QVBoxLayout(self)
         root.setContentsMargins(10, 6, 10, 6)
         root.setSpacing(4)
@@ -606,20 +619,23 @@ class TabNoweZamowienie(QWidget):
             f"QLineEdit, QDateEdit, QSpinBox, QDoubleSpinBox {{"
             f"  border:1px solid {_field_border}; border-radius:4px;"
             f"  padding:2px 6px; background:{_field_bg}; color:{_field_text};"
-            f"  font-size:11px; min-height:22px; max-height:26px; }}"
+            f"  font-size:12px; font-weight:500; min-height:24px; max-height:28px; }}"
             f"QLineEdit:focus, QDateEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {{"
             f"  border-color:{_field_focus}; }}"
             f"QComboBox {{"
             f"  border:1px solid {_field_border}; border-radius:4px;"
             f"  padding:2px 6px; background:{_field_bg}; color:{_field_text};"
-            f"  font-size:11px; min-height:22px; }}"
+            f"  font-size:12px; font-weight:500; min-height:24px; }}"
             f"QComboBox:focus {{ border-color:{_field_focus}; }}"
             f"QComboBox::drop-down {{ border-left:1px solid {_field_border}; width:18px; }}"
             f"QTextEdit {{"
             f"  border:1px solid {_field_border}; border-radius:4px;"
             f"  padding:4px 6px; background:{_field_bg}; color:{_field_text};"
-            f"  font-size:11px; }}"
+            f"  font-size:12px; }}"
             f"QTextEdit:focus {{ border-color:{_field_focus}; }}"
+            # --- labelki ---
+            f"QLabel {{ color:{self._colors['muted']}; font-size:12px; }}"
+            f"QGroupBox::title {{ color:{self._colors['hero_title']}; font-weight:800; }}"
         )
 
         # Rzad 1: pasek kontekstu + nawigacja krokow
@@ -629,73 +645,68 @@ class TabNoweZamowienie(QWidget):
             f"QFrame#newOrderWorkflowTopBar{{"
             f"border:1px solid {self._colors['summary_strip_border']};"
             f"border-radius:5px;background:{self._colors['summary_strip_bg']};}}"
-            f"QPushButton{{font-size:10px;font-weight:600;"
-            f"background:{self._colors['hero_bg_0']};color:{self._colors['muted']};"
+            f"QPushButton{{font-size:12px;font-weight:800;"
+            f"background:{self._colors['hero_bg_0']};color:{self._colors['hero_title']};"
             f"border:1px solid {self._colors['hero_border']};border-radius:4px;"
-            f"padding:0px 10px;}}"
+            f"padding:4px 14px;}}"
             f"QPushButton:hover{{background:{self._colors['hero_bg_1']};"
-            f"color:{self._colors['hero_title']};}}"
+            f"border-color:#3b82f6;}}"
             f"QPushButton:disabled{{color:{self._colors['muted']};}}"
         )
         top_bar_layout = QHBoxLayout(self.workflow_top_bar)
-        top_bar_layout.setContentsMargins(8, 3, 8, 3)
-        top_bar_layout.setSpacing(8)
-        _lbl_style = f"color:{self._colors['muted']}; font-size:11px; font-weight:700;"
-        self.lab_top_client = QLabel("Klient: -", self.workflow_top_bar)
-        self.lab_top_order = QLabel("Nr: -", self.workflow_top_bar)
-        self.lab_top_status = QLabel("Status: Nowe", self.workflow_top_bar)
-        self.lab_top_progress = QLabel("Postęp: 0%", self.workflow_top_bar)
-        self.lab_top_step = QLabel("Krok 1/5  —  Klient", self.workflow_top_bar)
-        # lab_top_next_hint zachowany jako atrybut (uzywany w _refresh_step_nav_buttons)
-        # ale nie dodawany do layoutu — nie zajmuje miejsca
-        self.lab_top_next_hint = QLabel("", self.workflow_top_bar)
-        self.lab_top_next_hint.setVisible(False)
-        for lab in (
-            self.lab_top_client,
-            self.lab_top_order,
-            self.lab_top_status,
-            self.lab_top_progress,
-            self.lab_top_step,
-        ):
-            lab.setStyleSheet(_lbl_style)
-            top_bar_layout.addWidget(lab, 0)
+        top_bar_layout.setContentsMargins(15, 8, 15, 8)
+        top_bar_layout.setSpacing(15) # Zmniejszony odstęp dla lepszej responsywności
+        
+        _lbl_style = f"color:{self._colors['hero_title']}; font-size:12px; font-weight:800;"
+        
+        # Sekcja 1: INFO (Klient i Nr)
+        self.lab_combined_info = QLabel("Klient: -   |   Nr: -", self.workflow_top_bar)
+        self.lab_combined_info.setStyleSheet(_lbl_style)
+        top_bar_layout.addWidget(self.lab_combined_info, 0)
+
+        # Sekcja 2: STATUS (Status i Postęp)
+        self.lab_combined_status = QLabel("Status: Nowe   |   Postęp: 0%", self.workflow_top_bar)
+        self.lab_combined_status.setStyleSheet(_lbl_style)
+        top_bar_layout.addWidget(self.lab_combined_status, 0)
+
         top_bar_layout.addStretch(1)
+
+        # Sekcja 3: KROK
+        self.lab_top_step = QLabel("Krok 1/7  —  Klient", self.workflow_top_bar)
+        self.lab_top_step.setStyleSheet(_lbl_style + "background:rgba(255,255,255,0.1); border-radius:6px; padding:4px 10px;")
+        top_bar_layout.addWidget(self.lab_top_step, 0)
+
         self.btn_top_prev = QPushButton("◀ Wstecz", self.workflow_top_bar)
-        self.btn_top_next = QPushButton("Dalej ▶", self.workflow_top_bar)
+        self.btn_top_next = QPushButton("DALEJ ▶", self.workflow_top_bar)
         for btn in (self.btn_top_prev, self.btn_top_next):
-            self._make_compact_button(btn, min_width=72, max_width=100)
-            btn.setFixedHeight(20)
+            self._make_compact_button(btn, min_width=90, max_width=120)
+            btn.setFixedHeight(30)
             top_bar_layout.addWidget(btn, 0)
+            
+        # Globalne akcje (Zapisz, Nadpisz, Wyczyść)
+        self.btn_save_draft = QPushButton("Zapisz", self.workflow_top_bar)
+        self.btn_save_new = QPushButton("Dodaj bazy", self.workflow_top_bar)
+        self.btn_overwrite_all = QPushButton("Nadpisz", self.workflow_top_bar)
+        self.btn_clear = QPushButton("Wyczyść", self.workflow_top_bar)
+        
+        # Bardziej kompaktowe przyciski akcji
+        _btn_style = (
+            "QPushButton{"
+            "font-size:11px; font-weight:700; background:rgba(255,255,255,0.05); "
+            f"border:1px solid {self._colors['hero_border']}; border-radius:4px; padding:2px 8px;"
+            "}"
+            "QPushButton:hover{background:rgba(255,255,255,0.15); border-color:#3b82f6;}"
+        )
+        for _gbtn in (self.btn_save_draft, self.btn_save_new, self.btn_overwrite_all, self.btn_clear):
+            self._make_compact_button(_gbtn, min_width=70, max_width=100)
+            _gbtn.setFixedHeight(28)
+            _gbtn.setStyleSheet(_btn_style)
+            top_bar_layout.addWidget(_gbtn, 0)
+
         root.addWidget(self.workflow_top_bar, 0)
 
         # Rzad 2: globalne akcje zapisu
-        self.global_actions_bar = QFrame(self)
-        self.global_actions_bar.setObjectName("newOrderGlobalActionsBar")
-        self.global_actions_bar.setStyleSheet(
-            f"QFrame#newOrderGlobalActionsBar{{"
-            f"border:1px solid {self._colors['summary_strip_border']};"
-            f"border-radius:5px;background:{self._colors['summary_strip_bg']};}}"
-            f"QPushButton{{font-size:10px;font-weight:600;"
-            f"background:{self._colors['hero_bg_0']};color:{self._colors['muted']};"
-            f"border:1px solid {self._colors['hero_border']};border-radius:4px;"
-            f"padding:0px 10px;}}"
-            f"QPushButton:hover{{background:{self._colors['hero_bg_1']};"
-            f"color:{self._colors['hero_title']};}}"
-            f"QPushButton:pressed{{border-color:{self._colors['summary_card_accent']};}}"
-        )
-        global_actions_layout = QHBoxLayout(self.global_actions_bar)
-        global_actions_layout.setContentsMargins(8, 2, 8, 2)
-        global_actions_layout.setSpacing(5)
-        self.btn_save_draft = QPushButton("Zapisz roboczo", self.global_actions_bar)
-        self.btn_save_new = QPushButton("Zapisz nowe", self.global_actions_bar)
-        self.btn_overwrite_all = QPushButton("Nadpisz wszystko", self.global_actions_bar)
-        self.btn_clear = QPushButton("Wyczysc karte", self.global_actions_bar)
-        for _gbtn in (self.btn_save_draft, self.btn_save_new, self.btn_overwrite_all, self.btn_clear):
-            self._make_compact_button(_gbtn, min_width=100, max_width=140)
-            _gbtn.setFixedHeight(22)
-            global_actions_layout.addWidget(_gbtn, 0)
-        global_actions_layout.addStretch(1)
-        root.addWidget(self.global_actions_bar, 0)
+        # Global actions bar removed (merged into top bar)
 
         # Szybka nawigacja workflow (N1-N5) - stale widoczna u gory
         self.step_nav = QFrame(self)
@@ -724,8 +735,11 @@ class TabNoweZamowienie(QWidget):
             "order": self.btn_step_order,
             "quote": self.btn_step_quote,
             "attachments": self.btn_step_attachments,
+            "materials": QPushButton("N5 Materiały", self.step_nav),
+            "finance": QPushButton("N6 Finanse", self.step_nav),
             "summary": self.btn_step_summary,
         }
+        self._step_buttons["summary"].setText("N7 Podsumowanie")
         for btn in self._step_buttons.values():
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setMinimumHeight(30)
@@ -764,24 +778,35 @@ class TabNoweZamowienie(QWidget):
         start_entry_layout.addStretch(1)
         root.addWidget(self.start_entry_bar, 0)
 
-        # Zachowujemy nazwę scroll_area dla kompatybilnosci metod, ale to juz nie jest dluga strona.
-        self.scroll_area = QFrame(self)
-        root.addWidget(self.scroll_area, 1)
+        # Kontener z przewijaniem dla głównej treści (zapobiega ściskaniu UI)
+        self.scroll_container = QScrollArea(self)
+        self.scroll_container.setWidgetResizable(True)
+        self.scroll_container.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll_container.setStyleSheet("background: transparent;")
+        
+        self.scroll_area = QWidget()
+        self.scroll_area.setObjectName("newOrderScrollContent")
+        self.scroll_area.setStyleSheet(f"background:{self._colors['page_bg']};")
+        self.scroll_container.setWidget(self.scroll_area)
+        
+        root.addWidget(self.scroll_container, 1)
+        
         page_root = QVBoxLayout(self.scroll_area)
         page_root.setContentsMargins(0, 0, 0, 0)
         page_root.setSpacing(8)
+        
         self.workflow_tabs = QTabWidget(self.scroll_area)
         self.workflow_tabs.setDocumentMode(True)
         self.workflow_tabs.setTabPosition(QTabWidget.TabPosition.North)
         self.workflow_tabs.setStyleSheet(
-            f"QTabBar::tab{{padding:5px 18px;font-size:11px;font-weight:600;"
+            f"QTabBar::tab{{padding:8px 25px;font-size:12px;font-weight:700;"
             f"border:1px solid {self._colors['hero_border']};"
-            f"border-bottom:0;border-top-left-radius:5px;border-top-right-radius:5px;"
+            f"border-bottom:0;border-top-left-radius:10px;border-top-right-radius:10px;"
             f"background:{self._colors['hero_bg_0']};color:{self._colors['muted']};"
-            f"margin-right:2px;}}"
+            f"margin-right:6px;}}"
             f"QTabBar::tab:selected{{background:{self._colors['summary_strip_bg']};"
-            f"border-bottom:2px solid #7aa3cc;color:{self._colors['hero_title']};"
-            f"font-weight:700;}}"
+            f"border-bottom:3px solid #3b82f6;color:{self._colors['hero_title']};"
+            f"font-weight:900;}}"
             f"QTabBar::tab:hover{{background:{self._colors['hero_bg_1']};"
             f"color:{self._colors['hero_title']};}}"
             "QTabWidget::pane{border:0;margin-top:0;}"
@@ -789,12 +814,19 @@ class TabNoweZamowienie(QWidget):
         page_root.addWidget(self.workflow_tabs, 1)
 
         self.grp_client = CollapsibleBlock("Klient", self)
-        self.grp_order = CollapsibleBlock("Zamowienie", self)
-        self.grp_worker = CollapsibleBlock("Pracownik", self)
+        self.grp_order = CollapsibleBlock("Szczegoly zlecenia", self)
+        self.grp_worker = QFrame(self); self.grp_worker.setProperty("uiCard", True)
+        self.grp_worker_layout = QVBoxLayout(self.grp_worker)
+        self.grp_worker_layout.setContentsMargins(10, 6, 10, 6)
+        self.grp_worker_layout.setSpacing(4)
+        def grp_worker_content_layout(): return self.grp_worker_layout
+        self.grp_worker.content_layout = grp_worker_content_layout
+        
         self.grp_architect = CollapsibleBlock("Zalaczniki od architekta", self)
         self.grp_quote_items = CollapsibleBlock("Pozycje do wyceny", self)
         self.grp_material_choices = CollapsibleBlock("Probki i finalne materialy", self)
         self.grp_customer_cash = CollapsibleBlock("Kasa klienta", self)
+        self.grp_finance_technical = CollapsibleBlock("Finanse techniczne i koszty", self)
         self.grp_walls = CollapsibleBlock("Sciany zamowienia", self)
         self.grp_summary = CollapsibleBlock("Podsumowanie zamowienia", self)
 
@@ -802,15 +834,19 @@ class TabNoweZamowienie(QWidget):
         self.step_order_page = QWidget(self.workflow_tabs)
         self.step_quote_page = QWidget(self.workflow_tabs)
         self.step_attachments_page = QWidget(self.workflow_tabs)
+        self.step_materials_page = QWidget(self.workflow_tabs)
+        self.step_finance_page = QWidget(self.workflow_tabs)
         self.step_summary_page = QWidget(self.workflow_tabs)
         self._step_pages: dict[str, QWidget] = {
             "client": self.step_client_page,
             "order": self.step_order_page,
             "quote": self.step_quote_page,
             "attachments": self.step_attachments_page,
+            "materials": self.step_materials_page,
+            "finance": self.step_finance_page,
             "summary": self.step_summary_page,
         }
-        self._step_order = ["client", "order", "quote", "attachments", "summary"]
+        self._step_order = ["client", "order", "quote", "attachments", "materials", "finance", "summary"]
         self._step_index_map = {key: idx for idx, key in enumerate(self._step_order)}
         self._step_current = "client"
         _tab_labels: dict[str, str] = {
@@ -818,6 +854,8 @@ class TabNoweZamowienie(QWidget):
             "order": "Zamówienie",
             "quote": "Pozycje do wyceny",
             "attachments": "Załączniki",
+            "materials": "Materiały",
+            "finance": "Finanse",
             "summary": "Podsumowanie",
         }
         for key in self._step_order:
@@ -831,10 +869,7 @@ class TabNoweZamowienie(QWidget):
             "N1 Klient: wybierz klienta z bazy albo dodaj nowego, potem przejdź do danych zamówienia.",
             self.step_client_page,
         )
-        self.step_hint_order = QLabel(
-            "N2 Zamówienie: uzupełnij dane zlecenia i status, potem przejdź do pozycji do wyceny.",
-            self.step_order_page,
-        )
+        self.step_hint_order = None # Usunieto bazowa labelke dla czystosci UI
         self.step_hint_quote = QLabel(
             "N3 Pozycje do wyceny: wybierz tryb (projekt / szybka / import 3D) i dodaj pozycje.",
             self.step_quote_page,
@@ -843,8 +878,16 @@ class TabNoweZamowienie(QWidget):
             "N4 Załączniki: dodaj pliki do zamówienia (PDF, zdjęcia, rysunki, pliki .project).",
             self.step_attachments_page,
         )
+        self.step_hint_materials = QLabel(
+            "N5 Materiały: zapisz wybrane przez klienta próbki, kolory i materiały.",
+            self.step_materials_page,
+        )
+        self.step_hint_finance = QLabel(
+            "N6 Finanse: zaplanuj harmonogram wpłat i odnotuj płatności gotówkowe.",
+            self.step_finance_page,
+        )
         self.step_hint_summary = QLabel(
-            "N5 Podsumowanie: sprawdź komplet danych, zapisz zamówienie i przejdź dalej.",
+            "N7 Podsumowanie: sprawdź rentowność i komplet danych przed przejściem do wyceny.",
             self.step_summary_page,
         )
         for hint in (
@@ -852,55 +895,89 @@ class TabNoweZamowienie(QWidget):
             self.step_hint_order,
             self.step_hint_quote,
             self.step_hint_attachments,
+            self.step_hint_materials,
+            self.step_hint_finance,
             self.step_hint_summary,
         ):
-            hint.setWordWrap(True)
-            hint.setStyleSheet(
-                f"color:{self._colors['muted']}; font-size:11px; font-weight:700; "
-                f"background:{self._colors['summary_strip_bg']}; border:1px solid {self._colors['summary_strip_border']}; "
-                "border-radius:10px; padding:8px 10px;"
-            )
+            if hint:
+                hint.setWordWrap(True)
+                hint.setStyleSheet(
+                    f"color:{self._colors['hero_title']}; font-size:12px; font-weight:800; "
+                    f"background:{self._colors['summary_strip_bg']}; border:1px solid {self._colors['hero_border']}; "
+                    "border-radius:10px; padding:10px 14px;"
+                )
 
         for hint in (
             self.step_hint_client,
-            self.step_hint_order,
             self.step_hint_quote,
             self.step_hint_attachments,
+            self.step_hint_materials,
+            self.step_hint_finance,
             self.step_hint_summary,
         ):
-            hint.setVisible(False)
+            if hint:
+                hint.setVisible(False)
 
         self.step_client_page.layout().addWidget(self.grp_client)
         self.step_client_page.layout().addStretch(1)
 
-        self.step_order_page.layout().addWidget(self.grp_order)
         self.step_order_page.layout().addWidget(self.grp_worker)
+        self.step_order_page.layout().addWidget(self.grp_order)
         self.step_order_page.layout().addStretch(1)
 
         # Ekran decyzyjny dla pozycji do wyceny (N3)
         self.quote_mode_panel = QFrame(self.step_quote_page)
-        self.quote_mode_panel.setStyleSheet(
-            f"QFrame{{background:{self._colors['summary_strip_bg']};border:1px solid {self._colors['summary_strip_border']};border-radius:6px;}}"
-        )
+        self.quote_mode_panel.setObjectName("quoteModePanel")
+        self.quote_mode_panel.setStyleSheet(f"""
+            QFrame#quoteModePanel {{
+                background: {self._colors['summary_strip_bg']};
+                border: 1px solid {self._colors['summary_strip_border']};
+                border-radius: 12px;
+                margin: 5px;
+            }}
+        """)
         quote_mode_layout = QVBoxLayout(self.quote_mode_panel)
-        quote_mode_layout.setContentsMargins(10, 8, 10, 8)
-        quote_mode_layout.setSpacing(6)
-        quote_mode_layout.addWidget(QLabel("Wybierz sposob wejscia do wyceny:", self.quote_mode_panel))
+        quote_mode_layout.setContentsMargins(15, 12, 15, 12)
+        quote_mode_layout.setSpacing(10)
+        
+        lbl_info = QLabel("METODA WYCENY:", self.quote_mode_panel)
+        lbl_info.setStyleSheet(f"color:{self._colors['accent_title']}; font-weight:800; font-size:11px; letter-spacing:1px;")
+        quote_mode_layout.addWidget(lbl_info)
+        
         cards_row = QHBoxLayout()
-        cards_row.setSpacing(8)
-        self.btn_mode_project = QPushButton("Wycena projektu\nz Modulu / Kompletu / Sciany", self.quote_mode_panel)
-        self.btn_mode_quick = QPushButton("Szybka wycena\nszybka oferta z sekcji i wymiarow", self.quote_mode_panel)
-        self.btn_mode_import3d = QPushButton("Import 3D\nimport z pliku .project", self.quote_mode_panel)
-        for btn in (self.btn_mode_project, self.btn_mode_quick, self.btn_mode_import3d):
-            btn.setMinimumHeight(50)
-            btn.setMaximumHeight(60)
+        cards_row.setSpacing(10)
+        self.btn_mode_project = QPushButton("PROJEKT\nModuły / Ściany", self.quote_mode_panel)
+        self.btn_mode_quick_module = QPushButton("SZYBKA\nZ Modułu", self.quote_mode_panel)
+        self.btn_mode_quick_section = QPushButton("SZYBKA\nZ Sekcji", self.quote_mode_panel)
+        self.btn_mode_import3d = QPushButton("IMPORT 3D\nPlik .project", self.quote_mode_panel)
+        
+        _mode_btn_ss = (
+            "QPushButton {"
+            f" background: rgba(255,255,255,0.03); border: 1px solid {self._colors['hero_border']};"
+            f" border-radius: 8px; color: {self._colors['hero_title']};"
+            " font-size: 10px; font-weight: 700; padding: 8px 4px; line-height: 14px; text-align: center; }"
+            "QPushButton:hover { background: rgba(59, 130, 246, 0.15); border-color: #3b82f6; }"
+            "QPushButton:checked { background: #3b82f6; color: white; border-color: #60a5fa; }"
+        )
+        for btn in (self.btn_mode_project, self.btn_mode_quick_module, self.btn_mode_quick_section, self.btn_mode_import3d):
+            btn.setCheckable(True)
+            btn.setMinimumHeight(52)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setStyleSheet(_mode_btn_ss)
             cards_row.addWidget(btn, 1)
         quote_mode_layout.addLayout(cards_row)
-        self.lab_quote_mode_selected = QLabel("Wybrany tryb: -", self.quote_mode_panel)
-        self.lab_quote_mode_stats = QLabel("Pozycje: 0 | Zalaczniki: 0 | Wstepna suma: 0.00 zl", self.quote_mode_panel)
-        quote_mode_layout.addWidget(self.lab_quote_mode_selected)
-        quote_mode_layout.addWidget(self.lab_quote_mode_stats)
+        
+        stats_row = QHBoxLayout()
+        stats_row.setContentsMargins(0, 5, 0, 0)
+        self.lab_quote_mode_selected = QLabel("Aktywny tryb: -", self.quote_mode_panel)
+        self.lab_quote_mode_selected.setStyleSheet("font-weight:800; color:#eff6ff;")
+        self.lab_quote_mode_stats = QLabel("Pozycje: 0 | Załączniki: 0 | Wstępna suma: 0.00 zł", self.quote_mode_panel)
+        self.lab_quote_mode_stats.setStyleSheet(f"color:{self._colors['muted']}; font-size:11px;")
+        stats_row.addWidget(self.lab_quote_mode_selected)
+        stats_row.addStretch(1)
+        stats_row.addWidget(self.lab_quote_mode_stats)
+        quote_mode_layout.addLayout(stats_row)
+        
         self.step_quote_page.layout().addWidget(self.quote_mode_panel)
         self.step_quote_page.layout().addWidget(self.grp_quote_items)
         self.step_quote_page.layout().addWidget(self.grp_walls)
@@ -909,30 +986,35 @@ class TabNoweZamowienie(QWidget):
         self.step_attachments_page.layout().addWidget(self.grp_architect)
         self.step_attachments_page.layout().addStretch(1)
 
-        # Lokalne akcje N5: przejscie do projektu, eksport oferty
+        self.step_materials_page.layout().addWidget(self.grp_material_choices)
+        self.step_materials_page.layout().addStretch(1)
+
+        self.step_finance_page.layout().addWidget(self.grp_customer_cash)
+        self.step_finance_page.layout().addWidget(self.grp_finance_technical)
+        self.step_finance_page.layout().addStretch(1)
+
+        # Lokalne akcje N7: przejscie do projektu, eksport oferty
         self.step_summary_local_actions = QHBoxLayout()
         self.step_summary_local_actions.setSpacing(8)
         self.btn_go_to_sciana = QPushButton("Dalej: Ściana", self.step_summary_page)
         self.btn_export_offer = QPushButton("Eksport oferty", self.step_summary_page)
         self.btn_export_offer_pdf = QPushButton("Eksport PDF", self.step_summary_page)
         _local_btn_ss = (
-            f"QPushButton{{font-size:10px;font-weight:600;"
-            f"background:{self._colors['hero_bg_0']};color:{self._colors['muted']};"
+            f"QPushButton{{font-size:12px;font-weight:700;"
+            f"background:{self._colors['hero_bg_0']};color:{self._colors['hero_title']};"
             f"border:1px solid {self._colors['hero_border']};border-radius:4px;"
-            f"padding:0px 10px;}}"
+            f"padding:4px 14px;}}"
             f"QPushButton:hover{{background:{self._colors['hero_bg_1']};"
             f"color:{self._colors['hero_title']};}}"
         )
         for _lbtn in (self.btn_go_to_sciana, self.btn_export_offer, self.btn_export_offer_pdf):
-            self._make_compact_button(_lbtn, min_width=120, max_width=150)
-            _lbtn.setFixedHeight(22)
+            self._make_compact_button(_lbtn, min_width=130, max_width=180)
+            _lbtn.setFixedHeight(32)
             _lbtn.setStyleSheet(_local_btn_ss)
             self.step_summary_local_actions.addWidget(_lbtn, 0)
         self.step_summary_local_actions.addStretch(1)
         self.step_summary_page.layout().addLayout(self.step_summary_local_actions)
         self.step_summary_page.layout().addWidget(self.grp_summary)
-        self.step_summary_page.layout().addWidget(self.grp_material_choices)
-        self.step_summary_page.layout().addWidget(self.grp_customer_cash)
         self.step_summary_page.layout().addStretch(1)
 
         for block in (
@@ -956,6 +1038,7 @@ class TabNoweZamowienie(QWidget):
         self._build_quote_items_group()
         self._build_material_choices_group()
         self._build_customer_cash_group()
+        self._build_finance_technical_group()
         self._build_walls_group()
         self._build_summary_group()
 
@@ -971,9 +1054,12 @@ class TabNoweZamowienie(QWidget):
             self.grp_summary,
             self.grp_material_choices,
             self.grp_customer_cash,
+            self.grp_finance_technical,
         ):
-            _block._btn.hide()
-            _block.set_expanded(True)
+            if hasattr(_block, "_btn"):
+                _block._btn.hide()
+            if hasattr(_block, "set_expanded"):
+                _block.set_expanded(True)
 
         self.lab_status = QLabel("")
         self.lab_status.setWordWrap(True)
@@ -1054,10 +1140,14 @@ class TabNoweZamowienie(QWidget):
         self.btn_remove_quote_item.clicked.connect(self._on_remove_quote_item)
         self.btn_quote_to_sciana.clicked.connect(self._on_open_quote_item_as_sciana)
         self.btn_quote_to_komplet.clicked.connect(self._on_open_quote_item_as_komplet)
+        self.btn_quote_quick_module.clicked.connect(lambda: self._on_open_quote_item_with_mode("Szybka wycena z modułu"))
+        self.btn_quote_quick_section.clicked.connect(lambda: self._on_open_quote_item_with_mode("Szybka wycena z sekcji"))
+        self.btn_quote_import3d.clicked.connect(lambda: self._on_open_quote_item_with_mode("Import 3D Constructor"))
         self.btn_quote_set_fragment_target.clicked.connect(self._on_use_quote_item_as_fragment_target)
         self.btn_mode_project.clicked.connect(lambda: self._set_quote_entry_mode("Wycena projektu"))
-        self.btn_mode_quick.clicked.connect(lambda: self._set_quote_entry_mode("Szybka wycena"))
-        self.btn_mode_import3d.clicked.connect(lambda: self._set_quote_entry_mode("Import 3D"))
+        self.btn_mode_quick_module.clicked.connect(lambda: self._set_quote_entry_mode("Szybka wycena z modułu"))
+        self.btn_mode_quick_section.clicked.connect(lambda: self._set_quote_entry_mode("Szybka wycena z sekcji"))
+        self.btn_mode_import3d.clicked.connect(lambda: self._set_quote_entry_mode("Import 3D Constructor"))
         self.tbl_quote_items.itemSelectionChanged.connect(self._on_quote_item_selection_changed)
         self.btn_add_material_choice.clicked.connect(self._on_add_material_choice)
         self.btn_remove_material_choice.clicked.connect(self._on_remove_material_choice)
@@ -1072,12 +1162,19 @@ class TabNoweZamowienie(QWidget):
         self.tbl_walls.itemSelectionChanged.connect(self._on_walls_selection_changed)
         self.tbl_walls.itemDoubleClicked.connect(lambda _item: self._on_open_selected_wall())
 
+        if _PERF:
+            perf_log("tab.Nowe_zamowienie.ui_build", _ui_t0)
+
+        _post_t0 = _time.perf_counter_ns() if _PERF else 0
         # UX: otwieraj zakladke od razu w trybie aktywnej edycji,
         # bez dodatkowego kroku "launcher".
         self.start_new_order(force_blank=False)
         self._remove_legacy_runtime_panels()
         self._debug_runtime_widget_state()
         self._focus_workflow_step("client")
+        if _PERF:
+            perf_log("tab.Nowe_zamowienie.post_refresh", _post_t0)
+            perf_log("tab.Nowe_zamowienie.init_total", _nz_t0)
 
     def _set_entry_editor_visible(self, visible: bool) -> None:
         self._entry_editor_visible = bool(visible)
@@ -1211,11 +1308,14 @@ class TabNoweZamowienie(QWidget):
                 "order": "Zamówienie",
                 "quote": "Pozycje do wyceny",
                 "attachments": "Załączniki",
+                "materials": "Materiały",
+                "finance": "Finanse",
                 "summary": "Podsumowanie",
             }
             _skey = self._step_order[current_idx] if hasattr(self, "_step_order") and 0 <= current_idx < len(self._step_order) else ""
             _sname = _step_names.get(_skey, "")
-            _label = f"Krok {current_idx + 1}/{max(1, last_idx + 1)}"
+            _count = len(self._step_order) if hasattr(self, "_step_order") else 1
+            _label = f"Krok {current_idx + 1}/{_count}"
             if _sname:
                 _label += f"  —  {_sname}"
             self.lab_top_step.setText(_label)
@@ -1225,9 +1325,11 @@ class TabNoweZamowienie(QWidget):
                 step_key = str(self._step_order[current_idx] or "")
             hints = {
                 "client": "Co dalej: wybierz lub dodaj klienta i przejdź do zamówienia.",
-                "order": "Co dalej: uzupełnij dane zlecenia, potem przejdź do pozycji.",
+                "order": "Co dalej: uzupełnij dane zlecenia, przypisz pracownika i przejdź do pozycji.",
                 "quote": "Co dalej: wybierz tryb wyceny i dodaj pozycje.",
-                "attachments": "Co dalej: dodaj potrzebne załączniki i przejdź do podsumowania.",
+                "attachments": "Co dalej: dodaj potrzebne załączniki.",
+                "materials": "Co dalej: zapisz wybrane materiały i kolory.",
+                "finance": "Co dalej: zaplanuj harmonogram wpłat.",
                 "summary": "Co dalej: zapisz zamówienie i przejdź do projektu lub wyceny.",
             }
             self.lab_top_next_hint.setText(hints.get(step_key, "Co dalej: uzupełnij dane kroku."))
@@ -1240,7 +1342,18 @@ class TabNoweZamowienie(QWidget):
         self.workflow_tabs.setCurrentIndex(target)
 
     def _set_quote_entry_mode(self, mode_name: str) -> None:
-        self._quote_entry_mode = str(mode_name or "").strip() or "-"
+        self._quote_entry_mode = str(mode_name or "Wycena projektu").strip()
+        
+        # Sync toggle buttons
+        if hasattr(self, "btn_mode_project"):
+            self.btn_mode_project.setChecked(self._quote_entry_mode == "Wycena projektu")
+        if hasattr(self, "btn_mode_quick_module"):
+            self.btn_mode_quick_module.setChecked(self._quote_entry_mode == "Szybka wycena z modułu")
+        if hasattr(self, "btn_mode_quick_section"):
+            self.btn_mode_quick_section.setChecked(self._quote_entry_mode == "Szybka wycena z sekcji")
+        if hasattr(self, "btn_mode_import3d"):
+            self.btn_mode_import3d.setChecked(self._quote_entry_mode == "Import 3D Constructor")
+            
         if hasattr(self, "lab_quote_mode_selected"):
             self.lab_quote_mode_selected.setText(f"Wybrany tryb: {self._quote_entry_mode}")
         self._refresh_summary()
@@ -1255,7 +1368,7 @@ class TabNoweZamowienie(QWidget):
         if self.cb_client_name.lineEdit() is not None:
             self.cb_client_name.lineEdit().setPlaceholderText("[wybierz klienta albo wpisz nowego]")
         self.btn_pick_client = QPushButton("Wybierz z bazy", self.grp_client)
-        self.btn_save_client = QPushButton("Dodaj do bazy", self.grp_client)
+        self.btn_save_client = QPushButton("Zapisz do bazy", self.grp_client)
         self.btn_open_clients_base = QPushButton("Bazy", self.grp_client)
         self._make_compact_button(self.btn_pick_client, min_width=120, max_width=150)
         self._make_compact_button(self.btn_save_client, min_width=120, max_width=150)
@@ -1364,8 +1477,8 @@ class TabNoweZamowienie(QWidget):
         )
 
         self.client_rows_layout = QVBoxLayout()
-        self.client_rows_layout.setContentsMargins(0, 2, 0, 2)
-        self.client_rows_layout.setSpacing(8)
+        self.client_rows_layout.setContentsMargins(0, 5, 0, 5)
+        self.client_rows_layout.setSpacing(12)
         layout.addLayout(self.client_rows_layout)
 
         self.client_identity_row = QWidget(content_parent)
@@ -1559,55 +1672,112 @@ class TabNoweZamowienie(QWidget):
         order_form.addRow("Notatki", self.ed_order_notes)
         layout.addLayout(order_form)
 
-        terminy_label = QLabel("Terminy projektu (wybor z kalendarza):", self.grp_order)
-        terminy_label.setStyleSheet("font-weight: 700; color: #374151; margin-top: 6px;")
-        layout.addWidget(terminy_label)
+        # --- HARMONOGRAM PROJEKTU (dynamiczny panel Od-Do) ---
+        sch_card = QFrame(self.grp_order)
+        sch_card.setProperty("uiCard", True)
+        sch_card.setStyleSheet(f"QFrame{{background:{self._colors['summary_strip_bg']}; border:1px solid {self._colors['summary_strip_border']}; border-radius:6px;}}")
+        sch_layout = QVBoxLayout(sch_card)
+        sch_layout.setContentsMargins(10, 8, 10, 8)
+        sch_layout.setSpacing(6)
 
-        self.ed_date_wycena = self._new_calendar_date_edit(self.grp_order)
-        self.ed_date_projekt = self._new_calendar_date_edit(self.grp_order)
-        self.ed_date_probki = self._new_calendar_date_edit(self.grp_order)
-        self.ed_date_zakup_mat = self._new_calendar_date_edit(self.grp_order)
-        self.ed_date_produkcja = self._new_calendar_date_edit(self.grp_order)
-        self.ed_date_montaz = self._new_calendar_date_edit(self.grp_order)
-        self.ed_date_poprawki = self._new_calendar_date_edit(self.grp_order)
+        terminy_label = QLabel("Harmonogram projektu:", sch_card)
+        terminy_label.setStyleSheet("font-weight: 800; color: #3b82f6; font-size: 11px;")
+        sch_layout.addWidget(terminy_label)
 
-        # 3-column grid: each cell = small label above date edit
-        terminy_grid = QGridLayout()
-        terminy_grid.setHorizontalSpacing(12)
-        terminy_grid.setVerticalSpacing(6)
-        terminy_grid.setContentsMargins(0, 4, 0, 4)
+        sch_form_row = QHBoxLayout()
+        sch_form_row.setSpacing(8)
 
-        _terminy_fields = [
-            ("Wycena:", self.ed_date_wycena),
-            ("Projekt:", self.ed_date_projekt),
-            ("Probki materialow:", self.ed_date_probki),
-            ("Zakup materialow:", self.ed_date_zakup_mat),
-            ("Produkcja:", self.ed_date_produkcja),
-            ("Montaz:", self.ed_date_montaz),
-            ("Poprawki:", self.ed_date_poprawki),
-        ]
-        _tcols = 3
-        for _ti, (_tlbl_text, _twidget) in enumerate(_terminy_fields):
-            _tr, _tc = divmod(_ti, _tcols)
-            _tcell = QVBoxLayout()
-            _tcell.setSpacing(2)
-            _tcell.setContentsMargins(0, 0, 0, 0)
-            _tlbl = QLabel(_tlbl_text, self.grp_order)
-            _tlbl.setStyleSheet("font-size: 11px; color: #6b7280;")
-            _tcell.addWidget(_tlbl)
-            _tcell.addWidget(_twidget)
-            terminy_grid.addLayout(_tcell, _tr, _tc)
+        self.cb_sch_stage = QComboBox(sch_card)
+        self.cb_sch_stage.setEditable(True)
+        self.cb_sch_stage.addItems([
+            "Wycena", "Projekt", "Probki materialow", "Zakup materialow",
+            "Produkcja", "Montaz", "Poprawki", "Usluga (Ciecie)", "Odbior",
+        ])
+        self.cb_sch_stage.setMinimumWidth(160)
+        self.cb_sch_stage.setStyleSheet("QComboBox{font-weight:700;}")
+        if self.cb_sch_stage.lineEdit():
+            self.cb_sch_stage.lineEdit().setPlaceholderText("Etap / Faza prac")
 
-        # equal column stretch so date edits share width evenly
-        for _tc in range(_tcols):
-            terminy_grid.setColumnStretch(_tc, 1)
+        self.ed_sch_from = self._new_calendar_date_edit(sch_card)
+        self.ed_sch_to = self._new_calendar_date_edit(sch_card)
+        self.ed_sch_note = QLineEdit(sch_card)
+        self.ed_sch_note.setPlaceholderText("Notatka (np. montaż AGD)")
 
-        layout.addLayout(terminy_grid)
+        # Dodajemy ed_date_montaz jako główne pole daty montażu (naprawia crash)
+        self.ed_date_montaz = self._new_calendar_date_edit(sch_card)
+        self.ed_date_montaz.setToolTip("Główna zaplanowana data montażu dla całego zamówienia")
 
-        btn_open_calendar = QPushButton("Otworz kalendarz na date montazu", self.grp_order)
+        sch_form_row.addWidget(self.cb_sch_stage, 1)
+        sch_form_row.addWidget(QLabel("Od:", sch_card), 0)
+        sch_form_row.addWidget(self.ed_sch_from, 0)
+        sch_form_row.addWidget(QLabel("Do:", sch_card), 0)
+        sch_form_row.addWidget(self.ed_sch_to, 0)
+        sch_form_row.addWidget(self.ed_sch_note, 2)
+        sch_layout.addLayout(sch_form_row)
+
+        sch_btns = QHBoxLayout()
+        sch_btns.setSpacing(10)
+        btn_sch_add = QPushButton("Dodaj / Zapisz etap", sch_card)
+        btn_sch_add.setProperty("uiVariant", "primary")
+        btn_sch_add.setFixedHeight(28)
+        btn_sch_add.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._make_compact_button(btn_sch_add, 140, 160)
+        
+        btn_sch_remove = QPushButton("Usuń", sch_card)
+        btn_sch_remove.setFixedHeight(28)
+        btn_sch_remove.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._make_compact_button(btn_sch_remove, 80, 100)
+        
+        btn_sch_clear = QPushButton("Wyczyść", sch_card)
+        btn_sch_clear.setFixedHeight(28)
+        btn_sch_clear.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._make_compact_button(btn_sch_clear, 80, 100)
+        
+        sch_btns.addWidget(btn_sch_add)
+        sch_btns.addWidget(btn_sch_remove)
+        sch_btns.addWidget(btn_sch_clear)
+        sch_btns.addStretch(1)
+        
+        # Sekcja głównej daty montażu obok przycisku kalendarza
+        montaz_box = QHBoxLayout()
+        montaz_box.setSpacing(6)
+        lbl_mont = QLabel("Data montażu:", sch_card)
+        lbl_mont.setStyleSheet(f"color:{self._colors['accent_title']}; font-weight:700;")
+        montaz_box.addWidget(lbl_mont)
+        montaz_box.addWidget(self.ed_date_montaz)
+        
+        btn_open_calendar = QPushButton("Otwórz kalendarz", sch_card)
         btn_open_calendar.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_open_calendar.setFixedHeight(28)
+        btn_open_calendar.setStyleSheet(f"padding: 0 12px; background:{self._colors['hero_bg_0']}; font-weight:700;")
         btn_open_calendar.clicked.connect(self._on_open_calendar_for_montaz)
-        layout.addWidget(btn_open_calendar)
+        montaz_box.addWidget(btn_open_calendar)
+        montaz_box.addStretch(1)
+        
+        sch_btns.addLayout(montaz_box)
+        sch_layout.addLayout(sch_btns)
+        layout.addWidget(sch_card)
+
+        self.tbl_schedule = QTableWidget(0, 4, self.grp_order)
+        self.tbl_schedule.setHorizontalHeaderLabels(["Etap / Faza prac", "Od dnia", "Do dnia", "Notatki"])
+        self.tbl_schedule.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tbl_schedule.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.tbl_schedule.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl_schedule.verticalHeader().setVisible(False)
+        self.tbl_schedule.setAlternatingRowColors(True)
+        self.tbl_schedule.horizontalHeader().setStretchLastSection(True)
+        self.tbl_schedule.setMinimumHeight(100)
+        self.tbl_schedule.setMaximumHeight(180)
+        layout.addWidget(self.tbl_schedule)
+
+        self._schedule_items: list[dict] = []
+        btn_sch_add.clicked.connect(self._on_schedule_add)
+        btn_sch_remove.clicked.connect(self._on_schedule_remove)
+        btn_sch_clear.clicked.connect(self._on_schedule_clear_form)
+        self.tbl_schedule.itemSelectionChanged.connect(self._on_schedule_selection_changed)
+
+
+        # btn_open_calendar przeniesiony powyżej dla lepszej spójności
 
         # HISTORIA STATUSOW — lightweight inline style (overrides CollapsibleBlock defaults)
         self.blk_status_history = CollapsibleBlock("Historia statusow", self.grp_order)
@@ -1673,7 +1843,6 @@ class TabNoweZamowienie(QWidget):
 
     def _build_worker_group(self) -> None:
         layout = self.grp_worker.content_layout()
-        content_parent = layout.parentWidget() or self.grp_worker
 
         self.cb_worker_name = QComboBox(self.grp_worker)
         self.cb_worker_name.setEditable(True)
@@ -1686,9 +1855,14 @@ class TabNoweZamowienie(QWidget):
         self.cb_worker_name.setMinimumWidth(260)
         if self.cb_worker_name.lineEdit() is not None:
             self.cb_worker_name.lineEdit().setPlaceholderText("[wybierz pracownika albo wpisz nowego]")
+        
+        self._worker_field_cells: dict[str, QWidget] = {}
+        self._order_field_cells: dict[str, QWidget] = {}
+        
+        # Pojedyncza linia pracownika
         worker_picker_row = QHBoxLayout()
+        worker_picker_row.setContentsMargins(10, 4, 10, 4)
         worker_picker_row.setSpacing(8)
-        worker_picker_row.addWidget(QLabel("Pracownik:", self.grp_worker), 0)
         worker_picker_row.addWidget(self.cb_worker_name, 1)
         worker_picker_row.addWidget(self.btn_pick_worker, 0)
         worker_picker_row.addWidget(self.btn_save_worker, 0)
@@ -1696,48 +1870,22 @@ class TabNoweZamowienie(QWidget):
         worker_picker_row.addStretch(1)
         layout.addLayout(worker_picker_row)
 
-        self.ed_worker_id = QLineEdit(self.grp_worker)
-        self.ed_worker_id.setPlaceholderText("ID")
-        self.ed_worker_id.setMinimumWidth(70)
-        self.ed_worker_id.setReadOnly(True)
-        self.ed_worker_id.setToolTip("ID nadaje sie automatycznie.")
-        self.ed_worker_first_name = QLineEdit(self.grp_worker)
-        self.ed_worker_first_name.setPlaceholderText("Imie")
-        self.ed_worker_first_name.setMinimumWidth(120)
-        self.ed_worker_last_name = QLineEdit(self.grp_worker)
-        self.ed_worker_last_name.setPlaceholderText("Nazwisko")
-        self.ed_worker_last_name.setMinimumWidth(140)
-        self.ed_worker_name_input = QLineEdit(self.grp_worker)
-        self.ed_worker_name_input.setPlaceholderText("Imie i nazwisko")
-        self.ed_worker_name_input.setMinimumWidth(140)
-        self.ed_worker_name_input.hide()
-        self.ed_worker_role = QLineEdit(self.grp_worker)
-        self.ed_worker_role.setPlaceholderText("Rola")
-        self.ed_worker_role.setMinimumWidth(120)
-        self.ed_worker_phone = QLineEdit(self.grp_worker)
-        self.ed_worker_phone.setMinimumWidth(120)
-        self.ed_worker_email = QLineEdit(self.grp_worker)
-        self.ed_worker_email.setMinimumWidth(140)
-        self.ed_worker_notes = QTextEdit(self.grp_worker)
-        self.ed_worker_notes.setMaximumHeight(90)
-
-        self._worker_field_cells: dict[str, QWidget] = {}
-        # ID pracownika pozostaje tylko systemowe (niewidoczne dla operatora).
+        # Ukryte pola dla kompatybilnosci logiki (bez dodawania do layoutu)
+        self.ed_worker_id = QLineEdit(self.grp_worker); self.ed_worker_id.hide()
+        self.ed_worker_first_name = QLineEdit(self.grp_worker); self.ed_worker_first_name.hide()
+        self.ed_worker_last_name = QLineEdit(self.grp_worker); self.ed_worker_last_name.hide()
+        self.ed_worker_role = QLineEdit(self.grp_worker); self.ed_worker_role.hide()
+        self.ed_worker_phone = QLineEdit(self.grp_worker); self.ed_worker_phone.hide()
+        self.ed_worker_email = QLineEdit(self.grp_worker); self.ed_worker_email.hide()
+        self.ed_worker_notes = QTextEdit(self.grp_worker); self.ed_worker_notes.hide()
+        self.ed_worker_name_input = QLineEdit(self.grp_worker); self.ed_worker_name_input.hide()
+        
         self._worker_primary_defaults = ["worker_first_name", "worker_last_name", "role"]
 
-        self.worker_primary_splitter = QSplitter(Qt.Orientation.Horizontal, content_parent)
-        self.worker_primary_splitter.setChildrenCollapsible(False)
-        self.worker_primary_splitter.setHandleWidth(8)
-        self._worker_field_cells["worker_id"] = self._make_client_field_cell(
-            "worker_id", "ID", self.ed_worker_id, self.grp_worker, self._on_worker_field_dropped
-        )
-        self._worker_field_cells["worker_id"].hide()
-        self._worker_field_cells["worker_first_name"] = self._make_client_field_cell(
-            "worker_first_name", "Imie", self.ed_worker_first_name, self.grp_worker, self._on_worker_field_dropped
-        )
-        self._worker_field_cells["worker_last_name"] = self._make_client_field_cell(
-            "worker_last_name", "Nazwisko", self.ed_worker_last_name, self.grp_worker, self._on_worker_field_dropped
-        )
+        # Splitter widmo dla kompatybilnosci metod zapisu/odczytu
+        self.worker_primary_splitter = QSplitter(Qt.Orientation.Horizontal, self.grp_worker)
+        self.worker_primary_splitter.hide()
+
         self._worker_field_cells["role"] = self._make_client_field_cell(
             "role", "Rola", self.ed_worker_role, self.grp_worker, self._on_worker_field_dropped
         )
@@ -1763,22 +1911,12 @@ class TabNoweZamowienie(QWidget):
         )
 
         self.worker_rows_layout = QVBoxLayout()
-        self.worker_rows_layout.setContentsMargins(0, 2, 0, 2)
-        self.worker_rows_layout.setSpacing(8)
+        self.worker_rows_layout.setContentsMargins(0, 0, 0, 0)
+        self.worker_rows_layout.setSpacing(0)
         layout.addLayout(self.worker_rows_layout)
 
-        self.worker_primary_row = QWidget(content_parent)
-        worker_primary_row_layout = QHBoxLayout(self.worker_primary_row)
-        worker_primary_row_layout.setContentsMargins(0, 0, 0, 0)
-        worker_primary_row_layout.setSpacing(6)
-        worker_primary_row_layout.addWidget(self.worker_primary_splitter, 1)
-        self.worker_rows_layout.addWidget(self.worker_primary_row)
+        # Nie dodajemy juz splittera do layoutu roboczego
         self._save_worker_field_orders()
-
-        note = QLabel("Wybierz pracownika z bazy albo wpisz nowego i przypisz role do zamowienia.")
-        note.setWordWrap(True)
-        note.setStyleSheet(f"color:{self._colors['muted']};")
-        layout.addWidget(note)
 
     def _build_walls_group(self) -> None:
         layout = self.grp_walls.content_layout()
@@ -1982,22 +2120,25 @@ class TabNoweZamowienie(QWidget):
         self.ed_quote_item_description.setPlaceholderText(
             "Opis / uwagi do wyceny (np. front ryflowany, wyspa, lustro)."
         )
-        self.ed_quote_item_id = QLineEdit(self.grp_quote_items)
-        self.ed_quote_item_id.setPlaceholderText("ID pozycji")
-        self.ed_quote_item_id.setMaximumWidth(100)
         self.btn_add_quote_item = QPushButton("Dodaj pozycje", self.grp_quote_items)
         self.btn_remove_quote_item = QPushButton("Usun zaznaczona", self.grp_quote_items)
         self.btn_quote_to_sciana = QPushButton("Otworz jako Sciana", self.grp_quote_items)
         self.btn_quote_to_komplet = QPushButton("Otworz jako Komplet", self.grp_quote_items)
         self.btn_quote_set_fragment_target = QPushButton("Ustaw jako cel fragmentu", self.grp_quote_items)
+        self.btn_quote_quick_module = QPushButton("Szybka wycena z modułu", self.grp_quote_items)
+        self.btn_quote_quick_section = QPushButton("Szybka wycena z sekcji", self.grp_quote_items)
+        self.btn_quote_import3d = QPushButton("Import 3D Constructor", self.grp_quote_items)
         self._make_compact_button(self.btn_add_quote_item, min_width=130, max_width=160)
         self._make_compact_button(self.btn_remove_quote_item, min_width=130, max_width=160)
         self._make_compact_button(self.btn_quote_to_sciana, min_width=150, max_width=180)
         self._make_compact_button(self.btn_quote_to_komplet, min_width=150, max_width=180)
         self._make_compact_button(self.btn_quote_set_fragment_target, min_width=180, max_width=220)
+        self._make_compact_button(self.btn_quote_quick_module, min_width=180, max_width=210)
+        self._make_compact_button(self.btn_quote_quick_section, min_width=180, max_width=210)
+        self._make_compact_button(self.btn_quote_import3d, min_width=180, max_width=210)
 
-        self.tbl_quote_items = QTableWidget(0, 5, self.grp_quote_items)
-        self.tbl_quote_items.setHorizontalHeaderLabels(["Pozycja", "Typ", "Opis", "Ilosc", "ID"])
+        self.tbl_quote_items = QTableWidget(0, 7, self.grp_quote_items)
+        self.tbl_quote_items.setHorizontalHeaderLabels(["Nr", "Nazwa", "Typ", "Opis", "Ilosc", "VAT", "ID"])
         self.tbl_quote_items.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tbl_quote_items.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.tbl_quote_items.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -2006,43 +2147,65 @@ class TabNoweZamowienie(QWidget):
         self.tbl_quote_items.setAlternatingRowColors(True)
         self.tbl_quote_items.setMinimumHeight(160)
         self.tbl_quote_items.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        self.tbl_quote_items.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.tbl_quote_items.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_quote_items.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.tbl_quote_items.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_quote_items.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self.tbl_quote_items.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_quote_items.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_quote_items.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_quote_items.setColumnHidden(6, True)  # ID zawsze dodawane, ale niewidoczne dla uzytkownika
         top_row = QHBoxLayout()
         top_row.setSpacing(12)
 
         entry_box, entry_layout = self._make_work_panel(
             "Nowa pozycja",
-            "Tutaj wpisujesz handlowy temat wyceny, np. kuchnia, szafa albo lazienka.",
+            "Wprowadź dane dla nowego tematu handlowego.",
         )
-        row = QHBoxLayout()
-        row.addWidget(self.ed_quote_item_name, 1)
-        row.addWidget(self.cb_quote_item_kind, 0)
-        row.addWidget(self.sp_quote_item_quantity, 0)
-        entry_layout.addLayout(row)
-        entry_layout.addWidget(self.ed_quote_item_description)
-        id_row = QHBoxLayout()
-        id_row.addWidget(self.ed_quote_item_id, 0)
-        id_row.addStretch(1)
-        entry_layout.addLayout(id_row)
-        entry_layout.addWidget(self.btn_add_quote_item, 0, Qt.AlignmentFlag.AlignLeft)
-        top_row.addWidget(entry_box, 3)
-
-        actions_box, actions_layout = self._make_work_panel(
-            "Co dalej",
-            "Wybrana pozycje otwierasz jako Sciana albo Komplet i mozesz jej przypiac fragment z PDF.",
-        )
-        actions_buttons = QVBoxLayout()
-        actions_buttons.setSpacing(8)
-        actions_buttons.addWidget(self.btn_remove_quote_item, 0)
-        actions_buttons.addWidget(self.btn_quote_to_sciana, 0)
-        actions_buttons.addWidget(self.btn_quote_to_komplet, 0)
-        actions_buttons.addWidget(self.btn_quote_set_fragment_target, 0)
-        actions_buttons.addStretch(1)
-        actions_layout.addLayout(actions_buttons)
-        top_row.addWidget(actions_box, 2)
-
+        
+        grid_layout = QHBoxLayout()
+        grid_layout.setSpacing(12)
+        
+        # Nazwa
+        grid_layout.addWidget(QLabel("Nazwa:"), 0)
+        self.ed_quote_item_name.setPlaceholderText("np. Kuchnia")
+        self.ed_quote_item_name.setMinimumWidth(120)
+        grid_layout.addWidget(self.ed_quote_item_name, 2)
+        
+        # Ilość
+        grid_layout.addWidget(QLabel("Ilość:"), 0)
+        self.sp_quote_item_quantity.setMinimumWidth(70)
+        grid_layout.addWidget(self.sp_quote_item_quantity, 0)
+        
+        # VAT
+        grid_layout.addWidget(QLabel("VAT:"), 0)
+        self.cb_quote_item_vat = QComboBox(self.grp_quote_items)
+        self.cb_quote_item_vat.addItems(["23%", "8%", "0%"])
+        self.cb_quote_item_vat.setFixedWidth(65)
+        grid_layout.addWidget(self.cb_quote_item_vat, 0)
+        
+        # Typ (Edytowalny wg życzenia użytkownika)
+        grid_layout.addWidget(QLabel("Typ:"), 0)
+        self.cb_quote_item_kind.setEditable(True)
+        self.cb_quote_item_kind.setMinimumWidth(120)
+        grid_layout.addWidget(self.cb_quote_item_kind, 1)
+        
+        entry_layout.addLayout(grid_layout)
+        
+        desc_lbl = QLabel("Szczegóły / Opis wykonania:")
+        desc_lbl.setStyleSheet("font-weight:700; color:#475569; margin-top:5px; margin-bottom:2px;")
+        entry_layout.addWidget(desc_lbl)
+        
+        desc_row = QHBoxLayout()
+        desc_row.addWidget(self.ed_quote_item_description, 1)
+        
+        button_add = self.btn_add_quote_item
+        button_add.setText("+ DODAJ POZYCJĘ")
+        button_add.setMinimumHeight(28)
+        button_add.setStyleSheet("font-weight:800; background:#3b82f6; color:white; padding:0 14px; border-radius:4px;")
+        desc_row.addWidget(button_add, 0)
+        entry_layout.addLayout(desc_row)
+        
+        top_row.addWidget(entry_box, 1)
         layout.addLayout(top_row)
 
         items_box, items_layout = self._make_work_panel(
@@ -2050,6 +2213,29 @@ class TabNoweZamowienie(QWidget):
             "To sa glowne pozycje handlowe, z ktorych skladasz cala wycene klienta.",
         )
         items_layout.addWidget(self.tbl_quote_items)
+        self.btn_import_attachments = QPushButton("Zalaczniki", self.grp_quote_items)
+        # Rząd akcji pod tabelą
+        actions_row = QHBoxLayout()
+        actions_row.setSpacing(6)
+        _action_buttons = (
+            self.btn_remove_quote_item, 
+            self.btn_quote_to_sciana, 
+            self.btn_quote_to_komplet, 
+            self.btn_quote_quick_module,
+            self.btn_quote_quick_section,
+            self.btn_quote_import3d,
+            self.btn_quote_set_fragment_target
+        )
+        _action_btn_ss = (
+            "QPushButton { font-size:10px; font-weight:700; padding:2px 8px; border-radius:3px; height:24px; }"
+            "QPushButton:hover { background: #e2e8f0; }"
+        )
+        for _abtn in _action_buttons:
+            _abtn.setFixedHeight(24)
+            _abtn.setStyleSheet(_action_btn_ss)
+            actions_row.addWidget(_abtn, 0)
+        actions_row.addStretch(1)
+        items_layout.addLayout(actions_row)
         layout.addWidget(items_box)
 
         refs_note = QLabel(
@@ -2112,13 +2298,14 @@ class TabNoweZamowienie(QWidget):
         self.ed_material_choice_color.setPlaceholderText("Kolor / dekor, np. Cashmere, dab naturalny")
         self.ed_material_choice_code = QLineEdit(self.grp_material_choices)
         self.ed_material_choice_code.setPlaceholderText("Kod, np. U702 ST9 / RAL 9016")
+        self.ed_material_choice_code.setMaximumWidth(200)
         self.ed_material_choice_notes = QLineEdit(self.grp_material_choices)
         self.ed_material_choice_notes.setPlaceholderText("Uwagi, np. klient wybral probke nr 2")
         self.ed_material_choice_date = QDateEdit(self.grp_material_choices)
         self.ed_material_choice_date.setCalendarPopup(True)
         self.ed_material_choice_date.setDisplayFormat("yyyy-MM-dd")
         self.ed_material_choice_date.setDate(QDate.currentDate())
-        self.ed_material_choice_date.setMaximumWidth(130)
+        self.ed_material_choice_date.setMinimumWidth(160)
         self.btn_add_material_choice = QPushButton("Dodaj wpis", self.grp_material_choices)
         self.btn_remove_material_choice = QPushButton("Usun zaznaczony", self.grp_material_choices)
         self._make_compact_button(self.btn_add_material_choice, min_width=120, max_width=150)
@@ -2156,7 +2343,7 @@ class TabNoweZamowienie(QWidget):
         row_material.addWidget(self.ed_material_choice_color, 1)
         entry_layout.addLayout(row_material)
         row_code = QHBoxLayout()
-        row_code.addWidget(self.ed_material_choice_code, 1)
+        row_code.addWidget(self.ed_material_choice_code, 0)
         row_code.addWidget(self.ed_material_choice_date, 0)
         row_code.addWidget(self.ed_material_choice_notes, 1)
         entry_layout.addLayout(row_code)
@@ -2213,6 +2400,7 @@ class TabNoweZamowienie(QWidget):
         self.sp_customer_payment_amount.setSuffix(" zl")
         self.sp_customer_payment_amount.setMaximumWidth(160)
         self.chk_customer_payment_paid = QCheckBox("Oplacone", self.grp_customer_cash)
+        self.chk_customer_payment_cash = QCheckBox("Gotówka", self.grp_customer_cash)
 
         self.ed_customer_payment_date = QDateEdit(self.grp_customer_cash)
         self.ed_customer_payment_date.setCalendarPopup(True)
@@ -2236,8 +2424,8 @@ class TabNoweZamowienie(QWidget):
         self._make_compact_button(self.btn_add_customer_payment, min_width=120, max_width=150)
         self._make_compact_button(self.btn_remove_customer_payment, min_width=140, max_width=170)
 
-        self.tbl_customer_payments = QTableWidget(0, 6, self.grp_customer_cash)
-        self.tbl_customer_payments.setHorizontalHeaderLabels(["Etap", "Kwota", "Oplacone", "Data", "ID", "Uwagi"])
+        self.tbl_customer_payments = QTableWidget(0, 7, self.grp_customer_cash)
+        self.tbl_customer_payments.setHorizontalHeaderLabels(["Etap", "Kwota", "Gotowka", "Status", "Data", "ID", "Uwagi"])
         self.tbl_customer_payments.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tbl_customer_payments.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.tbl_customer_payments.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -2250,6 +2438,7 @@ class TabNoweZamowienie(QWidget):
         self.tbl_customer_payments.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.tbl_customer_payments.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         self.tbl_customer_payments.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_customer_payments.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
 
         top_row = QHBoxLayout()
         top_row.setSpacing(12)
@@ -2262,6 +2451,7 @@ class TabNoweZamowienie(QWidget):
         row_meta.addWidget(self.cb_customer_payment_stage, 0)
         row_meta.addWidget(self.sp_customer_payment_amount, 0)
         row_meta.addWidget(self.chk_customer_payment_paid, 0)
+        row_meta.addWidget(self.chk_customer_payment_cash, 0)
         row_meta.addWidget(self.ed_customer_payment_date, 0)
         row_meta.addWidget(self.ed_customer_payment_id, 0)
         row_meta.addStretch(1)
@@ -2311,6 +2501,102 @@ class TabNoweZamowienie(QWidget):
         layout.addWidget(self.lab_customer_cash_detail)
         self._set_customer_payments([])
 
+
+    # ===================== HARMONOGRAM =====================
+
+    def _refresh_schedule_table(self) -> None:
+        if not hasattr(self, "tbl_schedule"):
+            return
+        self.tbl_schedule.setRowCount(len(self._schedule_items))
+        for row, item in enumerate(self._schedule_items):
+            cells = (
+                QTableWidgetItem(str(item.get("stage", ""))),
+                QTableWidgetItem(str(item.get("date_from", ""))),
+                QTableWidgetItem(str(item.get("date_to", ""))),
+                QTableWidgetItem(str(item.get("note", ""))),
+            )
+            for col, cell in enumerate(cells):
+                cell.setData(Qt.ItemDataRole.UserRole, row)
+                self.tbl_schedule.setItem(row, col, cell)
+        self.tbl_schedule.resizeColumnsToContents()
+
+    def _on_schedule_clear_form(self) -> None:
+        if hasattr(self, "cb_sch_stage"):
+            self.cb_sch_stage.setCurrentIndex(0)
+        if hasattr(self, "ed_sch_from"):
+            self.ed_sch_from.setDate(QDate.currentDate())
+        if hasattr(self, "ed_sch_to"):
+            self.ed_sch_to.setDate(QDate.currentDate())
+        if hasattr(self, "ed_sch_note"):
+            self.ed_sch_note.clear()
+        if hasattr(self, "tbl_schedule"):
+            self.tbl_schedule.clearSelection()
+
+    def _on_schedule_selection_changed(self) -> None:
+        sel = (
+            self.tbl_schedule.selectionModel().selectedRows()
+            if self.tbl_schedule.selectionModel() is not None
+            else []
+        )
+        if not sel:
+            return
+        row = sel[0].row()
+        if row < 0 or row >= len(self._schedule_items):
+            return
+        entry = self._schedule_items[row]
+        self.cb_sch_stage.setCurrentText(str(entry.get("stage", "")))
+        self._set_date_edit_from_text(self.ed_sch_from, str(entry.get("date_from", "")))
+        self._set_date_edit_from_text(self.ed_sch_to, str(entry.get("date_to", "")))
+        self.ed_sch_note.setText(str(entry.get("note", "")))
+
+    def _on_schedule_add(self) -> None:
+        stage = self.cb_sch_stage.currentText().strip()
+        if not stage:
+            self._set_status("Wpisz etap prac.", ok=False)
+            return
+        entry = {
+            "stage": stage,
+            "date_from": self._date_edit_to_text(self.ed_sch_from),
+            "date_to": self._date_edit_to_text(self.ed_sch_to),
+            "note": self.ed_sch_note.text().strip(),
+        }
+        sel = (
+            self.tbl_schedule.selectionModel().selectedRows()
+            if self.tbl_schedule.selectionModel() is not None
+            else []
+        )
+        if sel and 0 <= sel[0].row() < len(self._schedule_items):
+            self._schedule_items[sel[0].row()] = entry
+            msg = "Zaktualizowano termin w harmonogramie."
+        else:
+            self._schedule_items.append(entry)
+            msg = "Dodano termin do harmonogramu."
+        self._refresh_schedule_table()
+        self._on_schedule_clear_form()
+        self._refresh_summary()
+        self._set_status(msg, ok=True)
+
+    def _on_schedule_remove(self) -> None:
+        sel = (
+            self.tbl_schedule.selectionModel().selectedRows()
+            if self.tbl_schedule.selectionModel() is not None
+            else []
+        )
+        if not sel:
+            self._set_status("Wybierz termin do usuniecia.", ok=False)
+            return
+        row = sel[0].row()
+        if 0 <= row < len(self._schedule_items):
+            self._schedule_items.pop(row)
+            self._refresh_schedule_table()
+            self._on_schedule_clear_form()
+            self._refresh_summary()
+            self._set_status("Usunieto termin z harmonogramu.", ok=True)
+
+    def _set_order_schedule(self, items: list[dict] | None) -> None:
+        self._schedule_items = [dict(item) for item in (items or [])]
+        self._refresh_schedule_table()
+
     def _normalize_customer_payment(self, item: dict | None) -> dict[str, object] | None:
         if not isinstance(item, dict):
             return None
@@ -2348,6 +2634,7 @@ class TabNoweZamowienie(QWidget):
             items = (
                 QTableWidgetItem(str(payment.get("stage", "") or "Inne")),
                 QTableWidgetItem(f'{float(payment.get("amount", 0.0) or 0.0):.2f} zl'),
+                QTableWidgetItem("Tak" if bool(payment.get("cash", False)) else "Nie"),
                 QTableWidgetItem("Tak" if bool(payment.get("paid", False)) else "Nie"),
                 QTableWidgetItem(str(payment.get("date", "") or "")),
                 QTableWidgetItem(str(payment.get("payment_id", "") or "")),
@@ -2405,10 +2692,10 @@ class TabNoweZamowienie(QWidget):
         today = QDate.currentDate().toString("yyyy-MM-dd")
         self._set_customer_payments(
             [
-                {"stage": "Rezerwacja terminu", "amount": 0.0, "paid": False, "date": today, "payment_id": f"PAY-001", "note": "Pierwszy zadatek klienta"},
-                {"stage": "Start pracy / 60%", "amount": 0.0, "paid": False, "date": today, "payment_id": f"PAY-002", "note": "Po starcie realizacji"},
-                {"stage": "Przed montazem / 20%", "amount": 0.0, "paid": False, "date": today, "payment_id": f"PAY-003", "note": "Przed wyjazdem na montaz"},
-                {"stage": "Koniec / 10%", "amount": 0.0, "paid": False, "date": today, "payment_id": f"PAY-004", "note": "Rozliczenie koncowe"},
+                {"stage": "Zaliczka - rezerwacja terminu", "amount": 0.0, "paid": False, "cash": False, "date": today, "payment_id": f"PAY-001", "note": "Rezerwacja w grafiku"},
+                {"stage": "Start prac - 60%", "amount": 0.0, "paid": False, "cash": False, "date": today, "payment_id": f"PAY-002", "note": "Potwierdzenie i poczatek realizacji"},
+                {"stage": "Start montazu - 30%", "amount": 0.0, "paid": False, "cash": False, "date": today, "payment_id": f"PAY-003", "note": "Przed wyjazdem ekipy"},
+                {"stage": "Odbior - 10%", "amount": 0.0, "paid": False, "cash": False, "date": today, "payment_id": f"PAY-004", "note": "Finalne rozliczenie po odbiorze"},
             ]
         )
         self._refresh_summary()
@@ -2423,6 +2710,7 @@ class TabNoweZamowienie(QWidget):
                 "stage": self.cb_customer_payment_stage.currentText().strip(),
                 "amount": float(self.sp_customer_payment_amount.value()),
                 "paid": bool(self.chk_customer_payment_paid.isChecked()),
+                "cash": bool(self.chk_customer_payment_cash.isChecked()),
                 "date": self.ed_customer_payment_date.date().toString("yyyy-MM-dd"),
                 "payment_id": payment_id,
                 "note": self.ed_customer_payment_note.text().strip(),
@@ -2900,10 +3188,12 @@ class TabNoweZamowienie(QWidget):
         self.tbl_quote_items.setRowCount(len(self._quote_items))
         for row, quote_item in enumerate(self._quote_items):
             items = (
+                QTableWidgetItem(str(row + 1)),
                 QTableWidgetItem(str(quote_item.get("name", "") or "")),
                 QTableWidgetItem(str(quote_item.get("kind", "") or "Inne")),
                 QTableWidgetItem(str(quote_item.get("description", "") or "")),
                 QTableWidgetItem(str(quote_item.get("quantity", "") or "1")),
+                QTableWidgetItem(str(quote_item.get("vat", "23%"))),
                 QTableWidgetItem(str(quote_item.get("quote_item_id", "") or "")),
             )
             for col, item in enumerate(items):
@@ -2930,20 +3220,32 @@ class TabNoweZamowienie(QWidget):
             self.btn_quote_to_sciana.setEnabled(has_selection)
         if hasattr(self, "btn_quote_to_komplet"):
             self.btn_quote_to_komplet.setEnabled(has_selection)
+        if hasattr(self, "btn_quote_quick_module"):
+            self.btn_quote_quick_module.setEnabled(has_selection)
+        if hasattr(self, "btn_quote_quick_section"):
+            self.btn_quote_quick_section.setEnabled(has_selection)
+        if hasattr(self, "btn_quote_import3d"):
+            self.btn_quote_import3d.setEnabled(has_selection)
         if hasattr(self, "btn_quote_set_fragment_target"):
             self.btn_quote_set_fragment_target.setEnabled(has_selection)
         self._refresh_quote_item_references()
 
     def _on_add_quote_item(self) -> None:
-        quote_item_id = self.ed_quote_item_id.text().strip()
-        if not quote_item_id:
-            quote_item_id = f"Q-{datetime.now().strftime('%y%m%d%H%M%S')}"
+        quote_item_id = f"Q-{datetime.now().strftime('%y%m%d%H%M%S')}"
+        
+        name_input = self.ed_quote_item_name.text().strip()
+        kind_input = self.cb_quote_item_kind.currentText().strip() or "Inne"
+        
+        # Sam wpisuje: jeśli nazwa jest pusta, użyj wybranego typu jako nazwy
+        final_name = name_input if name_input else kind_input
+        
         entry = self._normalize_quote_item(
             {
-                "name": self.ed_quote_item_name.text().strip(),
-                "kind": self.cb_quote_item_kind.currentText().strip() or "Inne",
+                "name": final_name,
+                "kind": kind_input,
                 "description": self.ed_quote_item_description.text().strip(),
                 "quantity": int(self.sp_quote_item_quantity.value()),
+                "vat": self.cb_quote_item_vat.currentText().strip() or "23%",
                 "quote_item_id": quote_item_id,
             }
         )
@@ -2953,7 +3255,6 @@ class TabNoweZamowienie(QWidget):
         self._quote_items.append(entry)
         self.ed_quote_item_name.clear()
         self.ed_quote_item_description.clear()
-        self.ed_quote_item_id.clear()
         self.sp_quote_item_quantity.setValue(1)
         self._refresh_quote_items_table()
         self._refresh_summary()
@@ -3016,6 +3317,11 @@ class TabNoweZamowienie(QWidget):
 
     def _on_open_quote_item_as_komplet(self) -> None:
         self._open_selected_quote_item("komplet")
+
+    def _on_open_quote_item_with_mode(self, mode_name: str) -> None:
+        self._set_quote_entry_mode(mode_name)
+        # Otwieramy jako sciana (uniwersalny widok wyceny)
+        self._open_selected_quote_item("sciana")
 
     def _on_use_quote_item_as_fragment_target(self) -> None:
         quote_item = self._selected_quote_item()
@@ -3267,7 +3573,7 @@ class TabNoweZamowienie(QWidget):
         layout = self.grp_summary.content_layout()
 
         note = QLabel(
-            "Szybki podglad calego zamowienia: sciany, komplety, koszt laczny i materialy."
+            "Szybki podglad calego zamowienia: sciany, komplety i cena koncowa."
         )
         note.setWordWrap(True)
         note.setStyleSheet(f"color:{self._colors['muted']};")
@@ -3291,76 +3597,9 @@ class TabNoweZamowienie(QWidget):
         )
         layout.addWidget(self.lab_summary)
 
-        self.lab_cost_summary = QLabel("")
-        self.lab_cost_summary.setWordWrap(True)
-        self.lab_cost_summary.setStyleSheet(
-            f"color:{self._colors['cost_box_text']}; font-weight:600; background:{self._colors['cost_box_bg']};"
-            f" border:1px solid {self._colors['cost_box_border']}; border-radius:6px; padding:8px;"
-        )
-        layout.addWidget(self.lab_cost_summary)
-
-        # RENTOWNOSC ZAMOWIENIA
-        profit_title = QLabel("Rentownosc zamowienia")
-        profit_title.setStyleSheet(f"font-weight:700; color:{self._colors['accent_title']}; margin-top:6px;")
-        layout.addWidget(profit_title)
-
-        self.lab_profit_summary = QLabel("-")
-        self.lab_profit_summary.setWordWrap(True)
-        self.lab_profit_summary.setStyleSheet(self._profit_summary_style(positive=True))
-        layout.addWidget(self.lab_profit_summary)
-
-        cash_title = QLabel("Kasa klienta")
-        cash_title.setStyleSheet(f"font-weight:600; color:{self._colors['accent_title']};")
-        layout.addWidget(cash_title)
-
-        self.lab_customer_cash_summary = QLabel("")
-        self.lab_customer_cash_summary.setWordWrap(True)
-        self.lab_customer_cash_summary.setStyleSheet(
-            f"color:{self._colors['cash_box_text']}; background:{self._colors['cash_box_bg']};"
-            f" border:1px solid {self._colors['cash_box_border']}; border-radius:6px; padding:8px;"
-        )
-        layout.addWidget(self.lab_customer_cash_summary)
-
-        assemblies_title = QLabel("Komplety w zamowieniu")
-        assemblies_title.setStyleSheet(f"font-weight:600; color:{self._colors['accent_title']};")
-        layout.addWidget(assemblies_title)
-
-        self.tbl_order_assemblies = QTableWidget(0, 6, self.grp_summary)
-        self.tbl_order_assemblies.setHorizontalHeaderLabels(
-            ["Komplet", "Ściana", "Moduły", "Materiały", "Okleina", "RAZEM"]
-        )
-        self.tbl_order_assemblies.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.tbl_order_assemblies.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.tbl_order_assemblies.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.tbl_order_assemblies.verticalHeader().setVisible(False)
-        self.tbl_order_assemblies.horizontalHeader().setStretchLastSection(True)
-        self.tbl_order_assemblies.setAlternatingRowColors(True)
-        self.tbl_order_assemblies.setMinimumHeight(150)
-        self.tbl_order_assemblies.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        self.tbl_order_assemblies.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.tbl_order_assemblies.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        layout.addWidget(self.tbl_order_assemblies)
-
-        materials_title = QLabel("Materialy w calym zamowieniu")
-        materials_title.setStyleSheet(f"font-weight:600; color:{self._colors['accent_title']};")
-        layout.addWidget(materials_title)
-
-        self.tbl_order_materials = QTableWidget(0, 4, self.grp_summary)
-        self.tbl_order_materials.setHorizontalHeaderLabels(["Material", "Szt", "m2", "Koszt"])
-        self.tbl_order_materials.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.tbl_order_materials.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.tbl_order_materials.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.tbl_order_materials.verticalHeader().setVisible(False)
-        self.tbl_order_materials.horizontalHeader().setStretchLastSection(True)
-        self.tbl_order_materials.setAlternatingRowColors(True)
-        self.tbl_order_materials.setMinimumHeight(160)
-        self.tbl_order_materials.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        self.tbl_order_materials.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.tbl_order_materials.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        layout.addWidget(self.tbl_order_materials)
-
+        # Oferta klienta (zalaczniki)
         offer_title = QLabel("Oferta klienta")
-        offer_title.setStyleSheet(f"font-weight:600; color:{self._colors['accent_title']};")
+        offer_title.setStyleSheet(f"font-weight:600; color:{self._colors['accent_title']}; margin-top:8px;")
         layout.addWidget(offer_title)
 
         self.lab_offer_summary = QLabel("")
@@ -3400,8 +3639,81 @@ class TabNoweZamowienie(QWidget):
 
         self.tbl_offer_refs.itemSelectionChanged.connect(self._on_offer_reference_selection_changed)
 
+    def _build_finance_technical_group(self) -> None:
+        """Kluczowy widok finansowy: koszty techniczne, marza, zysk i wplaty."""
+        layout = self.grp_finance_technical.content_layout()
+
+        self.lab_cost_summary = QLabel("")
+        self.lab_cost_summary.setWordWrap(True)
+        self.lab_cost_summary.setStyleSheet(
+            f"color:{self._colors['cost_box_text']}; font-weight:600; background:{self._colors['cost_box_bg']};"
+            f" border:1px solid {self._colors['cost_box_border']}; border-radius:6px; padding:8px;"
+        )
+        layout.addWidget(self.lab_cost_summary)
+
+        # RENTOWNOSC ZAMOWIENIA
+        profit_title = QLabel("Rentownosc zamowienia")
+        profit_title.setStyleSheet(f"font-weight:700; color:{self._colors['accent_title']}; margin-top:6px;")
+        layout.addWidget(profit_title)
+
+        self.lab_profit_summary = QLabel("-")
+        self.lab_profit_summary.setWordWrap(True)
+        self.lab_profit_summary.setStyleSheet(self._profit_summary_style(positive=True))
+        layout.addWidget(self.lab_profit_summary)
+
+        cash_title = QLabel("Kasa klienta - podsumowanie")
+        cash_title.setStyleSheet(f"font-weight:600; color:{self._colors['accent_title']}; margin-top:6px;")
+        layout.addWidget(cash_title)
+
+        self.lab_customer_cash_summary = QLabel("")
+        self.lab_customer_cash_summary.setWordWrap(True)
+        self.lab_customer_cash_summary.setStyleSheet(
+            f"color:{self._colors['cash_box_text']}; background:{self._colors['cash_box_bg']};"
+            f" border:1px solid {self._colors['cash_box_border']}; border-radius:6px; padding:8px;"
+        )
+        layout.addWidget(self.lab_customer_cash_summary)
+
+        assemblies_title = QLabel("Komplety w zamowieniu")
+        assemblies_title.setStyleSheet(f"font-weight:600; color:{self._colors['accent_title']}; margin-top:8px;")
+        layout.addWidget(assemblies_title)
+
+        self.tbl_order_assemblies = QTableWidget(0, 6, self.grp_finance_technical)
+        self.tbl_order_assemblies.setHorizontalHeaderLabels(
+            ["Komplet", "Ściana", "Moduły", "Materiały", "Okleina", "RAZEM"]
+        )
+        self.tbl_order_assemblies.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tbl_order_assemblies.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.tbl_order_assemblies.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl_order_assemblies.verticalHeader().setVisible(False)
+        self.tbl_order_assemblies.horizontalHeader().setStretchLastSection(True)
+        self.tbl_order_assemblies.setAlternatingRowColors(True)
+        self.tbl_order_assemblies.setMinimumHeight(150)
+        self.tbl_order_assemblies.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_order_assemblies.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_order_assemblies.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        layout.addWidget(self.tbl_order_assemblies)
+
+        materials_title = QLabel("Materialy w calym zamowieniu")
+        materials_title.setStyleSheet(f"font-weight:600; color:{self._colors['accent_title']}; margin-top:8px;")
+        layout.addWidget(materials_title)
+
+        self.tbl_order_materials = QTableWidget(0, 4, self.grp_finance_technical)
+        self.tbl_order_materials.setHorizontalHeaderLabels(["Material", "Szt", "m2", "Koszt"])
+        self.tbl_order_materials.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tbl_order_materials.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.tbl_order_materials.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl_order_materials.verticalHeader().setVisible(False)
+        self.tbl_order_materials.horizontalHeader().setStretchLastSection(True)
+        self.tbl_order_materials.setAlternatingRowColors(True)
+        self.tbl_order_materials.setMinimumHeight(160)
+        self.tbl_order_materials.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_order_materials.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_order_materials.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        layout.addWidget(self.tbl_order_materials)
+
+
     def _build_metric_card(self, title: str) -> tuple[QFrame, QLabel]:
-        card = QFrame(self.grp_summary)
+        card = QFrame(self.grp_summary); card.setProperty("uiCard", True)
         card.setFrameShape(QFrame.Shape.StyledPanel)
         card.setStyleSheet(
             "QFrame {"
@@ -3452,7 +3764,7 @@ class TabNoweZamowienie(QWidget):
                 "text-align: left;"
                 "border: 1px solid #2a4368;"
                 "border-radius: 12px;"
-                "background: #111b30;"
+                "background: #0f172a;"
                 "color: #dbe9ff;"
                 "}"
                 "QToolButton:hover {"
@@ -3688,7 +4000,7 @@ class TabNoweZamowienie(QWidget):
             self.btn_client_row_up.setEnabled(self._client_rows_swapped)
 
     def _make_work_panel(self, title: str, subtitle: str = "") -> tuple[QFrame, QVBoxLayout]:
-        panel = QFrame(self)
+        panel = QFrame(self); panel.setProperty("uiCard", True)
         panel.setStyleSheet(
             "QFrame {"
             f" background:{self._colors['work_panel_bg']};"
@@ -3850,13 +4162,7 @@ class TabNoweZamowienie(QWidget):
         self.ed_order_site_postal_code.clear()
         self.ed_order_site_city.clear()
         self.ed_order_notes.clear()
-        self._set_date_edit_from_text(self.ed_date_wycena, "")
-        self._set_date_edit_from_text(self.ed_date_produkcja, "")
-        self._set_date_edit_from_text(self.ed_date_zakup_mat, "")
-        self._set_date_edit_from_text(self.ed_date_montaz, "")
-        self._set_date_edit_from_text(self.ed_date_poprawki, "")
-        self._set_date_edit_from_text(self.ed_date_projekt, "")
-        self._set_date_edit_from_text(self.ed_date_probki, "")
+        self._set_order_schedule([])
 
         self.cb_worker_name.setCurrentText("")
         self.ed_worker_id.clear()
@@ -3991,13 +4297,7 @@ class TabNoweZamowienie(QWidget):
             ):
                 self._set_order_address_parts_from_text(effective_site_address)
             self.ed_order_notes.setPlainText(str(getattr(order, "notes", "") or ""))
-            self._set_date_edit_from_text(self.ed_date_wycena, str(getattr(order, "date_wycena", "") or ""))
-            self._set_date_edit_from_text(self.ed_date_produkcja, str(getattr(order, "date_produkcja", "") or ""))
-            self._set_date_edit_from_text(self.ed_date_zakup_mat, str(getattr(order, "date_zakup_mat", "") or ""))
-            self._set_date_edit_from_text(self.ed_date_montaz, str(getattr(order, "date_montaz", "") or ""))
-            self._set_date_edit_from_text(self.ed_date_poprawki, str(getattr(order, "date_poprawki", "") or ""))
-            self._set_date_edit_from_text(self.ed_date_projekt, str(getattr(order, "date_projekt", "") or ""))
-            self._set_date_edit_from_text(self.ed_date_probki, str(getattr(order, "date_probki", "") or ""))
+            self._set_order_schedule(list(getattr(order, "schedule", []) or []))
 
             self._set_architect_attachments(list(getattr(order, "attachments", []) or []))
             self._set_quote_items(list(getattr(order, "quote_items", []) or []))
@@ -4069,14 +4369,15 @@ class TabNoweZamowienie(QWidget):
             self.lab_progress_summary.setText(f"{progress_percent}%")
         if hasattr(self, "_hero_status_chip"):
             self._hero_status_chip.setText(f"{status_name} / {progress_percent}%")
-        if hasattr(self, "lab_top_client"):
-            self.lab_top_client.setText(f"Klient: {client_name}")
-        if hasattr(self, "lab_top_order"):
-            self.lab_top_order.setText(f"Nr: {order_code}")
-        if hasattr(self, "lab_top_status"):
-            self.lab_top_status.setText(f"Status: {status_name}")
-        if hasattr(self, "lab_top_progress"):
-            self.lab_top_progress.setText(f"Postęp: {progress_percent}%")
+        if hasattr(self, "lab_combined_info"):
+            self.lab_combined_info.setText(f"Klient: {client_name}   |   Nr: {order_code}")
+        if hasattr(self, "lab_combined_status"):
+            self.lab_combined_status.setText(f"Status: {status_name}   |   Postęp: {progress_percent}%")
+        if hasattr(self, "lab_client_db_status"):
+            if client_id:
+                self.lab_client_db_status.setText("zapisane w bazie")
+            else:
+                self.lab_client_db_status.setText("")
         payments_total = sum(float(item.get("amount", 0.0) or 0.0) for item in self._customer_payments)
         payments_paid_total = sum(
             float(item.get("amount", 0.0) or 0.0)
@@ -4103,6 +4404,9 @@ class TabNoweZamowienie(QWidget):
                 + f"\nKalendarz: {calendar_stage or '-'}"
                 + (f" | {calendar_date}" if calendar_date else "")
             )
+        # Auto-save draft on every refresh to ensure data persistence
+        self._save_draft(show_status=False)
+        
         quote_names = [
             str(entry.get("name", "") or "").strip()
             for entry in self._quote_items
@@ -4133,10 +4437,12 @@ class TabNoweZamowienie(QWidget):
         if hasattr(self, "lab_quote_mode_selected"):
             self.lab_quote_mode_selected.setText(f"Wybrany tryb: {self._quote_entry_mode}")
         if hasattr(self, "lab_quote_mode_stats"):
-            self.lab_quote_mode_stats.setText(
-                f"Pozycje: {quote_item_count} | Zalaczniki: {attachment_count} | "
-                f"Wstepna suma: {float(getattr(self, '_order_commercial_total', 0.0) or 0.0):.2f} zl"
+            stats_html = (
+                f"<span style='color:{self._colors['muted']};'>Pozycje:</span> <b style='color:{self._colors['accent_title']};'>{quote_item_count}</b> | "
+                f"<span style='color:{self._colors['muted']};'>Załączniki:</span> <b style='color:{self._colors['accent_title']};'>{attachment_count}</b> | "
+                f"<span style='color:{self._colors['muted']};'>Wstępna suma:</span> <b style='color:#4ade80;'>{float(getattr(self, '_order_commercial_total', 0.0) or 0.0):.2f} zł</b>"
             )
+            self.lab_quote_mode_stats.setText(stats_html)
         self._refresh_offer_references()
         self._refresh_quote_item_references()
         self._autosave_draft()
@@ -4550,23 +4856,23 @@ class TabNoweZamowienie(QWidget):
   <meta charset="utf-8">
   <title>Oferta {escape(order_code)}</title>
   <style>
-    body {{ font-family: Segoe UI, Arial, sans-serif; margin: 24px; color: #1f2937; }}
+    body {{ font-family: Segoe UI, Arial, sans-serif; margin: 24px; color: #e8efff; }}
     h1, h2 {{ margin-bottom: 8px; }}
     h1 {{ font-size: 26px; }}
     h2 {{ margin-top: 26px; font-size: 18px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; }}
     .meta {{ display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 8px 20px; margin-bottom: 16px; }}
-    .summary {{ background: #f8fafc; border: 1px solid #dbeafe; border-radius: 8px; padding: 12px 14px; margin: 12px 0 20px; }}
+    .summary {{ background: transparent; border: 1px solid #dbeafe; border-radius: 8px; padding: 12px 14px; margin: 12px 0 20px; }}
     table {{ width: 100%; border-collapse: collapse; margin-top: 8px; }}
     th, td {{ border: 1px solid #e5e7eb; padding: 8px 10px; text-align: left; vertical-align: top; }}
-    th {{ background: #f8fafc; }}
+    th {{ background: transparent; }}
     .refs {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 12px; }}
     .ref-card {{ border: 1px solid #e5dccd; border-radius: 8px; padding: 10px; background: #fcfaf6; }}
-    .ref-card img {{ width: 100%; max-height: 260px; object-fit: contain; display: block; background: white; border: 1px solid #e5e7eb; }}
-    .ref-meta {{ margin-top: 8px; color: #475569; }}
+    .ref-card img {{ width: 100%; max-height: 260px; object-fit: contain; display: block; background: transparent; border: 1px solid #e5e7eb; }}
+    .ref-meta {{ margin-top: 8px; color: #94a3b8; }}
     .quote-ref-group {{ margin-top: 14px; padding-top: 8px; border-top: 1px dashed #d6d3d1; }}
     .quote-ref-group h3 {{ margin: 0 0 4px; font-size: 16px; }}
     .quote-ref-subtitle {{ margin: 0 0 8px; color: #64748b; }}
-    .image-missing {{ min-height: 140px; display:flex; align-items:center; justify-content:center; color:#6b7280; border:1px dashed #cbd5e1; background:white; }}
+    .image-missing {{ min-height: 140px; display:flex; align-items:center; justify-content:center; color:#6b7280; border:1px dashed #cbd5e1; background:transparent; }}
   </style>
 </head>
 <body>
@@ -4777,18 +5083,21 @@ class TabNoweZamowienie(QWidget):
             assembly_names = ", ".join(str(getattr(item, "name", "") or "-") for item in assemblies[:4])
             if len(assemblies) > 4:
                 assembly_names += ", ..."
-            self.lab_cost_summary.setText(
-                f"Sciany: {wall_count}\n"
-                f"Komplety: {len(assemblies)}\n"
-                f"Moduly w kompletach: {modules_total}\n"
-                f"Koszt techniczny: {grand_total:.2f} zl\n"
-                f"Materialy: {material_total:.2f} zl\n"
-                f"Okleina: {edgeband_total:.2f} zl\n"
-                f"Okucia: {hardware_total:.2f} zl\n"
-                f"Marza kwotowo: {margin_total:.2f} zl\n"
-                f"Cena handlowa: {commercial_total:.2f} zl\n"
-                f"Komplety w zamowieniu: {assembly_names}"
+            
+            summary_html = (
+                f"<div style='line-height:1.4; color:{self._colors['hero_desc']};'>"
+                f"Ściany: <b style='color:#f2f7ff;'>{wall_count}</b><br/>"
+                f"Komplety: <b style='color:#f2f7ff;'>{len(assemblies)}</b><br/>"
+                f"Moduły w kompletach: <b style='color:#f2f7ff;'>{modules_total}</b><br/>"
+                f"Koszt techniczny: <b style='color:#f2f7ff;'>{grand_total:.2f} zł</b><br/>"
+                f"Materiały: {material_total:.2f} zł | Okleina: {edgeband_total:.2f} zł | Okucia: {hardware_total:.2f} zł<br/>"
+                f"<hr style='border: 0; border-top: 1px solid {self._colors['hero_border']}; margin: 6px 0;'/>"
+                f"<span style='font-size:13px; font-weight:800; color:#3b82f6;'>MARŻA: {margin_total:.2f} zł</span><br/>"
+                f"<span style='font-size:15px; font-weight:900; color:#4ade80;'>CENA HANDLOWA: {commercial_total:.2f} zł</span><br/>"
+                f"<span style='font-size:10px;'>Komplety: {assembly_names}</span>"
+                f"</div>"
             )
+            self.lab_cost_summary.setText(summary_html)
         else:
             self.lab_cost_summary.setText(
                 f"Sciany: {wall_count}\n"
@@ -4963,13 +5272,7 @@ class TabNoweZamowienie(QWidget):
             "order_site_postal_code": str(self.ed_order_site_postal_code.text().strip()),
             "order_site_city": str(self.ed_order_site_city.text().strip()),
             "order_notes": str(self.ed_order_notes.toPlainText().strip()),
-            "order_date_wycena": self._date_edit_to_text(self.ed_date_wycena),
-            "order_date_produkcja": self._date_edit_to_text(self.ed_date_produkcja),
-            "order_date_zakup_mat": self._date_edit_to_text(self.ed_date_zakup_mat),
-            "order_date_montaz": self._date_edit_to_text(self.ed_date_montaz),
-            "order_date_poprawki": self._date_edit_to_text(self.ed_date_poprawki),
-            "order_date_projekt": self._date_edit_to_text(self.ed_date_projekt),
-            "order_date_probki": self._date_edit_to_text(self.ed_date_probki),
+            "schedule": self._schedule_items,
             "worker_id": str(self.ed_worker_id.text().strip()),
             "worker_name": str(self._worker_name_from_fields()),
             "worker_first_name": str(self.ed_worker_first_name.text().strip()),
@@ -5062,13 +5365,7 @@ class TabNoweZamowienie(QWidget):
             ):
                 self._set_order_address_parts_from_text(draft_order_address)
             self.ed_order_notes.setPlainText(str(payload.get("order_notes", "") or ""))
-            self._set_date_edit_from_text(self.ed_date_wycena, str(payload.get("order_date_wycena", "") or ""))
-            self._set_date_edit_from_text(self.ed_date_produkcja, str(payload.get("order_date_produkcja", "") or ""))
-            self._set_date_edit_from_text(self.ed_date_zakup_mat, str(payload.get("order_date_zakup_mat", "") or ""))
-            self._set_date_edit_from_text(self.ed_date_montaz, str(payload.get("order_date_montaz", "") or ""))
-            self._set_date_edit_from_text(self.ed_date_poprawki, str(payload.get("order_date_poprawki", "") or ""))
-            self._set_date_edit_from_text(self.ed_date_projekt, str(payload.get("order_date_projekt", "") or ""))
-            self._set_date_edit_from_text(self.ed_date_probki, str(payload.get("order_date_probki", "") or ""))
+            self._set_order_schedule(list(payload.get("schedule", []) or []))
 
             worker_name = str(payload.get("worker_name", "") or "")
             worker_first_name = str(payload.get("worker_first_name", "") or "")
@@ -5153,6 +5450,30 @@ class TabNoweZamowienie(QWidget):
         editor.setDate(QDate.currentDate())
         editor.setMaximumWidth(140)
         editor.dateChanged.connect(lambda _date: self._refresh_summary())
+        
+        # Poprawka wyglądu kalendarza (naprawia "dziwny" wygląd)
+        cal = editor.calendarWidget()
+        if cal:
+            cal.setGridVisible(True)
+            cal.setVerticalHeaderFormat(QCalendarWidget.VerticalHeaderFormat.NoVerticalHeader)
+            cal.setStyleSheet(f"""
+                QCalendarWidget QWidget {{ alternate-background-color: {self._colors['preview_bg']}; }}
+                QCalendarWidget QAbstractItemView:enabled {{
+                    color: {self._colors['text']};  
+                    selection-background-color: {self._colors['accent_title']};
+                    selection-color: white;
+                    background-color: {self._colors['preview_bg']};
+                }}
+                QCalendarWidget QAbstractItemView:disabled {{ color: {self._colors['muted']}; }}
+                QCalendarWidget QMenu {{ background-color: {self._colors['preview_bg']}; color: {self._colors['text']}; }}
+                QCalendarWidget QToolButton {{
+                    color: {self._colors['text']};
+                    background-color: transparent;
+                }}
+                QCalendarWidget QToolButton:hover {{
+                    background-color: {self._colors['hero_bg_0']};
+                }}
+            """)
         return editor
 
     @staticmethod
@@ -5424,13 +5745,7 @@ class TabNoweZamowienie(QWidget):
             site_postal_code=str(self.ed_order_site_postal_code.text().strip()),
             site_city=str(self.ed_order_site_city.text().strip()),
             notes=str(self.ed_order_notes.toPlainText().strip()),
-            date_wycena=self._date_edit_to_text(self.ed_date_wycena),
-            date_produkcja=self._date_edit_to_text(self.ed_date_produkcja),
-            date_zakup_mat=self._date_edit_to_text(self.ed_date_zakup_mat),
-            date_montaz=self._date_edit_to_text(self.ed_date_montaz),
-            date_poprawki=self._date_edit_to_text(self.ed_date_poprawki),
-            date_projekt=self._date_edit_to_text(self.ed_date_projekt),
-            date_probki=self._date_edit_to_text(self.ed_date_probki),
+            schedule=self._schedule_items,
             attachments=[dict(item) for item in self._architect_attachments],
             quote_items=[dict(item) for item in self._quote_items],
             material_choices=[dict(item) for item in self._material_choices],
@@ -5936,13 +6251,7 @@ class TabNoweZamowienie(QWidget):
         ):
             self._set_order_address_parts_from_text(order.site_address)
         self.ed_order_notes.setPlainText(order.notes)
-        self._set_date_edit_from_text(self.ed_date_wycena, str(getattr(order, "date_wycena", "") or ""))
-        self._set_date_edit_from_text(self.ed_date_produkcja, str(getattr(order, "date_produkcja", "") or ""))
-        self._set_date_edit_from_text(self.ed_date_zakup_mat, str(getattr(order, "date_zakup_mat", "") or ""))
-        self._set_date_edit_from_text(self.ed_date_montaz, str(getattr(order, "date_montaz", "") or ""))
-        self._set_date_edit_from_text(self.ed_date_poprawki, str(getattr(order, "date_poprawki", "") or ""))
-        self._set_date_edit_from_text(self.ed_date_projekt, str(getattr(order, "date_projekt", "") or ""))
-        self._set_date_edit_from_text(self.ed_date_probki, str(getattr(order, "date_probki", "") or ""))
+        self._set_order_schedule(list(getattr(order, "schedule", []) or []))
         self._set_architect_attachments(list(getattr(order, "attachments", []) or []))
         self._set_quote_items(list(getattr(order, "quote_items", []) or []))
         self._set_material_choices(list(getattr(order, "material_choices", []) or []))

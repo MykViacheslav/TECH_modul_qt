@@ -338,7 +338,6 @@ class ModuleMiniPreview(QWidget):
         return module
 
     def build_render_spec(self, width: Optional[float] = None, height: Optional[float] = None) -> Dict[str, object]:
-        return {"status": "ok", "front_shapes": [], "top_shapes": [], "side_shapes": []}
         module = self._effective_module()
         if module is None:
             return {
@@ -740,7 +739,7 @@ class LoadModuleDialog(QDialog):
         self.tree.setHeaderHidden(True)
         left.addWidget(self.tree, 1)
 
-        manage_box = QFrame(self)
+        manage_box = QFrame(self); manage_box.setProperty("uiCard", True)
         manage_box.setFrameShape(QFrame.Shape.StyledPanel)
         manage_layout = QVBoxLayout(manage_box)
         manage_layout.setContentsMargins(8, 8, 8, 8)
@@ -772,7 +771,7 @@ class LoadModuleDialog(QDialog):
         root.addLayout(left, 1)
 
         right = QVBoxLayout()
-        box = QFrame(self)
+        box = QFrame(self); box.setProperty("uiCard", True)
         box.setFrameShape(QFrame.Shape.StyledPanel)
         vb = QVBoxLayout(box)
 

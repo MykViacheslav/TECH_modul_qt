@@ -163,7 +163,7 @@ class TabRysunek(QWidget):
         self.lbl_status.setText("Zmodyfikowano")
 
     def _build_theme_panel(self) -> QFrame:
-        panel = QFrame(self)
+        panel = QFrame(self); panel.setProperty("uiCard", True)
         panel.setStyleSheet(
             "QFrame {"
             "border: 1px solid #d7cfbf;"

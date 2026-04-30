@@ -29,7 +29,7 @@ def test_bom_block_total_cost_includes_materials_and_edgeband(tmp_path):
     module = ModuleDef(
         parts={
             "side_left": PartDef(
-                key="side_left",
+                id="side_left",
                 name_pl="Bok lewy",
                 material_key="PB18",
                 dims_mm={"w": 500.0, "h": 700.0, "t": 18.0},
@@ -72,7 +72,7 @@ def test_bom_block_total_cost_handles_lacquered_material_price(tmp_path):
     module = ModuleDef(
         parts={
             "front": PartDef(
-                key="front",
+                id="front",
                 name_pl="Front",
                 material_key="MDF19_LAK",
                 dims_mm={"w": 500.0, "h": 700.0, "t": 19.0},

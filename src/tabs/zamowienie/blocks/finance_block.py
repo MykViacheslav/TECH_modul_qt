@@ -161,7 +161,7 @@ class FinanceBlock(OrderFormBlock):
         self.lab_customer_cash_detail = QLabel("")
         self.lab_customer_cash_detail.setWordWrap(True)
         self.lab_customer_cash_detail.setStyleSheet(
-            "color:#1f2937; background:#f8fafc; border:1px solid #dbeafe; border-radius:6px; padding:8px;"
+            "color:#e8efff; background:transparent; border:1px solid #dbeafe; border-radius:6px; padding:8px;"
         )
         layout.addWidget(self.lab_customer_cash_detail)
     

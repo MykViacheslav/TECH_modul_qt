@@ -93,16 +93,17 @@ class TabBazy(QWidget):
         theme = load_ui_theme_settings()
         self._is_tech = str(theme.motif or "").strip().lower() == "tech" and str(theme.mode or "").strip().lower() == "night"
         self._colors = {
-            "title": "#e8efff" if self._is_tech else "#1f2937",
-            "section_bg": "#111b30" if self._is_tech else "#fffdf8",
-            "section_border": "#2a4368" if self._is_tech else "#e6d9c8",
-            "section_head": "#dbe9ff" if self._is_tech else "#2f241b",
-            "section_sub": "#9bb0cd" if self._is_tech else "#6b5b4b",
-            "stat_bg": "#15253f" if self._is_tech else "#f7efe2",
-            "stat_border": "#2e4b78" if self._is_tech else "#e2d2bc",
-            "stat_title": "#9cb7dc" if self._is_tech else "#80684f",
-            "stat_value": "#f2f7ff" if self._is_tech else "#2f241b",
-            "muted": "#9bb0cd" if self._is_tech else "#666666",
+            "title": "#e8efff",
+            "section_bg": "rgba(15, 23, 42, 0.3)",
+            "section_border": "rgba(59, 130, 246, 0.2)",
+            "section_head": "#f1f5f9",
+            "section_sub": "#94a3b8",
+            "stat_bg": "rgba(30, 41, 59, 0.4)",
+            "stat_border": "rgba(59, 130, 246, 0.3)",
+            "stat_title": "#60a5fa",
+            "stat_value": "#f8fafc",
+            "muted": "#94a3b8",
+            "accent": "#3b82f6",
         }
         self._status_style = f"color:{self._colors['muted']};"
 
@@ -185,14 +186,7 @@ class TabBazy(QWidget):
         button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
     def _make_section_box(self, title: str, subtitle: str = "") -> tuple[QFrame, QVBoxLayout]:
-        box = QFrame(self)
-        box.setStyleSheet(
-            "QFrame {"
-            f" background:{self._colors['section_bg']};"
-            f" border:1px solid {self._colors['section_border']};"
-            " border-radius:12px;"
-            "}"
-        )
+        box = QFrame(self); box.setProperty("uiCard", "true")
         layout = QVBoxLayout(box)
         layout.setContentsMargins(14, 12, 14, 12)
         layout.setSpacing(8)
@@ -208,21 +202,14 @@ class TabBazy(QWidget):
         return box, layout
 
     def _make_stat_card(self, title: str) -> tuple[QFrame, QLabel]:
-        box = QFrame(self)
-        box.setStyleSheet(
-            "QFrame {"
-            f" background:{self._colors['stat_bg']};"
-            f" border:1px solid {self._colors['stat_border']};"
-            " border-radius:12px;"
-            "}"
-        )
+        box = QFrame(self); box.setProperty("uiCard", "true")
         layout = QVBoxLayout(box)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(2)
-        lab_title = QLabel(title, box)
-        lab_title.setStyleSheet(f"font-size:11px; font-weight:700; color:{self._colors['stat_title']};")
+        lab_title = QLabel(title.upper(), box)
+        lab_title.setStyleSheet(f"font-size:10px; font-weight:800; color:{self._colors['stat_title']}; letter-spacing: 0.5px;")
         lab_value = QLabel("-", box)
-        lab_value.setStyleSheet(f"font-size:20px; font-weight:900; color:{self._colors['stat_value']};")
+        lab_value.setStyleSheet(f"font-size:22px; font-weight:900; color:{self._colors['stat_value']};")
         layout.addWidget(lab_title)
         layout.addWidget(lab_value)
         return box, lab_value

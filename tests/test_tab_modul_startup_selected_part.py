@@ -14,9 +14,9 @@ def test_tab_modul_choose_startup_selected_part_key_prefers_front(tmp_path, monk
     w = TabModul()
 
     w._draft.parts = {
-        "side_left": PartDef(key="side_left", name_pl="Bok lewy"),
-        "front__front": PartDef(key="front__front", name_pl="Front"),
-        "top": PartDef(key="top", name_pl="Wieniec gorny"),
+        "side_left": PartDef(id="side_left", name_pl="Bok lewy"),
+        "front__front": PartDef(id="front__front", name_pl="Front"),
+        "top": PartDef(id="top", name_pl="Wieniec gorny"),
     }
 
     assert w._choose_startup_selected_part_key() == "front__front"
@@ -33,8 +33,8 @@ def test_tab_modul_choose_startup_selected_part_key_falls_back_to_side_left(tmp_
     w = TabModul()
 
     w._draft.parts = {
-        "side_left": PartDef(key="side_left", name_pl="Bok lewy"),
-        "top": PartDef(key="top", name_pl="Wieniec gorny"),
+        "side_left": PartDef(id="side_left", name_pl="Bok lewy"),
+        "top": PartDef(id="top", name_pl="Wieniec gorny"),
     }
 
     assert w._choose_startup_selected_part_key() == "side_left"
@@ -51,8 +51,8 @@ def test_tab_modul_run_startup_canvas_fit_uses_preferred_selected_part(tmp_path,
     w = TabModul()
 
     w._draft.parts = {
-        "side_left": PartDef(key="side_left", name_pl="Bok lewy"),
-        "front__front": PartDef(key="front__front", name_pl="Front"),
+        "side_left": PartDef(id="side_left", name_pl="Bok lewy"),
+        "front__front": PartDef(id="front__front", name_pl="Front"),
     }
 
     selected_calls = []

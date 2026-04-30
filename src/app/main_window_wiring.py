@@ -12,6 +12,7 @@ def wire_cross_tab_signals(window) -> None:
     tab_quote_base = window._tabs_by_title.get("Baza szybkich wycen")
     tab_grafika = window._tabs_by_title.get("Grafika")
     tab_tech_modul = window._tabs_by_title.get("TECH_modul")
+    tab_wycena = window._tabs_by_title.get("Wycena")
 
     if tab_start is not None:
         if hasattr(tab_start, "sig_new_order_requested"):
@@ -55,11 +56,17 @@ def wire_cross_tab_signals(window) -> None:
             if tab_kalendarz is not None and hasattr(tab_kalendarz, "refresh_data"):
                 tab_nowe_zamowienie.sig_calendar_events_changed.connect(tab_kalendarz.refresh_data)
 
-    if tab_sciana is not None and hasattr(tab_sciana, "sig_open_komplet_requested"):
-        tab_sciana.sig_open_komplet_requested.connect(window._open_new_assembly)
+    if tab_sciana is not None:
+        if hasattr(tab_sciana, "sig_open_order_requested"):
+            tab_sciana.sig_open_order_requested.connect(window._back_to_order)
+        if hasattr(tab_sciana, "sig_open_komplet_requested"):
+            tab_sciana.sig_open_komplet_requested.connect(window._open_new_assembly)
 
     if tab_komplet is not None and hasattr(tab_komplet, "sig_open_order_requested"):
-        tab_komplet.sig_open_order_requested.connect(window._open_new_order)
+        tab_komplet.sig_open_order_requested.connect(window._back_to_order)
+
+    if tab_wycena is not None and hasattr(tab_wycena, "sig_open_order_requested"):
+        tab_wycena.sig_open_order_requested.connect(window._back_to_order)
 
     if tab_komplet is not None and hasattr(tab_komplet, "sig_open_wycena_requested"):
         tab_komplet.sig_open_wycena_requested.connect(window._open_assembly_in_wycena)

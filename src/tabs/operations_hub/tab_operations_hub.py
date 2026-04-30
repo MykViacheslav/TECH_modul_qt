@@ -21,7 +21,7 @@ class TabOperationsHub(QWidget):
 
         self.kpi_bar = QLabel(self)
         self.kpi_bar.setStyleSheet(
-            "QLabel{background:#f8fafc;border:1px solid #d7e1ef;border-radius:10px;"
+            "QLabel{background:transparent;border:1px solid #d7e1ef;border-radius:10px;"
             "padding:8px 10px;color:#334155;font-size:12px;font-weight:600;}"
         )
         root.addWidget(self.kpi_bar, 0)

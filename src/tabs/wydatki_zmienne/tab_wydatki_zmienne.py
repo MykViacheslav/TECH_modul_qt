@@ -18,16 +18,7 @@ from PyQt6.QtWidgets import (
 from src.storage.company_expenses_store_json import CompanyExpensesStoreJson, new_expense_id
 from src.storage.worker_store_json import WorkerStoreJson
 
-TABLE_TEXT_STYLE = """
-QTableWidget {
-    color: #1f2937;
-    selection-color: #0f172a;
-}
-QTableWidget::item:selected {
-    background: #dbeafe;
-    color: #0f172a;
-}
-"""
+TABLE_TEXT_STYLE = ""
 
 
 DEFAULT_VARIABLE_EXPENSES: list[str] = [
@@ -99,7 +90,7 @@ class TabWydatkiZmienne(QWidget):
         root.addLayout(actions)
 
         calc = QFrame(self)
-        calc.setStyleSheet("QFrame { border:1px solid #d9e0ea; border-radius:8px; background:#ffffff; }")
+        calc.setStyleSheet("QFrame { border:1px solid #d9e0ea; border-radius:8px; background:transparent; }")
         calc_layout = QVBoxLayout(calc)
         calc_layout.setContentsMargins(10, 10, 10, 10)
         calc_layout.setSpacing(8)
@@ -135,7 +126,7 @@ class TabWydatkiZmienne(QWidget):
 
         self.lab_hours_total = QLabel("Godzin razem: 0.00 h", self)
         self.lab_real_hour = QLabel("Realna roboczo-godzina: 0.00 zl/h", self)
-        self.lab_real_hour.setStyleSheet("font-size:16px; font-weight:800; color:#1f2937;")
+        self.lab_real_hour.setStyleSheet("font-size:16px; font-weight:800; color:#e8efff;")
         calc_layout.addWidget(self.lab_hours_total, 0)
         calc_layout.addWidget(self.lab_real_hour, 0)
         root.addWidget(calc, 0)

@@ -72,11 +72,7 @@ class KpiCard(QFrame):
         self.setFixedHeight(112)
         self.setMinimumWidth(160)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.setStyleSheet(
-            f"QFrame {{background:#ffffff; border-radius:14px;"
-            f"border-top:4px solid {accent}; border-left:1px solid #e2e8f0;"
-            f"border-right:1px solid #e2e8f0; border-bottom:1px solid #e2e8f0;}}"
-        )
+        self.setProperty("uiCard", True)
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(16, 10, 16, 10)
@@ -98,7 +94,7 @@ class KpiCard(QFrame):
 
         self._lab_value = QLabel("0 zł")
         self._lab_value.setStyleSheet(
-            "font-size:26px;font-weight:800;color:#0f172a;background:transparent;border:none;"
+            "font-size:26px;font-weight:800;color:#f8fafc;background:transparent;border:none;"
         )
         lay.addWidget(self._lab_value)
 
@@ -262,7 +258,7 @@ class HBarChart(QWidget):
 DONUT_COLORS = [
     "#2563eb", "#16a34a", "#d97706", "#dc2626",
     "#7c3aed", "#0891b2", "#65a30d", "#be185d",
-    "#ea580c", "#475569",
+    "#ea580c", "#94a3b8",
 ]
 
 
@@ -426,16 +422,13 @@ class ChartLegend(QWidget):
 # ---------------------------------------------------------------------------
 
 def _section(title: str, parent: QWidget | None = None) -> tuple[QFrame, QVBoxLayout]:
-    frame = QFrame(parent)
-    frame.setStyleSheet(
-        "QFrame{background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;}"
-    )
+    frame = QFrame(parent); frame.setProperty("uiCard", True)
     lay = QVBoxLayout(frame)
     lay.setContentsMargins(16, 12, 16, 12)
     lay.setSpacing(8)
     lbl = QLabel(title)
     lbl.setStyleSheet(
-        "font-size:13px;font-weight:800;color:#0f172a;background:transparent;border:none;"
+        "font-size:14px; font-weight:900; color:#60a5fa; background:transparent; border:none; letter-spacing: 0.5px;"
     )
     lay.addWidget(lbl)
     return frame, lay
@@ -480,20 +473,17 @@ class TabDashboard(QWidget):
         # ── Header ──────────────────────────────────────────────────────────
         hdr = QHBoxLayout()
         title = QLabel("DASHBOARD FIRMY")
-        title.setStyleSheet("font-size:24px;font-weight:900;color:#0f172a;")
-        sub = QLabel("Przegląd finansowy · zlecenia · koszty")
-        sub.setStyleSheet("font-size:12px;color:#64748b;")
+        title.setStyleSheet("font-size:26px; font-weight:900; color:#3b82f6; letter-spacing: 1px;")
+        sub = QLabel("Analityka terminowa · zlecenia · finanse · logistyka")
+        sub.setStyleSheet("font-size:12px; color:#94a3b8;")
         left = QVBoxLayout()
         left.setSpacing(2)
         left.addWidget(title)
         left.addWidget(sub)
         hdr.addLayout(left, 1)
-        self._btn_refresh = QPushButton("⟳  Odśwież")
-        self._btn_refresh.setStyleSheet(
-            "QPushButton{background:#0f172a;color:#fff;font-weight:700;padding:7px 18px;"
-            "border-radius:8px;border:none;font-size:13px;}"
-            "QPushButton:hover{background:#1e293b;}"
-        )
+        self._btn_refresh = QPushButton("⟳  Odśwież dane")
+        self._btn_refresh.setProperty("uiVariant", "primary")
+        self._btn_refresh.setMinimumWidth(140)
         hdr.addWidget(self._btn_refresh)
         root.addLayout(hdr)
 
@@ -503,8 +493,8 @@ class TabDashboard(QWidget):
         )
         self._lab_finance_limited.setWordWrap(True)
         self._lab_finance_limited.setStyleSheet(
-            "QLabel{background:#f8fafc;border:1px solid #d7e1ef;border-radius:10px;"
-            "padding:8px 10px;color:#475569;font-size:12px;font-weight:600;}"
+            "QLabel{background:transparent;border:1px solid #d7e1ef;border-radius:10px;"
+            "padding:8px 10px;color:#94a3b8;font-size:12px;font-weight:600;}"
         )
         self._lab_finance_limited.hide()
         root.addWidget(self._lab_finance_limited, 0)
@@ -776,8 +766,8 @@ class TabDashboard(QWidget):
         }
 
         for status, count in sorted(status_counts.items(), key=lambda x: -x[1]):
-            color = STATUS_COLORS.get(status, "#475569")
-            card = QFrame()
+            color = STATUS_COLORS.get(status, "#94a3b8")
+            card = QFrame(); card.setProperty("uiCard", True)
             card.setStyleSheet(
                 f"QFrame{{background:{color}18;border:1px solid {color}44;"
                 "border-radius:10px;padding:6px;}}"
@@ -812,9 +802,9 @@ class TabDashboard(QWidget):
             worker_orders[name] = worker_orders.get(name, 0) + 1
 
         for worker, count in sorted(worker_orders.items(), key=lambda x: -x[1]):
-            card = QFrame()
+            card = QFrame(); card.setProperty("uiCard", True)
             card.setStyleSheet(
-                "QFrame{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;}"
+                "QFrame{background:transparent;border:1px solid #e2e8f0;border-radius:10px;}"
             )
             lay = QVBoxLayout(card)
             lay.setContentsMargins(12, 8, 12, 8)

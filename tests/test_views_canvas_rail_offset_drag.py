@@ -1,3 +1,4 @@
+﻿from tests._qt_teardown_local import qt_canvas_teardown  # noqa: F401
 from PyQt6.QtCore import QEvent, QPointF, Qt
 from PyQt6.QtGui import QMouseEvent
 from PyQt6.QtTest import QTest

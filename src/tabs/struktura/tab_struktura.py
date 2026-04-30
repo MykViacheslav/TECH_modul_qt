@@ -69,7 +69,7 @@ class _FlowNodeItem(QGraphicsRectItem):
         title.setPos(14.0, 8.0)
 
         subtitle = QGraphicsTextItem(spec.subtitle, self)
-        subtitle.setDefaultTextColor(QColor("#475569"))
+        subtitle.setDefaultTextColor(QColor("#94a3b8"))
         subtitle.setFont(QFont("Segoe UI", 8))
         subtitle.setTextWidth(max(8.0, spec.size[0] - 24.0))
         subtitle.setPos(14.0, 38.0)
@@ -359,7 +359,7 @@ class TabStruktura(QWidget):
         root.setSpacing(12)
 
         title = QLabel("STRUKTURA")
-        title.setStyleSheet("font-size:26px; font-weight:800; color:#1f2937;")
+        title.setStyleSheet("font-size:26px; font-weight:800; color:#e8efff;")
         root.addWidget(title)
 
         subtitle = QLabel(
@@ -367,7 +367,7 @@ class TabStruktura(QWidget):
             "To jest mapa tego, skad ekran bierze dane i gdzie je wysyla dalej."
         )
         subtitle.setWordWrap(True)
-        subtitle.setStyleSheet("font-size:13px; color:#475569;")
+        subtitle.setStyleSheet("font-size:13px; color:#94a3b8;")
         root.addWidget(subtitle)
 
         row = QHBoxLayout()
@@ -397,8 +397,8 @@ class TabStruktura(QWidget):
         splitter.setChildrenCollapsible(False)
         root.addWidget(splitter, 1)
 
-        canvas_card = QFrame(self)
-        canvas_card.setStyleSheet("QFrame { border: 1px solid #d9e0ea; border-radius: 12px; background:#ffffff; }")
+        canvas_card = QFrame(self); canvas_card.setProperty("uiCard", True)
+        canvas_card.setStyleSheet("QFrame { border: 1px solid #d9e0ea; border-radius: 12px; background:transparent; }")
         canvas_layout = QVBoxLayout(canvas_card)
         canvas_layout.setContentsMargins(10, 10, 10, 10)
         canvas_layout.setSpacing(8)
@@ -407,19 +407,19 @@ class TabStruktura(QWidget):
         self.canvas.setMinimumSize(1400, 900)
         canvas_layout.addWidget(self.canvas, 1)
 
-        details_card = QFrame(self)
+        details_card = QFrame(self); details_card.setProperty("uiCard", True)
         details_card.setStyleSheet("QFrame { border: 1px solid #d9e0ea; border-radius: 12px; background:#fbfcfe; }")
         details_layout = QVBoxLayout(details_card)
         details_layout.setContentsMargins(10, 10, 10, 10)
         details_layout.setSpacing(8)
 
         details_title = QLabel("Szczegoly wybranego prostokata", self)
-        details_title.setStyleSheet("font-size:16px; font-weight:800; color:#1f2937;")
+        details_title.setStyleSheet("font-size:16px; font-weight:800; color:#e8efff;")
         details_layout.addWidget(details_title)
 
         self.details = QTextBrowser(self)
         self.details.setStyleSheet(
-            "QTextBrowser { background:#ffffff; border:1px solid #d9e0ea; border-radius:10px; padding:10px; }"
+            "QTextBrowser { background:transparent; border:1px solid #d9e0ea; border-radius:10px; padding:10px; }"
         )
         details_layout.addWidget(self.details, 1)
 
@@ -463,16 +463,16 @@ class TabStruktura(QWidget):
 
     def _build_nodes(self) -> list[_NodeSpec]:
         return [
-            _NodeSpec("SRC_CLIENTS", "Klienci", "data/clients.json", "source", (30, 80), (250, 76), "#ecfdf5", "#10b981", ("C:/PythonProject/TECH_modul/data/clients.json",), (), ("ZAMOWIENIE",)),
-            _NodeSpec("SRC_WORKERS", "Pracownicy", "data/workers.json", "source", (30, 178), (250, 76), "#ecfdf5", "#10b981", ("C:/PythonProject/TECH_modul/data/workers.json",), (), ("ZAMOWIENIE", "CZAS_PRACY", "DASHBOARD")),
-            _NodeSpec("SRC_ORDERS", "Zamowienia", "data/orders.json", "source", (30, 276), (250, 76), "#ecfdf5", "#10b981", ("C:/PythonProject/TECH_modul/data/orders.json",), (), ("ZAMOWIENIE", "WYCENA", "KALENDARZ", "DASHBOARD")),
-            _NodeSpec("SRC_MODULES", "Moduly", "data/modules.json", "source", (30, 374), (250, 76), "#ecfdf5", "#10b981", ("C:/PythonProject/TECH_modul/data/modules.json",), (), ("MODUL", "KOMPLET", "SCIANA", "BAZA_MODUL")),
-            _NodeSpec("SRC_MATERIALS", "Materialy", "data/baza_materialu.json", "source", (30, 472), (250, 76), "#ecfdf5", "#10b981", ("C:/PythonProject/TECH_modul/data/baza_materialu.json",), (), ("WYCENA", "SEKCJE", "MODUL", "KOMPLET", "SCIANA", "ZAKUPY")),
-            _NodeSpec("SRC_QUICK", "Szybkie wyceny", "archive / in_progress", "source", (30, 570), (250, 76), "#ecfdf5", "#10b981", ("C:/PythonProject/TECH_modul/data/quick_quote_archive.json", "C:/PythonProject/TECH_modul/data/quick_quote_in_progress.json"), (), ("WYCENA", "SEKCJE", "BAZA_SZYBKICH_WYCEN")),
-            _NodeSpec("SRC_SERVICES", "Uslugi", "data/services.json", "source", (30, 668), (250, 76), "#ecfdf5", "#10b981", ("C:/PythonProject/TECH_modul/data/services.json",), (), ("USLUGI",)),
-            _NodeSpec("SRC_CATALOG", "Katalog", "catalog / receptury", "source", (30, 766), (250, 76), "#ecfdf5", "#10b981", ("C:/PythonProject/TECH_modul/data/catalog.json", "C:/PythonProject/TECH_modul/data/receptura.json"), (), ("WYCENA", "MODUL", "SCIANA", "KOMPLET", "USLUGI")),
-            _NodeSpec("SRC_CALENDAR", "Kalendarz", "statusy i terminy", "source", (30, 864), (250, 76), "#ecfdf5", "#10b981", ("C:/PythonProject/TECH_modul/data/calendar.json", "C:/PythonProject/TECH_modul/data/orders.json"), (), ("KALENDARZ", "ZAMOWIENIE", "SCIANA", "KOMPLET", "DASHBOARD")),
-            _NodeSpec("SRC_TIME", "Czas pracy", "work time / stawki", "source", (30, 962), (250, 76), "#ecfdf5", "#10b981", ("C:/PythonProject/TECH_modul/data/work_time.json", "C:/PythonProject/TECH_modul/data/workers.json"), (), ("CZAS_PRACY", "WYCENA", "DASHBOARD")),
+            _NodeSpec("SRC_CLIENTS", "Klienci", "data/clients.json", "source", (30, 80), (250, 76), "#064e3b", "#10b981", ("C:/PythonProject/TECH_modul/data/clients.json",), (), ("ZAMOWIENIE",)),
+            _NodeSpec("SRC_WORKERS", "Pracownicy", "data/workers.json", "source", (30, 178), (250, 76), "#064e3b", "#10b981", ("C:/PythonProject/TECH_modul/data/workers.json",), (), ("ZAMOWIENIE", "CZAS_PRACY", "DASHBOARD")),
+            _NodeSpec("SRC_ORDERS", "Zamowienia", "data/orders.json", "source", (30, 276), (250, 76), "#064e3b", "#10b981", ("C:/PythonProject/TECH_modul/data/orders.json",), (), ("ZAMOWIENIE", "WYCENA", "KALENDARZ", "DASHBOARD")),
+            _NodeSpec("SRC_MODULES", "Moduly", "data/modules.json", "source", (30, 374), (250, 76), "#064e3b", "#10b981", ("C:/PythonProject/TECH_modul/data/modules.json",), (), ("MODUL", "KOMPLET", "SCIANA", "BAZA_MODUL")),
+            _NodeSpec("SRC_MATERIALS", "Materialy", "data/baza_materialu.json", "source", (30, 472), (250, 76), "#064e3b", "#10b981", ("C:/PythonProject/TECH_modul/data/baza_materialu.json",), (), ("WYCENA", "SEKCJE", "MODUL", "KOMPLET", "SCIANA", "ZAKUPY")),
+            _NodeSpec("SRC_QUICK", "Szybkie wyceny", "archive / in_progress", "source", (30, 570), (250, 76), "#064e3b", "#10b981", ("C:/PythonProject/TECH_modul/data/quick_quote_archive.json", "C:/PythonProject/TECH_modul/data/quick_quote_in_progress.json"), (), ("WYCENA", "SEKCJE", "BAZA_SZYBKICH_WYCEN")),
+            _NodeSpec("SRC_SERVICES", "Uslugi", "data/services.json", "source", (30, 668), (250, 76), "#064e3b", "#10b981", ("C:/PythonProject/TECH_modul/data/services.json",), (), ("USLUGI",)),
+            _NodeSpec("SRC_CATALOG", "Katalog", "catalog / receptury", "source", (30, 766), (250, 76), "#064e3b", "#10b981", ("C:/PythonProject/TECH_modul/data/catalog.json", "C:/PythonProject/TECH_modul/data/receptura.json"), (), ("WYCENA", "MODUL", "SCIANA", "KOMPLET", "USLUGI")),
+            _NodeSpec("SRC_CALENDAR", "Kalendarz", "statusy i terminy", "source", (30, 864), (250, 76), "#064e3b", "#10b981", ("C:/PythonProject/TECH_modul/data/calendar.json", "C:/PythonProject/TECH_modul/data/orders.json"), (), ("KALENDARZ", "ZAMOWIENIE", "SCIANA", "KOMPLET", "DASHBOARD")),
+            _NodeSpec("SRC_TIME", "Czas pracy", "work time / stawki", "source", (30, 962), (250, 76), "#064e3b", "#10b981", ("C:/PythonProject/TECH_modul/data/work_time.json", "C:/PythonProject/TECH_modul/data/workers.json"), (), ("CZAS_PRACY", "WYCENA", "DASHBOARD")),
             _NodeSpec("START", "START", "punkt wejscia", "tab", (350, 80), (260, 86), "#fff7ed", "#c2410c", ("C:/PythonProject/TECH_modul/src/tabs/start/tab_start.py",), ("Briefing dnia",), ("ZAMOWIENIE", "USLUGI", "BAZY")),
             _NodeSpec("ZAMOWIENIE", "ZAMOWIENIE", "draft projektu, pozycje i zalaczniki", "tab", (350, 220), (260, 92), "#eff6ff", "#2563eb", ("C:/PythonProject/TECH_modul/src/tabs/zamowienie/tab_nowe_zamowienie.py", "C:/PythonProject/TECH_modul/src/app/main_window_wiring.py"), ("Klienci", "Pracownicy", "Bazy", "Pozycje do wyceny", "Zalaczniki", "Statusy", "Kalendarz"), ("POZYCJE", "WYCENA", "SEKCJE", "SCIANA", "KOMPLET", "KALENDARZ")),
             _NodeSpec("POZYCJE", "POZYCJE", "wybor pozycji i zalaczniki", "tab", (350, 322), (260, 78), "#ecfeff", "#0891b2", ("C:/PythonProject/TECH_modul/src/tabs/zamowienie/tab_nowe_zamowienie.py",), ("Pozycje do wyceny", "Zalaczniki", "Wycena pozycji", "Powrot do zamowienia"), ("WYCENA", "ZAMOWIENIE")),
@@ -487,12 +487,12 @@ class TabStruktura(QWidget):
             _NodeSpec("KALENDARZ", "KALENDARZ", "terminy i statusy", "tab", (980, 220), (260, 92), "#eff6ff", "#2563eb", ("C:/PythonProject/TECH_modul/src/tabs/kalendarz/tab_kalendarz.py",), ("Zamowienie", "Sciana", "Komplet", "Czas pracy"), ("DASHBOARD", "ALARMY")),
             _NodeSpec("CZAS_PRACY", "Czas pracy", "planowane vs realne", "tab", (980, 360), (260, 92), "#eff6ff", "#2563eb", ("C:/PythonProject/TECH_modul/src/tabs/czas_pracy/tab_czas_pracy.py",), ("Pracownicy", "Zamowienia", "Realne godziny"), ("DASHBOARD", "WYCENA")),
             _NodeSpec("ZAKUPY", "ZAKUPY", "materialy i dostawcy", "tab", (980, 500), (260, 92), "#eff6ff", "#2563eb", ("C:/PythonProject/TECH_modul/src/tabs/zakupy/tab_zakupy.py",), ("Komplet", "Sciana", "Materialy", "Faktury"), ("DASHBOARD",)),
-            _NodeSpec("BAZY", "BAZY", "hub danych", "tab", (980, 640), (260, 92), "#f8fafc", "#334155", ("C:/PythonProject/TECH_modul/src/tabs/bazy/tab_bazy.py",), ("Klienci", "Materialy", "Moduly", "Szybkie wyceny"), ("BAZA_MODUL", "BAZA_MATERIALU", "BAZA_SZYBKICH_WYCEN")),
-            _NodeSpec("BAZA_MODUL", "BAZA_modul", "modules.json", "tab", (1280, 220), (260, 92), "#f8fafc", "#334155", ("C:/PythonProject/TECH_modul/src/tabs/baza_modul/tab_baza_modul.py", "C:/PythonProject/TECH_modul/data/modules.json"), (), ("MODUL", "KOMPLET", "SCIANA")),
-            _NodeSpec("BAZA_MATERIALU", "Baza materialu", "baza_materialu.json", "tab", (1280, 360), (260, 92), "#f8fafc", "#334155", ("C:/PythonProject/TECH_modul/src/tabs/baza_materialu/tab_baza_materialu.py", "C:/PythonProject/TECH_modul/data/baza_materialu.json"), (), ("WYCENA", "SEKCJE", "MODUL", "ZAKUPY", "USLUGI")),
-            _NodeSpec("BAZA_SZYBKICH_WYCEN", "Baza szybkich wycen", "quick_quote_archive.json", "tab", (1280, 500), (260, 92), "#f8fafc", "#334155", ("C:/PythonProject/TECH_modul/src/tabs/baza_szybkich_wycen/tab_baza_szybkich_wycen.py", "C:/PythonProject/TECH_modul/data/quick_quote_archive.json"), (), ("WYCENA", "SEKCJE")),
+            _NodeSpec("BAZY", "BAZY", "hub danych", "tab", (980, 640), (260, 92), "transparent", "#334155", ("C:/PythonProject/TECH_modul/src/tabs/bazy/tab_bazy.py",), ("Klienci", "Materialy", "Moduly", "Szybkie wyceny"), ("BAZA_MODUL", "BAZA_MATERIALU", "BAZA_SZYBKICH_WYCEN")),
+            _NodeSpec("BAZA_MODUL", "BAZA_modul", "modules.json", "tab", (1280, 220), (260, 92), "transparent", "#334155", ("C:/PythonProject/TECH_modul/src/tabs/baza_modul/tab_baza_modul.py", "C:/PythonProject/TECH_modul/data/modules.json"), (), ("MODUL", "KOMPLET", "SCIANA")),
+            _NodeSpec("BAZA_MATERIALU", "Baza materialu", "baza_materialu.json", "tab", (1280, 360), (260, 92), "transparent", "#334155", ("C:/PythonProject/TECH_modul/src/tabs/baza_materialu/tab_baza_materialu.py", "C:/PythonProject/TECH_modul/data/baza_materialu.json"), (), ("WYCENA", "SEKCJE", "MODUL", "ZAKUPY", "USLUGI")),
+            _NodeSpec("BAZA_SZYBKICH_WYCEN", "Baza szybkich wycen", "quick_quote_archive.json", "tab", (1280, 500), (260, 92), "transparent", "#334155", ("C:/PythonProject/TECH_modul/src/tabs/baza_szybkich_wycen/tab_baza_szybkich_wycen.py", "C:/PythonProject/TECH_modul/data/quick_quote_archive.json"), (), ("WYCENA", "SEKCJE")),
             _NodeSpec("USTAWIENIA", "USTAWIENIA", "ustawienia programu", "tab", (1280, 640), (260, 92), "#fff7ed", "#c2410c", ("C:/PythonProject/TECH_modul/src/tabs/rysunek/tab_rysunek.py",), ("Motyw", "Font", "Role"), ("STRUKTURA",)),
-            _NodeSpec("STRUKTURA", "STRUKTURA", "ta mapa przeplywu", "tab", (1280, 780), (260, 92), "#ecfdf5", "#10b981", ("C:/PythonProject/TECH_modul/src/tabs/struktura/tab_struktura.py",), ("Wszystkie zakladki", "Zrodla danych"), ("START",)),
+            _NodeSpec("STRUKTURA", "STRUKTURA", "ta mapa przeplywu", "tab", (1280, 780), (260, 92), "#064e3b", "#10b981", ("C:/PythonProject/TECH_modul/src/tabs/struktura/tab_struktura.py",), ("Wszystkie zakladki", "Zrodla danych"), ("START",)),
             _NodeSpec("STANOWISKA", "STANOWISKA", "podglad ekranow hali", "tab", (1280, 920), (260, 92), "#eef2ff", "#4f46e5", ("C:/PythonProject/TECH_modul/src/tabs/stanowiska/tab_stanowiska.py", "C:/PythonProject/TECH_modul/src/server/stanowisko_page.py"), ("Zamowienia", "Pracownicy", "Kalendarz"), ("EKRANY", "QR_TELEFON")),
             _NodeSpec("EKRANY", "EKRANY", "podglad stanowiska i botow", "tab", (1280, 1060), (260, 92), "#ecfeff", "#0f766e", ("C:/PythonProject/TECH_modul/src/tabs/ekrany/tab_ekrany.py",), ("Zamowienia", "Pracownicy", "Kalendarz", "Czas pracy"), ("STANOWISKA",)),
             _NodeSpec("QR_TELEFON", "QR TELEFON", "skanery / kiosk / pomiary", "tab", (1280, 1200), (260, 92), "#fdf2f8", "#be185d", ("C:/PythonProject/TECH_modul/src/tabs/qr_telefon/tab_qr_telefon.py", "C:/PythonProject/TECH_modul/src/server/data_server.py", "C:/PythonProject/TECH_modul/src/server/package_scanner_page.py", "C:/PythonProject/TECH_modul/src/server/kiosk_page.py", "C:/PythonProject/TECH_modul/src/server/measure_mobile_page.py"), ("Adres serwera", "Linki mobilne", "QR skanera", "Kiosk czasu", "Pomiary"), ("STANOWISKA",)),
@@ -630,7 +630,7 @@ class TabStruktura(QWidget):
 
         html = f"""
         <html>
-          <body style="font-family:'Segoe UI'; color:#1f2937;">
+          <body style="font-family:'Segoe UI'; color:#e8efff;">
             <h2 style="margin:0 0 8px 0;">{spec.title}</h2>
             <div style="color:#64748b; margin-bottom:10px;">{spec.subtitle}</div>
             <p><b>Rola:</b> {spec.kind.upper()}</p>

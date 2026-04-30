@@ -116,7 +116,7 @@ class FrontHardwareBlock(QWidget):
 
         lay.addRow("Luzy", self.box_front_gaps)
 
-        self.zone_box = QFrame()
+        self.zone_box = QFrame(); self.zone_box.setProperty("uiCard", True)
         self.zone_box.setObjectName("front_zone_box")
         self.zone_box.setFrameShape(QFrame.Shape.StyledPanel)
         self.zone_box.setStyleSheet(
@@ -147,7 +147,7 @@ class FrontHardwareBlock(QWidget):
         self.lab_zone_context = QLabel("")
         self.lab_zone_context.setWordWrap(True)
         self.lab_zone_context.setStyleSheet(
-            "color:#0f4c81; font-weight:600; background:#eef6ff; "
+            "color:#0f4c81; font-weight:600; background:#1e293b; "
             "border:1px solid #d6e8fb; border-radius:4px; padding:6px;"
         )
 
@@ -180,11 +180,9 @@ class FrontHardwareBlock(QWidget):
         self.sp_drawer_small_front_h.setSuffix(" mm")
         self.sp_drawer_small_front_h.setValue(140.0)
 
-        self.cb_hinge_vendor = QComboBox()
+        self.cb_hinge_vendor = QComboBox() # STUB for compatibility if needed, but not in UI
         self.cb_drawer_vendor = QComboBox()
-        self.reload_catalog(preserve_current=False)
-
-        self.chk_tipon = QCheckBox("TIP-ON / push-to-open")
+        self.chk_tipon = QCheckBox()
 
         self.sp_rear = QDoubleSpinBox()
         self.sp_rear.setRange(0.0, 100.0)
@@ -198,7 +196,7 @@ class FrontHardwareBlock(QWidget):
         self.sp_tip.setSuffix(" mm")
         self.sp_tip.setValue(20.0)
 
-        self.summary_box = QFrame()
+        self.summary_box = QFrame(); self.summary_box.setProperty("uiCard", True)
         self.summary_box.setObjectName("front_summary_box")
         self.summary_box.setFrameShape(QFrame.Shape.StyledPanel)
         self.summary_box.setStyleSheet(
@@ -223,7 +221,7 @@ class FrontHardwareBlock(QWidget):
         summary_lay.addWidget(self.lab_front_summary_title)
         summary_lay.addWidget(self.lab_front_summary)
 
-        self.preview_box = QFrame()
+        self.preview_box = QFrame(); self.preview_box.setProperty("uiCard", True)
         self.preview_box.setObjectName("front_preview_box")
         self.preview_box.setFrameShape(QFrame.Shape.StyledPanel)
         self.preview_box.setStyleSheet(
@@ -308,9 +306,6 @@ class FrontHardwareBlock(QWidget):
         form_mode.addRow("Liczba szuflad", self.sp_drawer_count)
         form_mode.addRow("Uklad szuflad", self.cb_drawer_layout_mode)
         form_mode.addRow("Niski front szuflady", self.sp_drawer_small_front_h)
-        form_mode.addRow("Producent zawiasow", self.cb_hinge_vendor)
-        form_mode.addRow("Producent szuflad", self.cb_drawer_vendor)
-        form_mode.addRow("", self.chk_tipon)
         form_mode.addRow("Luz za szuflada", self.sp_rear)
         form_mode.addRow("Luz TIP-ON", self.sp_tip)
         mode_lay.addLayout(form_mode)

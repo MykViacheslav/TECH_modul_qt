@@ -24,11 +24,12 @@ def test_module_cost_breakdown_service_counts_materials_edgeband_and_hardware(tm
     catalog = CatalogStoreJson(path)
 
     module = ModuleDef(
+        cabinet_kind="upper",
         shelf_count=1,
         visible_parts={"shelf"},
         parts={
             "shelf_1": PartDef(
-                key="shelf_1",
+                id="shelf_1",
                 name_pl="Polka 1",
                 material_key="PB18",
                 dims_mm={"w": 500.0, "h": 700.0, "t": 18.0},
@@ -41,6 +42,8 @@ def test_module_cost_breakdown_service_counts_materials_edgeband_and_hardware(tm
 
     assert breakdown.material_total_pln == 35.0
     assert breakdown.edgeband_total_pln == 2.5
+    # shelf supports: 1 shelf * 4 = 4 szt * 1.0 = 4.0
+    # wall hangers (added because "upper"): 2 szt * 0.0 = 0.0
     assert breakdown.hardware_total_pln == 4.0
     assert breakdown.grand_total_pln == 41.5
 
@@ -59,7 +62,7 @@ def test_module_cost_breakdown_service_uses_catalog_hardware_vendor(tmp_path):
         visible_parts={"front"},
         parts={
             "front": PartDef(
-                key="front",
+                id="front",
                 name_pl="Front",
                 material_key="MDF19",
                 dims_mm={"w": 900.0, "h": 900.0, "t": 19.0},

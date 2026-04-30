@@ -34,7 +34,7 @@ def _wall_info_text(wall: WallLayoutDef | None) -> str:
     lines = [
         f'Nazwa: {getattr(wall, "name", "") or ""}',
         f'Klient: {getattr(wall, "client_name", "") or "-"}',
-        f'Zamowienie: {getattr(wall, "order_name", "") or "-"}',
+        f'Zamówienie: {getattr(wall, "order_name", "") or "-"}',
         f'Typ ukladu: {getattr(wall, "layout_type", "") or "line"}',
         f'Widok z przodu: {getattr(wall, "front_view_wall_side", "") or "A"}',
         f'Przeszkody: {len(getattr(wall, "obstacles", []) or [])}',
@@ -62,7 +62,7 @@ class LoadWallDialog(QDialog):
         root.addWidget(head)
 
         self.tbl = QTableWidget(0, 5, self)
-        self.tbl.setHorizontalHeaderLabels(["Nazwa", "Klient", "Zamowienie", "Typ", "Przeszkody"])
+        self.tbl.setHorizontalHeaderLabels(["Nazwa", "Klient", "Zamówienie", "Typ", "Przeszkody"])
         self.tbl.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.tbl.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.tbl.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -71,7 +71,7 @@ class LoadWallDialog(QDialog):
         root.addWidget(self.tbl, 1)
 
         manage_row = QHBoxLayout()
-        self.btn_delete = QPushButton("Usun z bazy", self)
+        self.btn_delete = QPushButton("Usuń z bazy", self)
         self.btn_delete.setEnabled(False)
         self.lab_err = QLabel("", self)
         self.lab_err.setWordWrap(True)
@@ -161,8 +161,8 @@ class LoadWallDialog(QDialog):
     def _confirm_delete(self, name: str) -> bool:
         answer = QMessageBox.question(
             self,
-            "Usun sciane",
-            f'Czy na pewno usunac sciane "{name}" z bazy...',
+            "Usuń ścianę",
+            f'Czy na pewno usunąć ścianę "{name}" z bazy...',
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )

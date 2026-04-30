@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import base64
 import json
@@ -29,6 +29,7 @@ from PyQt6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QMessageBox,
+    QSizePolicy,
 )
 
 from src.app.app_settings import load_drawing_settings, load_ui_theme_settings
@@ -46,6 +47,7 @@ from src.storage.wall_store_json import WallStoreJson
 from src.storage.work_time_store_json import WorkTimeStoreJson
 from src.storage.worker_store_json import WorkerStoreJson
 from src.storage.quote_pricing_store_json import QuotePricingStoreJson
+from src.tabs.wycena.dialog_import_3dc import DialogImport3dcWycena
 from src.storage.quote_pricing_preset_store_json import QuotePricingPresetStoreJson
 from src.storage.receptura_store_json import RecepturaStoreJson
 from src.storage.safe_json_io import write_json_atomic
@@ -57,14 +59,16 @@ from src.tabs.baza_szybkich_wycen.tab_baza_szybkich_wycen import (
     quick_quote_archive_path,
     sanitize_quick_quote_entries,
 )
+from src.tabs.szybka_wycena.tab_szybka_wycena import TabSzybkaWycena
 from src.tabs.receptura.receptura_picker import pick_receptura_rows
+from src.services.module_export_3dc_service import export_project_to_3dc_xml
 from src.ui.ui_polish import mark_ui_card, set_ui_variant
 
 
 def _text_to_float(raw: str) -> float:
     text = str(raw or "").strip().lower()
     text = text.replace("zl", "").replace("%", "").replace(",", ".").replace(" ", "")
-    if not text:
+    if not text or text == "-" or text == "â€”":
         return 0.0
     try:
         return float(text)
@@ -140,6 +144,8 @@ class TabWycena(QWidget):
         self._library_store = ProducerLibraryStoreJson()
         self._receptura_store = RecepturaStoreJson()
         self._last_project_model: ProjectModel | None = None
+        self._import_3d_widget: DialogImport3dcWycena | None = None
+        self._szybka_wycena_widget: TabSzybkaWycena | None = None
         self._rows: list[dict[str, object]] = []
         self._is_loading = False
         self._is_table_refresh = False
@@ -157,7 +163,7 @@ class TabWycena(QWidget):
             {
                 "title": "#e8efff",
                 "subtitle": "#9cb7dc",
-                "hero_bg_0": "#111b30",
+                "hero_bg_0": "#0f172a",
                 "hero_bg_1": "#15253f",
                 "hero_border": "#2e4b78",
                 "hero_title": "#f2f7ff",
@@ -192,12 +198,12 @@ class TabWycena(QWidget):
             if self._is_tech
             else {
                 "title": "#0f172a",
-                "subtitle": "#526174",
+                "subtitle": "#94a3b8",
                 "hero_bg_0": "#ffffff",
                 "hero_bg_1": "#eef4ff",
                 "hero_border": "#d7e1ef",
                 "hero_title": "#10263d",
-                "hero_desc": "#526174",
+                "hero_desc": "#94a3b8",
                 "hero_chip_bg": "#0f172a",
                 "hero_chip_border": "#0f172a",
                 "hero_chip_text": "#ffffff",
@@ -209,21 +215,21 @@ class TabWycena(QWidget):
                 "metric_accent": "#2563eb",
                 "metric_title": "#64748b",
                 "metric_value": "#0f172a",
-                "client_box_bg": "#eff6ff",
-                "client_box_border": "#bfdbfe",
+                "client_box_bg": "#f0f7ff",
+                "client_box_border": "#cbdffa",
                 "client_box_accent": "#2563eb",
                 "client_hdr": "#1e40af",
-                "client_text": "#1f2937",
+                "client_text": "#475569",
                 "payments_box_bg": "#f0fdf4",
-                "payments_box_border": "#d1fae5",
+                "payments_box_border": "#c8f1da",
                 "payments_box_accent": "#16a34a",
                 "payments_hdr": "#14532d",
-                "payments_text": "#1f2937",
+                "payments_text": "#475569",
                 "dates_box_bg": "#fffbeb",
                 "dates_box_border": "#fde68a",
                 "dates_box_accent": "#d97706",
                 "dates_hdr": "#92400e",
-                "dates_text": "#1f2937",
+                "dates_text": "#475569",
             }
         )
 
@@ -243,9 +249,11 @@ class TabWycena(QWidget):
 
         self.lab_mode = QLabel("Tryb wyceny:", self)
         self.cb_quote_mode = QComboBox(self)
-        self.cb_quote_mode.addItem("Komplety", "assemblies")
-        self.cb_quote_mode.addItem("Wycena wstępna", "quick")
-        self.cb_quote_mode.setMinimumWidth(180)
+        self.cb_quote_mode.addItem("Wycena projektu", "assemblies")
+        self.cb_quote_mode.addItem("Szybka wycena (Handlowa)", "quick_complex")
+        self.cb_quote_mode.addItem("Lista szybkich wycen", "quick")
+        self.cb_quote_mode.addItem("Import 3D Konstruktor", "import_3d")
+        self.cb_quote_mode.setMinimumWidth(230)
         title_row.addWidget(self.lab_mode, 0)
         title_row.addWidget(self.cb_quote_mode, 0)
 
@@ -311,7 +319,7 @@ class TabWycena(QWidget):
         else:
             pill_row.addWidget(_make_pill("Desktop", "#dbeafe", "#1d4ed8", "#bfdbfe"))
             pill_row.addWidget(_make_pill("Szybka decyzja", "#eef2ff", "#4338ca", "#c7d2fe"))
-            pill_row.addWidget(_make_pill("Spojny widok", "#ecfdf5", "#047857", "#a7f3d0"))
+            pill_row.addWidget(_make_pill("Spojny widok", "#064e3b", "#047857", "#a7f3d0"))
         pill_row.addStretch(1)
         hero_text.addLayout(pill_row)
         hero_layout.addLayout(hero_text, 1)
@@ -347,13 +355,13 @@ class TabWycena(QWidget):
         self.card_count = self._make_metric_card("Komplety", "0")
         self.card_tech = self._make_metric_card("Koszt techniczny", "0.00 zl")
         self.card_sale = self._make_metric_card("Cena handlowa", "0.00 zl")
-        self.card_profit = self._make_metric_card("Marża", "0.00 zl")
+        self.card_profit = self._make_metric_card("MarĹĽa", "0.00 zl")
         for widget in (self.card_count, self.card_tech, self.card_sale, self.card_profit):
             stats_row.addWidget(widget)
         stats_row.addStretch(1)
         root.addWidget(self.stats_widget, 0)
 
-        self.toolbar_toggle = QPushButton("Pasek narzędzi ▼", self)
+        self.toolbar_toggle = QPushButton("Pasek narzÄ™dzi â–Ľ", self)
         set_ui_variant(self.toolbar_toggle, "ghost")
         self.toolbar_toggle.clicked.connect(self._toggle_toolbar)
         root.addWidget(self.toolbar_toggle, 0)
@@ -365,23 +373,25 @@ class TabWycena(QWidget):
         toolbar_layout.setSpacing(10)
         self.lab_search = QLabel("Szukaj:", self)
         self.ed_search = QLineEdit(self)
-        self.ed_search.setPlaceholderText("Szukaj po komplecie, kliencie albo zamówieniu...")
+        self.ed_search.setPlaceholderText("Szukaj po komplecie, kliencie albo zamĂłwieniu...")
         self.cb_order = QComboBox(self)
-        self.cb_order.addItem("Wszystkie zamówienia", "")
+        self.cb_order.addItem("Wszystkie zamĂłwienia", "")
         self.btn_refresh = QPushButton("Odswiez", self)
         toolbar_layout.addWidget(self.lab_search)
         toolbar_layout.addWidget(self.ed_search, 1)
-        self.lab_scope = QLabel("Zamówienie:", self)
+        self.lab_scope = QLabel("ZamĂłwienie:", self)
         toolbar_layout.addWidget(self.lab_scope)
         toolbar_layout.addWidget(self.cb_order, 0)
         self.lab_quick_pick = QLabel("Wpis:", self)
         self.cb_quick_pick = QComboBox(self)
         self.cb_quick_pick.setMinimumWidth(300)
-        self.btn_quick_add = QPushButton("+ Dodaj", self)
-        self.btn_quick_from_receptura = QPushButton("Dodaj z Receptury", self)
-        self.btn_quick_remove = QPushButton("- Usun", self)
-        self.btn_quick_export_pdf = QPushButton("Eksport PDF", self)
-        self.btn_quick_preview = QPushButton("Podglad", self)
+        self.btn_quick_add = QPushButton("âž• Dodaj", self)
+        self.btn_quick_from_receptura = QPushButton("đź“‹ Dodaj z Receptury", self)
+        self.btn_quick_remove = QPushButton("đź—‘ď¸Ź Usun", self)
+        self.btn_quick_export_pdf = QPushButton("đź“„ Eksport PDF", self)
+        self.btn_quick_preview = QPushButton("đź‘ď¸Ź Podglad", self)
+        self.btn_export_giblab = QPushButton("\U0001f3d7 GIBLAB", self)
+        
         self.lab_quick_pick.setVisible(False)
         self.cb_quick_pick.setVisible(False)
         self.btn_quick_add.setVisible(False)
@@ -389,6 +399,7 @@ class TabWycena(QWidget):
         self.btn_quick_remove.setVisible(False)
         self.btn_quick_export_pdf.setVisible(False)
         self.btn_quick_preview.setVisible(False)
+        
         toolbar_layout.addWidget(self.lab_quick_pick, 0)
         toolbar_layout.addWidget(self.cb_quick_pick, 0)
         toolbar_layout.addWidget(self.btn_quick_add, 0)
@@ -396,13 +407,21 @@ class TabWycena(QWidget):
         toolbar_layout.addWidget(self.btn_quick_remove, 0)
         toolbar_layout.addWidget(self.btn_quick_preview, 0)
         toolbar_layout.addWidget(self.btn_quick_export_pdf, 0)
+        toolbar_layout.addWidget(self.btn_export_giblab, 0)
         toolbar_layout.addWidget(self.btn_refresh, 0)
+
         set_ui_variant(self.btn_refresh, "ghost")
         set_ui_variant(self.btn_quick_add, "primary")
         set_ui_variant(self.btn_quick_from_receptura, "success")
         set_ui_variant(self.btn_quick_remove, "danger")
         set_ui_variant(self.btn_quick_export_pdf, "ghost")
         set_ui_variant(self.btn_quick_preview, "ghost")
+        # --- STYLIZACJA GIBLAB (BLUE ACCENT) ---
+        self.btn_export_giblab.setStyleSheet(
+            "QPushButton { background: #005596; color: white; border: none; border-radius: 4px; "
+            "font-weight: 800; font-size: 11px; padding: 6px 14px; min-height: 32px; }"
+            "QPushButton:hover { background: #004173; }"
+        )
         for button in (
             self.btn_refresh,
             self.btn_quick_add,
@@ -412,8 +431,41 @@ class TabWycena(QWidget):
             self.btn_quick_preview,
         ):
             button.setMinimumHeight(32)
-        root.addWidget(self.toolbar_container, 0)
+            button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        
+        self.btn_refresh.setFixedWidth(100)
+        self.btn_quick_add.setFixedWidth(110)
+        self.btn_quick_from_receptura.setFixedWidth(190)
+        self.btn_quick_remove.setFixedWidth(110)
+        self.btn_quick_preview.setFixedWidth(110)
+        self.btn_quick_export_pdf.setFixedWidth(130)
 
+        root.addWidget(self.toolbar_container, 0)
+ 
+        # Widget Szybkiej Wyceny (ZĹ‚oĹĽona)
+        self.szybka_complex_card = QFrame(self)
+        self.szybka_complex_card.setProperty("uiCard", True)
+        self.szybka_complex_card.setVisible(False)
+        szybka_lay = QVBoxLayout(self.szybka_complex_card)
+        szybka_lay.setContentsMargins(0, 0, 0, 0)
+        self._szybka_wycena_widget = TabSzybkaWycena(self)
+        szybka_lay.addWidget(self._szybka_wycena_widget)
+        root.addWidget(self.szybka_complex_card, 1)
+ 
+        self.import_3d_card = QFrame(self)
+        self.import_3d_card.setProperty("uiCard", True)
+        self.import_3d_card.setVisible(False)
+        import_3d_lay = QVBoxLayout(self.import_3d_card)
+        import_3d_lay.setContentsMargins(0, 0, 0, 0)
+        self._import_3d_widget = DialogImport3dcWycena(self)
+        self._import_3d_widget.setWindowFlags(Qt.WindowType.Widget)
+        self._import_3d_widget.setWindowTitle("")
+        # UsuniÄ™cie zbÄ™dnych marginesĂłw z wewnÄ™trznego dialogu
+        if self._import_3d_widget.layout():
+             self._import_3d_widget.layout().setContentsMargins(4, 4, 4, 4)
+        import_3d_lay.addWidget(self._import_3d_widget)
+        root.addWidget(self.import_3d_card, 1)
+ 
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal, self)
         root.addWidget(self.main_splitter, 1)
 
@@ -424,7 +476,7 @@ class TabWycena(QWidget):
         left_layout.setSpacing(10)
         self.tbl_assemblies = QTableWidget(0, 7, left)
         self.tbl_assemblies.setHorizontalHeaderLabels(
-            ["Komplet", "Zamówienie", "Klient", "Techn.", "Robocizna", "Marża %", "Handlowa"]
+            ["Komplet", "ZamĂłwienie", "Klient", "Techn.", "Robocizna", "MarĹĽa %", "Handlowa"]
         )
         self.tbl_assemblies.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.tbl_assemblies.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
@@ -441,7 +493,7 @@ class TabWycena(QWidget):
         header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
         left_layout.addWidget(self.tbl_assemblies, 1)
 
-        self.quick_calc_frame = QFrame(left)
+        self.quick_calc_frame = QFrame(left); self.quick_calc_frame.setProperty("uiCard", True)
         mark_ui_card(self.quick_calc_frame, elevated=False)
         quick_form = QFormLayout(self.quick_calc_frame)
         quick_form.setContentsMargins(10, 10, 10, 10)
@@ -470,21 +522,21 @@ class TabWycena(QWidget):
         self.lab_quick_brutto = QLabel("0.00 zl", self.quick_calc_frame)
         self.lab_quick_rate_source.setStyleSheet("color:#64748b;")
         self.lab_quick_base.setStyleSheet("font-weight:600; color:#374151;")
-        self.lab_quick_netto.setStyleSheet("font-weight:600; color:#1f2937;")
+        self.lab_quick_netto.setStyleSheet("font-weight:600; color:#e8efff;")
         self.lab_quick_brutto.setStyleSheet("font-weight:700; color:#0f172a;")
-        quick_form.addRow("Wartość materiałów", self.lab_quick_material)
+        quick_form.addRow("WartoĹ›Ä‡ materiaĹ‚Ăłw", self.lab_quick_material)
         quick_form.addRow("Transport", self.sp_quick_transport)
         quick_form.addRow("Roboczogodziny", self.sp_quick_hours)
         quick_form.addRow("Pracownik", self.cb_quick_worker)
-        quick_form.addRow("Montaż", self.sp_quick_montage)
+        quick_form.addRow("MontaĹĽ", self.sp_quick_montage)
 
-        # ── USLUGI DODATKOWE ──────────────────────────────────────
+        # â”€â”€ USLUGI DODATKOWE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         extras_widget = QWidget(self.quick_calc_frame)
         extras_vbox = QVBoxLayout(extras_widget)
         extras_vbox.setContentsMargins(0, 0, 0, 0)
         extras_vbox.setSpacing(2)
         self.tbl_quick_extras = QTableWidget(0, 2, extras_widget)
-        self.tbl_quick_extras.setHorizontalHeaderLabels(["Opis usługi", "Kwota [zl]"])
+        self.tbl_quick_extras.setHorizontalHeaderLabels(["Opis usĹ‚ugi", "Kwota [zl]"])
         self.tbl_quick_extras.verticalHeader().setVisible(False)
         self.tbl_quick_extras.setMinimumHeight(60)
         self.tbl_quick_extras.setMaximumHeight(160)
@@ -493,18 +545,18 @@ class TabWycena(QWidget):
         extras_hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         extras_vbox.addWidget(self.tbl_quick_extras)
         extras_btn_row = QHBoxLayout()
-        self.btn_extra_add = QPushButton("+ Dodaj usługę", extras_widget)
-        self.btn_extra_remove = QPushButton("- Usuń usługę", extras_widget)
+        self.btn_extra_add = QPushButton("+ Dodaj usĹ‚ugÄ™", extras_widget)
+        self.btn_extra_remove = QPushButton("- UsuĹ„ usĹ‚ugÄ™", extras_widget)
         self.btn_extra_add.setFixedHeight(24)
         self.btn_extra_remove.setFixedHeight(24)
         extras_btn_row.addWidget(self.btn_extra_add)
         extras_btn_row.addWidget(self.btn_extra_remove)
         extras_btn_row.addStretch(1)
         extras_vbox.addLayout(extras_btn_row)
-        quick_form.addRow("Usługi dodatkówe:", extras_widget)
+        quick_form.addRow("UsĹ‚ugi dodatkowe:", extras_widget)
 
         quick_form.addRow("Stawka rob.-godz.", self.lab_quick_rate)
-        quick_form.addRow("Źródło stawki", self.lab_quick_rate_source)
+        quick_form.addRow("ĹąrĂłdĹ‚o stawki", self.lab_quick_rate_source)
         quick_form.addRow("Koszt robocizny", self.lab_quick_labor_cost)
         quick_form.addRow("Koszt bazowy", self.lab_quick_base)
         quick_form.addRow("Cena netto", self.lab_quick_netto)
@@ -561,6 +613,10 @@ class TabWycena(QWidget):
         self.sp_margin.setRange(0.0, 500.0)
         self.sp_margin.setDecimals(1)
         self.sp_margin.setSuffix(" %")
+        self.sp_architect_commission = _FastSpinBox(editor)
+        self.sp_architect_commission.setRange(0.0, 100.0)
+        self.sp_architect_commission.setDecimals(1)
+        self.sp_architect_commission.setSuffix(" %")
         self.sp_rule_processing = _FastSpinBox(editor)
         self.sp_rule_processing.setRange(0.0, 300.0)
         self.sp_rule_processing.setDecimals(2)
@@ -597,6 +653,7 @@ class TabWycena(QWidget):
             self.sp_policy_dealer,
             self.sp_policy_promo,
             self.sp_policy_internal,
+            self.sp_architect_commission,
         ):
             self._configure_spinbox_for_fast_entry(spin)
         self.lab_base_total = QLabel("0.00 zl", editor)
@@ -606,11 +663,12 @@ class TabWycena(QWidget):
         self.lab_profit_total = QLabel("0.00 zl", editor)
         self.lab_profit_total.setStyleSheet("font-weight:600; color:#6b5d4d;")
         self.lab_policy_info = QLabel("Polityka: bazowa x1.00", editor)
-        self.lab_policy_info.setStyleSheet("color:#475569;")
+        self.lab_policy_info.setStyleSheet("color:#94a3b8;")
         form.addRow("Robocizna", self.sp_labor)
         form.addRow("Transport", self.sp_transport)
-        form.addRow("Montaż", self.sp_montage)
-        form.addRow("Marża", self.sp_margin)
+        form.addRow("MontaĹĽ", self.sp_montage)
+        form.addRow("MarĹĽa", self.sp_margin)
+        form.addRow("Prowizja arch.", self.sp_architect_commission)
         form.addRow("Regula: obrobka", self.sp_rule_processing)
         form.addRow("Regula: skladanie", self.sp_rule_assembly)
         form.addRow("Regula: transport", self.sp_rule_transport)
@@ -624,13 +682,13 @@ class TabWycena(QWidget):
         form.addRow("Narost", self.lab_profit_total)
         editor_layout.addLayout(form)
 
-        # ── SZABLONY WYCENY ───────────────────────────────────────
-        preset_frame = QFrame(editor)
+        # â”€â”€ SZABLONY WYCENY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        preset_frame = QFrame(editor); preset_frame.setProperty("uiCard", True)
         mark_ui_card(preset_frame, elevated=False)
         preset_layout = QVBoxLayout(preset_frame)
         preset_layout.setContentsMargins(10, 8, 10, 8)
         preset_layout.setSpacing(6)
-        preset_title = QLabel("Szablony (transport + montaż + marża)", preset_frame)
+        preset_title = QLabel("Szablony (transport + montaĹĽ + marĹĽa)", preset_frame)
         preset_title.setStyleSheet("font-weight: 700; font-size: 11px; color: #374151;")
         preset_layout.addWidget(preset_title)
         preset_row = QHBoxLayout()
@@ -679,17 +737,13 @@ class TabWycena(QWidget):
         actions.addWidget(self.btn_export_pdf, 0)
         actions.addStretch(1)
         editor_layout.addLayout(actions)
-
-        self.lab_status = QLabel("", editor)
-        self.lab_status.setWordWrap(True)
-        editor_layout.addWidget(self.lab_status)
         self.lab_profit_report = QLabel("", editor)
         self.lab_profit_report.setWordWrap(True)
         self.lab_profit_report.setStyleSheet("color:#334155;")
         editor_layout.addWidget(self.lab_profit_report)
         right_layout.addWidget(editor, 0)
 
-        work_time_box = QFrame(right)
+        work_time_box = QFrame(right); work_time_box.setProperty("uiCard", True)
         mark_ui_card(work_time_box, elevated=False)
         work_time_layout = QFormLayout(work_time_box)
         work_time_layout.setContentsMargins(12, 12, 12, 12)
@@ -711,7 +765,7 @@ class TabWycena(QWidget):
         work_time_layout.addRow("", self.btn_load_labor_from_time)
         right_layout.addWidget(work_time_box, 0)
 
-        order_box = QFrame(right)
+        order_box = QFrame(right); order_box.setProperty("uiCard", True)
         mark_ui_card(order_box, elevated=False)
         order_layout = QFormLayout(order_box)
         order_layout.setContentsMargins(12, 12, 12, 12)
@@ -720,11 +774,11 @@ class TabWycena(QWidget):
         self.lab_order_profit = QLabel("0.00 zl", order_box)
         order_layout.addRow("Koszt techniczny", self.lab_order_tech)
         order_layout.addRow("Cena handlowa", self.lab_order_sale)
-        order_layout.addRow("Marża kwotowo", self.lab_order_profit)
+        order_layout.addRow("MarĹĽa kwotowo", self.lab_order_profit)
         right_layout.addWidget(order_box, 0)
 
         # --- Klient ---
-        self.client_info_box = QFrame(right)
+        self.client_info_box = QFrame(right); self.client_info_box.setProperty("uiCard", True)
         self.client_info_box.setStyleSheet(
             f"QFrame {{ border: 1px solid {self._colors['client_box_border']};"
             f" border-left: 4px solid {self._colors['client_box_accent']}; border-radius: 8px;"
@@ -745,15 +799,15 @@ class TabWycena(QWidget):
         self.lab_client_email_val.setStyleSheet(f"color:{self._colors['client_text']};")
         self.lab_order_code_val = QLabel("-")
         self.lab_order_code_val.setStyleSheet(f"font-family:monospace; color:{self._colors['client_text']};")
-        client_info_layout.addRow("Zamówienie:", self.lab_order_code_val)
+        client_info_layout.addRow("ZamĂłwienie:", self.lab_order_code_val)
         client_info_layout.addRow("Klient:", self.lab_client_name_val)
         client_info_layout.addRow("Tel.:", self.lab_client_phone_val)
         client_info_layout.addRow("Email:", self.lab_client_email_val)
         self.client_info_box.hide()
         right_layout.addWidget(self.client_info_box, 0)
 
-        # --- Płatności klienta ---
-        self.payments_box = QFrame(right)
+        # --- PĹ‚atnoĹ›ci klienta ---
+        self.payments_box = QFrame(right); self.payments_box.setProperty("uiCard", True)
         self.payments_box.setStyleSheet(
             f"QFrame {{ border: 1px solid {self._colors['payments_box_border']};"
             f" border-left: 4px solid {self._colors['payments_box_accent']}; border-radius: 8px;"
@@ -762,10 +816,10 @@ class TabWycena(QWidget):
         self.payments_layout = QVBoxLayout(self.payments_box)
         self.payments_layout.setContentsMargins(12, 10, 12, 10)
         self.payments_layout.setSpacing(4)
-        _hdr_pay = QLabel("Płatności klienta")
+        _hdr_pay = QLabel("PĹ‚atnoĹ›ci klienta")
         _hdr_pay.setStyleSheet(f"font-weight:800; font-size:13px; color:{self._colors['payments_hdr']};")
         self.payments_layout.addWidget(_hdr_pay)
-        _pay_note = QLabel("Rezerwacja terminu: 5 000 zł  •  1 rata 60%  •  2 rata 30%  •  3 rata 10%")
+        _pay_note = QLabel("Rezerwacja terminu: 5 000 zĹ‚  â€˘  1 rata 60%  â€˘  2 rata 30%  â€˘  3 rata 10%")
         _pay_note.setStyleSheet(f"font-size:11px; color:{self._colors['payments_text']}; margin-bottom:4px;")
         _pay_note.setWordWrap(True)
         self.payments_layout.addWidget(_pay_note)
@@ -777,7 +831,7 @@ class TabWycena(QWidget):
         right_layout.addWidget(self.payments_box, 0)
 
         # --- Terminy projektu ---
-        self.dates_box = QFrame(right)
+        self.dates_box = QFrame(right); self.dates_box.setProperty("uiCard", True)
         self.dates_box.setStyleSheet(
             f"QFrame {{ border: 1px solid {self._colors['dates_box_border']};"
             f" border-left: 4px solid {self._colors['dates_box_accent']}; border-radius: 8px;"
@@ -804,15 +858,20 @@ class TabWycena(QWidget):
             lbl.setStyleSheet(_date_style)
         dates_layout.addRow("Wycena:", self.lab_d_wycena)
         dates_layout.addRow("Projekt:", self.lab_d_projekt)
-        dates_layout.addRow("Próbki mat.:", self.lab_d_probki)
+        dates_layout.addRow("PrĂłbki mat.:", self.lab_d_probki)
         dates_layout.addRow("Zakup mat.:", self.lab_d_zakup_mat)
         dates_layout.addRow("Produkcja:", self.lab_d_produkcja)
-        dates_layout.addRow("Montaż:", self.lab_d_montaz)
+        dates_layout.addRow("MontaĹĽ:", self.lab_d_montaz)
         dates_layout.addRow("Poprawki:", self.lab_d_poprawki)
         self.dates_box.hide()
         right_layout.addWidget(self.dates_box, 0)
 
         right_layout.addStretch(1)
+ 
+        self.lab_status = QLabel("", self)
+        self.lab_status.setWordWrap(True)
+        self.lab_status.setStyleSheet("font-weight: 600; padding: 4px; border-radius: 4px;")
+        root.addWidget(self.lab_status, 0)
         self.main_splitter.addWidget(right)
         self.main_splitter.setStretchFactor(0, 3)
         self.main_splitter.setStretchFactor(1, 2)
@@ -851,6 +910,7 @@ class TabWycena(QWidget):
         self.sp_transport.valueChanged.connect(self._refresh_editor_totals)
         self.sp_montage.valueChanged.connect(self._refresh_editor_totals)
         self.sp_margin.valueChanged.connect(self._refresh_editor_totals)
+        self.sp_architect_commission.valueChanged.connect(self._refresh_editor_totals)
         self.sp_rule_processing.valueChanged.connect(self._on_rules_changed)
         self.sp_rule_assembly.valueChanged.connect(self._on_rules_changed)
         self.sp_rule_transport.valueChanged.connect(self._on_rules_changed)
@@ -860,6 +920,7 @@ class TabWycena(QWidget):
         self.sp_policy_internal.valueChanged.connect(self._on_policy_multipliers_changed)
         self.cb_policy.currentIndexChanged.connect(self._on_policy_changed)
         self.cb_role.currentIndexChanged.connect(self._on_role_changed)
+        self.btn_export_giblab.clicked.connect(self._on_export_giblab)
 
         self._set_default_quote_mode()
         self._load_pricing_controls()
@@ -870,7 +931,7 @@ class TabWycena(QWidget):
         self.refresh_data()
 
     def _make_metric_card(self, title: str, value: str) -> QFrame:
-        frame = QFrame(self)
+        frame = QFrame(self); frame.setProperty("uiCard", True)
         mark_ui_card(frame, elevated=True)
         frame.setStyleSheet(
             "QFrame{"
@@ -1003,24 +1064,24 @@ class TabWycena(QWidget):
         if self._mode() == "quick":
             self.hero_title.setText("Szybka wycena handlowa")
             self.hero_desc.setText(
-                "Tryb do szybkiej oferty z sekcji, wymiarów i gotowych wpisów. Tu liczysz cenę bez wchodzenia w kompletową strukturę projektu."
+                "Tryb do szybkiej oferty z sekcji, wymiarĂłw i gotowych wpisĂłw. Tu liczysz cenÄ™ bez wchodzenia w kompletowÄ… strukturÄ™ projektu."
             )
             self.subtitle.setText(
-                "Tryb handlowy: szybka oferta z wymiarów, sekcji i gotowych pozycji. To najszybsza droga do ceny dla klienta."
+                "Tryb handlowy: szybka oferta z wymiarĂłw, sekcji i gotowych pozycji. To najszybsza droga do ceny dla klienta."
             )
             self.lab_mode_hint.setText(
-                "Ten ekran służy do szybkiej oferty. Widzisz listę wpisów, ich cenę i dodatki, bez pełnej struktury projektu."
+                "Ten ekran sĹ‚uĹĽy do szybkiej oferty. Widzisz listÄ™ wpisĂłw, ich cenÄ™ i dodatki, bez peĹ‚nej struktury projektu."
             )
         else:
             self.hero_title.setText("Wycena projektu systemowego")
             self.hero_desc.setText(
-                "Tryb pracy na module, komplecie albo ścianie. Tu wchodzisz w dane techniczne, robociznę i pełne rozbicie kosztu projektu."
+                "Tryb pracy na module, komplecie albo Ĺ›cianie. Tu wchodzisz w dane techniczne, robociznÄ™ i peĹ‚ne rozbicie kosztu projektu."
             )
             self.subtitle.setText(
-                "Tryb systemowy: wycena projektu z modułu, kompletu lub ściany. Tu pracujesz na danych technicznych i pełnym rozbiciu kosztów."
+                "Tryb systemowy: wycena projektu z moduĹ‚u, kompletu lub Ĺ›ciany. Tu pracujesz na danych technicznych i peĹ‚nym rozbiciu kosztĂłw."
             )
             self.lab_mode_hint.setText(
-                "Ten ekran prowadzi przez kompletną wycenę projektu. Najpierw widzisz strukturę techniczną, potem koszty i wynik handlowy."
+                "Ten ekran prowadzi przez kompletnÄ… wycenÄ™ projektu. Najpierw widzisz strukturÄ™ technicznÄ…, potem koszty i wynik handlowy."
             )
 
     def _set_default_quote_mode(self) -> None:
@@ -1126,7 +1187,7 @@ class TabWycena(QWidget):
         dialog.resize(820, 420)
         layout = QVBoxLayout(dialog)
         tbl = QTableWidget(0, 4, dialog)
-        tbl.setHorizontalHeaderLabels(["ID", "Klient", "Wartość materiałów", "VAT"])
+        tbl.setHorizontalHeaderLabels(["ID", "Klient", "WartoĹ›Ä‡ materiaĹ‚Ăłw", "VAT"])
         tbl.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         tbl.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         tbl.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -1199,7 +1260,8 @@ class TabWycena(QWidget):
         labor_cost = hours * hour_rate
         base = float(material_value) + transport + labor_cost + montage + extras_total
         adjusted_base = self._pricing_service.apply_rules(base, material_value, self._pricing_rules)
-        netto = self._pricing_service.compute_sale(adjusted_base, margin_percent, self._policy_multiplier())
+        sale = self._pricing_service.compute_sale(adjusted_base, margin_percent, self._policy_multiplier())
+        netto = float(sale.get("final_sale", 0.0) or 0.0)
         brutto = netto * (1.0 + (float(vat_percent) / 100.0))
         return {
             "material_value": float(material_value),
@@ -1219,14 +1281,14 @@ class TabWycena(QWidget):
         source = str(values.get("rate_source", "") or "").strip()
         source_label = source if source and source != "wydatki" else "wg wydatkow firmy"
         rows: list[tuple[str, str]] = [
-            ("Wartość materiałów", f"{float(values.get('material_value', 0.0) or 0.0):.2f} zl"),
+            ("WartoĹ›Ä‡ materiaĹ‚Ăłw", f"{float(values.get('material_value', 0.0) or 0.0):.2f} zl"),
             ("Transport", f"{float(values.get('transport', 0.0) or 0.0):.2f} zl"),
             ("Roboczogodziny", f"{float(values.get('hours', 0.0) or 0.0):.2f} h"),
             ("Stawka rob.-godz.", f"{float(values.get('hour_rate', 0.0) or 0.0):.2f} zl/h"),
             ("Pracownik / zrodlo", source_label),
             ("Koszt robocizny", f"{float(values.get('labor_cost', 0.0) or 0.0):.2f} zl"),
-            ("Montaż", f"{float(values.get('montage', 0.0) or 0.0):.2f} zl"),
-            ("Usługi dodatkówe", f"{float(values.get('extras_total', 0.0) or 0.0):.2f} zl"),
+            ("MontaĹĽ", f"{float(values.get('montage', 0.0) or 0.0):.2f} zl"),
+            ("UsĹ‚ugi dodatkowe", f"{float(values.get('extras_total', 0.0) or 0.0):.2f} zl"),
             ("Koszt bazowy", f"{float(values.get('base_total', 0.0) or 0.0):.2f} zl"),
             ("Cena netto", f"{float(values.get('netto', 0.0) or 0.0):.2f} zl"),
             ("Cena brutto", f"{float(values.get('brutto', 0.0) or 0.0):.2f} zl"),
@@ -1274,17 +1336,48 @@ class TabWycena(QWidget):
         if self._mode() != "quick":
             return
         entries = self._load_quick_quotes()
+        
+        # Zapytaj czy wczytaÄ‡ z bazy czy stworzyÄ‡ nowÄ…
         if not entries:
-            self._set_status("Baza szybkich wycen jest pusta.", ok=False)
+            # Automatycznie stwĂłrz nowÄ…, jeĹ›li baza pusta
+            self._create_new_quick_quote()
             return
-        selected_id = self._choose_quick_quote_id(entries)
-        if not selected_id:
-            return
-        self.refresh_data()
-        if self._select_quick_row_by_id(selected_id):
-            self._set_status("Dodano wybor wyceny z bazy szybkich wycen.", ok=True)
-        else:
-            self._set_status("Nie znaleziono wybranej wyceny w tabeli.", ok=False)
+
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Dodaj szybkÄ… wycenÄ™")
+        msg.setText("Czy chcesz wybraÄ‡ istniejÄ…cÄ… wycenÄ™ z bazy, czy stworzyÄ‡ nowÄ…?")
+        btn_new = msg.addButton("Nowa wycena", QMessageBox.ButtonRole.ActionRole)
+        btn_pick = msg.addButton("Wybierz z bazy...", QMessageBox.ButtonRole.ActionRole)
+        msg.addButton("Anuluj", QMessageBox.ButtonRole.RejectRole)
+        msg.exec()
+
+        if msg.clickedButton() == btn_pick:
+            selected_id = self._choose_quick_quote_id(entries)
+            if not selected_id:
+                return
+            self.refresh_data()
+            if self._select_quick_row_by_id(selected_id):
+                self._set_status("Wczytano wycenÄ™ z bazy.", ok=True)
+        elif msg.clickedButton() == btn_new:
+            self._create_new_quick_quote()
+
+    def _create_new_quick_quote(self) -> None:
+        entries = self._load_quick_quotes()
+        new_id = self._next_quick_quote_id(entries)
+        new_entry = {
+            "id": new_id,
+            "client": "[Nowy Klient]",
+            "name": "Nowa wycena",
+            "price": "0.00 zl",
+            "vat": "23%",
+            "margin": "0.00%",
+            "sections": []
+        }
+        entries.append(new_entry)
+        if self._write_quick_quotes(entries):
+            self.refresh_data()
+            self._select_quick_row_by_id(new_id)
+            self._set_status(f"Utworzono nowÄ… wycenÄ™: {new_id}", ok=True)
 
     def _on_quick_add_from_receptura_clicked(self) -> None:
         if self._mode() != "quick":
@@ -1422,11 +1515,20 @@ class TabWycena(QWidget):
         self.tbl_assemblies.editItem(item)
 
     def _on_mode_changed(self) -> None:
-        if self._mode() == "quick":
+        mode = self._mode()
+        self.import_3d_card.setVisible(mode == "import_3d")
+        self.szybka_complex_card.setVisible(mode == "quick_complex")
+        
+        show_system = (mode not in ("import_3d", "quick_complex"))
+        self.main_splitter.setVisible(show_system)
+        self.stats_widget.setVisible(show_system)
+        self.toolbar_container.setVisible(show_system)
+        self.toolbar_toggle.setVisible(show_system)
+
+        if mode == "quick":
             self.lab_scope.setText("Klient:")
             self.ed_search.setPlaceholderText("Szukaj po ID, kliencie lub nazwie szybkiej wyceny...")
             self.subtitle.setVisible(False)
-            self.stats_widget.setVisible(False)
             self.right_panel.setVisible(False)
             self.main_splitter.setSizes([1, 0])
             self.quick_calc_frame.setVisible(True)
@@ -1452,11 +1554,10 @@ class TabWycena(QWidget):
             self.btn_quick_preview.setVisible(True)
             self._set_metric(self.card_count, "0")
             self._set_editor_enabled(False)
-        else:
-            self.lab_scope.setText("Zamówienie:")
-            self.ed_search.setPlaceholderText("Szukaj po komplecie, kliencie, zamówieniu albo module...")
+        elif mode == "assemblies":
+            self.lab_scope.setText("ZamĂłwienie:")
+            self.ed_search.setPlaceholderText("Szukaj po komplecie, kliencie, zamĂłwieniu albo module...")
             self.subtitle.setVisible(True)
-            self.stats_widget.setVisible(True)
             self.right_panel.setVisible(True)
             self.main_splitter.setSizes([3, 2])
             self.quick_calc_frame.setVisible(False)
@@ -1473,10 +1574,21 @@ class TabWycena(QWidget):
             self.btn_quick_export_pdf.setVisible(False)
             self.btn_quick_preview.setVisible(False)
             self._set_editor_enabled(True)
+            self.refresh_data()
+        elif mode == "import_3d":
+            self._set_status("Tryb importu z 3D Konstruktora.", ok=True)
+            if self._import_3d_widget:
+                self._import_3d_widget.setFocus()
+        elif mode == "quick_complex":
+            self._set_status("Tryb szybkiej wyceny handlowej.", ok=True)
+            if self._szybka_wycena_widget:
+                self._szybka_wycena_widget.setFocus()
+        
         self._apply_mode_copy()
-        self.refresh_data()
+        if mode not in ("import_3d", "quick_complex"):
+            self.refresh_data()
 
-    def _selected_name(self) -> str:
+    def _selected_id(self) -> str:
         rows = self.tbl_assemblies.selectionModel().selectedRows() if self.tbl_assemblies.selectionModel() is not None else []
         if not rows:
             return ""
@@ -1500,7 +1612,13 @@ class TabWycena(QWidget):
         technical_total = sum(item.cost_breakdown.grand_total_pln for item in resolved_items)
         base_total_raw = assembly.commercial_base_total(technical_total)
         base_total = self._pricing_service.apply_rules(base_total_raw, technical_total, self._pricing_rules)
-        sale_total = self._pricing_service.compute_sale(base_total, float(getattr(assembly, "margin_percent", 0.0) or 0.0), self._policy_multiplier())
+        res = self._pricing_service.compute_sale(
+            base_total, 
+            float(getattr(assembly, "margin_percent", 0.0) or 0.0), 
+            self._policy_multiplier(),
+            float(getattr(assembly, "architect_commission_percent", 0.0) or 0.0)
+        )
+        sale_total = res["final_sale"]
         profit_total = sale_total - base_total
         return technical_total, base_total, sale_total, profit_total
 
@@ -1548,7 +1666,7 @@ class TabWycena(QWidget):
         # znajdz wiersz w tabeli i zaznacz
         for row in range(self.tbl_assemblies.rowCount()):
             item = self.tbl_assemblies.item(row, 0)
-            if item is not None and item.text().strip() == target_name:
+            if item is not None and str(item.data(Qt.ItemDataRole.UserRole) or "").strip() == target_name:
                 self.tbl_assemblies.selectRow(row)
                 self._on_selection_changed()
                 break
@@ -1574,7 +1692,7 @@ class TabWycena(QWidget):
                     if str(getattr(item, "order_name", "") or "").strip()
                 }
             )
-            all_label = "Wszystkie zamówienia"
+            all_label = "Wszystkie zamĂłwienia"
         current_order = str(self.cb_order.currentData() or "").strip()
         self.cb_order.blockSignals(True)
         try:
@@ -1643,7 +1761,23 @@ class TabWycena(QWidget):
             ).lower()
             if search and search not in haystack:
                 continue
-            technical_total, base_total, sale_total, profit_total = self._compute_totals(assembly)
+            is_selected = (assembly == self._selected_assembly())
+            if is_selected and not self._is_loading:
+                # Use LIVE values from UI spinboxes for THE selected assembly
+                current_labor = float(self.sp_labor.value())
+                current_transport = float(self.sp_transport.value())
+                current_montage = float(self.sp_montage.value())
+                current_margin = float(self.sp_margin.value())
+                
+                technical_total, _b, _s, _p = self._compute_totals(assembly)
+                base_raw = technical_total + current_labor + current_transport + current_montage
+                base_total = self._pricing_service.apply_rules(base_raw, technical_total, self._pricing_rules)
+                sale_res = self._pricing_service.compute_sale(base_total, current_margin, self._policy_multiplier())
+                sale_total = float(sale_res.get("final_sale", 0.0) or 0.0)
+                profit_total = sale_total - base_total
+            else:
+                technical_total, base_total, sale_total, profit_total = self._compute_totals(assembly)
+
             rows.append(
                 {
                     "assembly": assembly,
@@ -1656,8 +1790,10 @@ class TabWycena(QWidget):
         return rows
 
     def _refresh_table(self) -> None:
-        current_name = self._selected_name()
+        current_id = self._selected_id()
         self._rows = self._filtered_rows()
+
+        self._refresh_project_summary(self.get_project_model())
         header = self.tbl_assemblies.horizontalHeader()
         self._is_table_refresh = True
         try:
@@ -1674,9 +1810,9 @@ class TabWycena(QWidget):
                 header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
                 header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
             else:
-                self.tbl_assemblies.setColumnCount(7)
+                self.tbl_assemblies.setColumnCount(8)
                 self.tbl_assemblies.setHorizontalHeaderLabels(
-                    ["Komplet", "Zamówienie", "Klient", "Techn.", "Robocizna", "Marża %", "Handlowa"]
+                    ["Komplet", "Zamówienie", "Klient", "Techn.", "Robocizna", "Marża %", "Prowizja Arch.", "Handlowa"]
                 )
                 header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
                 header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
@@ -1685,40 +1821,54 @@ class TabWycena(QWidget):
                 header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
                 header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
                 header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+                header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
             self.tbl_assemblies.setRowCount(0)
             total_tech = 0.0
             total_sale = 0.0
             total_profit = 0.0
             for row_idx, row in enumerate(self._rows):
-                technical_total = float(row["technical_total"])
-                sale_total = float(row["sale_total"])
-                profit_total = float(row["profit_total"])
-                total_tech += technical_total
-                total_sale += sale_total
-                total_profit += profit_total
-                self.tbl_assemblies.insertRow(row_idx)
                 if self._mode() == "quick":
                     entry = dict(row.get("quick", {}))
                     quick_id = str(entry.get("id", "") or "")
                     vat_percent = _text_to_float(str(entry.get("vat", "") or "0"))
                     margin_percent = float(row.get("margin_percent", 0.0) or 0.0)
+                    material_val = float(row.get("sale_total", 0.0) or 0.0)
                     quick_totals = self._compute_quick_totals(
-                        material_value=sale_total,
+                        material_value=material_val,
                         margin_percent=margin_percent,
                         vat_percent=vat_percent,
                         quick_id=quick_id,
                     )
+
+                    row_netto = float(quick_totals.get("netto", 0.0) or 0.0)
+                    row_base = float(quick_totals.get("base_total", 0.0) or 0.0)
+                    row_profit = row_netto - row_base
+
+                    total_tech += material_val
+                    total_sale += row_netto
+                    total_profit += row_profit
+
+                    self.tbl_assemblies.insertRow(row_idx)
                     values = [
                         str(entry.get("id", "") or "-"),
                         str(entry.get("client", "") or "-"),
                         str(entry.get("vat", "") or "-"),
                         f"{margin_percent:.2f} %",
-                        f"{sale_total:.2f} zl",
-                        f"{float(quick_totals.get('netto', 0.0) or 0.0):.2f} zl",
+                        f"{material_val:.2f} zl",
+                        f"{row_netto:.2f} zl",
                         f"{float(quick_totals.get('brutto', 0.0) or 0.0):.2f} zl",
                     ]
                     user_key = quick_id
                 else:
+                    technical_total = float(row["technical_total"])
+                    sale_total = float(row["sale_total"])
+                    profit_total = float(row["profit_total"])
+
+                    total_tech += technical_total
+                    total_sale += sale_total
+                    total_profit += profit_total
+
+                    self.tbl_assemblies.insertRow(row_idx)
                     assembly = row["assembly"]
                     values = [
                         str(getattr(assembly, "name", "") or "-"),
@@ -1727,9 +1877,11 @@ class TabWycena(QWidget):
                         f"{technical_total:.2f} zl",
                         f"{float(getattr(assembly, 'labor_cost_pln', 0.0) or 0.0):.2f} zl",
                         f"{float(getattr(assembly, 'margin_percent', 0.0) or 0.0):.1f} %",
+                        f"{float(getattr(assembly, 'architect_commission_percent', 0.0) or 0.0):.1f} %",
                         f"{sale_total:.2f} zl",
                     ]
-                    user_key = str(getattr(assembly, "name", "") or "")
+                    user_key = str(getattr(assembly, "assembly_id", "") or "")
+
                 for col, value in enumerate(values):
                     item = QTableWidgetItem(value)
                     if col == 0:
@@ -1754,20 +1906,23 @@ class TabWycena(QWidget):
                 self.tbl_assemblies.setColumnHidden(4, False)
                 self.tbl_assemblies.setColumnHidden(5, False)
                 self.tbl_assemblies.setColumnHidden(6, False)
+                self.tbl_assemblies.setColumnHidden(7, False)
             elif self._active_role == "production":
                 self.tbl_assemblies.setColumnHidden(3, False)
                 self.tbl_assemblies.setColumnHidden(4, False)
                 self.tbl_assemblies.setColumnHidden(5, True)
                 self.tbl_assemblies.setColumnHidden(6, True)
+                self.tbl_assemblies.setColumnHidden(7, True)
             else:
                 self.tbl_assemblies.setColumnHidden(3, False)
                 self.tbl_assemblies.setColumnHidden(4, False)
                 self.tbl_assemblies.setColumnHidden(5, False)
                 self.tbl_assemblies.setColumnHidden(6, False)
-        if current_name:
+                self.tbl_assemblies.setColumnHidden(7, False)
+        if current_id:
             for row in range(self.tbl_assemblies.rowCount()):
                 item = self.tbl_assemblies.item(row, 0)
-                if item is not None and str(item.data(Qt.ItemDataRole.UserRole) or "") == current_name:
+                if item is not None and str(item.data(Qt.ItemDataRole.UserRole) or "") == current_id:
                     self.tbl_assemblies.selectRow(row)
                     break
         self._on_selection_changed()
@@ -1775,13 +1930,13 @@ class TabWycena(QWidget):
     def _selected_assembly(self):
         if self._mode() == "quick":
             return None
-        name = self._selected_name()
-        return self._assembly_store.get(name) if name else None
+        aid = self._selected_id()
+        return self._assembly_store.get(aid) if aid else None
 
     def _selected_quick_row(self) -> dict[str, Any] | None:
         if self._mode() != "quick":
             return None
-        key = self._selected_name()
+        key = self._selected_id()
         if not key:
             return None
         for row in self._rows:
@@ -1865,7 +2020,7 @@ class TabWycena(QWidget):
         self._select_quick_row_by_id(quick_id)
         self._refresh_quick_adjustment_panel()
 
-    # ── USLUGI DODATKOWE helpers ───────────────────────────────────────────
+    # â”€â”€ USLUGI DODATKOWE helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def _read_quick_extras_from_table(self) -> list[dict[str, object]]:
         extras: list[dict[str, object]] = []
@@ -1939,6 +2094,7 @@ class TabWycena(QWidget):
                 self.sp_transport.setValue(0.0)
                 self.sp_montage.setValue(0.0)
                 self.sp_margin.setValue(0.0)
+                self.sp_architect_commission.setValue(0.0)
                 self.lab_base_total.setText("0.00 zl")
                 self.lab_sale_total.setText("0.00 zl")
                 self.lab_profit_total.setText("0.00 zl")
@@ -1955,12 +2111,13 @@ class TabWycena(QWidget):
                 self.dates_box.hide()
                 return
             self.lab_selected.setText(
-                f'Komplet: {assembly.name} | Zamówienie: {assembly.order_name or "-"} | Klient: {assembly.client_name or "-"}'
+                f'Komplet: {assembly.name} | ZamĂłwienie: {assembly.order_name or "-"} | Klient: {assembly.client_name or "-"}'
             )
             self.sp_labor.setValue(float(getattr(assembly, "labor_cost_pln", 0.0) or 0.0))
             self.sp_transport.setValue(float(getattr(assembly, "transport_cost_pln", 0.0) or 0.0))
             self.sp_montage.setValue(float(getattr(assembly, "montage_cost_pln", 0.0) or 0.0))
             self.sp_margin.setValue(float(getattr(assembly, "margin_percent", 0.0) or 0.0))
+            self.sp_architect_commission.setValue(float(getattr(assembly, "architect_commission_percent", 0.0) or 0.0))
             breakdown = self._compute_work_time_cost(assembly)
             self.lab_time_days.setText(str(breakdown.tracked_days))
             self.lab_time_hours.setText(f"{breakdown.total_hours:.2f} h")
@@ -1975,7 +2132,7 @@ class TabWycena(QWidget):
             self._is_loading = False
 
     def _refresh_order_info_panels(self, order_name: str, assembly_client_name: str) -> None:
-        """Odświeża panele z klientem, płatnościami i terminami na podstawie zamówienia."""
+        """OdĹ›wieĹĽa panele z klientem, pĹ‚atnoĹ›ciami i terminami na podstawie zamĂłwienia."""
         order = self._order_store.get(order_name) if order_name else None
 
         # --- Klient ---
@@ -1987,11 +2144,11 @@ class TabWycena(QWidget):
         self.lab_client_email_val.setText((client.email if client and client.email else "-"))
         self.client_info_box.setVisible(bool(client_name and client_name != "-"))
 
-        # --- Płatności ---
+        # --- PĹ‚atnoĹ›ci ---
         if order and order.customer_payments:
             payments = order.customer_payments
             sale_total = 0.0
-            # Policz sumę z ratami procentowymi (wyklucz "Rezerwacja terminu")
+            # Policz sumÄ™ z ratami procentowymi (wyklucz "Rezerwacja terminu")
             for p in payments:
                 stage = str(p.get("stage", "") or "")
                 if "Rezerwacja" not in stage:
@@ -2002,23 +2159,23 @@ class TabWycena(QWidget):
                 stage = str(p.get("stage", "") or "")
                 amount = float(p.get("amount", 0.0) or 0.0)
                 paid = bool(p.get("paid", False))
-                status_icon = "✓" if paid else "○"
-                lines.append(f"{status_icon}  {stage}: {amount:,.0f} zł")
+                status_icon = "âś“" if paid else "â—‹"
+                lines.append(f"{status_icon}  {stage}: {amount:,.0f} zĹ‚")
             self.lab_payments_rows.setText("\n".join(lines))
             self.payments_box.show()
         else:
-            # Brak zapisanych płatności — pokaż wzorcową strukturę
+            # Brak zapisanych pĹ‚atnoĹ›ci â€” pokaĹĽ wzorcowÄ… strukturÄ™
             self.lab_payments_rows.setText(
-                "○  Rezerwacja terminu: 5 000 zł\n"
-                "○  Start pracy / 60%: —\n"
-                "○  Przed montażem / 30%: —\n"
-                "○  Koniec / 10%: —"
+                "â—‹  Rezerwacja terminu: 5 000 zĹ‚\n"
+                "â—‹  Start pracy / 60%: â€”\n"
+                "â—‹  Przed montaĹĽem / 30%: â€”\n"
+                "â—‹  Koniec / 10%: â€”"
             )
             self.payments_box.show()
 
         # --- Terminy ---
         def _d(val: str) -> str:
-            return val.strip() if val and val.strip() else "—"
+            return val.strip() if val and val.strip() else "â€”"
 
         if order:
             self.lab_d_wycena.setText(_d(order.date_wycena))
@@ -2034,7 +2191,7 @@ class TabWycena(QWidget):
                 self.lab_d_wycena, self.lab_d_projekt, self.lab_d_probki,
                 self.lab_d_zakup_mat, self.lab_d_produkcja, self.lab_d_montaz, self.lab_d_poprawki,
             ):
-                lbl.setText("—")
+                lbl.setText("â€”")
             self.dates_box.show()
 
     def _on_selection_changed_quick(self) -> None:
@@ -2080,7 +2237,7 @@ class TabWycena(QWidget):
             rate_source = str(quick_totals.get("rate_source", "") or "").strip()
             worker_label = "wydatki firmy" if not rate_source or rate_source == "wydatki" else rate_source
             self.lab_selected.setText(
-                f'ID: {entry.get("id", "-")} | Klient: {entry.get("client", "-")} | VAT: {vat} | Marża: {margin:.2f}% | Pracownik: {worker_label}'
+                f'ID: {entry.get("id", "-")} | Klient: {entry.get("client", "-")} | VAT: {vat} | MarĹĽa: {margin:.2f}% | Pracownik: {worker_label}'
             )
             base_total = float(quick_totals.get("base_total", 0.0) or 0.0)
             netto = float(quick_totals.get("netto", 0.0) or 0.0)
@@ -2120,8 +2277,8 @@ class TabWycena(QWidget):
             self.lab_profit_total.setText(f"{(netto - base_total):.2f} zl")
             extras_total = float(quick_totals.get("extras_total", 0.0) or 0.0)
             self.lab_profit_report.setText(
-                f"Rentowność (wstępna): netto {netto:.2f} zl | brutto {brutto:.2f} zl | "
-                f"baza {base_total:.2f} zl | materiały {material_value:.2f} zl | usługi dodatkówe {extras_total:.2f} zl"
+                f"RentownoĹ›Ä‡ (wstÄ™pna): netto {netto:.2f} zl | brutto {brutto:.2f} zl | "
+                f"baza {base_total:.2f} zl | materiaĹ‚y {material_value:.2f} zl | usĹ‚ugi dodatkowe {extras_total:.2f} zl"
             )
             return
         assembly = self._selected_assembly()
@@ -2134,12 +2291,25 @@ class TabWycena(QWidget):
         technical_total, _base_total, _sale_total, _profit_total = self._compute_totals(assembly)
         base_total_raw = technical_total + float(self.sp_labor.value()) + float(self.sp_transport.value()) + float(self.sp_montage.value())
         base_total = self._pricing_service.apply_rules(base_total_raw, technical_total, self._pricing_rules)
-        sale_total = self._pricing_service.compute_sale(base_total, float(self.sp_margin.value()), self._policy_multiplier())
+        res = self._pricing_service.compute_sale(
+            base_total, 
+            float(self.sp_margin.value()), 
+            self._policy_multiplier(),
+            float(self.sp_architect_commission.value())
+        )
+        sale_total = res["final_sale"]
         profit_total = sale_total - base_total
         self.lab_base_total.setText(f"{base_total:.2f} zl")
         self.lab_sale_total.setText(f"{sale_total:.2f} zl")
         self.lab_profit_total.setText(f"{profit_total:.2f} zl")
-        self.lab_profit_report.setText(self._build_profitability_text(base_total, sale_total, technical_total))
+        
+        commission_val = res["commission"]
+        self.lab_profit_report.setText(
+            self._build_profitability_text(base_total, sale_total, technical_total) + 
+            f" | PROWIZJA: {commission_val:.2f} zl"
+        )
+        # Trigger global metrics update
+        self._refresh_table() 
 
     def _build_profitability_text(self, base_total: float, sale_total: float, technical_total: float) -> str:
         fixed_total = float(self._expenses_store.sum_items("fixed"))
@@ -2159,7 +2329,7 @@ class TabWycena(QWidget):
         """
         Zwraca czytelny snapshot do zakladki Podsumowanie w hubie Wycena.
 
-        Dla trybu szybkie wyceny pokazuje rowniez us?ugi dodatkówe jako jawny skladnik kosztu.
+        Dla trybu szybkie wyceny pokazuje rowniez us?ugi dodatkĂłwe jako jawny skladnik kosztu.
         """
         mode = self._mode()
         if mode == "quick":
@@ -2215,7 +2385,7 @@ class TabWycena(QWidget):
                 "transport": float(quick_totals.get("transport", 0.0) or 0.0),
                 "labor_cost": labor_cost,
                 "montage": float(quick_totals.get("montage", 0.0) or 0.0),
-                "vat": vat,
+                "vat": vat or 23.0,
                 "report": self.lab_profit_report.text(),
             }
 
@@ -2230,11 +2400,25 @@ class TabWycena(QWidget):
                 "profit_total": 0.0,
                 "technical_total": 0.0,
                 "labor_cost": 0.0,
-                "transport_cost": 0.0,
-                "montage_cost": 0.0,
+                "transport": 0.0,
+                "montage": 0.0,
                 "report": "Wybierz komplet z listy.",
             }
         technical_total, base_total, sale_total, profit_total = self._compute_totals(assembly)
+        # Recalculate based on current UI spinboxes for live snapshot
+        current_labor = float(self.sp_labor.value())
+        current_transport = float(self.sp_transport.value())
+        current_montage = float(self.sp_montage.value())
+        current_margin = float(self.sp_margin.value())
+        
+        current_commission = float(self.sp_architect_commission.value())
+        
+        base_raw = technical_total + current_labor + current_transport + current_montage
+        base_total = self._pricing_service.apply_rules(base_raw, technical_total, self._pricing_rules)
+        res = self._pricing_service.compute_sale(base_total, current_margin, self._policy_multiplier(), current_commission)
+        sale_total = res["final_sale"]
+        profit_total = sale_total - base_total
+        
         self._last_project_model = build_assembly_project_model(
             assembly,
             self._catalog,
@@ -2243,9 +2427,9 @@ class TabWycena(QWidget):
             base_total=base_total,
             sale_total=sale_total,
             profit_total=profit_total,
-            labor_cost=float(self.sp_labor.value()),
-            transport_cost=float(self.sp_transport.value()),
-            montage_cost=float(self.sp_montage.value()),
+            labor_cost=current_labor,
+            transport_cost=current_transport,
+            montage_cost=current_montage,
             pricing_policy=self._active_policy,
             policy_multiplier=self._policy_multiplier(),
         )
@@ -2258,20 +2442,28 @@ class TabWycena(QWidget):
             "base_total": float(base_total),
             "sale_total": float(sale_total),
             "profit_total": float(profit_total),
+            "brutto_total": float(sale_total) * 1.23,
             "technical_total": float(technical_total),
-            "labor_cost": float(self.sp_labor.value()),
-            "transport_cost": float(self.sp_transport.value()),
-            "montage_cost": float(self.sp_montage.value()),
-            "margin_percent": float(self.sp_margin.value()),
+            "material_value": float(technical_total),
+            "labor_cost": current_labor,
+            "transport": current_transport,
+            "montage": current_montage,
+            "margin_percent": current_margin,
+            "vat": 23.0,
             "report": self.lab_profit_report.text(),
         }
 
     def get_project_model(self) -> ProjectModel | None:
+        mode = self._mode()
+        if mode == "import_3d" and self._import_3d_widget:
+            return self._import_3d_widget.get_project_model()
+        if mode == "quick_complex" and self._szybka_wycena_widget:
+            return self._szybka_wycena_widget.get_project_model()
         return self._last_project_model
 
     def _on_save(self) -> None:
         if self._mode() == "quick":
-            self._set_status("Tryb 'Wycena wstępna' jest podglądem z bazy szybkich wycen.", ok=True)
+            self._set_status("Tryb 'Wycena wstÄ™pna' jest podglÄ…dem z bazy szybkich wycen.", ok=True)
             return
         assembly = self._selected_assembly()
         if assembly is None:
@@ -2281,13 +2473,14 @@ class TabWycena(QWidget):
         assembly.transport_cost_pln = float(self.sp_transport.value())
         assembly.montage_cost_pln = float(self.sp_montage.value())
         assembly.margin_percent = float(self.sp_margin.value())
+        assembly.architect_commission_percent = float(self.sp_architect_commission.value())
         result = self._assembly_store.overwrite(assembly)
         self._refresh_table()
         self._set_status(result.message_pl, ok=result.ok)
 
     def _on_clear(self) -> None:
         if self._mode() == "quick":
-            self._set_status("W trybie 'Wycena wstępna' nie ma dodatków do wyczyszczenia.", ok=True)
+            self._set_status("W trybie 'Wycena wstÄ™pna' nie ma dodatkĂłw do wyczyszczenia.", ok=True)
             return
         assembly = self._selected_assembly()
         if assembly is None:
@@ -2297,11 +2490,12 @@ class TabWycena(QWidget):
         assembly.transport_cost_pln = 0.0
         assembly.montage_cost_pln = 0.0
         assembly.margin_percent = 0.0
+        assembly.architect_commission_percent = 0.0
         result = self._assembly_store.overwrite(assembly)
         self._refresh_table()
         self._set_status("Wyczyszczono kalkulacje handlowa." if result.ok else result.message_pl, ok=result.ok)
 
-    # ── SZABLONY ─────────────────────────────────────────────────
+    # â”€â”€ SZABLONY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def _refresh_preset_combo(self) -> None:
         self.cb_preset.blockSignals(True)
@@ -2382,7 +2576,7 @@ class TabWycena(QWidget):
             linked_wall=linked_wall,
         )
 
-        export_rows: list[list[str]] = [["Modul", "Typ", "Kod", "Nazwa", "Ilość", "Jednostka", "Koszt [zl]"]]
+        export_rows: list[list[str]] = [["Modul", "Typ", "Kod", "Nazwa", "IloĹ›Ä‡", "Jednostka", "Koszt [zl]"]]
         for resolved in resolved_items:
             display = str(getattr(resolved, "display_name", "") or "Modul")
             breakdown = resolved.cost_breakdown
@@ -2415,14 +2609,15 @@ class TabWycena(QWidget):
         technical_total, _base, _sale, _profit = self._compute_totals(assembly)
         base_total_raw = technical_total + float(self.sp_labor.value()) + float(self.sp_transport.value()) + float(self.sp_montage.value())
         base_total = self._pricing_service.apply_rules(base_total_raw, technical_total, self._pricing_rules)
-        sale_total = self._pricing_service.compute_sale(base_total, float(self.sp_margin.value()), self._policy_multiplier())
+        sale_res = self._pricing_service.compute_sale(base_total, float(self.sp_margin.value()), self._policy_multiplier())
+        sale_total = float(sale_res.get("final_sale", 0.0) or 0.0)
         report_line = self._build_profitability_text(base_total, sale_total, technical_total)
 
         report_text = (
             f"Raport rentownosci\n"
             f"Data: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
             f"Komplet: {assembly.name}\n"
-            f"Zamówienie: {assembly.order_name or '-'}\n"
+            f"ZamĂłwienie: {assembly.order_name or '-'}\n"
             f"Klient: {assembly.client_name or '-'}\n"
             f"Polityka cenowa: {self.cb_policy.currentText()} (x{self._policy_multiplier():.2f})\n"
             f"Rola: {self.cb_role.currentText()}\n"
@@ -2448,7 +2643,7 @@ class TabWycena(QWidget):
 
     def _on_quick_export_pdf(self) -> None:
         if self._mode() != "quick":
-            self._set_status("Eksport PDF działa w trybie 'Szybka wycena'.", ok=False)
+            self._set_status("Eksport PDF dziaĹ‚a w trybie 'Szybka wycena'.", ok=False)
             return
         
         row = self._selected_quick_row()
@@ -2518,7 +2713,7 @@ class TabWycena(QWidget):
 
         now = datetime.now().strftime("%d.%m.%Y %H:%M")
 
-        # Us?ugi dodatkówe HTML
+        # Us?ugi dodatkĂłwe HTML
         extras_html = ""
         if extras_list:
             rows_html = "".join(
@@ -2527,7 +2722,7 @@ class TabWycena(QWidget):
                 for e in extras_list if isinstance(e, dict)
             )
             extras_html = f"""
-            <h3 style="margin-top:16px;">Usługi dodatkówe</h3>
+            <h3 style="margin-top:16px;">UsĹ‚ugi dodatkĂłwe</h3>
             <table style="width:100%;border-collapse:collapse;font-size:13px;">
               <thead><tr style="background:#edf2f7;">
                 <th style="text-align:left;padding:6px;">Opis</th>
@@ -2561,7 +2756,7 @@ class TabWycena(QWidget):
   <h1>WYCENA</h1>
   <div class="header-info">
     <div class="kv"><b>ID wyceny:</b> {quick_id}</div>
-    <div class="kv"><b>Klient:</b> {client_name or "—"}</div>
+    <div class="kv"><b>Klient:</b> {client_name or "â€”"}</div>
     {"<div class='kv'><b>Opis:</b> " + description + "</div>" if description else ""}
     <div class="kv"><b>Data:</b> {now}</div>
     <div class="kv"><b>VAT:</b> {vat}%</div>
@@ -2569,21 +2764,21 @@ class TabWycena(QWidget):
 
   <h2>Kosztorys</h2>
   <div class="box">
-    <div class="row"><span>Wartość materiałów</span><span>{material_value:,.2f} zł</span></div>
-    <div class="row"><span>Transport</span><span>{transport:,.2f} zł</span></div>
-    <div class="row"><span>Robocizna ({hours:.2f} h × {hour_rate:.2f} zł/h)</span><span>{labor_cost:,.2f} zł</span></div>
-    <div class="row"><span>Montaż</span><span>{montage:,.2f} zł</span></div>
-    {"<div class='row'><span>Usługi dodatkówe</span><span>" + f"{extras_total:,.2f} zł</span></div>" if extras_total else ""}
-    <div class="row bold"><span>Koszt bazowy</span><span>{base_total:,.2f} zł</span></div>
+    <div class="row"><span>WartoĹ›Ä‡ materiaĹ‚Ăłw</span><span>{material_value:,.2f} zĹ‚</span></div>
+    <div class="row"><span>Transport</span><span>{transport:,.2f} zĹ‚</span></div>
+    <div class="row"><span>Robocizna ({hours:.2f} h Ă— {hour_rate:.2f} zĹ‚/h)</span><span>{labor_cost:,.2f} zĹ‚</span></div>
+    <div class="row"><span>MontaĹĽ</span><span>{montage:,.2f} zĹ‚</span></div>
+    {"<div class='row'><span>UsĹ‚ugi dodatkĂłwe</span><span>" + f"{extras_total:,.2f} zĹ‚</span></div>" if extras_total else ""}
+    <div class="row bold"><span>Koszt bazowy</span><span>{base_total:,.2f} zĹ‚</span></div>
   </div>
 
   {extras_html}
 
-  <h2>Cena końcowa</h2>
+  <h2>Cena koĹ„cowa</h2>
   <div class="box">
-    <div class="row"><span>Marża</span><span>{margin:.1f}%</span></div>
-    <div class="row big"><span>NETTO</span><span>{netto:,.2f} zł</span></div>
-    <div class="row big green"><span>BRUTTO ({vat}% VAT)</span><span>{brutto:,.2f} zł</span></div>
+    <div class="row"><span>MarĹĽa</span><span>{margin:.1f}%</span></div>
+    <div class="row big"><span>NETTO</span><span>{netto:,.2f} zĹ‚</span></div>
+    <div class="row big green"><span>BRUTTO ({vat}% VAT)</span><span>{brutto:,.2f} zĹ‚</span></div>
   </div>
 
   <div class="footer">
@@ -2625,7 +2820,7 @@ class TabWycena(QWidget):
 
     def _on_export_pdf(self) -> None:
         if self._mode() == "quick":
-            self._set_status("Eksport PDF działa w trybie 'Komplety'.", ok=False)
+            self._set_status("Eksport PDF dziaĹ‚a w trybie 'Komplety'.", ok=False)
             return
         assembly = self._selected_assembly()
         if assembly is None:
@@ -2717,7 +2912,8 @@ class TabWycena(QWidget):
         margin_percent = float(getattr(assembly, "margin_percent", 0.0) or 0.0)
         base_total_raw = technical_total + labor_cost + transport_cost + montage_cost
         base_total = self._pricing_service.apply_rules(base_total_raw, technical_total, self._pricing_rules)
-        sale_total = self._pricing_service.compute_sale(base_total, margin_percent, self._policy_multiplier())
+        sale_res = self._pricing_service.compute_sale(base_total, margin_percent, self._policy_multiplier())
+        sale_total = float(sale_res.get("final_sale", 0.0) or 0.0)
         profit_total = sale_total - base_total
 
         material_total = sum(float(item.cost_breakdown.material_total_pln) for item in resolved_items)
@@ -2759,115 +2955,115 @@ class TabWycena(QWidget):
             
             <div class="header-info">
                 <p><strong>Komplet:</strong> {assembly_name}</p>
-                <p><strong>Zamówienie:</strong> {order_name}</p>
+                <p><strong>ZamĂłwienie:</strong> {order_name}</p>
                 <p><strong>Klient:</strong> {client_name}</p>
                 <p><strong>Data:</strong> {now}</p>
                 <p><strong>Polityka:</strong> {self.cb_policy.currentText()} (x{self._policy_multiplier():.2f})</p>
             </div>
 
-            <h2>📊 PODSUMOWANIE KOSZTÓW</h2>
+            <h2>đź“Š PODSUMOWANIE KOSZTĂ“W</h2>
             <div class="summary-box">
                 <div class="summary-row">
-                    <span>Materiały (płyta):</span>
-                    <span>{material_total:,.2f} zł</span>
+                    <span>MateriaĹ‚y (pĹ‚yta):</span>
+                    <span>{material_total:,.2f} zĹ‚</span>
                 </div>
                 <div class="summary-row">
                     <span>Okleiny (brzegi):</span>
-                    <span>{edgeband_total:,.2f} zł</span>
+                    <span>{edgeband_total:,.2f} zĹ‚</span>
                 </div>
                 <div class="summary-row">
                     <span>Okucia (akcesoria):</span>
-                    <span>{hardware_total:,.2f} zł</span>
+                    <span>{hardware_total:,.2f} zĹ‚</span>
                 </div>
                 <div class="summary-row total-row">
-                    <span>SUMA MATERIAŁÓW:</span>
-                    <span>{technical_total:,.2f} zł</span>
+                    <span>SUMA MATERIAĹĂ“W:</span>
+                    <span>{technical_total:,.2f} zĹ‚</span>
                 </div>
             </div>
 
-            <h2>⚙️ ROBOCIZNA I DODATKI</h2>
+            <h2>âš™ď¸Ź ROBOCIZNA I DODATKI</h2>
             <div class="summary-box">
                 <div class="summary-row">
-                    <span>Robocizna (montaż):</span>
-                    <span>{labor_cost:,.2f} zł</span>
+                    <span>Robocizna (montaĹĽ):</span>
+                    <span>{labor_cost:,.2f} zĹ‚</span>
                 </div>
                 <div class="summary-row">
                     <span>Transport:</span>
-                    <span>{transport_cost:,.2f} zł</span>
+                    <span>{transport_cost:,.2f} zĹ‚</span>
                 </div>
                 <div class="summary-row">
-                    <span>Montaż u klienta:</span>
-                    <span>{montage_cost:,.2f} zł</span>
+                    <span>MontaĹĽ u klienta:</span>
+                    <span>{montage_cost:,.2f} zĹ‚</span>
                 </div>
                 <div class="summary-row total-row">
                     <span>SUMA ROBOCIZNA:</span>
-                    <span>{labor_total:,.2f} zł</span>
+                    <span>{labor_total:,.2f} zĹ‚</span>
                 </div>
             </div>
 
-            <h2>💰 PORÓWNANIE: MATERIAŁY vs ROBOCIZNA</h2>
+            <h2>đź’° PORĂ“WNANIE: MATERIAĹY vs ROBOCIZNA</h2>
             <div class="summary-box">
                 <table>
                     <tr>
                         <th>Pozycja</th>
                         <th style="text-align:right;">Kwota</th>
-                        <th style="text-align:right;">Udział %</th>
+                        <th style="text-align:right;">UdziaĹ‚ %</th>
                     </tr>
                     <tr>
-                        <td>📦 Materiały</td>
-                        <td style="text-align:right;">{technical_total:,.2f} zł</td>
+                        <td>đź“¦ MateriaĹ‚y</td>
+                        <td style="text-align:right;">{technical_total:,.2f} zĹ‚</td>
                         <td style="text-align:right;">{technical_total/base_total*100 if base_total > 0 else 0:.1f}%</td>
                     </tr>
                     <tr>
-                        <td>👷 Robocizna</td>
-                        <td style="text-align:right;">{labor_total:,.2f} zł</td>
+                        <td>đź‘· Robocizna</td>
+                        <td style="text-align:right;">{labor_total:,.2f} zĹ‚</td>
                         <td style="text-align:right;">{labor_total/base_total*100 if base_total > 0 else 0:.1f}%</td>
                     </tr>
                     <tr style="background: #e2e8f0; font-weight: bold;">
-                        <td>SUMA KOSZTÓW</td>
-                        <td style="text-align:right;">{base_total:,.2f} zł</td>
+                        <td>SUMA KOSZTĂ“W</td>
+                        <td style="text-align:right;">{base_total:,.2f} zĹ‚</td>
                         <td style="text-align:right;">100%</td>
                     </tr>
                 </table>
             </div>
 
-            <h2>📈 MARŻA I ZYSK</h2>
+            <h2>đź“ MARĹ»A I ZYSK</h2>
             <div class="summary-box">
                 <div class="summary-row">
                     <span>Koszt bazowy:</span>
-                    <span>{base_total:,.2f} zł</span>
+                    <span>{base_total:,.2f} zĹ‚</span>
                 </div>
                 <div class="summary-row">
-                    <span>Marża:</span>
+                    <span>MarĹĽa:</span>
                     <span>{margin_percent:.1f}%</span>
                 </div>
                 <div class="summary-row">
-                    <span>Mnożnik polityki:</span>
+                    <span>MnoĹĽnik polityki:</span>
                     <span>x{self._policy_multiplier():.2f}</span>
                 </div>
                 <div class="summary-row total-row">
                     <span>CENA HANDLOWA (netto):</span>
-                    <span>{sale_total:,.2f} zł</span>
+                    <span>{sale_total:,.2f} zĹ‚</span>
                 </div>
                 <div class="summary-row profit">
-                    <span>ZYSK (marża kwotowa):</span>
-                    <span>{profit_total:,.2f} zł ({(profit_total/sale_total*100) if sale_total > 0 else 0:.1f}%)</span>
+                    <span>ZYSK (marĹĽa kwotowa):</span>
+                    <span>{profit_total:,.2f} zĹ‚ ({(profit_total/sale_total*100) if sale_total > 0 else 0:.1f}%)</span>
                 </div>
             </div>
 
-            <h2>📋 SZCZEGӣY MODUŁÓW</h2>
+            <h2>đź“‹ SZCZEGÓŁY MODUĹĂ“W</h2>
             <table>
                 <tr>
                     <th style="width:90px;">Zdjecie</th>
-                    <th>Moduł</th>
-                    <th style="text-align:right;">Materiał</th>
+                    <th>ModuĹ‚</th>
+                    <th style="text-align:right;">MateriaĹ‚</th>
                     <th style="text-align:right;">Okleina</th>
                     <th style="text-align:right;">Okucia</th>
                     <th style="text-align:right;">SUMA</th>
                 </tr>
         """
         for resolved in resolved_items:
-            display = str(getattr(resolved, "display_name", "") or "Moduł")
+            display = str(getattr(resolved, "display_name", "") or "ModuĹ‚")
             bd = resolved.cost_breakdown
             mat = float(bd.material_total_pln)
             edge = float(bd.edgeband_total_pln)
@@ -2880,10 +3076,10 @@ class TabWycena(QWidget):
                 <tr>
                     <td style="text-align:center;">{img_html}</td>
                     <td>{display}</td>
-                    <td style="text-align:right;">{mat:,.2f} zł</td>
-                    <td style="text-align:right;">{edge:,.2f} zł</td>
-                    <td style="text-align:right;">{hard:,.2f} zł</td>
-                    <td style="text-align:right; font-weight: bold;">{total:,.2f} zł</td>
+                    <td style="text-align:right;">{mat:,.2f} zĹ‚</td>
+                    <td style="text-align:right;">{edge:,.2f} zĹ‚</td>
+                    <td style="text-align:right;">{hard:,.2f} zĹ‚</td>
+                    <td style="text-align:right; font-weight: bold;">{total:,.2f} zĹ‚</td>
                 </tr>
             """
 
@@ -2891,7 +3087,7 @@ class TabWycena(QWidget):
             </table>
 
             <div class="footer">
-                <p>Wygenerowano: {now} | TECH_modul - System zarządzania projektami meblowymi</p>
+                <p>Wygenerowano: {now} | TECH_modul - System zarzÄ…dzania projektami meblowymi</p>
             </div>
         </body>
         </html>
@@ -2902,11 +3098,63 @@ class TabWycena(QWidget):
         is_visible = self.toolbar_container.isVisible()
         self.toolbar_container.setVisible(not is_visible)
         if is_visible:
-            self.toolbar_toggle.setText("Pasek narzędzi ▶")
+            self.toolbar_toggle.setText("Pasek narzÄ™dzi â–¶")
         else:
-            self.toolbar_toggle.setText("Pasek narzędzi ▼")
+            self.toolbar_toggle.setText("Pasek narzÄ™dzi â–Ľ")
 
     def _set_status(self, message: str, ok: bool) -> None:
         color = "#2d6a4f" if ok else "#b42318"
         self.lab_status.setStyleSheet(f"color:{color};")
         self.lab_status.setText(str(message or ""))
+
+    def _on_export_giblab(self) -> None:
+        """Eksportuje bieĹĽÄ…cy widok projektu do pliku .project."""
+        modules: list[Any] = []
+        for row in self._filtered_rows():
+            assembly = row.get("assembly")
+            if assembly is None:
+                continue
+            modules.extend(list(getattr(assembly, "modules", []) or []))
+        if not modules:
+            QMessageBox.warning(self, "Brak danych", "Nie znaleziono moduĹ‚Ăłw do eksportu w bieĹĽÄ…cym widoku.")
+            return
+
+        selected_order = str(self.cb_order.currentData() or "").strip()
+        project_name = selected_order or "PROJEKT_MEBLE"
+        default_file = f"{project_name}.project"
+        
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Eksportuj do GibLab (.project)", default_file, "Projekt GibLab (*.project)"
+        )
+        if not path:
+            return
+
+        try:
+            import traceback
+            export_project_to_3dc_xml(modules, project_name, path)
+            QMessageBox.information(
+                self, "Eksport zakoĹ„czony", 
+                f"Projekt zostaĹ‚ pomyĹ›lnie wyeksportowany do pliku:\n{path}\n\nFormat: 3DConstructor 3.0 / GibLab"
+            )
+        except Exception as exc:
+            traceback.print_exc()
+            QMessageBox.critical(self, "BĹ‚Ä…d eksportu", f"Nie udaĹ‚o siÄ™ wyeksportowaÄ‡ projektu.\n\n{exc}")
+
+    def _refresh_project_summary(self, model: ProjectModel | None) -> None:
+        """OdĹ›wieĹĽa gĂłrne karty metryk na podstawie bieĹĽÄ…cego ProjectModel."""
+        if model is None:
+            for card in (self.card_count, self.card_tech, self.card_sale, self.card_profit):
+                self._set_metric(card, "0")
+            return
+
+        pricing = getattr(model, "pricing_snapshot", None)
+        total_tech = float(getattr(pricing, "technical_total", 0.0) or 0.0)
+        total_sale = float(getattr(pricing, "sale_total", 0.0) or 0.0)
+        total_profit = float(getattr(pricing, "profit_total", total_sale - total_tech) or 0.0)
+        total_assemblies = len(list(getattr(model, "assemblies", []) or []))
+
+        self._set_metric(self.card_count, str(total_assemblies))
+        self._set_metric(self.card_tech, f"{total_tech:.2f} zl")
+        self._set_metric(self.card_sale, f"{total_sale:.2f} zl")
+        pct = (total_profit / total_sale * 100.0) if total_sale > 0 else 0.0
+        self._set_metric(self.card_profit, f"{total_profit:.2f} zl ({pct:.1f}%)")

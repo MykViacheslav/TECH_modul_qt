@@ -11,6 +11,7 @@ class _StationPane(QWidget):
         super().__init__(parent)
         self._station_filter = station_filter
         self._view: WallCalendarView | None = None
+        self._reference_date_iso: str = ""
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -34,6 +35,8 @@ class _StationPane(QWidget):
 
     def ensure_loaded(self) -> None:
         if self._view is not None:
+            if self._reference_date_iso and hasattr(self._view, "set_reference_date"):
+                self._view.set_reference_date(self._reference_date_iso)
             return
         layout = self.layout()
         if layout is None:
@@ -44,7 +47,14 @@ class _StationPane(QWidget):
             parent=self,
             station_filter=self._station_filter,
         )
+        if self._reference_date_iso and hasattr(self._view, "set_reference_date"):
+            self._view.set_reference_date(self._reference_date_iso)
         layout.addWidget(self._view, 1)
+
+    def set_reference_date(self, date_iso: str) -> None:
+        self._reference_date_iso = str(date_iso or "").strip()
+        if self._view is not None and hasattr(self._view, "set_reference_date"):
+            self._view.set_reference_date(self._reference_date_iso)
 
 
 class TabStanowiska(QWidget):
@@ -59,7 +69,7 @@ class TabStanowiska(QWidget):
         root.addWidget(header)
 
         sub = QLabel("CNC / Oklejanie / Lakiernia / Montaz / Biuro")
-        sub.setStyleSheet("font-size:12px;color:#475569;")
+        sub.setStyleSheet("font-size:12px;color:#94a3b8;")
         root.addWidget(sub)
 
         plan_hint = QLabel(
@@ -68,7 +78,7 @@ class TabStanowiska(QWidget):
         )
         plan_hint.setWordWrap(True)
         plan_hint.setStyleSheet(
-            "QLabel{background:#f8fafc;border:1px solid #d7e1ef;border-radius:8px;"
+            "QLabel{background:transparent;border:1px solid #d7e1ef;border-radius:8px;"
             "padding:7px 10px;color:#334155;font-size:11px;font-weight:600;}"
         )
         root.addWidget(plan_hint)
@@ -94,6 +104,56 @@ class TabStanowiska(QWidget):
 
         # Load first station immediately so user sees real view right away.
         self._on_tab_changed(0)
+
+    @staticmethod
+    def _normalize_station_key(value: str) -> str:
+        token = str(value or "").strip().lower()
+        repl = {
+            "ą": "a",
+            "ć": "c",
+            "ę": "e",
+            "ł": "l",
+            "ń": "n",
+            "ó": "o",
+            "ś": "s",
+            "ż": "z",
+            "ź": "z",
+        }
+        for src, dst in repl.items():
+            token = token.replace(src, dst)
+        return " ".join(token.split())
+
+    def open_station(self, station_key: str, reference_date: str | None = None) -> None:
+        """Publiczny minimalny handoff: wybiera stanowisko i dociąga pane."""
+        normalized = self._normalize_station_key(station_key)
+        station_to_tab = {
+            "cnc": "CNC",
+            "oklejanie": "Oklejanie",
+            "lakiernia": "Lakiernia",
+            "montaz": "Montaz",
+            "zborka": "Montaz",
+            "skladanie": "Montaz",
+            "biuro": "BIURO",
+            "produkcja": "CNC",
+            "wycena": "BIURO",
+            "projekt": "BIURO",
+            "zakup materialow": "BIURO",
+            "poprawki": "Montaz",
+            "probki": "BIURO",
+            "": "BIURO",
+        }
+        target_title = station_to_tab.get(normalized, "BIURO")
+        target_index = -1
+        for idx in range(self._tabs.count()):
+            if self._tabs.tabText(idx) == target_title:
+                target_index = idx
+                break
+        if target_index < 0:
+            target_index = 0
+        self._tabs.setCurrentIndex(target_index)
+        if reference_date is not None and 0 <= target_index < len(self._panes):
+            self._panes[target_index].set_reference_date(str(reference_date or "").strip())
+        self._on_tab_changed(target_index)
 
     def _on_tab_changed(self, index: int) -> None:
         if index < 0 or index >= len(self._panes):

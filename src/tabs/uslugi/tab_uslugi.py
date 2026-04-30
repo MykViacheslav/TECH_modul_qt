@@ -869,7 +869,7 @@ class _UslugaPanel(QWidget):
         self._card_style = (
             "QFrame { border:1px solid #2a4368; border-radius:8px; background:#111b30; }"
             if self._is_tech
-            else "QFrame { border:1px solid #d9e0ea; border-radius:8px; background:#ffffff; }"
+            else "QFrame { border:1px solid #d9e0ea; border-radius:8px; background:transparent; }"
         )
         self._status_color = "#8fc4ff" if self._is_tech else "#2f6f3e"
         self._muted_color = "#9bb0cd" if self._is_tech else "#555555"

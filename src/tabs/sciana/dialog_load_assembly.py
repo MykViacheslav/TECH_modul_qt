@@ -32,9 +32,9 @@ def _assembly_info_text(assembly: FurnitureAssemblyDef | None) -> str:
     lines = [
         f'Nazwa: {getattr(assembly, "name", "") or ""}',
         f'Klient: {getattr(assembly, "client_name", "") or "-"}',
-        f'Zamowienie: {getattr(assembly, "order_name", "") or "-"}',
+        f'Zamówienie: {getattr(assembly, "order_name", "") or "-"}',
         f'Pracownik: {getattr(assembly, "worker_name", "") or "-"}',
-        f'Powiazana sciana: {getattr(assembly, "wall_name", "") or "-"}',
+        f'Powiązana ściana: {getattr(assembly, "wall_name", "") or "-"}',
         f'Moduly: {len(getattr(assembly, "items", []) or [])}',
         f'Wymiary: {float(getattr(assembly, "width_mm", 0.0) or 0.0):.0f} x '
         f'{float(getattr(assembly, "height_mm", 0.0) or 0.0):.0f} x '
@@ -62,7 +62,7 @@ class LoadAssemblyDialog(QDialog):
         root.addWidget(head)
 
         self.tbl = QTableWidget(0, 6, self)
-        self.tbl.setHorizontalHeaderLabels(["Nazwa", "Klient", "Zamowienie", "Pracownik", "Sciana", "Moduly"])
+        self.tbl.setHorizontalHeaderLabels(["Nazwa", "Klient", "Zamówienie", "Pracownik", "Ściana", "Moduły"])
         self.tbl.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.tbl.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.tbl.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -71,7 +71,7 @@ class LoadAssemblyDialog(QDialog):
         root.addWidget(self.tbl, 1)
 
         manage_row = QHBoxLayout()
-        self.btn_delete = QPushButton("Usun z bazy", self)
+        self.btn_delete = QPushButton("Usuń z bazy", self)
         self.btn_delete.setEnabled(False)
         self.lab_err = QLabel("", self)
         self.lab_err.setWordWrap(True)
@@ -162,8 +162,8 @@ class LoadAssemblyDialog(QDialog):
     def _confirm_delete(self, name: str) -> bool:
         answer = QMessageBox.question(
             self,
-            "Usun komplet",
-            f'Czy na pewno usunac komplet "{name}" z bazy...',
+            "Usuń komplet",
+            f'Czy na pewno usunąć komplet "{name}" z bazy...',
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )

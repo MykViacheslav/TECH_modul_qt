@@ -5,7 +5,7 @@ def test_part_def_material_override_roundtrip():
     from src.domain.module_models import PartDef
 
     p1 = PartDef(
-        key="side_left",
+        id="side_left",
         name_pl="Bok lewy",
         material_key="PB16",
         material_override_key="PB16",

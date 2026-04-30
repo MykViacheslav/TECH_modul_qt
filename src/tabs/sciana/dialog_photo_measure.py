@@ -48,6 +48,7 @@ class PhotoMeasureCanvas(QGraphicsView):
         self._pixmap_item: QGraphicsPixmapItem | None = None
         self._overlay_items: list[object] = []
         self._points: list[QPointF] = []
+        self._is_resizing = False
 
     @property
     def points(self) -> list[QPointF]:
@@ -84,8 +85,14 @@ class PhotoMeasureCanvas(QGraphicsView):
 
     def resizeEvent(self, event) -> None:  # type: ignore[override]
         super().resizeEvent(event)
+        if self._is_resizing:
+            return
         if self.has_image():
-            self.fitInView(self._scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+            self._is_resizing = True
+            try:
+                self.fitInView(self._scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+            finally:
+                self._is_resizing = False
 
     def mousePressEvent(self, event) -> None:  # type: ignore[override]
         if event.button() != Qt.MouseButton.LeftButton or not self.has_image():
@@ -144,15 +151,15 @@ class PhotoMeasureCanvas(QGraphicsView):
 
 class PhotoMeasureDialog(QDialog):
     MEASUREMENT_KINDS: tuple[tuple[str, str], ...] = (
-        ("distance", "Odleglosc"),
-        ("width", "Szerokosc"),
-        ("height", "Wysokosc"),
-        ("depth", "Glebokosc"),
+        ("distance", "Odległość"),
+        ("width", "Szerokość"),
+        ("height", "Wysokość"),
+        ("depth", "Głębokość"),
     )
 
     def __init__(self, parent: QWidget | None = None, photo_path: str = "", quote_reference: str = "") -> None:
         super().__init__(parent)
-        self.setWindowTitle("Pomiar ze zdjecia")
+        self.setWindowTitle("Pomiar ze zdjęcia")
         self.setMinimumSize(900, 680)
 
         self._measurement_payload: dict[str, object] | None = None
@@ -165,7 +172,7 @@ class PhotoMeasureDialog(QDialog):
 
         path_row = QHBoxLayout()
         self.ed_photo_path = QLineEdit()
-        self.ed_photo_path.setPlaceholderText("Sciezka do zdjecia")
+        self.ed_photo_path.setPlaceholderText("Ścieżka do zdjęcia")
         self.btn_pick_photo = QPushButton("Wybierz")
         self.btn_pick_photo.clicked.connect(self._pick_photo)
         self.btn_load_photo = QPushButton("Wczytaj")
@@ -186,7 +193,7 @@ class PhotoMeasureDialog(QDialog):
         self.sp_known_mm.setDecimals(1)
         self.sp_known_mm.setValue(1000.0)
         self.sp_known_mm.setSuffix(" mm")
-        self.btn_calibrate = QPushButton("Ustaw kalibracje z 2 punktow")
+        self.btn_calibrate = QPushButton("Ustaw kalibrację z 2 punktów")
         self.btn_calibrate.clicked.connect(self._set_calibration)
         cal_row = QWidget()
         cal_layout = QHBoxLayout(cal_row)
@@ -203,7 +210,7 @@ class PhotoMeasureDialog(QDialog):
         form.addRow("", self.lab_result_mm)
 
         self.ed_measure_name = QLineEdit()
-        self.ed_measure_name.setPlaceholderText("np. Sciana A netto")
+        self.ed_measure_name.setPlaceholderText("np. Ściana A netto")
         form.addRow("Nazwa pomiaru", self.ed_measure_name)
 
         self.cb_measure_kind = QLineEdit()
@@ -237,7 +244,7 @@ class PhotoMeasureDialog(QDialog):
     def _pick_photo(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "Wybierz zdjecie do pomiaru",
+            "Wybierz zdjęcie do pomiaru",
             "",
             "Obrazy (*.png *.jpg *.jpeg *.bmp *.webp);;Wszystkie pliki (*.*)",
         )
@@ -247,13 +254,13 @@ class PhotoMeasureDialog(QDialog):
     def _load_photo(self) -> None:
         path = str(self.ed_photo_path.text().strip())
         if not path:
-            QMessageBox.warning(self, "Brak pliku", "Wybierz sciezke do zdjecia.")
+            QMessageBox.warning(self, "Brak pliku", "Wybierz ścieżkę do zdjęcia.")
             return
         if not Path(path).exists():
             QMessageBox.warning(self, "Brak pliku", f"Nie znaleziono pliku:\n{path}")
             return
         if not self.canvas.load_image(path):
-            QMessageBox.warning(self, "Blad obrazu", "Nie udalo sie odczytac obrazu.")
+            QMessageBox.warning(self, "Błąd obrazu", "Nie udało się odczytać obrazu.")
             return
         self._refresh_distance_labels()
 
@@ -274,7 +281,7 @@ class PhotoMeasureDialog(QDialog):
             QMessageBox.warning(self, "Kalibracja", "Kliknij 2 punkty na znanym odcinku.")
             return
         if known_mm <= 0.0:
-            QMessageBox.warning(self, "Kalibracja", "Podaj dodatnia dlugosc znanego odcinka.")
+            QMessageBox.warning(self, "Kalibracja", "Podaj dodatnią długość znanego odcinka.")
             return
         self._mm_per_px = float(known_mm / px)
         self._refresh_distance_labels()
@@ -285,7 +292,7 @@ class PhotoMeasureDialog(QDialog):
             QMessageBox.warning(self, "Pomiar", "Kliknij 2 punkty pomiarowe.")
             return
         if self._mm_per_px <= 0.0:
-            QMessageBox.warning(self, "Pomiar", "Najpierw ustaw kalibracje.")
+            QMessageBox.warning(self, "Pomiar", "Najpierw ustaw kalibrację.")
             return
         self._refresh_distance_labels()
 
@@ -295,11 +302,11 @@ class PhotoMeasureDialog(QDialog):
             QMessageBox.warning(
                 self,
                 "Pomiar",
-                "Ustaw kalibracje i zaznacz 2 punkty pomiarowe, zanim zatwierdzisz.",
+                "Ustaw kalibrację i zaznacz 2 punkty pomiarowe, zanim zatwierdzisz.",
             )
             return
         mm_value = distance_mm(px, self._mm_per_px)
-        measure_name = str(self.ed_measure_name.text().strip() or "Pomiar ze zdjecia")
+        measure_name = str(self.ed_measure_name.text().strip() or "Pomiar ze zdjęcia")
         self._measurement_payload = {
             "name": measure_name,
             "kind": "distance",

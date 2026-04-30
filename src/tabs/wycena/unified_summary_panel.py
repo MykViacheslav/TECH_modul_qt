@@ -58,7 +58,7 @@ class UnifiedSummaryPanel(QWidget):
         # === HEADER ===
         head = QHBoxLayout()
         title = QLabel("Ujednolicone Podsumowanie Wyceny", self)
-        title.setStyleSheet("font-size:18px; font-weight:800; color:#10233f;")
+        title.setStyleSheet("font-size:18px; font-weight:800; color:#e8efff;")
         head.addWidget(title, 1)
         self.btn_refresh = QPushButton("Odśwież", self)
         head.addWidget(self.btn_refresh, 0)
@@ -67,7 +67,7 @@ class UnifiedSummaryPanel(QWidget):
         # === SCOPE ===
         self.lab_scope = QLabel("", self)
         self.lab_scope.setWordWrap(True)
-        self.lab_scope.setStyleSheet("color:#526174; font-size:12px;")
+        self.lab_scope.setStyleSheet("color:#94a3b8; font-size:12px;")
         root.addWidget(self.lab_scope, 0, Qt.AlignmentFlag.AlignLeft)
 
         # === MAIN CONTENT (scrollable) ===
@@ -83,9 +83,9 @@ class UnifiedSummaryPanel(QWidget):
         scroll.setWidget(content)
 
         # === PRICING BREAKDOWN ===
-        pricing_frame = QFrame(self)
+        pricing_frame = QFrame(self); pricing_frame.setProperty("uiCard", True)
         pricing_frame.setStyleSheet(
-            "QFrame{background:#ffffff;border:1px solid #d7e1ef;border-radius:12px;}"
+            "QFrame{background:transparent;border:1px solid #d7e1ef;border-radius:12px;}"
         )
         pricing_layout = QGridLayout(pricing_frame)
         pricing_layout.setContentsMargins(14, 14, 14, 14)
@@ -109,9 +109,9 @@ class UnifiedSummaryPanel(QWidget):
 
             r = idx
             lab = QLabel(label_text, pricing_frame)
-            lab.setStyleSheet("color:#526174; font-size:11px; font-weight:700;")
+            lab.setStyleSheet("color:#94a3b8; font-size:11px; font-weight:700;")
             val = QLabel("—", pricing_frame)
-            val.setStyleSheet("color:#10233f; font-size:14px; font-weight:800;")
+            val.setStyleSheet("color:#e8efff; font-size:14px; font-weight:800;")
             if "finał" in label_text or "netto" in label_text:
                 val.setStyleSheet("color:#1e40af; font-size:16px; font-weight:900;")
 
@@ -122,9 +122,9 @@ class UnifiedSummaryPanel(QWidget):
         content_layout.addWidget(pricing_frame, 0)
 
         # === SOURCES BREAKDOWN ===
-        sources_frame = QFrame(self)
+        sources_frame = QFrame(self); sources_frame.setProperty("uiCard", True)
         sources_frame.setStyleSheet(
-            "QFrame{background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;}"
+            "QFrame{background:transparent;border:1px solid #e2e8f0;border-radius:12px;}"
         )
         sources_layout = QVBoxLayout(sources_frame)
         sources_layout.setContentsMargins(14, 14, 14, 14)
@@ -142,7 +142,7 @@ class UnifiedSummaryPanel(QWidget):
         content_layout.addWidget(sources_frame, 0)
 
         # === GIBLAB METRICS (if available) ===
-        self.giblab_frame = QFrame(self)
+        self.giblab_frame = QFrame(self); self.giblab_frame.setProperty("uiCard", True)
         self.giblab_frame.setStyleSheet(
             "QFrame{background:#fef3c7;border:1px solid #fcd34d;border-radius:12px;}"
         )
@@ -163,7 +163,7 @@ class UnifiedSummaryPanel(QWidget):
         content_layout.addWidget(self.giblab_frame, 0)
 
         # === AUDIT TRAIL ===
-        audit_frame = QFrame(self)
+        audit_frame = QFrame(self); audit_frame.setProperty("uiCard", True)
         audit_frame.setStyleSheet(
             "QFrame{background:#f0fdf4;border:1px solid #dcfce7;border-radius:12px;}"
         )

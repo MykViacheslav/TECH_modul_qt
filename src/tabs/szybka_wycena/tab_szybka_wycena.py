@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import os
@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
     QToolButton,
     QVBoxLayout,
     QWidget,
+    QSizePolicy,
 )
 
 from src.domain.project_model import ProjectModel
@@ -38,16 +39,7 @@ from src.tabs.baza_szybkich_wycen.tab_baza_szybkich_wycen import (
 from src.storage.catalog_store_json import CatalogStoreJson
 from src.storage.client_store_json import ClientStoreJson
 
-TABLE_TEXT_STYLE = """
-QTableWidget {
-    color: #1f2937;
-    selection-color: #0f172a;
-}
-QTableWidget::item:selected {
-    background: #dbeafe;
-    color: #0f172a;
-}
-"""
+TABLE_TEXT_STYLE = ""
 
 
 SECTION_SCOPE_ITEMS: tuple[str, ...] = (
@@ -268,8 +260,8 @@ class SzybkaWycenaSection(QFrame):
         controls.addWidget(self.ed_total, 0)
         body_layout.addWidget(self.controls_widget, 0)
 
-        materials_frame = QFrame(self)
-        materials_frame.setStyleSheet("QFrame { border: 1px solid #d9e0ea; border-radius: 8px; background:#ffffff; }")
+        materials_frame = QFrame(self); materials_frame.setProperty("uiCard", True)
+        materials_frame.setStyleSheet("QFrame { border: 1px solid #d9e0ea; border-radius: 8px; background:transparent; }")
         materials_layout = QVBoxLayout(materials_frame)
         materials_layout.setContentsMargins(8, 8, 8, 8)
         materials_layout.setSpacing(6)
@@ -314,8 +306,8 @@ class SzybkaWycenaSection(QFrame):
         materials_layout.addWidget(self.materials_body, 1)
         body_layout.addWidget(materials_frame, 1)
 
-        hardware_frame = QFrame(self)
-        hardware_frame.setStyleSheet("QFrame { border: 1px solid #d9e0ea; border-radius: 8px; background:#ffffff; }")
+        hardware_frame = QFrame(self); hardware_frame.setProperty("uiCard", True)
+        hardware_frame.setStyleSheet("QFrame { border: 1px solid #d9e0ea; border-radius: 8px; background:transparent; }")
         hardware_layout = QVBoxLayout(hardware_frame)
         hardware_layout.setContentsMargins(8, 8, 8, 8)
         hardware_layout.setSpacing(6)
@@ -989,11 +981,11 @@ class TabSzybkaWycena(QWidget):
 
         row_actions = QHBoxLayout()
         row_actions.setSpacing(8)
-        self.btn_add_section = QPushButton("+ Dodaj pasek", self)
-        self.btn_edit_section = QPushButton("Modyfikuj pasek", self)
-        self.btn_remove_section = QPushButton("Wykasuj pasek", self)
-        self.btn_save_to_base = QPushButton("Dodaj do BAZY wycen", self)
-        self.btn_export_pdf = QPushButton("Eksport PDF", self)
+        self.btn_add_section = QPushButton("➕ Dodaj pasek", self)
+        self.btn_edit_section = QPushButton("✏️ Modyfikuj", self)
+        self.btn_remove_section = QPushButton("🗑️ Usun", self)
+        self.btn_save_to_base = QPushButton("💾 Zapisz w bazie", self)
+        self.btn_export_pdf = QPushButton("📄 Eksport PDF", self)
         self.cb_client_selector = QComboBox(self)
         self.cb_client_selector.setMinimumWidth(220)
         self.ed_offer_title = QLineEdit(self)
@@ -1007,6 +999,16 @@ class TabSzybkaWycena(QWidget):
         row_actions.addWidget(self.btn_edit_section, 0)
         row_actions.addWidget(self.btn_remove_section, 0)
         row_actions.addWidget(self.btn_save_to_base, 0)
+
+        for btn in (self.btn_add_section, self.btn_edit_section, self.btn_remove_section, self.btn_save_to_base, self.btn_export_pdf):
+            btn.setMinimumHeight(32)
+            btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        
+        self.btn_add_section.setFixedWidth(130)
+        self.btn_edit_section.setFixedWidth(110)
+        self.btn_remove_section.setFixedWidth(100)
+        self.btn_save_to_base.setFixedWidth(150)
+        self.btn_export_pdf.setFixedWidth(130)
         row_actions.addWidget(self.btn_export_pdf, 0)
         row_actions.addWidget(QLabel("Oferta:", self), 0)
         row_actions.addWidget(self.ed_offer_title, 0)

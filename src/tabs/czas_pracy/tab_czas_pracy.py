@@ -30,16 +30,7 @@ from src.domain.worker_models import WorkerDef
 from src.storage.work_time_store_json import WorkTimeStoreJson
 from src.storage.worker_store_json import WorkerStoreJson
 
-TABLE_TEXT_STYLE = """
-QTableWidget {
-    color: #1f2937;
-    selection-color: #0f172a;
-}
-QTableWidget::item:selected {
-    background: #dbeafe;
-    color: #0f172a;
-}
-"""
+TABLE_TEXT_STYLE = ""
 
 
 MONTH_ITEMS: tuple[tuple[int, str], ...] = (
@@ -323,7 +314,7 @@ class TabCzasPracy(QWidget):
 
         self.lab_breakdown = QLabel("", self)
         self.lab_breakdown.setWordWrap(True)
-        self.lab_breakdown.setStyleSheet("color:#475569; font-size: 12px;")
+        self.lab_breakdown.setStyleSheet("color:#94a3b8; font-size: 12px;")
         summary_layout.addWidget(self.lab_breakdown)
 
         # legenda kolorĂłw
@@ -456,7 +447,7 @@ class TabCzasPracy(QWidget):
     # ------------------------------------------------------------------
 
     def _make_panel(self, title: str, subtitle: str = "") -> tuple[QFrame, QVBoxLayout]:
-        frame = QFrame(self)
+        frame = QFrame(self); frame.setProperty("uiCard", True)
         frame.setStyleSheet(
             "QFrame { border: 1px solid #d8e2ec; border-radius: 12px; background: #fdfdfd; }"
         )
@@ -474,9 +465,9 @@ class TabCzasPracy(QWidget):
         return frame, layout
 
     def _make_metric_card(self, title: str, value: str) -> QFrame:
-        frame = QFrame(self)
+        frame = QFrame(self); frame.setProperty("uiCard", True)
         frame.setStyleSheet(
-            "QFrame { border: 1px solid #d8e2ec; border-radius: 14px; background: #ffffff; min-width: 150px; }"
+            "QFrame { border: 1px solid #d8e2ec; border-radius: 14px; background: transparent; min-width: 150px; }"
         )
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(14, 12, 14, 12)

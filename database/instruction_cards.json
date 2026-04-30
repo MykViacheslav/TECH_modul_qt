@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "items": {
+    "INS-OKUCIA-001": {
+      "instruction_id": "INS-OKUCIA-001",
+      "category": "okucia",
+      "title": "Dobor zawiasow i prowadnic",
+      "when_to_use": "Przed zatwierdzeniem finalnej listy elementow.",
+      "impact": "Zmienia koszt, czas montazu i trwalosc zabudowy.",
+      "steps": "Sprawdz ciezar frontu.\nDobierz zawias/prowadnice do obciazenia.\nPotwierdz rozstaw i ilosc punktow mocowania.",
+      "visualization_path": ""
+    },
+    "INS-MONTAZ-001": {
+      "instruction_id": "INS-MONTAZ-001",
+      "category": "montaz",
+      "title": "Kolejnosc montazu na obiekcie",
+      "when_to_use": "W dniu montazu i podczas odprawy zespolu.",
+      "impact": "Redukuje poprawki i czas pracy ekipy na miejscu.",
+      "steps": "1. Weryfikacja wymiarow pomieszczenia.\n2. Ustawienie i poziomowanie baz.\n3. Montaz wysokich elementow i frontow.\n4. Kontrola szczelin i finalny odbior.",
+      "visualization_path": ""
+    }
+  }
+}

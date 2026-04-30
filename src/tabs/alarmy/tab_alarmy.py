@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -31,16 +32,7 @@ from src.domain.alarm_models import (
 from src.storage.alarm_store_json import AlarmStoreJson
 from src.ui.theme_utils import get_muted_color
 
-TABLE_TEXT_STYLE = """
-QTableWidget {
-    color: #1f2937;
-    selection-color: #0f172a;
-}
-QTableWidget::item:selected {
-    background: #dbeafe;
-    color: #0f172a;
-}
-"""
+TABLE_TEXT_STYLE = ""
 
 
 class TabAlarmy(QWidget):
@@ -54,14 +46,14 @@ class TabAlarmy(QWidget):
         root.setSpacing(12)
 
         title = QLabel("ALARMY I POWIADOMIENIA", self)
-        title.setStyleSheet("font-size:22px; font-weight:800;")
+        title.setStyleSheet("font-size:24px; font-weight:900; color:#f87171;")
         root.addWidget(title, 0, Qt.AlignmentFlag.AlignLeft)
 
         subtitle = QLabel(
-            "Monitoruj braki, platnosci, terminy i inne wazne zdarzenia w firmie.",
+            "Monitoruj braki, płatności, terminy i zdarzenia krytyczne w czasie rzeczywistym.",
             self,
         )
-        subtitle.setStyleSheet(f"color:{get_muted_color()};")
+        subtitle.setStyleSheet("color:#94a3b8; font-size:13px;")
         subtitle.setWordWrap(True)
         root.addWidget(subtitle, 0, Qt.AlignmentFlag.AlignLeft)
 
@@ -155,20 +147,12 @@ class TabAlarmy(QWidget):
         root.addWidget(self.ed_description, 0)
 
         # === AKCJE Z ALARMU (szybkie działania) ===
-        actions_frame = QFrame(self)
-        actions_frame.setStyleSheet("""
-            QFrame {
-                background: #f8fafc;
-                border: 1px solid #e2e8f0;
-                border-radius: 8px;
-                padding: 8px;
-            }
-        """)
+        actions_frame = QFrame(self); actions_frame.setProperty("uiCard", "true")
         actions_layout = QVBoxLayout(actions_frame)
         actions_layout.setSpacing(6)
         
-        actions_title = QLabel("Szybkie akcje dla wybranego alarmu:", self)
-        actions_title.setStyleSheet("font-weight: bold; color: #1e293b; font-size: 12px;")
+        actions_title = QLabel("BŁYSKAWICZNE AKCJE ANALITYCZNE:", self)
+        actions_title.setStyleSheet("font-weight: 900; color: #60a5fa; font-size: 10px; letter-spacing: 1px;")
         actions_layout.addWidget(actions_title)
         
         actions_row = QHBoxLayout()
@@ -265,10 +249,10 @@ class TabAlarmy(QWidget):
                 sev_label = ALARM_SEVERITY_LABELS.get(alarm.severity, alarm.severity)
                 sev_item = QTableWidgetItem(sev_label)
                 if alarm.severity == "krytyczny":
-                    sev_item.setBackground(Qt.GlobalColor.red)
-                    sev_item.setForeground(Qt.GlobalColor.white)
+                    sev_item.setForeground(QColor("#f87171"))
+                    sev_item.setFont(self.tbl.font())
                 elif alarm.severity == "ostrzezenie":
-                    sev_item.setBackground(Qt.GlobalColor.yellow)
+                    sev_item.setForeground(QColor("#fbbf24"))
                 self.tbl.setItem(row, 2, sev_item)
 
                 self.tbl.setItem(row, 3, QTableWidgetItem(alarm.title))

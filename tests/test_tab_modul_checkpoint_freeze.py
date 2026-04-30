@@ -46,3 +46,20 @@ def test_tab_modul_default_splitter_balance_is_frozen(tmp_path, monkeypatch):
 
     w = TabModul()
     assert w._default_zone_splitter_sizes() == [210, 1080, 210]
+
+
+def test_tab_modul_vertical_tab_bars_readable_width_is_frozen(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECH_MODUL_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TECH_MODUL_TESTING", "1")
+
+    app = QApplication.instance() or QApplication([])
+
+    from src.tabs.modul.tab_modul import TabModul
+
+    w = TabModul()
+    left_w = int(w.left_tabs.tabBar().width())
+    right_w = int(w.right_tabs.tabBar().width())
+
+    # Step NEXT freeze: accepted readable runtime width.
+    assert left_w == 96
+    assert right_w == 96

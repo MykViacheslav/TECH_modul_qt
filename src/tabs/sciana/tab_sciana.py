@@ -39,6 +39,7 @@ from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QMessageBox,
     QProgressBar,
+    QFileDialog,
 )
 
 from src.app.app_settings import load_drawing_settings, load_ui_string_list, save_ui_string_list
@@ -58,6 +59,7 @@ from src.storage.catalog_store_json import CatalogStoreJson
 from src.storage.module_store_json import ModuleStoreJson
 from src.storage.order_store_json import OrderStoreJson
 from src.storage.shopping_list_store_json import ShoppingListStoreJson
+from src.core.export.giblab_exporter import export_module_to_giblab_project, get_suggested_export_filename
 from src.storage.wall_store_json import WallStoreJson
 from src.storage.worker_store_json import WorkerStoreJson
 from src.tabs.sciana.dialog_load_assembly import LoadAssemblyDialog
@@ -75,9 +77,9 @@ SAVED_MODULE_KIND_ROLE = SAVED_MODULE_NAME_ROLE + 3
 QUICK_LIBRARY_LABELS = {
     "all": "Wszystkie",
     "lower": "Dolne",
-    "upper": "Gorne",
-    "tall": "Slupki / wysokie",
-    "corner": "Narozne",
+    "upper": "Górne",
+    "tall": "Słupki / wysokie",
+    "corner": "Narożne",
     "other": "Inne",
 }
 
@@ -103,7 +105,7 @@ BUSINESS_LIBRARY_LABELS = {
     "all": "Wszystkie",
     "kitchen": "Kuchnia",
     "wardrobe": "Szafy / garderoby",
-    "bathroom": "Lazienka",
+    "bathroom": "Łazienka",
     "other": "Inne",
 }
 
@@ -115,10 +117,10 @@ PRESET_VARIANT_LABELS = {
 
 NAMED_LIBRARY_SET_LABELS = {
     "": "[bez zestawu]",
-    "kitchen_upper_standard": "Kuchnia - gorne standard",
+    "kitchen_upper_standard": "Kuchnia - górne standard",
     "kitchen_drawers_80": "Kuchnia - szuflady 80",
     "wardrobe_standard": "Szafa - standard",
-    "bathroom_basic": "Lazienka - basic",
+    "bathroom_basic": "Łazienka - basic",
 }
 
 NAMED_LIBRARY_SET_VALUES = {
@@ -158,32 +160,32 @@ NAMED_LIBRARY_SET_VALUES = {
 
 HARDWARE_VENDOR_LABELS = {
     "": "[z profilu]",
-    "generic": "Ogolne",
+    "generic": "Ogólne",
     "blum": "Blum",
     "hettich": "Hettich",
 }
 
 DECOR_PRESET_LABELS = {
     "": "[bez dekoru handlowego]",
-    "white": "Bialy",
+    "white": "Biały",
     "cashmere": "Cashmere",
-    "oak": "Dab naturalny",
+    "oak": "Dąb naturalny",
     "graphite": "Grafit",
     "black": "Czarny",
     "custom": "Indywidualny",
 }
 
 DECOR_PRESET_VALUES = {
-    "white": {"carcass": "Bialy", "front": "Bialy"},
+    "white": {"carcass": "Biały", "front": "Biały"},
     "cashmere": {"carcass": "Cashmere", "front": "Cashmere"},
-    "oak": {"carcass": "Dab naturalny", "front": "Dab naturalny"},
+    "oak": {"carcass": "Dąb naturalny", "front": "Dąb naturalny"},
     "graphite": {"carcass": "Grafit", "front": "Grafit"},
     "black": {"carcass": "Czarny", "front": "Czarny"},
 }
 
 COMPANY_COLLECTION_LABELS = {
     "": "[bez kolekcji firmowej]",
-    "basic_white": "Basic bialy",
+    "basic_white": "Basic biały",
     "premium_cashmere": "Premium cashmere",
     "wardrobe_graphite": "Szafa grafit",
     "display_black": "Witryna czarna",
@@ -1296,7 +1298,10 @@ class AssemblyPreviewView(QGraphicsView):
         return max(0.0, float(self._last_wall_width) - base_x - float(resolved.width_mm))
 
     def _snap_threshold_for_horizontal_offset(self) -> float:
-        return 10.0
+        return 12.0
+
+    def _snap_threshold_for_vertical_position(self) -> float:
+        return 12.0
 
     def _snap_threshold_for_vertical_position(self) -> float:
         return 12.0
@@ -1396,7 +1401,7 @@ class AssemblyPreviewView(QGraphicsView):
         max_y = self._max_y_for_index(index)
         for candidate in self._snap_y_candidate_values(index, current_left_x=current_left_x):
             clamped = max(0.0, min(float(candidate), max_y))
-            if abs(float(y_value) - clamped) <= 0.1:
+            if abs(float(y_value) - clamped) <= 1.0:
                 return True
         return False
 
@@ -1529,7 +1534,7 @@ class AssemblyPreviewView(QGraphicsView):
         editor.setMinimumHeight(28)
         editor.setStyleSheet(
             "QDoubleSpinBox {"
-            " background: #ffffff;"
+            " background: transparent;"
             " border: 1px solid #2b6cb0;"
             " border-radius: 5px;"
             " padding: 2px 6px;"
@@ -1672,6 +1677,35 @@ class AssemblyPreviewView(QGraphicsView):
         y_ref.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations, True)
         y_ref.setPos(vertical_x - 18.0, max(8.0, min((0.0 + current_top) * 0.5 + 16.0, current_bottom + 6.0)))
         y_ref.setZValue(30.0)
+
+        self._draw_alignment_guides(selected_index, current_left, current_top, current_right, current_bottom)
+
+    def _draw_alignment_guides(self, index: int, x: float, y: float, r: float, b: float) -> None:
+        guide_pen = QPen(QColor(31, 157, 85, 120))
+        guide_pen.setWidth(1)
+        guide_pen.setStyle(Qt.PenStyle.DashLine)
+        
+        wall_w = float(self._last_wall_width)
+        wall_h = float(self._last_assembly.height_mm if self._last_assembly else 0.0)
+
+        for other_idx, other in enumerate(self._last_resolved_items):
+            if other_idx == index: continue
+            
+            ox, oy = float(other.x_mm), float(other.y_mm)
+            ow, oh = float(other.width_mm), float(other.height_mm)
+            or_edge, ob = ox + ow, oy + oh
+            
+            # Vertical Alignment (Tops / Bottoms)
+            if abs(y - oy) < 1.0:
+                self.scene.addLine(0, oy, wall_w, oy, guide_pen).setZValue(-10)
+            if abs(b - ob) < 1.0:
+                self.scene.addLine(0, ob, wall_w, ob, guide_pen).setZValue(-10)
+            
+            # Horizontal Alignment (Sides)
+            if abs(x - ox) < 1.0:
+                self.scene.addLine(ox, 0, ox, wall_h, guide_pen).setZValue(-10)
+            if abs(r - or_edge) < 1.0:
+                self.scene.addLine(or_edge, 0, or_edge, wall_h, guide_pen).setZValue(-10)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -2392,7 +2426,13 @@ class TabSciana(QWidget):
         assembly_store: AssemblyStoreJson | None = None,
     ) -> None:
         super().__init__(parent)
+        import os as _os
+        import time as _time
+        from src.core.perf.perf_timer import perf_log
+        _sc_t0 = _time.perf_counter_ns()
+        _PERF = _os.environ.get("TECH_PERF") == "1"
 
+        _data_t0 = _time.perf_counter_ns() if _PERF else 0
         self._catalog = CatalogStoreJson()
         self._store = module_store if module_store is not None else ModuleStoreJson()
         self._wall_store = wall_store if wall_store is not None else WallStoreJson()
@@ -2416,6 +2456,10 @@ class TabSciana(QWidget):
         self._snap_grid_enabled = False
         self._snap_grid_step_mm = 50.0
 
+        if _PERF:
+            perf_log("tab.Komplet.data_load", _data_t0)
+
+        _ui_t0 = _time.perf_counter_ns() if _PERF else 0
         root = QHBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(8)
@@ -2484,6 +2528,10 @@ class TabSciana(QWidget):
         self.main_splitter.setSizes([330, 1080, 300])
         self.left_zone.show()
 
+        if _PERF:
+            perf_log("tab.Komplet.ui_build", _ui_t0)
+
+        _post_t0 = _time.perf_counter_ns() if _PERF else 0
         self._reload_profiles()
         self._reload_quick_material_presets()
         self._reload_material_choices()
@@ -2513,9 +2561,22 @@ class TabSciana(QWidget):
         self._setup_shortcuts_from_settings()
         self._refresh_left_zone_toggle_button()
         self._refresh_snap_button_text()
+        if _PERF:
+            perf_log("tab.Komplet.post_refresh", _post_t0)
+            perf_log("tab.Komplet.init_total", _sc_t0)
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
+        # Only do full reload on first show or when marked dirty.
+        # The __init__ already does a full reload, so first showEvent
+        # can skip the expensive reloads.
+        if not getattr(self, "_show_event_done_once", False):
+            self._show_event_done_once = True
+            return
+        import os as _os, time as _time
+        from src.core.perf.perf_timer import perf_log
+        _PERF = _os.environ.get("TECH_PERF") == "1"
+        _se_t0 = _time.perf_counter_ns() if _PERF else 0
         self._reload_profiles()
         self._reload_quick_material_presets()
         self._reload_material_choices()
@@ -2528,6 +2589,8 @@ class TabSciana(QWidget):
         self._reload_saved_walls()
         self._push_assembly_to_ui()
         self._refresh_summary()
+        if _PERF:
+            perf_log("tab.Komplet.showEvent_reload", _se_t0)
 
     def _build_left_zone(self) -> QWidget:
         panel = QWidget(self)
@@ -2648,7 +2711,7 @@ class TabSciana(QWidget):
             button.setMinimumHeight(30)
 
         # --- compact store_ops: Zapisz | Wczytaj | Nadpisz + nav + status ---
-        _store_frame = QFrame(panel)
+        _store_frame = QFrame(panel); _store_frame.setProperty("uiCard", True)
         _store_frame.setFrameShape(QFrame.Shape.NoFrame)
         _store_vbox = QVBoxLayout(_store_frame)
         _store_vbox.setContentsMargins(4, 4, 4, 4)
@@ -3221,6 +3284,22 @@ class TabSciana(QWidget):
         self.btn_q_save.clicked.connect(self._shortcut_save_assembly)
         set_ui_variant(self.btn_q_save, "primary")
 
+        self.btn_q_export_giblab = QPushButton("🛠️ GibLab (BATCH)", self.quick_actions_bar)
+        self.btn_q_export_giblab.clicked.connect(self._on_export_giblab_bulk)
+        set_ui_variant(self.btn_q_export_giblab, "success")
+        self.btn_q_export_giblab.setStyleSheet(
+            self.btn_q_export_giblab.styleSheet() + 
+            "QPushButton { font-weight: 800; color: white; }"
+        )
+
+        self.btn_back_to_order = QPushButton("◀ POWRÓT: ZAMÓWIENIE", self.quick_actions_bar)
+        self.btn_back_to_order.clicked.connect(lambda: self.sig_open_order_requested.emit({}))
+        set_ui_variant(self.btn_back_to_order, "primary")
+        self.btn_back_to_order.setStyleSheet(
+            self.btn_back_to_order.styleSheet() + 
+            "QPushButton { background: #1d4ed8; color: white; border-radius: 6px; font-weight: 900; }"
+        )
+
         self.btn_q_overwrite = QPushButton("Nadpisz", self.quick_actions_bar)
         self.btn_q_overwrite.clicked.connect(self._on_overwrite)
         set_ui_variant(self.btn_q_overwrite, "ghost")
@@ -3266,18 +3345,21 @@ class TabSciana(QWidget):
         self.btn_q_more.hide()
 
         for btn in (
-            self.btn_q_save, self.btn_q_overwrite, self.btn_q_load, self.btn_q_new,
+            self.btn_q_save, self.btn_q_export_giblab, self.btn_back_to_order,
+            self.btn_q_overwrite, self.btn_q_load, self.btn_q_new,
             self.btn_q_search, self.btn_q_duplicate, self.btn_q_snap, self.btn_q_shortcuts,
             self.btn_q_more,
         ):
             btn.setMinimumHeight(32)
             btn.setMaximumHeight(32)
 
-        # Row 1: Zapisz | Nadpisz | Wczytaj | Nowy
+        # Row 1: Zapisz | Wróć | Nadpisz | Wczytaj | Nowy
         quick_row1 = QHBoxLayout()
         quick_row1.setContentsMargins(0, 0, 0, 0)
         quick_row1.setSpacing(8)
         quick_row1.addWidget(self.btn_q_save)
+        quick_row1.addWidget(self.btn_q_export_giblab)
+        quick_row1.addWidget(self.btn_back_to_order)
         quick_row1.addWidget(self.btn_q_overwrite)
         quick_row1.addWidget(self.btn_q_load)
         quick_row1.addWidget(self.btn_q_new)
@@ -3570,7 +3652,7 @@ class TabSciana(QWidget):
         quick_costs_layout.setVerticalSpacing(8)
 
         def build_cost_card(title: str) -> tuple[QWidget, QLabel]:
-            card = QFrame(quick_costs)
+            card = QFrame(quick_costs); card.setProperty("uiCard", True)
             card.setFrameShape(QFrame.Shape.StyledPanel)
             card.setStyleSheet(
                 "QFrame {"
@@ -3646,7 +3728,7 @@ class TabSciana(QWidget):
         self.sp_trade_margin.setFixedHeight(24)
 
         self.lab_trade_netto = QLabel("0.00 zl")
-        self.lab_trade_netto.setStyleSheet("font-weight:700; color:#1f2937; font-size:13px;")
+        self.lab_trade_netto.setStyleSheet("font-weight:700; color:#e8efff; font-size:13px;")
         self.lab_trade_brutto = QLabel("0.00 zl")
         self.lab_trade_brutto.setStyleSheet("font-weight:800; color:#0f172a; font-size:14px;")
         self.lab_trade_profit = QLabel("0.00 zl")
@@ -4844,6 +4926,77 @@ class TabSciana(QWidget):
 
     def _on_back_to_order(self) -> None:
         self.sig_open_order_requested.emit(self.current_order_context())
+
+    def _on_export_giblab_bulk(self) -> None:
+        if not self._assembly or not self._assembly.items:
+            QMessageBox.information(self, "Brak elementów", "W komplecie nie ma żadnych szafek do eksportu.")
+            return
+
+        folder = QFileDialog.getExistingDirectory(self, "Wybierz folder do eksportu plików .project (GibLab)")
+        if not folder:
+            return
+
+        target_dir = Path(folder)
+        success_count = 0
+        error_count = 0
+
+        # Create a subfolder for this assembly to keep files organized
+        assembly_name = str(getattr(self._assembly, "name", "Bez_Nazwy") or "Bez_Nazwy").strip().replace(" ", "_")
+        safe_assembly_name = "".join([c if c.isalnum() or c == "_" else "" for c in assembly_name])
+        
+        # Add timestamp to subfolder to avoid collisions
+        from datetime import datetime
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        export_subfolder = target_dir / f"EKSPORT_{safe_assembly_name}_{ts}"
+        export_subfolder.mkdir(parents=True, exist_ok=True)
+
+        used_filenames = set()
+        for i, item in enumerate(self._assembly.items):
+            module = item.module
+            if not module:
+                continue
+                
+            suggested = get_suggested_export_filename(module)
+            # Prepend instance name if different from source to handle duplicates
+            m_name = (item.display_name() or f"Modul_{i+1}").replace(" ", "_")
+            safe_m_name = "".join([c if c.isalnum() or c == "_" else "" for c in m_name])
+            
+            # Remove potential double .project if suggested already has it
+            if suggested.endswith(".project"):
+                suggested = suggested[:-8]
+
+            base_filename = f"{safe_m_name}_{suggested}"
+            filename = f"{base_filename}.project"
+            
+            # Handle duplicate names within the same assembly
+            counter = 2
+            while filename in used_filenames:
+                filename = f"{base_filename}_{counter}.project"
+                counter += 1
+            
+            used_filenames.add(filename)
+            dest_path = export_subfolder / filename
+            
+            try:
+                export_module_to_giblab_project(module, str(dest_path))
+                success_count += 1
+            except Exception:
+                import traceback
+                traceback.print_exc()
+                error_count += 1
+
+        if error_count == 0:
+            QMessageBox.information(self, "Eksport zakończony", 
+                                     f"Pomyślnie wyeksportowano {success_count} szafek do folderu:\n{export_subfolder}")
+            # Open the folder in explorer
+            import os
+            try:
+                os.startfile(str(export_subfolder))
+            except:
+                pass
+        else:
+            QMessageBox.warning(self, "Eksport zakończony z błędami", 
+                                f"Wyeksportowano {success_count} szafek.\nBłędy: {error_count}.\nSprawdź konsolę.")
 
     def _on_overwrite(self) -> None:
         try:
@@ -6060,6 +6213,10 @@ class TabSciana(QWidget):
         self._rebuild_assembly(select_index=new_index)
 
     def _rebuild_assembly(self, select_index: int | None = None, select_indexes: list[int] | None = None) -> None:
+        import os as _os, time as _time
+        from src.core.perf.perf_timer import perf_log
+        _PERF = _os.environ.get("TECH_PERF") == "1"
+        _ra_t0 = _time.perf_counter_ns() if _PERF else 0
         self._pull_ui_to_assembly()
         auto_double_width = float(load_drawing_settings().auto_double_front_width_mm or 600.0)
         linked_wall = None
@@ -6083,6 +6240,8 @@ class TabSciana(QWidget):
         self._refresh_project_references()
         self._refresh_summary()
         self._refresh_preview_only()
+        if _PERF:
+            perf_log("canvas.Komplet.rebuild_assembly", _ra_t0)
 
     def _refresh_items_table(self, select_index: int | None = None, selected_indexes: list[int] | None = None) -> None:
         self.tbl_items.blockSignals(True)

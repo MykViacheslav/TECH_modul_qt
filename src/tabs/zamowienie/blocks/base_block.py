@@ -136,7 +136,7 @@ class OrderFormBlock:
     @staticmethod
     def make_work_panel(title: str, subtitle: str = "", parent: QWidget | None = None) -> tuple[QFrame, QVBoxLayout]:
         """Tworzy panel roboczy z tytułem."""
-        panel = QFrame(parent)
+        panel = QFrame(parent); panel.setProperty("uiCard", True)
         panel.setStyleSheet(
             "QFrame {"
             "border: 1px solid #e5e7eb;"

@@ -368,6 +368,8 @@ export default function NewOrderPage() {
   const [projectImportLoading, setProjectImportLoading] = useState(false);
   const [editingPositionId, setEditingPositionId] = useState<string | null>(null);
   const [activePositionId, setActivePositionId] = useState<string>("");
+  const [positionNoEdge, setPositionNoEdge] = useState(false);
+  const [previewGroupMode, setPreviewGroupMode] = useState<"active" | "by-material" | "combined">("active");
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const projectImportInputRef = useRef<HTMLInputElement | null>(null);
@@ -556,11 +558,11 @@ export default function NewOrderPage() {
       width_mm: Math.max(0, Number(serviceEstimator.widthMm) || 0),
       quantity: qty,
       edge_mode: "default",
-      edge_default_material_id: serviceEstimator.edgeMaterialId || "",
-      edge_top: Boolean(serviceEstimator.edgeTop),
-      edge_bottom: Boolean(serviceEstimator.edgeBottom),
-      edge_left: Boolean(serviceEstimator.edgeLeft),
-      edge_right: Boolean(serviceEstimator.edgeRight),
+      edge_default_material_id: positionNoEdge ? "" : (serviceEstimator.edgeMaterialId || ""),
+      edge_top: positionNoEdge ? false : Boolean(serviceEstimator.edgeTop),
+      edge_bottom: positionNoEdge ? false : Boolean(serviceEstimator.edgeBottom),
+      edge_left: positionNoEdge ? false : Boolean(serviceEstimator.edgeLeft),
+      edge_right: positionNoEdge ? false : Boolean(serviceEstimator.edgeRight),
       cnc_pattern: serviceEstimator.cncPattern,
       front_model_code:
         mode === "service-front-cnc-lacquer"
@@ -724,6 +726,12 @@ export default function NewOrderPage() {
     }, 250);
     return () => window.clearTimeout(timer);
   }, [valuationMethod, serviceEstimator, selectedServiceMaterial?.price, selectedServiceMaterial?.name]);
+
+  useEffect(() => {
+    if (selectedServiceMaterial && typeof selectedServiceMaterial.thickness === "number" && selectedServiceMaterial.thickness > 0) {
+      setServiceEstimator((prev) => ({ ...prev, thicknessMm: selectedServiceMaterial.thickness }));
+    }
+  }, [selectedServiceMaterial?.id]);
 
   const clientDisplayName = useMemo(() => {
     if (form.clientType === "b2b") {
@@ -1472,6 +1480,7 @@ export default function NewOrderPage() {
       textureOrColor: "",
       purchaseType: "invoice",
     });
+    setPositionNoEdge(false);
     if (!serviceModeKeys.has(valuationMethod)) {
       setServicePricingPreview(null);
     }
@@ -2022,10 +2031,10 @@ export default function NewOrderPage() {
           </div>
         </div>
 
-        <div className="h-14 shrink-0 border-b border-[#1a1a1a] bg-[#252526] px-4">
+        <div className="h-10 shrink-0 border-b border-[#1a1a1a] bg-[#252526] px-4">
           <div className="flex h-full items-center justify-between gap-4">
-            <div className="font-black text-slate-300">
-              Krok {step}/{STEPS.length} - {currentStepLabel}
+            <div className="text-[11px] font-black text-slate-300">
+              {step}/{STEPS.length} {currentStepLabel}
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -2685,20 +2694,20 @@ export default function NewOrderPage() {
           ) : null}
 
           {step === 2 ? (
-            <div className="space-y-4">
-              <Card className="border-[#333] bg-[#1e1e1e] p-4">
-                <div className="mb-3 text-[12px] font-black uppercase tracking-widest text-slate-300">
+            <div className="space-y-3">
+              <Card className="border-[#333] bg-[#1e1e1e] p-3">
+                <div className="mb-2 text-[11px] font-black uppercase tracking-widest text-slate-300">
                   {isServicesMode ? "Typ uslugi" : "Metoda wyceny"}
                 </div>
-                <div className="mb-3 rounded border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-[11px] text-blue-200">
+                <div className="mb-2 rounded border border-blue-500/20 bg-blue-500/5 px-2 py-1.5 text-[10px] text-blue-200">
                   {isServicesMode
-                    ? "Wybierz model uslugi. Pozniej dopisz pozycje i szczegoly realizacji."
+                    ? "Wybierz model uslugi. Ustaw material i oklejanie w pozycji, potem dodawaj formatki."
                     : "Najpierw dodaj pozycje (np. Kuchnia, Szafa, Przedpokoj). Potem w tabeli ponizej kliknij Specyfikacja albo Materialy przy konkretnej pozycji."}
                 </div>
                 <div
                   className={clsx(
-                    "grid grid-cols-1 gap-2",
-                    isServicesMode ? "md:grid-cols-2 xl:grid-cols-5" : "md:grid-cols-4"
+                    "grid grid-cols-2 gap-1.5",
+                    isServicesMode ? "md:grid-cols-4 xl:grid-cols-5" : "md:grid-cols-4"
                   )}
                 >
                   {(isServicesMode ? SERVICE_METHOD_OPTIONS : ORDER_METHOD_OPTIONS).map((method) => (
@@ -2708,7 +2717,7 @@ export default function NewOrderPage() {
                         void handleValuationMethodSelect(method.key);
                       }}
                       className={clsx(
-                        "rounded border px-3 py-4 text-center text-[11px] font-black uppercase tracking-widest whitespace-pre-line",
+                        "rounded border px-2 py-2 text-center text-[10px] font-black uppercase tracking-widest whitespace-pre-line",
                         valuationMethod === method.key
                           ? "border-blue-500 bg-blue-600/20 text-white"
                           : "border-[#39465a] bg-[#242a34] text-slate-300"
@@ -2719,9 +2728,9 @@ export default function NewOrderPage() {
                   ))}
                 </div>
                 {isServicesMode ? (
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
                     <Button
-                      className="h-9"
+                      className="h-8"
                       variant="secondary"
                       onClick={() => projectImportInputRef.current?.click()}
                       disabled={projectImportLoading}
@@ -2732,13 +2741,10 @@ export default function NewOrderPage() {
                         </>
                       ) : (
                         <>
-                          <Upload className="h-3.5 w-3.5" /> Importuj .project do tabeli
+                          <Upload className="h-3.5 w-3.5" /> Importuj .project
                         </>
                       )}
                     </Button>
-                    <span className="text-[11px] text-slate-400">
-                      Importowane i reczne pozycje trafiaja do tej samej tabeli (1 wiersz = 1 formatka/usluga).
-                    </span>
                     <input
                       ref={projectImportInputRef}
                       type="file"
@@ -2756,417 +2762,295 @@ export default function NewOrderPage() {
                 ) : null}
               </Card>
 
-              {isServicesMode && (
-                <Card className="border-[#333] bg-[#1e1e1e] p-4">
-                  <div className="mb-2 text-[12px] font-black uppercase tracking-widest text-slate-300">
-                    Parametry realizacji uslugi
+              {/* ── NOWA POZYCJA / MATERIAL I USLUGA ── */}
+              <Card className="border-[#333] bg-[#1e1e1e] p-3">
+                <div className="mb-2 text-[11px] font-black uppercase tracking-widest text-slate-300">
+                  {editingPositionId ? "Edycja pozycji" : "Nowa pozycja — material i usluga"}
+                </div>
+
+                {/* Row 1: Name, Type, VAT, Purchase type */}
+                <div className="grid grid-cols-1 gap-1.5 lg:grid-cols-[1fr_120px_80px_150px]">
+                  <div>
+                    <label className="mb-0.5 block text-[9px] uppercase tracking-wider text-slate-500">Nazwa pozycji</label>
+                    <input
+                      className={baseInput}
+                      placeholder="np. Kuchnia, Szafa, Formatka"
+                      value={positionDraft.name}
+                      onChange={(e) =>
+                        setPositionDraft((prev) => ({ ...prev, name: e.target.value }))
+                      }
+                    />
                   </div>
-                <div className="mb-3 text-[11px] text-slate-400">
-                  Ustaw formatke, material i parametry technologii. Podglad ceny liczy backend (z walidacja i flagami recznego review).
-                </div>
-                <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px]">
-                  <span className="rounded border border-[#33445f] bg-[#121b2b] px-2 py-1 text-slate-300">
-                    Aktywny wiersz: {activePosition?.name || "-"}
-                  </span>
-                  <Button
-                    className="h-8"
-                    variant="secondary"
-                    onClick={() => {
-                      void applyServiceParamsToActiveRow();
-                    }}
-                    disabled={!activePositionId || !serviceModeKeys.has(valuationMethod)}
-                  >
-                    Zastosuj parametry do aktywnego wiersza
-                  </Button>
+                  <div>
+                    <label className="mb-0.5 block text-[9px] uppercase tracking-wider text-slate-500">Typ pozycji</label>
+                    <input
+                      className={baseInput}
+                      value={positionDraft.type}
+                      onChange={(e) =>
+                        setPositionDraft((prev) => ({ ...prev, type: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-0.5 block text-[9px] uppercase tracking-wider text-slate-500">VAT %</label>
+                    <input
+                      type="number"
+                      className={baseInput}
+                      value={positionDraft.vat}
+                      onChange={(e) =>
+                        setPositionDraft((prev) => {
+                          const parsed = Number(e.target.value);
+                          return { ...prev, vat: Number.isFinite(parsed) ? parsed : 0 };
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-0.5 block text-[9px] uppercase tracking-wider text-slate-500">Zrodlo dokumentu</label>
+                    <select
+                      className={baseInput}
+                      value={positionDraft.purchaseType}
+                      onChange={(e) =>
+                        setPositionDraft((prev) => {
+                          const nextType = e.target.value as "invoice" | "cash" | "receipt" | "none";
+                          const shouldDefaultToZeroVat = nextType === "cash" && prev.vat === 23;
+                          return {
+                            ...prev,
+                            purchaseType: nextType,
+                            vat: shouldDefaultToZeroVat ? 0 : prev.vat,
+                          };
+                        })
+                      }
+                    >
+                      {POSITION_PURCHASE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
-                <div className="rounded border border-[#33445f] bg-[#101722] overflow-x-auto">
-                  <table className="w-full min-w-[1360px] text-[11px]">
-                    <thead className="bg-[#d4dde9] text-[#0f172a]">
-                      <tr className="uppercase tracking-wide font-black">
-                        <th className="px-2 py-1.5 text-left">Material bazowy</th>
-                        <th className="px-2 py-1.5 text-left">Dl (mm)</th>
-                        <th className="px-2 py-1.5 text-left">Sz (mm)</th>
-                        <th className="px-2 py-1.5 text-left">Gr (mm)</th>
-                        <th className="px-2 py-1.5 text-left">Ilosc</th>
-                        <th className="px-2 py-1.5 text-left">Okleina</th>
-                        <th className="px-2 py-1.5 text-center">Gora</th>
-                        <th className="px-2 py-1.5 text-center">Dol</th>
-                        <th className="px-2 py-1.5 text-center">Lewa</th>
-                        <th className="px-2 py-1.5 text-center">Prawa</th>
-                        <th className="px-2 py-1.5 text-left">Wybrana okleina</th>
-                        <th className="px-2 py-1.5 text-left">Status materialu</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr className="border-t border-[#33445f] bg-[#111827]">
-                        <td className="px-2 py-1.5">
-                          <select
-                            className={baseInput}
-                            value={serviceEstimator.materialId}
-                            onChange={(e) => setServiceEstimator((prev) => ({ ...prev, materialId: e.target.value }))}
-                          >
-                            <option value="">Material z bazy (opcjonalnie)</option>
-                            {materialsDb.map((m) => (
-                              <option key={`service-material-${m.id}`} value={String(m.id)}>
-                                {m.name}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <input
-                            type="number"
-                            className={baseInput}
-                            value={serviceEstimator.lengthMm}
-                            onChange={(e) =>
-                              setServiceEstimator((prev) => ({ ...prev, lengthMm: Math.max(0, Number(e.target.value) || 0) }))
-                            }
-                          />
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <input
-                            type="number"
-                            className={baseInput}
-                            value={serviceEstimator.widthMm}
-                            onChange={(e) =>
-                              setServiceEstimator((prev) => ({ ...prev, widthMm: Math.max(0, Number(e.target.value) || 0) }))
-                            }
-                          />
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <input
-                            type="number"
-                            className={baseInput}
-                            value={serviceEstimator.thicknessMm}
-                            onChange={(e) =>
-                              setServiceEstimator((prev) => ({ ...prev, thicknessMm: Math.max(0, Number(e.target.value) || 0) }))
-                            }
-                          />
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <input
-                            type="number"
-                            className={baseInput}
-                            value={serviceEstimator.qty}
-                            onChange={(e) =>
-                              setServiceEstimator((prev) => ({ ...prev, qty: Math.max(1, Number(e.target.value) || 1) }))
-                            }
-                          />
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <select
-                            className={baseInput}
-                            value={serviceEstimator.edgeMaterialId}
-                            onChange={(e) => setServiceEstimator((prev) => ({ ...prev, edgeMaterialId: e.target.value }))}
-                          >
-                            <option value="">Okleina z bazy (opcjonalnie)</option>
-                            {materialsDb.map((m) => (
-                              <option key={`service-edge-${m.id}`} value={String(m.id)}>
-                                {m.name}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        {[
-                          ["edgeTop", "Gora"],
-                          ["edgeBottom", "Dol"],
-                          ["edgeLeft", "Lewa"],
-                          ["edgeRight", "Prawa"],
-                        ].map(([key, label]) => (
-                          <td key={key} className="px-2 py-1.5 text-center">
-                            {(valuationMethod === "service-cut-edge" || valuationMethod === "service-veneer") ? (
-                              <label className="inline-flex items-center gap-1.5 text-slate-200">
-                                <input
-                                  type="checkbox"
-                                  checked={Boolean(serviceEstimator[key as keyof ServiceEstimatorDraft])}
-                                  onChange={(e) =>
-                                    setServiceEstimator((prev) => ({
-                                      ...prev,
-                                      [key]: e.target.checked,
-                                    }))
-                                  }
-                                  className="accent-emerald-500"
-                                  aria-label={label}
-                                />
-                              </label>
-                            ) : (
-                              <span className="text-slate-500">-</span>
-                            )}
-                          </td>
+                {/* Row 2: Material, Edge, No-edge, Thickness */}
+                {isServicesMode && (
+                  <div className="mt-2 grid grid-cols-1 gap-1.5 lg:grid-cols-[1fr_1fr_auto_100px]">
+                    <div>
+                      <label className="mb-0.5 block text-[9px] uppercase tracking-wider text-slate-500">Material bazowy</label>
+                      <select
+                        className={baseInput}
+                        value={serviceEstimator.materialId}
+                        onChange={(e) => setServiceEstimator((prev) => ({ ...prev, materialId: e.target.value }))}
+                      >
+                        <option value="">Wybierz material z bazy</option>
+                        {materialsDb.map((m) => (
+                          <option key={`pos-material-${m.id}`} value={String(m.id)}>
+                            {m.name}{m.thickness ? ` (${m.thickness} mm)` : ""}
+                          </option>
                         ))}
-                        <td className="px-2 py-1.5 text-slate-300">
-                          {(valuationMethod === "service-cut-edge" || valuationMethod === "service-veneer")
-                            ? (selectedEdgeMaterial ? selectedEdgeMaterial.name : "nie wybrano")
-                            : "-"}
-                        </td>
-                        <td className="px-2 py-1.5 text-slate-300">
-                          {materialsDbLoading
-                            ? "Ladowanie bazy materialow..."
-                            : selectedServiceMaterial
-                            ? `Material: ${selectedServiceMaterial.name}`
-                            : "Material nie wybrany"}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                  {valuationMethod === "service-front-cnc-lacquer" && (
-                    <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-4">
-                      <select
-                        className={baseInput}
-                        value={serviceEstimator.cncPattern}
-                        onChange={(e) =>
-                          setServiceEstimator((prev) => ({
-                            ...prev,
-                            cncPattern: e.target.value as ServiceEstimatorDraft["cncPattern"],
-                          }))
-                        }
-                      >
-                        <option value="line">Frez liniowy</option>
-                        <option value="classic">Frez klasyczny</option>
-                        <option value="premium">Frez premium</option>
-                        <option value="custom">Frez custom</option>
-                      </select>
-                      <label className="flex items-center gap-2 rounded border border-[#333] bg-[#10151f] px-3 py-2 text-[11px]">
-                        <input
-                          type="checkbox"
-                          checked={serviceEstimator.lacquer}
-                          onChange={(e) =>
-                            setServiceEstimator((prev) => ({ ...prev, lacquer: e.target.checked }))
-                          }
-                          className="accent-emerald-500"
-                        />
-                        Lakierowanie
-                      </label>
-                      <select
-                        className={baseInput}
-                        value={serviceEstimator.lacquerSides}
-                        onChange={(e) =>
-                          setServiceEstimator((prev) => ({
-                            ...prev,
-                            lacquerSides: Number(e.target.value) === 2 ? 2 : 1,
-                          }))
-                        }
-                        disabled={!serviceEstimator.lacquer}
-                      >
-                        <option value={1}>1 strona</option>
-                        <option value={2}>2 strony</option>
                       </select>
                     </div>
-                  )}
-
-                  {valuationMethod === "service-veneer" && (
-                    <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-3">
+                    <div>
+                      <label className="mb-0.5 block text-[9px] uppercase tracking-wider text-slate-500">Okleina domyslna</label>
                       <select
                         className={baseInput}
-                        value={serviceEstimator.veneerSides}
-                        onChange={(e) =>
-                          setServiceEstimator((prev) => ({
-                            ...prev,
-                            veneerSides: Number(e.target.value) === 2 ? 2 : 1,
-                          }))
-                        }
+                        value={positionNoEdge ? "" : serviceEstimator.edgeMaterialId}
+                        onChange={(e) => setServiceEstimator((prev) => ({ ...prev, edgeMaterialId: e.target.value }))}
+                        disabled={positionNoEdge}
                       >
-                        <option value={1}>Fornir 1 strona</option>
-                        <option value={2}>Fornir 2 strony</option>
+                        <option value="">Wybierz oklejanie z bazy</option>
+                        {materialsDb.map((m) => (
+                          <option key={`pos-edge-${m.id}`} value={String(m.id)}>
+                            {m.name}
+                          </option>
+                        ))}
                       </select>
-                      <label className="flex items-center gap-2 rounded border border-[#333] bg-[#10151f] px-3 py-2 text-[11px]">
+                    </div>
+                    <div className="flex items-end">
+                      <label className="flex items-center gap-1.5 rounded border border-[#333] bg-[#10151f] px-3 py-1.5 text-[10px] text-slate-200 cursor-pointer select-none">
                         <input
                           type="checkbox"
-                          checked={serviceEstimator.veneerLacquer}
-                          onChange={(e) =>
-                            setServiceEstimator((prev) => ({ ...prev, veneerLacquer: e.target.checked }))
-                          }
-                          className="accent-emerald-500"
+                          checked={positionNoEdge}
+                          onChange={(e) => {
+                            setPositionNoEdge(e.target.checked);
+                            if (e.target.checked) {
+                              setServiceEstimator((prev) => ({
+                                ...prev,
+                                edgeMaterialId: "",
+                                edgeTop: false,
+                                edgeBottom: false,
+                                edgeLeft: false,
+                                edgeRight: false,
+                              }));
+                            }
+                          }}
+                          className="accent-amber-500"
                         />
-                        Lakier po fornirze
+                        Bez oklejania
                       </label>
                     </div>
-                  )}
-
-                  {valuationMethod === "service-bent-elements" && (
-                    <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-4">
-                      <select
-                        className={baseInput}
-                        value={serviceEstimator.bentShape}
-                        onChange={(e) =>
-                          setServiceEstimator((prev) => ({
-                            ...prev,
-                            bentShape: e.target.value as ServiceEstimatorDraft["bentShape"],
-                          }))
-                        }
-                      >
-                        <option value="arc">Luk</option>
-                        <option value="wave">Fala</option>
-                        <option value="custom">Ksztalt custom</option>
-                      </select>
+                    <div>
+                      <label className="mb-0.5 block text-[9px] uppercase tracking-wider text-slate-500">Grubosc (mm)</label>
                       <input
                         type="number"
-                        className={baseInput}
-                        placeholder="Promien mm"
-                        value={serviceEstimator.bentRadiusMm}
+                        className={clsx(baseInput, selectedServiceMaterial?.thickness ? "text-slate-400" : "")}
+                        value={serviceEstimator.thicknessMm}
+                        readOnly={Boolean(selectedServiceMaterial?.thickness)}
                         onChange={(e) =>
-                          setServiceEstimator((prev) => ({
-                            ...prev,
-                            bentRadiusMm: Math.max(0, Number(e.target.value) || 0),
-                          }))
+                          setServiceEstimator((prev) => ({ ...prev, thicknessMm: Math.max(0, Number(e.target.value) || 0) }))
                         }
                       />
-                      <select
-                        className={baseInput}
-                        value={serviceEstimator.bentComplexity}
-                        onChange={(e) =>
-                          setServiceEstimator((prev) => ({
-                            ...prev,
-                            bentComplexity: (Number(e.target.value) || 1) as ServiceEstimatorDraft["bentComplexity"],
-                          }))
-                        }
-                      >
-                        <option value={1}>Prosty</option>
-                        <option value={2}>Sredni</option>
-                        <option value={3}>Trudny</option>
-                      </select>
                     </div>
-                  )}
+                  </div>
+                )}
 
-                  <div className="mt-3 rounded border border-blue-500/25 bg-blue-500/5 p-3 text-[11px]">
-                    <div className="font-black uppercase tracking-widest text-blue-200">Podglad kalkulacji</div>
-                    {servicePricingLoading ? (
-                      <div className="mt-2 flex items-center gap-2 text-slate-300">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        Liczenie backend pricing...
-                      </div>
-                    ) : servicePricingPreview ? (
-                      <>
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <span
-                            className={clsx(
-                              "rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wider",
-                              servicePricingPreview.pricing_status === "ready"
-                                ? "border-emerald-400/40 bg-emerald-500/15 text-emerald-300"
-                                : "border-amber-400/40 bg-amber-500/15 text-amber-300"
-                            )}
-                          >
-                            {servicePricingPreview.pricing_status === "ready" ? "ready" : "manual_review"}
-                          </span>
-                          <span className="text-slate-400">
-                            schema: {servicePricingPreview.schema_version}
-                            {servicePricingPreview.tariff_schema_version
-                              ? ` | taryfa: ${servicePricingPreview.tariff_schema_version}`
-                              : ""}
-                          </span>
-                        </div>
-                        <div className="mt-2 grid grid-cols-1 gap-1 text-slate-200 md:grid-cols-2 xl:grid-cols-5">
-                          <div>material: {servicePricingPreview.buckets.material_cost.toFixed(2)} zl</div>
-                          <div>cnc: {servicePricingPreview.buckets.cnc_service_cost.toFixed(2)} zl</div>
-                          <div>finishing: {servicePricingPreview.buckets.finishing_cost.toFixed(2)} zl</div>
-                          <div>extra: {servicePricingPreview.buckets.extra_cost.toFixed(2)} zl</div>
-                          <div className="font-black text-emerald-300">
-                            netto: {servicePricingPreview.buckets.net_total.toFixed(2)} zl
-                          </div>
-                        </div>
-                        <div className="mt-2 text-slate-300">{servicePricingPreview.summary_text}</div>
-                        {servicePricingPreview.validation_flags.length > 0 && (
-                          <div className="mt-2 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[10px] text-amber-200">
-                            Flagi walidacji:{" "}
-                            {servicePricingPreview.validation_flags
-                              .map((flag) => `${flag.code}: ${flag.message}`)
-                              .join(" | ")}
-                          </div>
-                        )}
-                        {servicePricingPreview.manual_review_reasons.length > 0 && (
-                          <div className="mt-1 text-[10px] text-rose-300">
-                            Powody manual review: {servicePricingPreview.manual_review_reasons.join(", ")}
-                          </div>
-                        )}
-                      </>
+                {/* Material status line */}
+                {isServicesMode && (
+                  <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[10px]">
+                    {selectedServiceMaterial ? (
+                      <span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-300">
+                        Material: {selectedServiceMaterial.name}
+                        {selectedServiceMaterial.thickness ? ` | Grubosc: ${selectedServiceMaterial.thickness} mm` : " | Brak grubosci materialu"}
+                      </span>
                     ) : (
-                      <div className="mt-2 text-slate-400">
-                        Brak podgladu. Uzupelnij pola uslugi lub kliknij Dodaj pozycje (backend wykona kalkulacje).
-                      </div>
+                      <span className="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-300">
+                        Material nie wybrany
+                      </span>
+                    )}
+                    {positionNoEdge && (
+                      <span className="rounded border border-slate-500/30 bg-slate-500/10 px-2 py-0.5 text-slate-300">
+                        Bez oklejania
+                      </span>
+                    )}
+                    {!positionNoEdge && selectedEdgeMaterial && (
+                      <span className="rounded border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-blue-300">
+                        Okleina: {selectedEdgeMaterial.name}
+                      </span>
                     )}
                   </div>
-                </Card>
-              )}
+                )}
 
-              <Card className="border-[#333] bg-[#1e1e1e] p-4">
-                <div className="mb-2 text-lg font-bold">
-                  {editingPositionId ? "Edycja pozycji" : "Nowa pozycja"}
-                </div>
-                <div className="mb-3 text-[11px] text-slate-400">
-                  {editingPositionId
-                    ? "Zmien dane pozycji i zapisz."
-                    : "Wprowadz dane dla nowego tematu handlowego."}
-                </div>
-                <div className="grid grid-cols-1 gap-2 lg:grid-cols-[1fr_90px_110px_90px_150px_180px]">
-                  <input
-                    className={baseInput}
-                    placeholder="Nazwa, np. Kuchnia"
-                    value={positionDraft.name}
-                    onChange={(e) =>
-                      setPositionDraft((prev) => ({ ...prev, name: e.target.value }))
-                    }
-                  />
-                  <input
-                    type="number"
-                    className={baseInput}
-                    value={positionDraft.quantity}
-                    onChange={(e) =>
-                      setPositionDraft((prev) => ({
-                        ...prev,
-                        quantity: Number(e.target.value) || 1,
-                      }))
-                    }
-                  />
-                  <input
-                    type="number"
-                    className={baseInput}
-                    value={positionDraft.vat}
-                    onChange={(e) =>
-                      setPositionDraft((prev) => {
-                        const parsed = Number(e.target.value);
-                        return { ...prev, vat: Number.isFinite(parsed) ? parsed : 0 };
-                      })
-                    }
-                  />
-                  <input className={baseInput} value={`${positionDraft.vat}%`} readOnly />
-                  <input
-                    className={baseInput}
-                    value={positionDraft.type}
-                    onChange={(e) =>
-                      setPositionDraft((prev) => ({ ...prev, type: e.target.value }))
-                    }
-                  />
-                  <select
-                    className={baseInput}
-                    value={positionDraft.purchaseType}
-                    onChange={(e) =>
-                      setPositionDraft((prev) => {
-                        const nextType = e.target.value as "invoice" | "cash" | "receipt" | "none";
-                        const shouldDefaultToZeroVat = nextType === "cash" && prev.vat === 23;
-                        return {
+                {/* Service-specific options */}
+                {isServicesMode && valuationMethod === "service-front-cnc-lacquer" && (
+                  <div className="mt-2 grid grid-cols-1 gap-1.5 md:grid-cols-4">
+                    <select
+                      className={baseInput}
+                      value={serviceEstimator.cncPattern}
+                      onChange={(e) =>
+                        setServiceEstimator((prev) => ({
                           ...prev,
-                          purchaseType: nextType,
-                          vat: shouldDefaultToZeroVat ? 0 : prev.vat,
-                        };
-                      })
-                    }
-                  >
-                    {POSITION_PURCHASE_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="mt-2 text-[10px] text-slate-400">
-                  Dla opcji <span className="font-black text-slate-200">Gotowka</span> VAT domyslnie
-                  ustawia sie na <span className="font-black text-slate-200">0%</span>, ale mozesz
-                  wpisac VAT recznie.
-                </div>
-                <div className="mt-2 grid grid-cols-1 gap-2 lg:grid-cols-[1fr_260px_180px_140px]">
+                          cncPattern: e.target.value as ServiceEstimatorDraft["cncPattern"],
+                        }))
+                      }
+                    >
+                      <option value="line">Frez liniowy</option>
+                      <option value="classic">Frez klasyczny</option>
+                      <option value="premium">Frez premium</option>
+                      <option value="custom">Frez custom</option>
+                    </select>
+                    <label className="flex items-center gap-2 rounded border border-[#333] bg-[#10151f] px-3 py-1.5 text-[10px]">
+                      <input
+                        type="checkbox"
+                        checked={serviceEstimator.lacquer}
+                        onChange={(e) =>
+                          setServiceEstimator((prev) => ({ ...prev, lacquer: e.target.checked }))
+                        }
+                        className="accent-emerald-500"
+                      />
+                      Lakierowanie
+                    </label>
+                    <select
+                      className={baseInput}
+                      value={serviceEstimator.lacquerSides}
+                      onChange={(e) =>
+                        setServiceEstimator((prev) => ({
+                          ...prev,
+                          lacquerSides: Number(e.target.value) === 2 ? 2 : 1,
+                        }))
+                      }
+                      disabled={!serviceEstimator.lacquer}
+                    >
+                      <option value={1}>1 strona</option>
+                      <option value={2}>2 strony</option>
+                    </select>
+                  </div>
+                )}
+
+                {isServicesMode && valuationMethod === "service-veneer" && (
+                  <div className="mt-2 grid grid-cols-1 gap-1.5 md:grid-cols-3">
+                    <select
+                      className={baseInput}
+                      value={serviceEstimator.veneerSides}
+                      onChange={(e) =>
+                        setServiceEstimator((prev) => ({
+                          ...prev,
+                          veneerSides: Number(e.target.value) === 2 ? 2 : 1,
+                        }))
+                      }
+                    >
+                      <option value={1}>Fornir 1 strona</option>
+                      <option value={2}>Fornir 2 strony</option>
+                    </select>
+                    <label className="flex items-center gap-2 rounded border border-[#333] bg-[#10151f] px-3 py-1.5 text-[10px]">
+                      <input
+                        type="checkbox"
+                        checked={serviceEstimator.veneerLacquer}
+                        onChange={(e) =>
+                          setServiceEstimator((prev) => ({ ...prev, veneerLacquer: e.target.checked }))
+                        }
+                        className="accent-emerald-500"
+                      />
+                      Lakier po fornirze
+                    </label>
+                  </div>
+                )}
+
+                {isServicesMode && valuationMethod === "service-bent-elements" && (
+                  <div className="mt-2 grid grid-cols-1 gap-1.5 md:grid-cols-4">
+                    <select
+                      className={baseInput}
+                      value={serviceEstimator.bentShape}
+                      onChange={(e) =>
+                        setServiceEstimator((prev) => ({
+                          ...prev,
+                          bentShape: e.target.value as ServiceEstimatorDraft["bentShape"],
+                        }))
+                      }
+                    >
+                      <option value="arc">Luk</option>
+                      <option value="wave">Fala</option>
+                      <option value="custom">Ksztalt custom</option>
+                    </select>
+                    <input
+                      type="number"
+                      className={baseInput}
+                      placeholder="Promien mm"
+                      value={serviceEstimator.bentRadiusMm}
+                      onChange={(e) =>
+                        setServiceEstimator((prev) => ({
+                          ...prev,
+                          bentRadiusMm: Math.max(0, Number(e.target.value) || 0),
+                        }))
+                      }
+                    />
+                    <select
+                      className={baseInput}
+                      value={serviceEstimator.bentComplexity}
+                      onChange={(e) =>
+                        setServiceEstimator((prev) => ({
+                          ...prev,
+                          bentComplexity: (Number(e.target.value) || 1) as ServiceEstimatorDraft["bentComplexity"],
+                        }))
+                      }
+                    >
+                      <option value={1}>Prosty</option>
+                      <option value={2}>Sredni</option>
+                      <option value={3}>Trudny</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Description + actions */}
+                <div className="mt-2 grid grid-cols-1 gap-1.5 lg:grid-cols-[1fr_200px_140px_100px]">
                   <input
                     className={baseInput}
                     placeholder="Opis / uwagi do wyceny"
@@ -3180,7 +3064,7 @@ export default function NewOrderPage() {
                   />
                   <input
                     className={baseInput}
-                    placeholder="Kolor / tekstura (opcjonalnie)"
+                    placeholder="Kolor / tekstura"
                     value={positionDraft.textureOrColor}
                     onChange={(e) =>
                       setPositionDraft((prev) => ({
@@ -3190,15 +3074,15 @@ export default function NewOrderPage() {
                     }
                   />
                   <Button
-                    className="h-10"
+                    className="h-8"
                     onClick={() => {
                       void addPosition();
                     }}
                   >
-                    {editingPositionId ? "Zapisz zmiany" : "+ Dodaj pozycje"}
+                    {editingPositionId ? "Zapisz zmiany" : "+ Dodaj formatke"}
                   </Button>
                   <Button
-                    className="h-10"
+                    className="h-8"
                     variant="secondary"
                     onClick={cancelEditPosition}
                     disabled={!editingPositionId}
@@ -3206,196 +3090,240 @@ export default function NewOrderPage() {
                     Anuluj
                   </Button>
                 </div>
-              </Card>
 
-              <Card className="border-[#333] bg-[#1e1e1e] p-4">
-                <div className="mb-2 text-lg font-bold">Lista pozycji</div>
-                {isServicesMode ? (
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                {/* Inline formatka row entry (services mode) */}
+                {isServicesMode && serviceModeKeys.has(valuationMethod) && (
+                  <div className="mt-2 rounded border border-[#33445f] bg-[#101722] p-2">
+                    <div className="mb-1 text-[9px] font-black uppercase tracking-wider text-slate-400">
+                      Dodaj formatke — wymiary i krawedzie
+                    </div>
+                    <div className="flex flex-wrap items-end gap-1.5">
+                      <div>
+                        <label className="mb-0.5 block text-[9px] uppercase text-slate-500">DL (mm)</label>
+                        <input
+                          type="number"
+                          className={clsx(baseInput, "w-[90px]")}
+                          value={serviceEstimator.lengthMm}
+                          onChange={(e) =>
+                            setServiceEstimator((prev) => ({ ...prev, lengthMm: Math.max(0, Number(e.target.value) || 0) }))
+                          }
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-0.5 block text-[9px] uppercase text-slate-500">SZ (mm)</label>
+                        <input
+                          type="number"
+                          className={clsx(baseInput, "w-[90px]")}
+                          value={serviceEstimator.widthMm}
+                          onChange={(e) =>
+                            setServiceEstimator((prev) => ({ ...prev, widthMm: Math.max(0, Number(e.target.value) || 0) }))
+                          }
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-0.5 block text-[9px] uppercase text-slate-500">Ilosc</label>
+                        <input
+                          type="number"
+                          className={clsx(baseInput, "w-[60px]")}
+                          value={serviceEstimator.qty}
+                          onChange={(e) =>
+                            setServiceEstimator((prev) => ({ ...prev, qty: Math.max(1, Number(e.target.value) || 1) }))
+                          }
+                        />
+                      </div>
+                      {!positionNoEdge && (valuationMethod === "service-cut-edge" || valuationMethod === "service-veneer") && (
+                        <>
+                          {[
+                            ["edgeTop", "G"],
+                            ["edgeBottom", "D"],
+                            ["edgeLeft", "L"],
+                            ["edgeRight", "P"],
+                          ].map(([key, label]) => (
+                            <label key={key} className="flex flex-col items-center gap-0.5 text-[9px] text-slate-400 cursor-pointer">
+                              {label}
+                              <input
+                                type="checkbox"
+                                checked={Boolean(serviceEstimator[key as keyof ServiceEstimatorDraft])}
+                                onChange={(e) =>
+                                  setServiceEstimator((prev) => ({
+                                    ...prev,
+                                    [key]: e.target.checked,
+                                  }))
+                                }
+                                className="accent-emerald-500"
+                              />
+                            </label>
+                          ))}
+                        </>
+                      )}
+                      {positionNoEdge && (
+                        <span className="px-2 py-1 text-[9px] text-slate-500">Bez oklejania</span>
+                      )}
                       <Button
                         className="h-8"
-                        variant="secondary"
-                        disabled={!activePositionId}
-                        onClick={() => activePositionId && startEditPosition(activePositionId)}
-                      >
-                        Edytuj aktywny wiersz
-                      </Button>
-                      <Button
-                        className="h-8"
-                        variant="secondary"
-                        disabled={!activePositionId}
                         onClick={() => {
-                          if (!activePositionId) return;
-                          setSpecTargetId(activePositionId);
-                          void goToStep(3);
+                          if (!positionDraft.name.trim()) {
+                            setPositionDraft((prev) => ({ ...prev, name: selectedServiceMaterial?.name || "Formatka" }));
+                          }
+                          void addPosition();
                         }}
                       >
-                        Specyfikacja aktywnego
-                      </Button>
-                      <Button
-                        className="h-8"
-                        variant="secondary"
-                        disabled={!activePositionId}
-                        onClick={() => {
-                          if (!activePositionId) return;
-                          setMaterialDraft((prev) => ({ ...prev, positionId: activePositionId }));
-                          void goToStep(5);
-                        }}
-                      >
-                        Materialy aktywnego
-                      </Button>
-                      <Button
-                        className="h-8"
-                        variant="secondary"
-                        disabled={!activePositionId}
-                        onClick={() => activePositionId && removePosition(activePositionId)}
-                      >
-                        Usun aktywny wiersz
+                        + Dodaj
                       </Button>
                     </div>
+                  </div>
+                )}
+              </Card>
 
+              {/* ── FORMATKI TEJ POZYCJI ── */}
+              <Card className="border-[#333] bg-[#1e1e1e] p-3">
+                <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-[11px] font-black uppercase tracking-widest text-slate-300">
+                    Formatki / pozycje ({positions.length})
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                    <Button
+                      className="h-7"
+                      variant="secondary"
+                      disabled={!activePositionId}
+                      onClick={() => activePositionId && startEditPosition(activePositionId)}
+                    >
+                      Edytuj
+                    </Button>
+                    <Button
+                      className="h-7"
+                      variant="secondary"
+                      disabled={!activePositionId}
+                      onClick={() => activePositionId && removePosition(activePositionId)}
+                    >
+                      Usun
+                    </Button>
+                    <Button
+                      className="h-7"
+                      variant="secondary"
+                      disabled={!activePositionId}
+                      onClick={() => {
+                        void applyServiceParamsToActiveRow();
+                      }}
+                    >
+                      Przelicz aktywny
+                    </Button>
+                  </div>
+                </div>
+
+                {isServicesMode ? (
+                  <div className="space-y-2">
                     {serviceMaterialTables.groups.length === 0 ? (
-                      <div className="rounded border border-[#33445f] px-3 py-8 text-center text-slate-500">
-                        Brak pozycji
+                      <div className="rounded border border-[#33445f] px-3 py-6 text-center text-slate-500 text-[11px]">
+                        Brak pozycji — dodaj formatke powyzej
                       </div>
                     ) : (
                       serviceMaterialTables.groups.map((group) => (
                         <div key={group.key} className="overflow-hidden rounded border border-[#33445f]">
-                          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#33445f] bg-[#1a2233] px-3 py-2 text-[11px]">
-                            <div>
-                              <span className="font-black uppercase tracking-wider text-blue-200">Material: </span>
+                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#33445f] bg-[#1a2233] px-2 py-1.5 text-[10px]">
+                            <div className="flex items-center gap-2">
+                              <span className="font-black uppercase tracking-wider text-blue-200">Material:</span>
                               <span className="font-semibold text-slate-100">{group.materialName}</span>
+                              {group.rows[0] && (() => {
+                                const t = getRowNumberField(group.rows[0], "base_thickness_mm", 0);
+                                return t > 0 ? <span className="text-slate-400">| {t} mm</span> : null;
+                              })()}
                             </div>
-                            <div className="text-slate-300">m2: {group.totalM2.toFixed(3)}</div>
+                            <div className="flex items-center gap-3 text-slate-300">
+                              <span>{group.rows.length} szt</span>
+                              <span>m2: {group.totalM2.toFixed(3)}</span>
+                              {Object.keys(group.edgeByMaterial).length === 0
+                                ? <span className="text-slate-500">Bez oklejania</span>
+                                : Object.entries(group.edgeByMaterial).map(([name, mb]) => (
+                                    <span key={name}>{name}: {mb.toFixed(2)} mb</span>
+                                  ))
+                              }
+                            </div>
                           </div>
-                          <table className="w-full border-collapse">
-                            <thead className="bg-[#bcc8da] text-[#0b1c39]">
-                              <tr>
-                                <th className="px-2 py-2 text-left">Nr</th>
-                                <th className="px-2 py-2 text-left">Pozycja</th>
-                                <th className="px-2 py-2 text-left">Material</th>
-                                <th className="px-2 py-2 text-left">Dl</th>
-                                <th className="px-2 py-2 text-left">Sz</th>
-                                <th className="px-2 py-2 text-left">Gr</th>
-                                <th className="px-2 py-2 text-left">Ilosc</th>
-                                <th className="px-2 py-2 text-left">Tekstura/Kolor</th>
-                                <th className="px-2 py-2 text-left">Nazwa</th>
-                                <th className="px-2 py-2 text-center">OG</th>
-                                <th className="px-2 py-2 text-center">OD</th>
-                                <th className="px-2 py-2 text-center">OL</th>
-                                <th className="px-2 py-2 text-center">OP</th>
-                                <th className="px-2 py-2 text-left">Okleina</th>
-                                <th className="px-2 py-2 text-left">Kod</th>
-                                <th className="px-2 py-2 text-left">Opis</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {group.rows.map((item, idx) => {
-                                const input = getRowPricingInput(item);
-                                const edgeMode = String(input.edge_mode ?? "default");
-                                const edgeRaw =
-                                  edgeMode === "default"
-                                    ? String(input.edge_default_material_id ?? "").trim()
-                                    : "Wiele stron";
-                                const edgeName =
-                                  edgeRaw && edgeRaw !== "Wiele stron"
-                                    ? materialsDb.find((m) => String(m.id) === edgeRaw)?.name || edgeRaw
-                                    : edgeRaw;
-                                return (
-                                  <tr
-                                    key={item.id}
-                                    className={clsx(
-                                      "cursor-pointer border-t border-white/5",
-                                      activePositionId === item.id ? "bg-blue-600/10" : "hover:bg-white/[0.03]"
-                                    )}
-                                    onClick={() => setActivePositionId(item.id)}
-                                  >
-                                    <td className="px-2 py-2">{idx + 1}</td>
-                                    <td className="px-2 py-2">{item.id}</td>
-                                    <td className="px-2 py-2">{getRowStringField(item, "base_material_name", "-")}</td>
-                                    <td className="px-2 py-2">{getRowNumberField(item, "length_mm", 0)}</td>
-                                    <td className="px-2 py-2">{getRowNumberField(item, "width_mm", 0)}</td>
-                                    <td className="px-2 py-2">{getRowNumberField(item, "base_thickness_mm", 0)}</td>
-                                    <td className="px-2 py-2">{item.quantity}</td>
-                                    <td className="px-2 py-2">{item.textureOrColor || "-"}</td>
-                                    <td className="px-2 py-2 font-semibold">{item.name}</td>
-                                    <td className="px-2 py-2 text-center">{Boolean(input.edge_top) ? "✓" : ""}</td>
-                                    <td className="px-2 py-2 text-center">{Boolean(input.edge_bottom) ? "✓" : ""}</td>
-                                    <td className="px-2 py-2 text-center">{Boolean(input.edge_left) ? "✓" : ""}</td>
-                                    <td className="px-2 py-2 text-center">{Boolean(input.edge_right) ? "✓" : ""}</td>
-                                    <td className="px-2 py-2">{edgeName || "-"}</td>
-                                    <td className="px-2 py-2">{String(input.part_code ?? input.code ?? "-")}</td>
-                                    <td className="px-2 py-2">{item.description || "-"}</td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                          <div className="border-t border-[#33445f] bg-[#101925] px-3 py-2 text-[11px] text-slate-300">
-                            <span className="font-black uppercase tracking-wider text-blue-200">Okleiny: </span>
-                            {Object.keys(group.edgeByMaterial).length === 0
-                              ? "brak"
-                              : Object.entries(group.edgeByMaterial)
-                                  .map(([name, mb]) => `${name}: ${mb.toFixed(2)} mb`)
-                                  .join(" | ")}
+                          <div className="overflow-x-auto">
+                            <table className="w-full border-collapse text-[10px]">
+                              <thead className="bg-[#bcc8da] text-[#0b1c39]">
+                                <tr>
+                                  <th className="px-2 py-1 text-left">Nr</th>
+                                  <th className="px-2 py-1 text-left">Nazwa</th>
+                                  <th className="px-2 py-1 text-right">DL</th>
+                                  <th className="px-2 py-1 text-right">SZ</th>
+                                  <th className="px-2 py-1 text-right">Gr</th>
+                                  <th className="px-2 py-1 text-right">Ilosc</th>
+                                  <th className="px-2 py-1 text-center">G</th>
+                                  <th className="px-2 py-1 text-center">D</th>
+                                  <th className="px-2 py-1 text-center">L</th>
+                                  <th className="px-2 py-1 text-center">P</th>
+                                  <th className="px-2 py-1 text-left">Status</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {group.rows.map((item, idx) => {
+                                  const input = getRowPricingInput(item);
+                                  const hasEdge = Boolean(input.edge_top || input.edge_bottom || input.edge_left || input.edge_right);
+                                  const noEdgeRow = !hasEdge && !String(input.edge_default_material_id ?? "").trim();
+                                  return (
+                                    <tr
+                                      key={item.id}
+                                      className={clsx(
+                                        "cursor-pointer border-t border-white/5",
+                                        activePositionId === item.id ? "bg-blue-600/10" : "hover:bg-white/[0.03]"
+                                      )}
+                                      onClick={() => setActivePositionId(item.id)}
+                                    >
+                                      <td className="px-2 py-1">{idx + 1}</td>
+                                      <td className="px-2 py-1 font-semibold">{item.name}</td>
+                                      <td className="px-2 py-1 text-right">{getRowNumberField(item, "length_mm", 0)}</td>
+                                      <td className="px-2 py-1 text-right">{getRowNumberField(item, "width_mm", 0)}</td>
+                                      <td className="px-2 py-1 text-right text-slate-400">{getRowNumberField(item, "base_thickness_mm", 0)}</td>
+                                      <td className="px-2 py-1 text-right">{item.quantity}</td>
+                                      <td className="px-2 py-1 text-center">{Boolean(input.edge_top) ? "✓" : ""}</td>
+                                      <td className="px-2 py-1 text-center">{Boolean(input.edge_bottom) ? "✓" : ""}</td>
+                                      <td className="px-2 py-1 text-center">{Boolean(input.edge_left) ? "✓" : ""}</td>
+                                      <td className="px-2 py-1 text-center">{Boolean(input.edge_right) ? "✓" : ""}</td>
+                                      <td className="px-2 py-1 text-[9px]">
+                                        {noEdgeRow ? (
+                                          <span className="text-slate-500">Bez oklejania</span>
+                                        ) : item.servicePricing?.pricing_status === "ready" ? (
+                                          <span className="text-emerald-400">{item.servicePricing.buckets.net_total.toFixed(2)} zl</span>
+                                        ) : item.servicePricing?.pricing_status === "manual_review" ? (
+                                          <span className="text-amber-400">review</span>
+                                        ) : (
+                                          <span className="text-slate-500">-</span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
                           </div>
                         </div>
                       ))
                     )}
-
-                    <div className="rounded border border-blue-500/25 bg-blue-500/5 p-3 text-[11px]">
-                      <div className="font-black uppercase tracking-widest text-blue-200">Podsumowanie operacji</div>
-                      <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-3">
-                        <div className="rounded border border-[#33445f] bg-[#101925] px-3 py-2">
-                          Suma m2: <span className="font-black">{serviceMaterialTables.global.totalM2.toFixed(3)}</span>
-                        </div>
-                        <div className="rounded border border-[#33445f] bg-[#101925] px-3 py-2">
-                          Cena koncowa netto:{" "}
-                          <span className="font-black">{serviceMaterialTables.global.totalNet.toFixed(2)} zl</span>
-                        </div>
-                        <div className="rounded border border-[#33445f] bg-[#101925] px-3 py-2">
-                          Oklejanie razem:{" "}
-                          <span className="font-black">
-                            {Object.values(serviceMaterialTables.global.edgeByMaterial)
-                              .reduce((sum, value) => sum + value, 0)
-                              .toFixed(2)}{" "}
-                            mb
-                          </span>
-                        </div>
-                      </div>
-                      <div className="mt-2 text-slate-300">
-                        <span className="font-black uppercase tracking-wider text-blue-200">Rozbicie oklein: </span>
-                        {Object.keys(serviceMaterialTables.global.edgeByMaterial).length === 0
-                          ? "brak"
-                          : Object.entries(serviceMaterialTables.global.edgeByMaterial)
-                              .map(([name, mb]) => `${name}: ${mb.toFixed(2)} mb`)
-                              .join(" | ")}
-                      </div>
-                    </div>
                   </div>
                 ) : (
                   <div className="overflow-hidden rounded border border-[#33445f]">
-                    <table className="w-full border-collapse">
+                    <table className="w-full border-collapse text-[10px]">
                       <thead className="bg-[#bcc8da] text-[#0b1c39]">
                         <tr>
-                          <th className="px-2 py-2 text-left">Nr</th>
-                          <th className="px-2 py-2 text-left">Nazwa</th>
-                          <th className="px-2 py-2 text-left">Material</th>
-                          <th className="px-2 py-2 text-left">Kolor/tekstura</th>
-                          <th className="px-2 py-2 text-left">L</th>
-                          <th className="px-2 py-2 text-left">W</th>
-                          <th className="px-2 py-2 text-left">T</th>
-                          <th className="px-2 py-2 text-left">Ilosc</th>
-                          <th className="px-2 py-2 text-left">Krawedzie (G/D/L/P)</th>
-                          <th className="px-2 py-2 text-left">Tryb</th>
-                          <th className="px-2 py-2 text-left">Zrodlo</th>
+                          <th className="px-2 py-1.5 text-left">Nr</th>
+                          <th className="px-2 py-1.5 text-left">Nazwa</th>
+                          <th className="px-2 py-1.5 text-left">Material</th>
+                          <th className="px-2 py-1.5 text-left">Kolor/tekstura</th>
+                          <th className="px-2 py-1.5 text-right">L</th>
+                          <th className="px-2 py-1.5 text-right">W</th>
+                          <th className="px-2 py-1.5 text-right">T</th>
+                          <th className="px-2 py-1.5 text-right">Ilosc</th>
+                          <th className="px-2 py-1.5 text-left">Krawedzie (G/D/L/P)</th>
+                          <th className="px-2 py-1.5 text-left">Tryb</th>
+                          <th className="px-2 py-1.5 text-left">Zrodlo</th>
                         </tr>
                       </thead>
                       <tbody>
                         {positions.length === 0 ? (
                           <tr>
-                            <td colSpan={11} className="px-3 py-8 text-center text-slate-500">
+                            <td colSpan={11} className="px-3 py-6 text-center text-slate-500">
                               Brak pozycji
                             </td>
                           </tr>
@@ -3409,21 +3337,21 @@ export default function NewOrderPage() {
                               )}
                               onClick={() => setActivePositionId(item.id)}
                             >
-                              <td className="px-2 py-2">{idx + 1}</td>
-                              <td className="px-2 py-2 font-semibold">{item.name}</td>
-                              <td className="px-2 py-2">{getRowStringField(item, "base_material_name", "-")}</td>
-                              <td className="px-2 py-2">{item.textureOrColor || "-"}</td>
-                              <td className="px-2 py-2">{getRowNumberField(item, "length_mm", 0)}</td>
-                              <td className="px-2 py-2">{getRowNumberField(item, "width_mm", 0)}</td>
-                              <td className="px-2 py-2">{getRowNumberField(item, "base_thickness_mm", 0)}</td>
-                              <td className="px-2 py-2">{item.quantity}</td>
-                              <td className="px-2 py-2 text-[11px]">
+                              <td className="px-2 py-1.5">{idx + 1}</td>
+                              <td className="px-2 py-1.5 font-semibold">{item.name}</td>
+                              <td className="px-2 py-1.5">{getRowStringField(item, "base_material_name", "-")}</td>
+                              <td className="px-2 py-1.5">{item.textureOrColor || "-"}</td>
+                              <td className="px-2 py-1.5 text-right">{getRowNumberField(item, "length_mm", 0)}</td>
+                              <td className="px-2 py-1.5 text-right">{getRowNumberField(item, "width_mm", 0)}</td>
+                              <td className="px-2 py-1.5 text-right">{getRowNumberField(item, "base_thickness_mm", 0)}</td>
+                              <td className="px-2 py-1.5 text-right">{item.quantity}</td>
+                              <td className="px-2 py-1.5 text-[10px]">
                                 {Boolean(getRowPricingInput(item).edge_top) ? "1" : "0"}/
                                 {Boolean(getRowPricingInput(item).edge_bottom) ? "1" : "0"}/
                                 {Boolean(getRowPricingInput(item).edge_left) ? "1" : "0"}/
                                 {Boolean(getRowPricingInput(item).edge_right) ? "1" : "0"}
                               </td>
-                              <td className="px-2 py-2 text-[11px] text-slate-300">
+                              <td className="px-2 py-1.5 text-[10px] text-slate-300">
                                 {item.serviceMode && serviceModeKeys.has(item.serviceMode)
                                   ? SERVICE_MODE_LABEL[
                                       item.serviceMode as
@@ -3435,7 +3363,7 @@ export default function NewOrderPage() {
                                     ]
                                   : "-"}
                               </td>
-                              <td className="px-2 py-2 text-[11px] uppercase text-slate-400">
+                              <td className="px-2 py-1.5 text-[10px] uppercase text-slate-400">
                                 {item.sourceType || "manual"}
                               </td>
                             </tr>
@@ -3446,6 +3374,172 @@ export default function NewOrderPage() {
                   </div>
                 )}
               </Card>
+
+              {/* ── PODGLAD KALKULACJI z trybami grupowania ── */}
+              {isServicesMode && (
+                <Card className="border-[#333] bg-[#1e1e1e] p-3">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-[11px] font-black uppercase tracking-widest text-blue-200">Podglad kalkulacji</div>
+                    <div className="flex items-center gap-1">
+                      {([
+                        ["active", "Aktywna pozycja"],
+                        ["by-material", "Wedlug materialow"],
+                        ["combined", "Razem"],
+                      ] as const).map(([mode, label]) => (
+                        <button
+                          key={mode}
+                          onClick={() => setPreviewGroupMode(mode)}
+                          className={clsx(
+                            "rounded px-2 py-0.5 text-[9px] font-black uppercase tracking-wider",
+                            previewGroupMode === mode
+                              ? "bg-blue-600/30 text-blue-200 border border-blue-500/40"
+                              : "bg-[#1a2233] text-slate-400 border border-[#33445f] hover:text-slate-200"
+                          )}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {serviceMaterialTables.groups.length > 1 && previewGroupMode === "active" && (
+                    <div className="mb-2 rounded border border-blue-500/15 bg-blue-500/5 px-2 py-1 text-[9px] text-blue-300">
+                      Wycena zawiera kilka materialow — mozesz pokazac kalkulacje razem albo wedlug materialow.
+                    </div>
+                  )}
+
+                  {/* Mode: Aktywna pozycja */}
+                  {previewGroupMode === "active" && (
+                    <>
+                      {servicePricingLoading ? (
+                        <div className="flex items-center gap-2 text-[11px] text-slate-300">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Liczenie...
+                        </div>
+                      ) : servicePricingPreview ? (
+                        <div className="space-y-1.5 text-[10px]">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={clsx(
+                                "rounded-full border px-2 py-0.5 text-[9px] font-black uppercase",
+                                servicePricingPreview.pricing_status === "ready"
+                                  ? "border-emerald-400/40 bg-emerald-500/15 text-emerald-300"
+                                  : "border-amber-400/40 bg-amber-500/15 text-amber-300"
+                              )}
+                            >
+                              {servicePricingPreview.pricing_status === "ready" ? "ready" : "manual_review"}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1 md:grid-cols-5 text-slate-200">
+                            <div>material: {servicePricingPreview.buckets.material_cost.toFixed(2)} zl</div>
+                            <div>ciecie/cnc: {servicePricingPreview.buckets.cnc_service_cost.toFixed(2)} zl</div>
+                            <div>oklejanie: {servicePricingPreview.buckets.finishing_cost.toFixed(2)} zl</div>
+                            <div>dodatkowe: {servicePricingPreview.buckets.extra_cost.toFixed(2)} zl</div>
+                            <div className="font-black text-emerald-300">
+                              netto: {servicePricingPreview.buckets.net_total.toFixed(2)} zl
+                            </div>
+                          </div>
+                          {servicePricingPreview.summary_text && (
+                            <div className="text-slate-400">{servicePricingPreview.summary_text}</div>
+                          )}
+                          {servicePricingPreview.validation_flags.length > 0 && (
+                            <div className="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[9px] text-amber-200">
+                              {servicePricingPreview.validation_flags
+                                .map((flag) => `${flag.code}: ${flag.message}`)
+                                .join(" | ")}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-[10px] text-slate-400">
+                          Brak podgladu — dodaj formatke aby zobaczyc kalkulacje.
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* Mode: Wedlug materialow */}
+                  {previewGroupMode === "by-material" && (
+                    <div className="space-y-2">
+                      {serviceMaterialTables.groups.length === 0 ? (
+                        <div className="text-[10px] text-slate-400">Brak pozycji.</div>
+                      ) : (
+                        serviceMaterialTables.groups.map((group) => {
+                          const groupHasEdge = Object.keys(group.edgeByMaterial).length > 0;
+                          return (
+                            <div key={group.key} className="rounded border border-[#33445f] bg-[#101722] p-2 text-[10px]">
+                              <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                                <span className="font-black text-blue-200">{group.materialName}</span>
+                                <span className="text-slate-400">
+                                  {group.rows.length} formatek | {group.totalM2.toFixed(3)} m2
+                                  {group.rows[0] && (() => {
+                                    const t = getRowNumberField(group.rows[0], "base_thickness_mm", 0);
+                                    return t > 0 ? ` | ${t} mm` : "";
+                                  })()}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-1 md:grid-cols-5 text-slate-200">
+                                <div>material: {group.totalNet.toFixed(2)} zl</div>
+                                <div>
+                                  oklejanie:{" "}
+                                  {groupHasEdge
+                                    ? Object.entries(group.edgeByMaterial)
+                                        .map(([n, mb]) => `${n}: ${mb.toFixed(2)} mb`)
+                                        .join(", ")
+                                    : "Bez oklejania"}
+                                </div>
+                              </div>
+                              <div className="mt-1 font-black text-emerald-300">
+                                netto: {group.totalNet.toFixed(2)} zl
+                              </div>
+                              {!groupHasEdge && (
+                                <div className="mt-1 text-[9px] text-slate-500">Bez oklejania — brak walidacji okleiny</div>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+
+                  {/* Mode: Razem */}
+                  {previewGroupMode === "combined" && (
+                    <div className="space-y-1.5 text-[10px]">
+                      <div className="grid grid-cols-2 gap-1.5 md:grid-cols-3">
+                        <div className="rounded border border-[#33445f] bg-[#101925] px-2 py-1.5">
+                          Suma m2: <span className="font-black">{serviceMaterialTables.global.totalM2.toFixed(3)}</span>
+                        </div>
+                        <div className="rounded border border-[#33445f] bg-[#101925] px-2 py-1.5">
+                          Netto razem:{" "}
+                          <span className="font-black text-emerald-300">{serviceMaterialTables.global.totalNet.toFixed(2)} zl</span>
+                        </div>
+                        <div className="rounded border border-[#33445f] bg-[#101925] px-2 py-1.5">
+                          Oklejanie:{" "}
+                          <span className="font-black">
+                            {Object.values(serviceMaterialTables.global.edgeByMaterial)
+                              .reduce((sum, value) => sum + value, 0)
+                              .toFixed(2)}{" "}
+                            mb
+                          </span>
+                        </div>
+                      </div>
+                      {Object.keys(serviceMaterialTables.global.edgeByMaterial).length > 0 && (
+                        <div className="text-slate-300">
+                          <span className="font-black text-blue-200">Rozbicie oklein: </span>
+                          {Object.entries(serviceMaterialTables.global.edgeByMaterial)
+                            .map(([name, mb]) => `${name}: ${mb.toFixed(2)} mb`)
+                            .join(" | ")}
+                        </div>
+                      )}
+                      {serviceMaterialTables.groups.some((g) => Object.keys(g.edgeByMaterial).length === 0) && (
+                        <div className="text-[9px] text-slate-500">
+                          Niektore grupy materialowe nie maja oklejania — to nie blad walidacji.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </Card>
+              )}
             </div>
           ) : null}
 

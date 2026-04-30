@@ -105,10 +105,17 @@ class _WorkerTile(QToolButton):
         self.setText(f"{display_name}\n{role_label}")
         self.setToolTip(f"{worker.name or '—'}  ·  {role_label}")
         self.setFixedSize(110, 110)
+
+        # Subtelne podbarwienie tła roli (mieszanka bg_hex z ciemnym bazowym)
+        # Obramowanie zawsze w kolorze roli
+        bg_hex, accent = _ROLE_COLORS.get(role, _DEFAULT_COLORS)
         self.setStyleSheet(f"""
             QToolButton {{
-                background: #1e293b;
-                border: 2px solid #334155;
+                background: qlineargradient(
+                    x1:0, y1:0, x2:0, y2:1,
+                    stop:0 {bg_hex}, stop:1 #0f172a
+                );
+                border: 2px solid {accent};
                 border-radius: 12px;
                 color: #e2e8f0;
                 font-size: 10px;
@@ -117,11 +124,13 @@ class _WorkerTile(QToolButton):
             }}
             QToolButton:hover {{
                 background: {bg_hex};
-                border-color: #94a3b8;
+                border-color: {accent};
+                border-width: 3px;
             }}
             QToolButton:pressed {{
                 background: {bg_hex};
                 border-color: #facc15;
+                border-width: 3px;
             }}
         """)
 

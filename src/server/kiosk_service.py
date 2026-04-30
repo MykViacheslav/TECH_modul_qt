@@ -100,7 +100,16 @@ class KioskService:
             session=self._session_dict(session) if session is not None else None,
         )
 
-    def perform_action(self, worker_id: str, action: str, work_type: str = "") -> KioskResult:
+    def perform_action(
+        self,
+        worker_id: str,
+        action: str,
+        work_type: str = "",
+        project_code: str = "",
+        order_id: str = "",
+        workstation: str = "",
+        note: str = "",
+    ) -> KioskResult:
         worker = self._worker_store.get_by_worker_id(worker_id)
         if worker is None:
             return KioskResult(False, "Nie znaleziono pracownika.")
@@ -110,6 +119,11 @@ class KioskService:
         now = self._now_func()
         now_iso = _now_iso(now)
         worker_dict = self._worker_dict(worker)
+        project_code_norm = str(project_code or "").strip()
+        order_id_norm = str(order_id or "").strip()
+        note_norm = str(note or "").strip()
+        workstation_norm = self._normalize_workstation(workstation, fallback=work_type)
+        work_type_norm = str(work_type or "Produkcja").strip() or "Produkcja"
 
         if action_norm == "start":
             current = self._session_store.get(worker_id_norm)
@@ -118,7 +132,11 @@ class KioskService:
             session = WorkTimeSessionDef(
                 worker_id=worker_id_norm,
                 worker_name=worker_dict["name"],
-                work_type=str(work_type or "Produkcja").strip() or "Produkcja",
+                work_type=work_type_norm,
+                project_code=project_code_norm,
+                order_id=order_id_norm,
+                workstation=workstation_norm,
+                note=note_norm,
                 started_at_iso=now_iso,
                 break_total_minutes=0.0,
                 last_action_iso=now_iso,
@@ -129,6 +147,14 @@ class KioskService:
         session = self._session_store.get(worker_id_norm)
         if session is None:
             return KioskResult(False, "Brak aktywnej sesji.", worker=worker_dict)
+        if project_code_norm:
+            session.project_code = project_code_norm
+        if order_id_norm:
+            session.order_id = order_id_norm
+        if workstation_norm:
+            session.workstation = workstation_norm
+        if note_norm:
+            session.note = note_norm
 
         if action_norm == "break_start":
             if session.break_started_at_iso:
@@ -208,8 +234,8 @@ class KioskService:
             hours=round(net_minutes / 60.0, 2),
             overtime_hours=0.0,
             extra_pay=0.0,
-            project_code="",
-            note="Rejestracja z kiosku web",
+            project_code=str(session.project_code or "").strip(),
+            note=self._build_entry_note(session),
         )
 
         result = self._work_time_store.upsert_day_entry(worker_dict["name"], now.year, now.month, entry)
@@ -238,8 +264,38 @@ class KioskService:
             "worker_id": str(getattr(session, "worker_id", "") or "").strip(),
             "worker_name": str(getattr(session, "worker_name", "") or "").strip(),
             "work_type": str(getattr(session, "work_type", "") or "").strip(),
+            "project_code": str(getattr(session, "project_code", "") or "").strip(),
+            "order_id": str(getattr(session, "order_id", "") or "").strip(),
+            "workstation": str(getattr(session, "workstation", "") or "").strip(),
+            "note": str(getattr(session, "note", "") or "").strip(),
             "started_at_iso": str(getattr(session, "started_at_iso", "") or "").strip(),
             "break_started_at_iso": str(getattr(session, "break_started_at_iso", "") or "").strip(),
             "break_total_minutes": float(getattr(session, "break_total_minutes", 0.0) or 0.0),
             "last_action_iso": str(getattr(session, "last_action_iso", "") or "").strip(),
         }
+
+    def _normalize_workstation(self, workstation: str, *, fallback: str = "") -> str:
+        raw = str(workstation or fallback or "").strip()
+        if not raw:
+            return ""
+        token = raw.lower()
+        aliases = {
+            "cnc": "CNC",
+            "oklejanie": "Oklejanie",
+            "lakiernia": "Lakiernia",
+            "montaz": "Montaz",
+            "montaż": "Montaz",
+            "biuro": "Biuro",
+            "produkcja": "Produkcja",
+        }
+        return aliases.get(token, raw)
+
+    def _build_entry_note(self, session: WorkTimeSessionDef) -> str:
+        parts = ["Rejestracja z kiosku web"]
+        if str(session.order_id or "").strip():
+            parts.append(f"order_id={str(session.order_id).strip()}")
+        if str(session.workstation or "").strip():
+            parts.append(f"workstation={str(session.workstation).strip()}")
+        if str(session.note or "").strip():
+            parts.append(f"note={str(session.note).strip()}")
+        return " | ".join(parts)

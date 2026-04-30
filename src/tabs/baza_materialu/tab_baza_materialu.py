@@ -47,16 +47,7 @@ BLOCKED_MATERIAL_TYPES = {"inne"}
 
 PRODUCER_LIBRARY_ROWS = DEFAULT_PRODUCER_LIBRARY_ROWS
 
-TABLE_TEXT_STYLE = """
-QTableWidget {
-    color: #1f2937;
-    selection-color: #0f172a;
-}
-QTableWidget::item:selected {
-    background: #dbeafe;
-    color: #0f172a;
-}
-"""
+TABLE_TEXT_STYLE = ""
 
 _APP_GUARD: QApplication | None = None
 
@@ -522,6 +513,20 @@ class TabBazaMaterialu(QWidget):
         self.btn_add_row = QPushButton("Dodaj", self)
         self.btn_remove_row = QPushButton("Usun wiersz", self)
         self.btn_toggle_filter = QPushButton("Filtr", self)
+
+        self.btn_filter_to_buy = QPushButton("DO KUPNA", self)
+        self.btn_filter_to_buy.setCheckable(True)
+        self.btn_filter_to_buy.setMinimumWidth(100)
+        self.btn_filter_to_buy.setStyleSheet("""
+            QPushButton:checked {
+                background-color: #9f1239;
+                color: white;
+                font-weight: bold;
+                border: 1px solid #4c0519;
+            }
+        """)
+        actions.addWidget(self.btn_filter_to_buy, 0)
+
         actions.addWidget(self.btn_toggle_filter, 0)
         actions.addWidget(self.btn_add_row, 0)
         actions.addWidget(self.btn_remove_row, 0)
@@ -663,7 +668,7 @@ class TabBazaMaterialu(QWidget):
         root.addWidget(self.material_entry_bar, 0)
 
         # ── Glowna tabela materialow ─────────────────────────────────────
-        self.tbl = QTableWidget(0, 19, self)
+        self.tbl = QTableWidget(0, 22, self)
         self.tbl.setStyleSheet(TABLE_TEXT_STYLE)
         self.tbl.setHorizontalHeaderLabels(
             [
@@ -686,6 +691,9 @@ class TabBazaMaterialu(QWidget):
                 "Data zakupu",
                 "Suma zam. kw [zl]",
                 "Suma za szt [zl]",
+                "Magazyn ID",
+                "Magazyn",
+                "Status",
             ]
         )
         self.tbl.setAlternatingRowColors(True)
@@ -697,9 +705,18 @@ class TabBazaMaterialu(QWidget):
             | QAbstractItemView.EditTrigger.AnyKeyPressed
             | QAbstractItemView.EditTrigger.SelectedClicked
         )
-        self.tbl.verticalHeader().setVisible(False)
-        self.tbl.setSortingEnabled(False)
         self.tbl.horizontalHeader().setSectionsMovable(True)
+        
+        # Set column widths for better navigation
+        self.tbl.setColumnWidth(0, 60)   # ID
+        self.tbl.setColumnWidth(1, 80)   # TYP
+        self.tbl.setColumnWidth(2, 200)  # Nazwa
+        self.tbl.setColumnWidth(3, 100)  # Producent
+        self.tbl.setColumnWidth(8, 80)   # Cena
+        self.tbl.setColumnWidth(9, 60)   # Ilosc
+        self.tbl.setColumnWidth(10, 80)  # Spisano
+        self.tbl.setColumnWidth(11, 80)  # Magazyn
+        self.tbl.setColumnWidth(21, 100) # Status
 
         # ── Panel filtrow ────────────────────────────────────────────────
         self.filter_panel = _LogicalVisibilityWidget(self)
@@ -762,6 +779,7 @@ class TabBazaMaterialu(QWidget):
         self.btn_mat_cancel.clicked.connect(self._hide_material_entry_bar)
         self.btn_mat_pick_library.clicked.connect(self._pick_material_from_library)
         self.btn_clear_filters.clicked.connect(self._clear_filters)
+        self.btn_filter_to_buy.toggled.connect(self._apply_filters)
         self.cb_mat_typ.currentTextChanged.connect(self._sync_material_entry_name)
         self.cb_library_producer.currentIndexChanged.connect(self._refresh_library_table)
         self.ed_library_search.textChanged.connect(self._refresh_library_table)
@@ -1558,7 +1576,7 @@ class TabBazaMaterialu(QWidget):
             for col in range(self.tbl.columnCount()):
                 if col == 0:
                     continue
-                if col in (17, 18):
+                if col in (17, 18, 21): # Money and Status col
                     continue
                 value = values[col] if col < len(values) else ""
                 self.tbl.setItem(row, col, QTableWidgetItem(value))
@@ -1639,6 +1657,18 @@ class TabBazaMaterialu(QWidget):
         self._refresh_quantity_warnings()
         self._save_store()
 
+    def _on_toggle_types_table(self, checked: bool) -> None:
+        self.types_body.setVisible(checked)
+        self.btn_toggle_types.setArrowType(
+            Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow
+        )
+
+    def _on_toggle_library_table(self, checked: bool) -> None:
+        self.library_body.setVisible(checked)
+        self.btn_toggle_library.setArrowType(
+            Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow
+        )
+
     def _toggle_filter_panel(self) -> None:
         show = not self.filter_panel.isVisible()
         self.filter_panel.setVisible(show)
@@ -1662,9 +1692,19 @@ class TabBazaMaterialu(QWidget):
             for idx, edit in enumerate(self._filter_inputs)
             if str(edit.text() or "").strip()
         }
+        show_only_to_buy = self.btn_filter_to_buy.isChecked()
+        col_status = 21
+
         for row in range(self.tbl.rowCount()):
-            visible = all(needle in self._row_col_text(row, col).lower() for col, needle in filters.items())
-            self.tbl.setRowHidden(row, not visible)
+            text_match = all(needle in self._row_col_text(row, col).lower() for col, needle in filters.items())
+            
+            if show_only_to_buy:
+                status_text = self._row_col_text(row, col_status).strip().upper()
+                status_match = (status_text == "DO KUPNA")
+            else:
+                status_match = True
+                
+            self.tbl.setRowHidden(row, not (text_match and status_match))
 
     def _to_float(self, value: str) -> float:
         raw = str(value or "").strip().replace(" ", "").replace(",", ".")
@@ -1694,10 +1734,13 @@ class TabBazaMaterialu(QWidget):
         col_magazyn = 11
         col_sum_zam_kw = 17
         col_sum_za_szt = 18
+        col_status = 21
         try:
             for row in range(self.tbl.rowCount()):
                 self._clear_quantity_cell_warning(row, col_spisano)
                 self._clear_quantity_cell_warning(row, col_magazyn)
+                self._clear_quantity_cell_warning(row, col_status)
+                
                 cena = self._to_float(self._row_col_text(row, col_cena))
                 qty = self._to_float(self._row_col_text(row, col_ilosc))
                 assigned = self._to_float(self._row_col_text(row, col_spisano))
@@ -1706,7 +1749,27 @@ class TabBazaMaterialu(QWidget):
                 self._set_computed_money_cell(row, col_sum_zam_kw, cena * assigned)
                 self._set_computed_money_cell(row, col_sum_za_szt, cena * qty)
 
-                required = assigned if assigned > 0 else qty
+                required = assigned if assigned > 0 else (qty if qty > 0 else 0)
+                
+                # Update status
+                status_item = self.tbl.item(row, col_status)
+                if status_item is None:
+                    status_item = QTableWidgetItem()
+                    self.tbl.setItem(row, col_status, status_item)
+                
+                if stock <= 0 and required > 0:
+                    status_item.setText("DO KUPNA")
+                    status_item.setForeground(QColor("#9f1239")) # Rose 800
+                elif stock < required and required > 0:
+                    status_item.setText("BRAKI")
+                    status_item.setForeground(QColor("#b45309")) # Amber 700
+                elif stock <= 1.0 and stock > 0:
+                    status_item.setText("NISKI STAN")
+                    status_item.setForeground(QColor("#d97706")) # Amber 600
+                else:
+                    status_item.setText("OK")
+                    status_item.setForeground(QColor("#16a34a")) # Green 600
+
                 if required <= 0:
                     continue
                 for col in (col_spisano, col_magazyn):
@@ -1733,17 +1796,7 @@ class TabBazaMaterialu(QWidget):
         item.setText(f"{value:.2f}" if value > 0 else "")
 
     def _next_id(self) -> str:
-        max_num = 0
-        for row in range(self.tbl.rowCount()):
-            item = self.tbl.item(row, 0)
-            raw = str(item.text() if item is not None else "").strip()
-            digits = "".join(ch for ch in raw if ch.isdigit())
-            if digits:
-                try:
-                    max_num = max(max_num, int(digits))
-                except ValueError:
-                    continue
-        return f"M{max_num + 1:04d}"
+        return self._material_store.generate_next_id()
 
     def _next_id_from_used(self, used: set[str], start_num: int = 0) -> tuple[str, int]:
         counter = int(start_num)
@@ -1786,6 +1839,8 @@ class TabBazaMaterialu(QWidget):
                     "data_zakupu": values[16],
                     "suma_zam_kw": values[17] if len(values) > 17 else "",
                     "suma_za_szt": values[18] if len(values) > 18 else "",
+                    "magazyn_id": values[19] if len(values) > 19 else "",
+                    "magazyn_typ": values[20] if len(values) > 20 else "",
                 }
             )
         return rows
@@ -1931,6 +1986,8 @@ class TabBazaMaterialu(QWidget):
                     str(entry.get("data_zakupu", "") or ""),
                     str(entry.get("suma_zam_kw", "") or ""),
                     str(entry.get("suma_za_szt", "") or ""),
+                    str(entry.get("magazyn_id", "") or ""),
+                    str(entry.get("magazyn_typ", "") or ""),
                 ]
 
                 requested_id = values[0].strip()
@@ -1946,7 +2003,7 @@ class TabBazaMaterialu(QWidget):
                 self._set_id_item(row_idx, id_value)
 
                 for col in range(1, self.tbl.columnCount()):
-                    if col in (17, 18):
+                    if col in (17, 18, 21): # Money and Status col
                         continue
                     value = values[col] if col < len(values) else ""
                     self.tbl.setItem(row_idx, col, QTableWidgetItem(value))

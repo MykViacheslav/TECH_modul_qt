@@ -17,16 +17,7 @@ from src.storage.company_expenses_store_json import CompanyExpensesStoreJson, ne
 from src.ui.theme_utils import get_muted_color
 from src.ui.theme_utils import get_muted_color
 
-TABLE_TEXT_STYLE = """
-QTableWidget {
-    color: #1f2937;
-    selection-color: #0f172a;
-}
-QTableWidget::item:selected {
-    background: #dbeafe;
-    color: #0f172a;
-}
-"""
+TABLE_TEXT_STYLE = ""
 
 
 DEFAULT_FIXED_EXPENSES: list[str] = [
@@ -95,8 +86,8 @@ class TabWydatkiStale(QWidget):
         actions.addStretch(1)
         root.addLayout(actions)
 
-        sum_frame = QFrame(self)
-        sum_frame.setStyleSheet("QFrame { border:1px solid #d9e0ea; border-radius:8px; background:#ffffff; }")
+        sum_frame = QFrame(self); sum_frame.setProperty("uiCard", True)
+        sum_frame.setStyleSheet("QFrame { border:1px solid #d9e0ea; border-radius:8px; background:transparent; }")
         sum_row = QHBoxLayout(sum_frame)
         sum_row.setContentsMargins(10, 8, 10, 8)
         sum_row.setSpacing(8)

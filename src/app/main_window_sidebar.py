@@ -97,7 +97,7 @@ def build_sidebar(window, groups: list[tuple[str, list[str]]]) -> QWidget:
     window._user_label.setObjectName("SidebarUserLabel")
     window._user_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     window._user_label.setWordWrap(True)
-    window._user_label.setStyleSheet("font-size: 9px; color: #888;")
+    window._user_label.setStyleSheet("font-size: 11px; color: #cbd5e1; font-weight: 700;")
     layout.addWidget(window._user_label)
     layout.addSpacing(2)
 
@@ -105,7 +105,7 @@ def build_sidebar(window, groups: list[tuple[str, list[str]]]) -> QWidget:
     window.btn_switch_user.setObjectName("SidebarSwitchUser")
     window.btn_switch_user.setText("👤")
     window.btn_switch_user.setToolTip("Zmień użytkownika")
-    window.btn_switch_user.setMinimumHeight(28)
+    window.btn_switch_user.setMinimumHeight(32)
     window.btn_switch_user.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
     window.btn_switch_user.clicked.connect(window._on_switch_user)
     layout.addWidget(window.btn_switch_user)
@@ -123,12 +123,14 @@ def build_sidebar(window, groups: list[tuple[str, list[str]]]) -> QWidget:
     window.btn_nav_back = QToolButton()
     window.btn_nav_back.setText("←")
     window.btn_nav_back.setToolTip("Wróć do poprzedniego kroku")
+    window.btn_nav_back.setMinimumHeight(28)
     window.btn_nav_back.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
     window.btn_nav_back.clicked.connect(window._go_back)
 
     window.btn_nav_forward = QToolButton()
     window.btn_nav_forward.setText("→")
     window.btn_nav_forward.setToolTip("Przejdź dalej")
+    window.btn_nav_forward.setMinimumHeight(28)
     window.btn_nav_forward.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
     window.btn_nav_forward.clicked.connect(window._go_forward)
 
@@ -139,6 +141,7 @@ def build_sidebar(window, groups: list[tuple[str, list[str]]]) -> QWidget:
     window.btn_nav_home = QToolButton()
     window.btn_nav_home.setText("⌂")
     window.btn_nav_home.setToolTip("Wróć na ekran startowy")
+    window.btn_nav_home.setMinimumHeight(30)
     window.btn_nav_home.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
     window.btn_nav_home.clicked.connect(window._go_home)
 

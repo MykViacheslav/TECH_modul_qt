@@ -88,7 +88,7 @@ class DailyBriefingWidget(QFrame):
             "QFrame#BriefingFrame {"
             "border: 1px solid #cdddf0;"
             "border-radius: 18px;"
-            "background: #eef6ff;"
+            "background: #1e293b;"
             "}"
         )
 

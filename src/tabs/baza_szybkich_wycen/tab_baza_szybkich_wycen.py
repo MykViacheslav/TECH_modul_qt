@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from src.app.app_settings import load_ui_theme_settings
 
 from src.domain.order_models import OrderDef
 from src.storage.data_paths import data_dir
@@ -135,7 +136,11 @@ def sanitize_quick_quote_entries(entries: list[Any]) -> list[dict[str, Any]]:
         entry["client"] = str(entry.get("client", "") or "").strip()
         entry["price"] = _format_price(entry.get("price", entry.get("base_price", "0")))
         entry["discount_pct"] = _format_percent(entry.get("discount_pct", "0"), clamp_min=0.0, clamp_max=95.0)
-        entry["vat"] = str(entry.get("vat", "23%") or "23%").strip()
+        raw_vat = str(entry.get("vat", "") or "").strip()
+        if not raw_vat or raw_vat in ("-", "—"):
+            entry["vat"] = "23%"
+        else:
+            entry["vat"] = raw_vat
         entry["margin"] = _format_percent(entry.get("margin", "0"), clamp_min=0.0, clamp_max=1000.0)
         entry["order_code"] = str(entry.get("order_code", "") or "").strip()
         entry["created_at"] = str(entry.get("created_at", "") or "").strip()
@@ -144,16 +149,7 @@ def sanitize_quick_quote_entries(entries: list[Any]) -> list[dict[str, Any]]:
     return cleaned
 
 
-TREE_TEXT_STYLE = """
-QTreeWidget {
-    color: #1f2937;
-    selection-color: #0f172a;
-}
-QTreeWidget::item:selected {
-    background: #dbeafe;
-    color: #0f172a;
-}
-"""
+# Removed static TREE_TEXT_STYLE to use dynamic theme-aware styling
 
 
 class TabBazaSzybkichWycen(QWidget):
@@ -166,12 +162,17 @@ class TabBazaSzybkichWycen(QWidget):
         self._items: list[dict[str, Any]] = []
         self._is_syncing_tree = False
 
+        theme = load_ui_theme_settings()
+        is_tech_night = str(theme.motif or "").strip().lower() == "tech" and str(theme.mode or "").strip().lower() == "night"
+        c_text = "#e8efff" if is_tech_night else "#0f172a"
+        c_border = "#2a3b59" if is_tech_night else "#d9e0ea"
+
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 18, 18, 18)
         root.setSpacing(12)
 
         header = QLabel("BAZA SZYBKICH WYCEN", self)
-        header.setStyleSheet("font-size:22px; font-weight:700;")
+        header.setStyleSheet(f"font-size:22px; font-weight:700; color:{c_text};")
         root.addWidget(header)
 
         row_filters = QHBoxLayout()
@@ -187,7 +188,7 @@ class TabBazaSzybkichWycen(QWidget):
         self.cb_sort.addItem("Cena rosnaco", QUICK_QUOTE_SORT_PRICE_ASC)
         row_filters.addWidget(self.cb_sort, 0)
         self.lab_filter_info = QLabel("0 / 0", self)
-        self.lab_filter_info.setStyleSheet("color:#475569; font-weight:700;")
+        self.lab_filter_info.setStyleSheet("color:#94a3b8; font-weight:700;")
         row_filters.addWidget(self.lab_filter_info, 0)
         root.addLayout(row_filters)
 
@@ -209,14 +210,26 @@ class TabBazaSzybkichWycen(QWidget):
         actions.addStretch(1)
         root.addLayout(actions)
 
-        frame = QFrame(self)
-        frame.setStyleSheet("QFrame { border: 1px solid #d9e0ea; border-radius: 10px; background:#ffffff; }")
+        frame = QFrame(self); frame.setProperty("uiCard", True)
+        frame.setStyleSheet(f"QFrame {{ border: 1px solid {c_border}; border-radius: 10px; background:transparent; }}")
         frame_layout = QVBoxLayout(frame)
         frame_layout.setContentsMargins(8, 8, 8, 8)
         frame_layout.setSpacing(6)
 
         self.tree = QTreeWidget(self)
-        self.tree.setStyleSheet(TREE_TEXT_STYLE)
+        self.tree.setStyleSheet(
+            f"""
+            QTreeWidget {{
+                color: {c_text};
+                background: transparent;
+                border: none;
+            }}
+            QTreeWidget::item:selected {{
+                background: #3b82f6;
+                color: #ffffff;
+            }}
+            """
+        )
         self.tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.tree.setHeaderLabels(
             ["ID", "Oferta", "Klient", "Cena", "Rabat", "VAT", "Marza", "Zamowienie", "Status zam."]

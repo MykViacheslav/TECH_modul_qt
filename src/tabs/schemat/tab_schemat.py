@@ -32,7 +32,7 @@ class _FlowBox(QFrame):
         title_label = QLabel(title)
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title_label.setWordWrap(True)
-        title_label.setStyleSheet("font-size: 16px; font-weight: 800; color: #1f2937;")
+        title_label.setStyleSheet("font-size: 16px; font-weight: 800; color: #e8efff;")
         layout.addWidget(title_label)
 
         subtitle_label = QLabel(subtitle)
@@ -55,7 +55,7 @@ class _Section(QFrame):
         self.setStyleSheet(
             """
             QFrame {
-                background: #ffffff;
+                background: transparent;
                 border: none;
                 border-radius: 18px;
             }

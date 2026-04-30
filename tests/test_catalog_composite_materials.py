@@ -155,3 +155,29 @@ def test_module_uses_material_thickness_from_composite_material(tmp_path):
 
     assert abs(float(parts["side_left"].dims_mm["t"]) - 19.2) < 0.001
     assert abs(float(parts["top"].dims_mm["t"]) - 19.2) < 0.001
+
+
+def test_default_catalog_contains_example_composite_seed_materials(tmp_path):
+    catalog = CatalogStoreJson(tmp_path / "catalog.json")
+
+    exported = catalog.export_catalog()
+    materials = list(exported.get("materials", []) or [])
+    material_map = {str(row.get("key", "") or ""): row for row in materials}
+
+    for key in ("PB18_FORNIR_2S", "PB18_FORNIR_1S"):
+        assert key in material_map, f"Missing seed composite material: {key}"
+
+    two_sided = material_map["PB18_FORNIR_2S"]
+    one_sided = material_map["PB18_FORNIR_1S"]
+
+    assert isinstance(two_sided.get("core"), dict)
+    assert isinstance(two_sided.get("skins_left"), list)
+    assert isinstance(two_sided.get("skins_right"), list)
+    assert len(two_sided.get("skins_left") or []) >= 1
+    assert len(two_sided.get("skins_right") or []) >= 1
+
+    assert isinstance(one_sided.get("core"), dict)
+    assert isinstance(one_sided.get("skins_left"), list)
+    assert isinstance(one_sided.get("skins_right"), list)
+    assert len(one_sided.get("skins_left") or []) >= 1
+    assert len(one_sided.get("skins_right") or []) == 0

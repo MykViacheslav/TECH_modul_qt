@@ -24,7 +24,7 @@ from src.domain.shopping_models import ShoppingItemDef, new_shopping_id
 from src.integrations.telegram_checklist import (
     collect_latest_item_states,
     send_shopping_checklist_message,
-    sync_shopping_checklist_callbacks,
+    sync_telegram_hub_callbacks,
 )
 from src.integrations.telegram_sender import send_pdf_document
 from src.services.shopping_price_compare_service import ShoppingPriceCompareService
@@ -655,7 +655,7 @@ class TabZakupy(QWidget):
             return
 
         try:
-            summary = sync_shopping_checklist_callbacks(bot_token=settings.bot_token)
+            summary = sync_telegram_hub_callbacks(bot_token=settings.bot_token)
         except Exception as exc:
             if not silent:
                 QMessageBox.critical(self, "Telegram", f"Sync checklisty nie udal sie:\n{exc}")

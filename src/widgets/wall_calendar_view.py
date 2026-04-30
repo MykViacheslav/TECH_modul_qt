@@ -60,8 +60,26 @@ class WallCalendarView(QWidget):
         super().__init__(parent)
         self._calendar_store = CalendarEventStoreJson()
         self._station_filter = station_filter  # Filter by station
+        self._reference_date_iso: str = ""
         self._setup_ui()
         self._setup_auto_refresh()
+        self._refresh_view()
+
+    @staticmethod
+    def _normalize_date_iso(value: str) -> str:
+        token = str(value or "").strip()
+        if not token:
+            return ""
+        try:
+            datetime.fromisoformat(token)
+        except ValueError:
+            return ""
+        return token
+
+    def set_reference_date(self, date_iso: str) -> None:
+        """Ustawia date odniesienia dla listy zadan (YYYY-MM-DD)."""
+        self._reference_date_iso = self._normalize_date_iso(date_iso)
+        self._update_clock()
         self._refresh_view()
     
     def _setup_ui(self) -> None:
@@ -195,13 +213,19 @@ class WallCalendarView(QWidget):
         """Update the clock display."""
         now = datetime.now()
         self._time_label.setText(now.strftime("%H:%M:%S"))
-        self._date_label.setText(now.strftime("%d %B %Y"))
+        ref_date = now
+        if self._reference_date_iso:
+            try:
+                ref_date = datetime.fromisoformat(self._reference_date_iso)
+            except ValueError:
+                ref_date = now
+        self._date_label.setText(ref_date.strftime("%d %B %Y"))
         
         days_pl = [
             "Poniedziałek", "Wtorek", "Środa", "Czwartek",
             "Piątek", "Sobota", "Niedziela"
         ]
-        self._day_label.setText(days_pl[now.weekday()])
+        self._day_label.setText(days_pl[ref_date.weekday()])
     
     def _refresh_view(self) -> None:
         """Refresh the calendar events view."""
@@ -211,8 +235,8 @@ class WallCalendarView(QWidget):
             if item.widget():
                 item.widget().deleteLater()
         
-        # Get today's events
-        today = datetime.now().strftime("%Y-%m-%d")
+        # Get reference-day events (defaults to current date)
+        today = self._reference_date_iso or datetime.now().strftime("%Y-%m-%d")
         all_events = self._calendar_store.list_events()
         
         # Filter by station if set

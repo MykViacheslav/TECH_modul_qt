@@ -308,7 +308,7 @@ class EdgeBandingBlock(QWidget):
         for key, name in full_names.items():
             color = _key_to_color(key)
             luma = 0.299 * color.red() + 0.587 * color.green() + 0.114 * color.blue()
-            fg = "#fff" if luma < 160 else "#1f2937"
+            fg = "#fff" if luma < 160 else "#e8efff"
             short = name[:30] + ("..." if len(name) > 30 else "")
             parts.append(
                 f'<span style="background:{color.name()};color:{fg};'

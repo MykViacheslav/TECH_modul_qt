@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
     QTabWidget,
     QVBoxLayout,
     QWidget,
+    QSizePolicy,
 )
 
 from src.services.constructor_3dc_quote_import_service import (
@@ -49,7 +50,7 @@ class DialogImport3dcWycena(QDialog):
             QDialog { background:#eef2f8; }
             QTabWidget::pane { border:0; }
             QTabBar::tab {
-                background:#ffffff;
+                background:transparent;
                 border:1px solid #cfd8e6;
                 border-radius:14px;
                 padding:8px 14px;
@@ -62,7 +63,7 @@ class DialogImport3dcWycena(QDialog):
                 border:1px solid #1f2a44;
             }
             QTableWidget {
-                background:#ffffff;
+                background:transparent;
                 border:1px solid #d9e0ea;
                 border-radius:8px;
                 gridline-color:#e5e7eb;
@@ -76,12 +77,12 @@ class DialogImport3dcWycena(QDialog):
                 color:#334155;
             }
             QPushButton {
-                background:#ffffff;
+                background:transparent;
                 border:1px solid #cbd5e1;
                 border-radius:10px;
                 padding:6px 10px;
             }
-            QPushButton:hover { background:#f8fafc; }
+            QPushButton:hover { background:transparent; }
             """
         )
 
@@ -106,15 +107,16 @@ class DialogImport3dcWycena(QDialog):
         root.setSpacing(8)
 
         actions = QHBoxLayout()
-        self.btn_import = QPushButton("Importuj plik", self)
-        self.btn_open_folder = QPushButton("Otworz folder importu", self)
-        self.btn_refresh = QPushButton("Odswiez", self)
-        self.btn_transfer = QPushButton("Wczytaj do wyceny", self)
-        self.btn_cancel = QPushButton("Anuluj import", self)
-        self.btn_open_giblab = QPushButton("Otworz w GiB Lab", self)
-        self.btn_load_gib_result = QPushButton("Wczytaj wynik", self)
-        self.btn_go_mapping = QPushButton("Mapuj materialy", self)
-        self.btn_save_mapping = QPushButton("Zapisz mapowanie", self)
+        actions.setSpacing(6)
+        self.btn_import = QPushButton("📂 Import", self)
+        self.btn_open_folder = QPushButton("📁 Folder", self)
+        self.btn_refresh = QPushButton("🔄 Odswiez", self)
+        self.btn_transfer = QPushButton("🛒 Wczytaj", self)
+        self.btn_cancel = QPushButton("❌ Anuluj", self)
+        self.btn_open_giblab = QPushButton("🚀 GiB Lab", self)
+        self.btn_load_gib_result = QPushButton("📥 Wynik", self)
+        self.btn_go_mapping = QPushButton("🗺️ Mapuj", self)
+        self.btn_save_mapping = QPushButton("💾 Zapisz", self)
         for btn in (
             self.btn_import,
             self.btn_open_folder,
@@ -127,7 +129,15 @@ class DialogImport3dcWycena(QDialog):
             self.btn_save_mapping,
         ):
             btn.setMinimumHeight(32)
+            btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            btn.setFixedWidth(100)
             actions.addWidget(btn, 0)
+        
+        self.btn_import.setFixedWidth(110)
+        self.btn_transfer.setFixedWidth(110)
+        self.btn_open_giblab.setFixedWidth(120)
+        self.btn_load_gib_result.setFixedWidth(110)
+        
         actions.addStretch(1)
         actions.addWidget(QLabel("Cel importu:", self), 0)
         self.cb_target = QComboBox(self)
@@ -141,8 +151,8 @@ class DialogImport3dcWycena(QDialog):
         self.lab_file.setStyleSheet("color:#475467;")
         root.addWidget(self.lab_file, 0, Qt.AlignmentFlag.AlignLeft)
 
-        summary_frame = QFrame(self)
-        summary_frame.setStyleSheet("QFrame { border:1px solid #d9e0ea; border-radius:8px; background:#f8fafc; }")
+        summary_frame = QFrame(self); summary_frame.setProperty("uiCard", True)
+        summary_frame.setStyleSheet("QFrame { border:1px solid #d9e0ea; border-radius:8px; background:transparent; }")
         summary_grid = QGridLayout(summary_frame)
         summary_grid.setContentsMargins(10, 8, 10, 8)
         summary_grid.setHorizontalSpacing(12)
@@ -162,7 +172,7 @@ class DialogImport3dcWycena(QDialog):
             col = (idx % 2) * 2
             summary_grid.addWidget(QLabel(f"{title}:", summary_frame), row, col)
             val = QLabel("-", summary_frame)
-            val.setStyleSheet("font-weight:700; color:#1f2937;")
+            val.setStyleSheet("font-weight:700; color:#e8efff;")
             summary_grid.addWidget(val, row, col + 1)
             self._summary_labels[key] = val
         root.addWidget(summary_frame, 0)
@@ -181,8 +191,8 @@ class DialogImport3dcWycena(QDialog):
             ("Mapowanie materialow", self.lab_kpi_mapping),
         ]
         for title, val in cards:
-            card = QFrame(self)
-            card.setStyleSheet("QFrame { border:1px solid #d9e0ea; border-radius:12px; background:#ffffff; }")
+            card = QFrame(self); card.setProperty("uiCard", True)
+            card.setStyleSheet("QFrame { border:1px solid #d9e0ea; border-radius:12px; background:transparent; }")
             lay = QVBoxLayout(card)
             lay.setContentsMargins(10, 8, 10, 8)
             t = QLabel(title, card)
@@ -215,7 +225,7 @@ class DialogImport3dcWycena(QDialog):
         lay_import.addLayout(import_split, 1)
 
         import_left = QFrame(tab_import)
-        import_left.setStyleSheet("QFrame { border:1px solid #d9e0ea; border-radius:8px; background:#ffffff; }")
+        import_left.setStyleSheet("QFrame { border:1px solid #d9e0ea; border-radius:8px; background:transparent; }")
         import_left_lay = QVBoxLayout(import_left)
         import_left_lay.setContentsMargins(10, 10, 10, 10)
         import_left_lay.setSpacing(8)
@@ -234,7 +244,7 @@ class DialogImport3dcWycena(QDialog):
         import_split.addWidget(import_left, 3)
 
         import_right = QFrame(tab_import)
-        import_right.setStyleSheet("QFrame { border:1px solid #d9e0ea; border-radius:8px; background:#ffffff; }")
+        import_right.setStyleSheet("QFrame { border:1px solid #d9e0ea; border-radius:8px; background:transparent; }")
         import_right_lay = QVBoxLayout(import_right)
         import_right_lay.setContentsMargins(10, 10, 10, 10)
         import_right_lay.setSpacing(8)
@@ -314,7 +324,7 @@ class DialogImport3dcWycena(QDialog):
         lay_pricing.setSpacing(8)
 
         pricing_side = QFrame(tab_pricing)
-        pricing_side.setStyleSheet("QFrame { border:1px solid #d9e0ea; border-radius:8px; background:#ffffff; }")
+        pricing_side.setStyleSheet("QFrame { border:1px solid #d9e0ea; border-radius:8px; background:transparent; }")
         pricing_side_lay = QVBoxLayout(pricing_side)
         pricing_side_lay.setContentsMargins(10, 10, 10, 10)
         pricing_side_lay.setSpacing(8)
@@ -410,7 +420,7 @@ class DialogImport3dcWycena(QDialog):
         mapping_left.addWidget(self.tbl_mapping, 1)
 
         mapping_right = QFrame(tab_mapping)
-        mapping_right.setStyleSheet("QFrame { border:1px solid #d9e0ea; border-radius:8px; background:#ffffff; }")
+        mapping_right.setStyleSheet("QFrame { border:1px solid #d9e0ea; border-radius:8px; background:transparent; }")
         mapping_right_lay = QVBoxLayout(mapping_right)
         mapping_right_lay.setContentsMargins(10, 10, 10, 10)
         mapping_right_lay.setSpacing(8)

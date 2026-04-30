@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QFileDialog,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QMessageBox,
     QPushButton,
@@ -27,17 +28,10 @@ from src.services.invoice_workflow_service import (
     sync_invoices_from_mail,
 )
 from src.storage.invoice_store_json import InvoiceStoreJson
+from src.widgets.invoice_import_dialog import InvoiceImportDialog
+from src.services.invoice_pdf_import_service import InvoiceParseResult, InvoiceLineItem
 
-TABLE_TEXT_STYLE = """
-QTableWidget {
-    color: #1f2937;
-    selection-color: #0f172a;
-}
-QTableWidget::item:selected {
-    background: #dbeafe;
-    color: #0f172a;
-}
-"""
+TABLE_TEXT_STYLE = ""
 
 
 class TabBazaFaktur(QWidget):
@@ -122,6 +116,8 @@ class TabBazaFaktur(QWidget):
                 "Waluta",
                 "Cena typ",
                 "MSI NIP",
+                "Konto",
+                "Kanal",
                 "Status eksportu",
                 "Duplikat",
                 "OCR",
@@ -144,13 +140,38 @@ class TabBazaFaktur(QWidget):
         self.tbl_invoices.setColumnWidth(8, 90)
         self.tbl_invoices.setColumnWidth(9, 95)
         self.tbl_invoices.setColumnWidth(10, 75)
-        self.tbl_invoices.setColumnWidth(11, 90)
-        self.tbl_invoices.setColumnWidth(12, 125)
-        self.tbl_invoices.setColumnWidth(13, 120)
-        self.tbl_invoices.setColumnWidth(14, 130)
-        self.tbl_invoices.setColumnWidth(15, 120)
-        self.tbl_invoices.setColumnWidth(16, 140)
+        self.tbl_invoices.setColumnWidth(11, 80)
+        self.tbl_invoices.setColumnWidth(12, 110)
+        self.tbl_invoices.setColumnWidth(13, 90)
+        self.tbl_invoices.setColumnWidth(14, 90)
+        self.tbl_invoices.setColumnWidth(15, 110)
+        self.tbl_invoices.setColumnWidth(16, 110)
+        self.tbl_invoices.setColumnWidth(17, 100)
+        self.tbl_invoices.setColumnWidth(18, 120)
+        self.tbl_invoices.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.tbl_invoices.setColumnCount(19)
         root.addWidget(self.tbl_invoices, 1)
+
+        edit_row = QHBoxLayout()
+        edit_row.addWidget(QLabel("Dla zaznaczonych -> Konto:", self))
+        self.cb_bulk_account = QComboBox(self)
+        self.cb_bulk_account.addItem("🏦 Bank", "bank")
+        self.cb_bulk_account.addItem("💵 Gotowka", "cash")
+        edit_row.addWidget(self.cb_bulk_account)
+
+        edit_row.addWidget(QLabel(" Kanal:", self))
+        self.cb_bulk_channel = QComboBox(self)
+        self.cb_bulk_channel.addItem("📄 Faktura", "faktura")
+        self.cb_bulk_channel.addItem("🏷️ Paragon", "paragon")
+        self.cb_bulk_channel.addItem("💰 Gotowka", "cash")
+        edit_row.addWidget(self.cb_bulk_channel)
+
+        self.btn_apply_bulk = QPushButton("Zastosuj dla zaznaczonych", self)
+        self.btn_apply_bulk.setStyleSheet("font-weight:bold; color:#2563eb;")
+        edit_row.addWidget(self.btn_apply_bulk)
+        edit_row.addStretch(1)
+        root.addLayout(edit_row)
+
 
         details_bar = QHBoxLayout()
         details_bar.setSpacing(8)
@@ -174,7 +195,7 @@ class TabBazaFaktur(QWidget):
         legend_g = QLabel("[G] generic", self)
         legend_t.setStyleSheet("color:#166534; font-weight:700;")
         legend_f.setStyleSheet("color:#b45309; font-weight:700;")
-        legend_g.setStyleSheet("color:#475569; font-weight:700;")
+        legend_g.setStyleSheet("color:#94a3b8; font-weight:700;")
         legend_t.setToolTip("Pozycja rozpoznana regułą dostawcy.")
         legend_f.setToolTip("Pozycja rozpoznana fallbackiem po regule dostawcy.")
         legend_g.setToolTip("Pozycja rozpoznana parserem ogólnym.")
@@ -239,6 +260,7 @@ class TabBazaFaktur(QWidget):
         self.cb_filter_nip.currentIndexChanged.connect(self.refresh_data)
         self.cb_item_parser_filter.currentIndexChanged.connect(self._on_invoice_selection_changed)
         self.tbl_invoices.itemSelectionChanged.connect(self._on_invoice_selection_changed)
+        self.btn_apply_bulk.clicked.connect(self._on_apply_bulk)
 
         self.refresh_data()
 
@@ -267,9 +289,9 @@ class TabBazaFaktur(QWidget):
         msi_missing = 0
         review_count = 0
         for invoice in invoices:
+            is_exported = bool(invoice.get("exported_to_material", False))
             if bool(invoice.get("needs_review", False)):
                 review_count += 1
-            is_exported = bool(invoice.get("exported_to_material", False))
             if is_exported:
                 exported += 1
             else:
@@ -300,27 +322,16 @@ class TabBazaFaktur(QWidget):
 
             self.tbl_invoices.setItem(row, 4, QTableWidgetItem(str(invoice.get("invoice_date", "") or "").strip()))
             self.tbl_invoices.setItem(row, 5, QTableWidgetItem(str(int(invoice.get("items_count", 0) or 0))))
-            try:
-                total_net = float(invoice.get("total_net", 0.0) or 0.0)
-            except Exception:
-                total_net = 0.0
-            try:
-                total_gross = float(invoice.get("total_gross", 0.0) or 0.0)
-            except Exception:
-                total_gross = 0.0
-            try:
-                total_vat = float(invoice.get("total_vat", 0.0) or 0.0)
-            except Exception:
-                total_vat = max(0.0, total_gross - total_net)
-            try:
-                amount_due = float(invoice.get("amount_due", 0.0) or 0.0)
-            except Exception:
-                amount_due = 0.0
+            
+            total_net = float(invoice.get("total_net", 0.0) or 0.0)
+            total_gross = float(invoice.get("total_gross", 0.0) or 0.0)
+            total_vat = float(invoice.get("total_vat", 0.0) or 0.0)
+            amount_due = float(invoice.get("amount_due", 0.0) or 0.0)
             currency = str(invoice.get("currency", "PLN") or "PLN").strip().upper() or "PLN"
             price_basis = str(invoice.get("price_basis", "") or "").strip().lower() or "unknown"
             buyer_nip = str(invoice.get("buyer_nip", "") or "").strip()
-            is_msi_invoice = bool(invoice.get("is_msi_project_invoice", False))
-            if is_msi_invoice:
+            
+            if bool(invoice.get("is_msi_project_invoice", False)):
                 msi_ok += 1
                 msi_label = "OK"
             elif buyer_nip:
@@ -338,86 +349,67 @@ class TabBazaFaktur(QWidget):
             self.tbl_invoices.setItem(row, 11, QTableWidgetItem(price_basis))
             self.tbl_invoices.setItem(row, 12, QTableWidgetItem(msi_label))
 
-            export_label = "Wyeksportowana" if is_exported else "Do eksportu"
-            self.tbl_invoices.setItem(row, 13, QTableWidgetItem(export_label))
+            acc = str(invoice.get("account_type", "bank") or "bank").strip().lower()
+            chan = str(invoice.get("purchase_channel", "faktura") or "faktura").strip().lower()
+            self.tbl_invoices.setItem(row, 13, QTableWidgetItem("🏦 Bank" if acc == "bank" else "💵 Gotowka"))
+            
+            chan_map = {"faktura": "📄 Faktura", "paragon": "🏷️ Paragon", "cash": "💰 Gotowka"}
+            self.tbl_invoices.setItem(row, 14, QTableWidgetItem(chan_map.get(chan, f"❓ {chan}")))
 
-            duplicate_reason = str(invoice.get("duplicate_reason", "") or "").strip()
-            duplicate_of = str(invoice.get("duplicate_of_invoice_id", "") or "").strip()
-            if duplicate_reason == "invoice_signature" and duplicate_of:
-                duplicate_label = f"Tak ({duplicate_of[:8]})"
-            elif duplicate_reason:
-                duplicate_label = "Tak"
-            else:
-                duplicate_label = "-"
-            self.tbl_invoices.setItem(row, 14, QTableWidgetItem(duplicate_label))
+            self.tbl_invoices.setItem(row, 15, QTableWidgetItem("Wyeksportowana" if is_exported else "Do eksportu"))
+            
+            # Duplicates at 16
+            dup_reason = str(invoice.get("duplicate_reason", "") or "").strip()
+            dup_lbl = f"Tak ({str(invoice.get('duplicate_of_invoice_id', ''))[:8]})" if dup_reason == "invoice_signature" else ("Tak" if dup_reason else "-")
+            self.tbl_invoices.setItem(row, 16, QTableWidgetItem(dup_lbl))
 
-            parse_error = str(invoice.get("parse_error", "") or "").strip()
-            extraction_method = str(invoice.get("extraction_method", "") or "").strip().lower()
-            ocr_conf = float(invoice.get("ocr_confidence", 0.0) or 0.0)
+            # OCR at 17
             ai_used = bool(invoice.get("ai_fallback_used", False))
-            try:
-                ai_conf = float(invoice.get("ai_confidence", 0.0) or 0.0)
-            except Exception:
-                ai_conf = 0.0
-            ai_model = str(invoice.get("ai_model", "") or "").strip()
-            has_text = bool(invoice.get("has_text", False))
-            needs_review = bool(invoice.get("needs_review", False))
-            if parse_error:
-                ocr_label = "Blad odczytu"
-            elif ai_used:
-                model_short = ai_model[:14] if ai_model else "AI"
-                ocr_label = f"{model_short} {ai_conf:.2f}"
-            elif extraction_method == "text":
-                ocr_label = "TEXT"
-            elif extraction_method == "ocr":
-                ocr_label = f"OCR {ocr_conf:.2f}"
-            elif extraction_method == "mixed":
-                ocr_label = f"TEXT+OCR {ocr_conf:.2f}"
-            elif has_text:
-                ocr_label = "TEXT"
-            else:
-                ocr_label = "Brak tekstu"
-            if needs_review and "Blad" not in ocr_label:
-                ocr_label = f"{ocr_label} !"
-            self.tbl_invoices.setItem(row, 15, QTableWidgetItem(ocr_label))
+            ext_method = str(invoice.get("extraction_method", "") or "").strip().lower()
+            ocr_label = "TEXT" if ext_method == "text" else (f"OCR {float(invoice.get('ocr_confidence',0)):.2f}" if ext_method == "ocr" else "Mixed")
+            if ai_used: ocr_label = f"AI {float(invoice.get('ai_confidence',0)):.2f}"
+            self.tbl_invoices.setItem(row, 17, QTableWidgetItem(ocr_label))
 
-            try:
-                exported_material_count = int(invoice.get("exported_material_count", 0) or 0)
-            except Exception:
-                exported_material_count = 0
-            if exported_material_count <= 0:
-                exported_material_ids = invoice.get("exported_material_ids", [])
-                if isinstance(exported_material_ids, list):
-                    exported_material_count = len(
-                        [str(value or "").strip() for value in exported_material_ids if str(value or "").strip()]
-                    )
-            try:
-                imported_last = int(invoice.get("last_export_imported_lines", 0) or 0)
-            except Exception:
-                imported_last = 0
-            try:
-                skipped_last = int(invoice.get("last_export_skipped_lines", 0) or 0)
-            except Exception:
-                skipped_last = 0
-            if bool(invoice.get("exported_to_material", False)):
-                link_label = f"MAT:{exported_material_count} | +{imported_last}/-{skipped_last}"
-            else:
-                link_label = "-"
-            self.tbl_invoices.setItem(row, 16, QTableWidgetItem(link_label))
+            # Link at 18
+            exp_count = int(invoice.get("exported_material_count", 0) or 0)
+            link_label = f"MAT:{exp_count}" if is_exported else "-"
+            self.tbl_invoices.setItem(row, 18, QTableWidgetItem(link_label))
 
         self.lab_stats.setText(
-            (
-                f"Faktur (widok): {len(invoices)} / {len(all_invoices)} | Oczekuje eksportu: {pending} | "
-                f"Kwota do zaplaty (oczekujace): {due_pending:.2f} | Wyeksportowane: {exported} | Do weryfikacji: {review_count} | "
-                f"MSI NIP OK: {msi_ok} | NIP niezgodny: {msi_mismatch} | Brak NIP: {msi_missing}"
-            )
+            f"Faktur: {len(invoices)} | Oczekuje: {pending} | Do zaplaty: {due_pending:.2f} | MSI OK: {msi_ok}"
         )
 
         if self.tbl_invoices.rowCount() > 0:
             self.tbl_invoices.selectRow(0)
         else:
             self.tbl_items.setRowCount(0)
-            self.lab_invoice_details.setText("Brak faktur. Uzyj: Sprawdz mail lub Import PDF.")
+            self.lab_invoice_details.setText("Brak danych.")
+
+    def _selected_invoice_ids(self) -> list[str]:
+        ids = []
+        model = self.tbl_invoices.selectionModel()
+        if model:
+            for idx in model.selectedRows():
+                item = self.tbl_invoices.item(idx.row(), 0)
+                if item: ids.append(item.text().strip())
+        return ids
+
+    def _on_bulk_account_chan(self, acc: str, chan: str) -> None:
+        ids = self._selected_invoice_ids()
+        if not ids: return
+        for iid in ids:
+            inv = self._store.get(iid)
+            if inv:
+                inv["account_type"] = acc
+                inv["purchase_channel"] = chan
+                self._store.upsert_invoice(inv)
+        self.refresh_data()
+
+    def _on_apply_bulk(self) -> None:
+        acc = str(self.cb_bulk_account.currentData() or "bank")
+        chan = str(self.cb_bulk_channel.currentData() or "faktura")
+        self._on_bulk_account_chan(acc, chan)
+        QMessageBox.information(self, "Baza faktur", "Zaktualizowano zaznaczone pozycje.")
 
     def _selected_invoices(self) -> list[dict]:
         selected_rows: list[int] = []
@@ -493,7 +485,7 @@ class TabBazaFaktur(QWidget):
                 color = "#b45309"
             else:
                 parse_badge = "[G] "
-                color = "#475569"
+                color = "#94a3b8"
             invoice_label = str(row_data.get("__invoice_label", "") or "").strip()
             display_base = f"{parse_badge}{base_name}"
             display_name = f"[{invoice_label}] {display_base}" if multi and invoice_label else display_base
@@ -752,6 +744,7 @@ class TabBazaFaktur(QWidget):
             [
                 Path.home() / "Downloads",
                 Path(r"C:\Users\mykyt\Downloads"),
+                Path(r"C:\PythonProject\TECH_modul\Faktury"),
             ],
             store=self._store,
             recursive=False,
@@ -952,15 +945,56 @@ class TabBazaFaktur(QWidget):
         imported_lines = 0
         skipped_lines = 0
         errors: list[str] = []
-        for invoice_id in selected_ids:
-            try:
-                result = export_invoice_to_material_store(invoice_id, invoice_store=self._store)
-            except Exception as exc:
-                errors.append(f"{invoice_id}: {exc}")
-                continue
-            exported_count += 1
-            imported_lines += int(result.imported_lines or 0)
-            skipped_lines += int(result.skipped_lines or 0)
+        if len(selected_ids) == 1:
+            # For a single invoice, show the fancy import dialog
+            invoice_id = selected_ids[0]
+            invoice = self._store.get(invoice_id)
+            if invoice:
+                # Convert dict to InvoiceParseResult for the dialog
+                items = []
+                for it in invoice.get("items", []):
+                    items.append(InvoiceLineItem(
+                        name=it.get("name", ""),
+                        quantity=it.get("quantity", 0.0),
+                        unit=it.get("unit", ""),
+                        unit_price_net=it.get("unit_price_net", 0.0),
+                        total_price=it.get("total_price", 0.0)
+                    ))
+                
+                parse_res = InvoiceParseResult(
+                    supplier=invoice.get("supplier", ""),
+                    invoice_number=invoice.get("invoice_number", ""),
+                    invoice_date=invoice.get("invoice_date", ""),
+                    items=tuple(items),
+                    source_path=Path(invoice.get("source_path", ""))
+                )
+                
+                dlg = InvoiceImportDialog(parse_res, self)
+                if dlg.exec():
+                    settings = dlg.get_import_settings()
+                    try:
+                        result = export_invoice_to_material_store(
+                            invoice_id, 
+                            invoice_store=self._store,
+                            discount_percent=settings["discount_percent"],
+                            warehouse_typ=settings["warehouse"]
+                        )
+                        exported_count = 1
+                        imported_lines = result.imported_lines
+                        skipped_lines = result.skipped_lines
+                    except Exception as exc:
+                        errors.append(f"{invoice_id}: {exc}")
+                else:
+                    return # Cancelled
+        else:
+            for invoice_id in selected_ids:
+                try:
+                    result = export_invoice_to_material_store(invoice_id, invoice_store=self._store)
+                    exported_count += 1
+                    imported_lines += int(result.imported_lines or 0)
+                    skipped_lines += int(result.skipped_lines or 0)
+                except Exception as exc:
+                    errors.append(f"{invoice_id}: {exc}")
 
         self.refresh_data()
         if errors:
