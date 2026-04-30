@@ -129,6 +129,51 @@ class ServiceItemDef:
 
 
 @dataclass
+class ServiceComponentDef:
+    """
+    Legacy-compatible komponent uslugi (material/praca/usluga).
+    Utrzymany ze wzgledow kompatybilnosci testow i store JSON.
+    """
+    component_id: str = ""
+    service_id: str = ""
+    component_type: str = ""  # material | work | service
+    ref_id: str = ""
+    name: str = ""
+    quantity: float = 0.0
+    unit: str = ""
+    estimated_cost: float = 0.0
+    note: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "component_id": str(self.component_id or ""),
+            "service_id": str(self.service_id or ""),
+            "component_type": str(self.component_type or ""),
+            "ref_id": str(self.ref_id or ""),
+            "name": str(self.name or ""),
+            "quantity": float(self.quantity or 0.0),
+            "unit": str(self.unit or ""),
+            "estimated_cost": float(self.estimated_cost or 0.0),
+            "note": str(self.note or ""),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ServiceComponentDef":
+        data = data or {}
+        return cls(
+            component_id=str(data.get("component_id", "") or ""),
+            service_id=str(data.get("service_id", "") or ""),
+            component_type=str(data.get("component_type", "") or ""),
+            ref_id=str(data.get("ref_id", "") or ""),
+            name=str(data.get("name", "") or ""),
+            quantity=float(data.get("quantity", 0.0) or 0.0),
+            unit=str(data.get("unit", "") or ""),
+            estimated_cost=float(data.get("estimated_cost", 0.0) or 0.0),
+            note=str(data.get("note", "") or ""),
+        )
+
+
+@dataclass
 class ServiceOrderDef:
     """Zlecenie usługowe."""
     service_id: str = ""

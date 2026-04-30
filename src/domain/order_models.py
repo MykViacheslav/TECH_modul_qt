@@ -114,6 +114,30 @@ def _normalize_status_history(raw: Any) -> List[Dict[str, str]]:
     return result
 
 
+
+def _normalize_schedule(raw: Any) -> List[Dict[str, str]]:
+    items = raw if isinstance(raw, list) else []
+    result: List[Dict[str, str]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        stage = str(item.get("stage", "") or "").strip()
+        date_from = str(item.get("date_from", "") or "").strip()
+        date_to = str(item.get("date_to", "") or "").strip()
+        note = str(item.get("note", "") or "").strip()
+        if not stage and not date_from:
+            continue
+        result.append(
+            {
+                "stage": stage,
+                "date_from": date_from,
+                "date_to": date_to,
+                "note": note,
+            }
+        )
+    return result
+
+
 def _normalize_customer_payments(raw: Any) -> List[Dict[str, Any]]:
     items = raw if isinstance(raw, list) else []
     result: List[Dict[str, Any]] = []
@@ -123,7 +147,7 @@ def _normalize_customer_payments(raw: Any) -> List[Dict[str, Any]]:
         stage = str(item.get("stage", "") or "").strip()
         amount = float(item.get("amount", 0.0) or 0.0)
         paid = bool(item.get("paid", False))
-        note = str(item.get("note", "") or "").strip()
+        account_type = str(item.get("account_type", "bank") or "bank").strip().lower()
         if not stage and abs(amount) <= 0.0001 and not note:
             continue
         result.append(
@@ -132,6 +156,7 @@ def _normalize_customer_payments(raw: Any) -> List[Dict[str, Any]]:
                 "amount": amount,
                 "paid": paid,
                 "note": note,
+                "account_type": account_type,
             }
         )
     return result
@@ -175,6 +200,7 @@ class OrderDef:
     quote_items: List[Dict[str, str]] = field(default_factory=list)
     material_choices: List[Dict[str, str]] = field(default_factory=list)
     status_history: List[Dict[str, str]] = field(default_factory=list)
+    schedule: List[Dict[str, str]] = field(default_factory=list)
     customer_payments: List[Dict[str, Any]] = field(default_factory=list)
     created_at: str = ""
     updated_at: str = ""
@@ -217,6 +243,7 @@ class OrderDef:
             "quote_items": _normalize_quote_items(self.quote_items),
             "material_choices": _normalize_material_choices(self.material_choices),
             "status_history": _normalize_status_history(self.status_history),
+            "schedule": _normalize_schedule(self.schedule),
             "customer_payments": _normalize_customer_payments(self.customer_payments),
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -264,6 +291,7 @@ class OrderDef:
             quote_items=_normalize_quote_items(data.get("quote_items", [])),
             material_choices=_normalize_material_choices(data.get("material_choices", [])),
             status_history=_normalize_status_history(data.get("status_history", [])),
+            schedule=_normalize_schedule(data.get("schedule", [])),
             customer_payments=_normalize_customer_payments(data.get("customer_payments", [])),
             created_at=str(data.get("created_at", "") or ""),
             updated_at=str(data.get("updated_at", "") or ""),

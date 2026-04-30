@@ -89,6 +89,7 @@ class FurnitureAssemblyDef:
     transport_cost_pln: float = 0.0
     montage_cost_pln: float = 0.0
     margin_percent: float = 0.0
+    architect_commission_percent: float = 0.0
     items: List[AssemblyModuleItemDef] = field(default_factory=list)
 
     def commercial_extras_total(self) -> float:
@@ -137,6 +138,7 @@ class FurnitureAssemblyDef:
             "transport_cost_pln": float(self.transport_cost_pln),
             "montage_cost_pln": float(self.montage_cost_pln),
             "margin_percent": float(self.margin_percent),
+            "architect_commission_percent": float(self.architect_commission_percent),
             "items": [item.to_dict() for item in (self.items or [])],
         }
 
@@ -186,5 +188,6 @@ class FurnitureAssemblyDef:
             transport_cost_pln=float(data.get("transport_cost_pln", 0.0) or 0.0),
             montage_cost_pln=float(data.get("montage_cost_pln", 0.0) or 0.0),
             margin_percent=float(data.get("margin_percent", 0.0) or 0.0),
+            architect_commission_percent=float(data.get("architect_commission_percent", 0.0) or 0.0),
             items=items,
         )

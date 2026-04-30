@@ -29,7 +29,8 @@ class AlarmGenerator:
         self._order_store = OrderStoreJson()
         self._client_store = ClientStoreJson()
         self._service_store = ServiceStoreJson()
-        self._existing_alarms = self._store.list_alarms()
+        self._existing_alarms = []
+        self._batch_to_save = []
         self._alarm_service = alarm_service
 
     def _refresh_existing(self) -> None:
@@ -45,7 +46,8 @@ class AlarmGenerator:
             return 0.0
 
     def _alarm_exists(self, title: str, category: str, source: str) -> bool:
-        for alarm in self._existing_alarms:
+        combined = self._existing_alarms + self._batch_to_save
+        for alarm in combined:
             if alarm.is_resolved:
                 continue
             if str(alarm.title or "") != str(title or ""):
@@ -58,32 +60,38 @@ class AlarmGenerator:
         return False
 
     def _clear_generated_source(self, source: str) -> None:
-        for alarm in list(self._store.list_alarms()):
-            if alarm.is_resolved:
-                continue
-            if str((alarm.extra or {}).get("source", "") or "") == source:
-                self._store.delete_alarm(alarm.alarm_id)
+        self._flush_batch()
+        self._store.delete_alarms_by_source(source)
         self._refresh_existing()
+        self._batch_to_save = []
 
     def _add_alarm(self, alarm: AlarmDef, source: str) -> None:
         alarm.extra = dict(alarm.extra or {})
         alarm.extra["source"] = source
-        if alarm.alarm_id:
-            self._store.save_alarm(alarm)
-        else:
+        if not alarm.alarm_id:
             alarm.alarm_id = new_alarm_id()
+        if not alarm.created_at:
             alarm.created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            self._store.save_alarm(alarm)
-        self._refresh_existing()
+        self._batch_to_save.append(alarm)
+
+    def _flush_batch(self) -> None:
+        if self._batch_to_save:
+            self._store.save_alarms_batch(self._batch_to_save)
+            self._batch_to_save = []
+            self._refresh_existing()
 
     def generate_all(self) -> None:
         """Run all alarm generation methods and also run AlarmService checks if available."""
+        self._refresh_existing()
+        
         self._generate_payment_alarms()
         self._generate_deadline_alarms()
         self._generate_service_alarms()
         self._generate_material_alarms()
         self._generate_order_integrity_alarms()
         self._generate_production_alarms()
+        
+        self._flush_batch()
         
         # Also run AlarmService checks if available
         if self._alarm_service is not None:

@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground: 255, 255, 255;
+  --canvas: 2, 6, 23;
+  --canvas-deep: 1, 4, 19;
+
+  /* CAD Workbench Tokens (SPEC v1.1) */
+  --cad-bg-main: #18191c;
+  --cad-bg-panel: #1e1e1e;
+  --cad-bg-side: #252526;
+  --cad-bg-header: #2d2d2d;
+  --cad-border: #111111;
+  --cad-border-subtle: #333333;
+  --cad-blue: #007acc;
+  --cad-blue-hover: #1e8ad3;
+}
+
+html, body {
+  min-height: 100vh;
+  color: rgb(var(--foreground));
+  background: var(--cad-bg-main);
+}
+
+body {
+  /* solid flat background for CAD */
+  background: var(--cad-bg-main);
+}
+
+/* scrollbar - dense, CAD style */
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: #1e1e1e; border-left: 1px solid #333; }
+*::-webkit-scrollbar-thumb {
+  background: #3c3c3c;
+  border-radius: 0;
+}
+*::-webkit-scrollbar-thumb:hover { background: #555; }
+
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+
+  .eyebrow {
+    @apply text-[10px] font-bold uppercase tracking-wider text-slate-400;
+  }
+  .eyebrow-brand {
+    @apply text-[10px] font-bold uppercase tracking-wider text-blue-500;
+  }
+}
+
+@layer components {
+  .glass {
+    background: #1e1e1e;
+    border: 1px solid #333;
+  }
+  .card {
+    @apply bg-[#252526] border border-[#3c3c3c] rounded-sm;
+  }
+  .card-hover {
+    @apply transition-colors hover:border-blue-500;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-sm
+           bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold
+           transition-colors;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-sm
+           bg-[#3c3c3c] hover:bg-[#505050] border border-[#444]
+           text-slate-200 text-xs font-medium transition-colors;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-2 py-1 rounded-sm
+           text-slate-400 hover:text-white hover:bg-[#333]
+           text-xs font-medium transition-colors;
+  }
+  .input-base {
+    @apply w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded-sm
+           px-2 py-1.5 text-xs text-slate-100 placeholder:text-slate-500
+           focus:border-blue-500 focus:outline-none transition-colors;
+  }
+}

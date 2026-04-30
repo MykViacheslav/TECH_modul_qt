@@ -50,7 +50,15 @@ class CompanyExpensesStoreJson:
                 expense_id = str(row.get("expense_id", "") or "").strip()
                 if not expense_id:
                     expense_id = new_expense_id()
-                items.append({"expense_id": expense_id, "name": name, "amount": float(_to_float(row.get("amount", 0.0)))})
+                account_type = str(row.get("account_type", "bank") or "bank").strip().lower()
+                source_type = str(row.get("source_type", "bank_faktura") or "bank_faktura").strip().lower()
+                items.append({
+                    "expense_id": expense_id, 
+                    "name": name, 
+                    "amount": float(_to_float(row.get("amount", 0.0))),
+                    "account_type": account_type,
+                    "source_type": source_type,
+                })
         if items:
             return items
         return [{"expense_id": new_expense_id(), "name": name, "amount": 0.0} for name in defaults]
@@ -67,7 +75,15 @@ class CompanyExpensesStoreJson:
             expense_id = str(row.get("expense_id", "") or "").strip()
             if not expense_id:
                 expense_id = new_expense_id()
-            cleaned.append({"expense_id": expense_id, "name": name, "amount": float(_to_float(row.get("amount", 0.0)))})
+            account_type = str(row.get("account_type", "bank") or "bank").strip().lower()
+            source_type = str(row.get("source_type", "bank_faktura") or "bank_faktura").strip().lower()
+            cleaned.append({
+                "expense_id": expense_id, 
+                "name": name, 
+                "amount": float(_to_float(row.get("amount", 0.0))),
+                "account_type": account_type,
+                "source_type": source_type,
+            })
         payload[section] = cleaned
         self._write_payload(payload)
 

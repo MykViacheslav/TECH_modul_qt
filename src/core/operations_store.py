@@ -42,6 +42,7 @@ def _save_json_atomic(path: Path, payload: dict[str, Any]) -> None:
         fh.write("\n")
     os.replace(tmp, path)
 
+from src.core.operations_models import IssueRecord, RouteTaskRecord, FulfillmentRecord
 
 class OperationsStore:
     def __init__(
@@ -52,15 +53,19 @@ class OperationsStore:
         base = data_dir()
         self._issues_path = issues_path if issues_path is not None else base / "operations_issues.json"
         self._routes_path = routes_path if routes_path is not None else base / "operations_routes.json"
+        self._fulfillment_path = base / "operations_fulfillment.json"
         self._ensure_files()
 
     def _ensure_files(self) -> None:
         self._issues_path.parent.mkdir(parents=True, exist_ok=True)
         self._routes_path.parent.mkdir(parents=True, exist_ok=True)
+        self._fulfillment_path.parent.mkdir(parents=True, exist_ok=True)
         if not self._issues_path.exists():
             _save_json_atomic(self._issues_path, {"issues": []})
         if not self._routes_path.exists():
             _save_json_atomic(self._routes_path, {"routes": []})
+        if not self._fulfillment_path.exists():
+            _save_json_atomic(self._fulfillment_path, {"fulfillments": []})
 
     def _read_issues_payload(self) -> dict[str, Any]:
         payload = _load_json_utf8(self._issues_path, {"issues": []})
@@ -74,6 +79,13 @@ class OperationsStore:
         rows = payload.get("routes", [])
         if not isinstance(rows, list):
             payload["routes"] = []
+        return payload
+
+    def _read_fulfillment_payload(self) -> dict[str, Any]:
+        payload = _load_json_utf8(self._fulfillment_path, {"fulfillments": []})
+        rows = payload.get("fulfillments", [])
+        if not isinstance(rows, list):
+            payload["fulfillments"] = []
         return payload
 
     def list_issues(self) -> list[IssueRecord]:
@@ -322,6 +334,8 @@ class OperationsStore:
         if not isinstance(rows, list):
             rows = []
         item = record.to_dict()
+        item["created_at"] = item.get("created_at") or now_iso()
+        item["updated_at"] = now_iso()
         rows.append(item)
         payload["routes"] = rows
         payload["updated_at"] = now_iso()
@@ -342,6 +356,9 @@ class OperationsStore:
             if not isinstance(row, dict):
                 continue
             if str(row.get("id", "") or "").strip() == route_id:
+                created_at = str(row.get("created_at", "") or "").strip()
+                item["created_at"] = created_at or item.get("created_at") or now_iso()
+                item["updated_at"] = now_iso()
                 rows[i] = item
                 replaced = True
                 break
@@ -451,3 +468,20 @@ class OperationsStore:
             notes=(issue.title or issue.description)[:250],
         )
         return self.add_route_task(task)
+
+    def list_fulfillments(self) -> list[FulfillmentRecord]:
+        payload = self._read_fulfillment_payload()
+        return [FulfillmentRecord.from_dict(row) for row in payload["fulfillments"] if isinstance(row, dict)]
+
+    def get_fulfillment(self, project_name: str) -> FulfillmentRecord | None:
+        return next((f for f in self.list_fulfillments() if f.project_name == project_name), None)
+
+    def update_fulfillment(self, record: FulfillmentRecord) -> None:
+        payload = self._read_fulfillment_payload()
+        rows = payload["fulfillments"]
+        idx = next((i for i, row in enumerate(rows) if isinstance(row, dict) and row.get("project_name") == record.project_name), -1)
+        if idx >= 0:
+            rows[idx] = record.to_dict()
+        else:
+            rows.append(record.to_dict())
+        _save_json_atomic(self._fulfillment_path, payload)

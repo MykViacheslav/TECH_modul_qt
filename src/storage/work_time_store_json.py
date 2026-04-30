@@ -46,6 +46,10 @@ class WorkTimeStoreJson:
         self._write_all(data)
         return StoreResult(True, f'Zapisano godziny pracy: "{sheet.worker_name}" {sheet.year:04d}-{sheet.month:02d}.')
 
+    def save_sheet_dict(self, sheet_dict: Dict[str, Any]) -> StoreResult:
+        sheet = WorkerMonthSheetDef.from_dict(sheet_dict)
+        return self.save_sheet(sheet)
+
     def upsert_day_entry(self, worker_name: str, year: int, month: int, entry) -> StoreResult:
         """
         Insert or merge a single day entry into the monthly sheet.

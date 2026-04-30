@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from src.core.rules.hinges import hinges_count_for_door
+from src.core.rules.lifts import calculate_front_weight_kg, select_blum_aventos_system
 from src.domain.module_models import ModuleDef, normalize_module_type
 
 
@@ -52,6 +53,30 @@ def estimate_module_hardware_requirements(
                     quantity=float(hinge_qty),
                     unit="szt",
                     note=f"drzwi x {door_count}",
+                )
+            )
+            
+    if facade_mode in ("lift", "tilt") and front_present:
+        weight = calculate_front_weight_kg(module)
+        lift_sys = select_blum_aventos_system(height_mm, weight)
+        if lift_sys:
+            out.append(
+                HardwareRequirement(
+                    category="lift_system",
+                    manufacturer="blum",
+                    quantity=1.0,
+                    unit="kpl",
+                    note=f"{lift_sys['label']} (W={weight:.1f}kg, PF={height_mm*weight:.0f})",
+                )
+            )
+        else:
+            out.append(
+                HardwareRequirement(
+                    category="lift_gas_strut",
+                    manufacturer="generic",
+                    quantity=2.0,
+                    unit="szt",
+                    note="Standard gas strut",
                 )
             )
 
@@ -112,28 +137,34 @@ def estimate_module_hardware_requirements(
             )
         )
 
-    if module_type in ("legs", "legs_plinth", "corner"):
-        leg_qty = 6.0 if width_mm >= 900.0 or module_type == "corner" else 4.0
+    if cabinet_kind == "lower":
+        # Professional leg counting logic (Corpus-inspired)
+        leg_qty = 4.0
+        if width_mm >= 900.0 or module_type == "corner":
+            leg_qty = 6.0
+        
+        leg_type = str(getattr(module, "leg_type", "plastic_std") or "plastic_std")
+        leg_h = float(getattr(module, "legs_height_mm", 100.0) or 100.0)
+        
         out.append(
             HardwareRequirement(
                 category="cabinet_leg",
-                manufacturer="generic",
+                manufacturer=leg_type, # Using leg_type as a key for hardware find
                 quantity=leg_qty,
                 unit="szt",
-                note="nogi meblowe",
+                note=f"H={leg_h} mm",
             )
         )
-
-    if module_type == "legs_plinth":
-        out.append(
-            HardwareRequirement(
-                category="plinth_clip",
-                manufacturer="generic",
-                quantity=2.0,
-                unit="szt",
-                note="cokol",
+        if leg_type == "plastic_std":
+            out.append(
+                HardwareRequirement(
+                    category="plinth_clip",
+                    manufacturer="generic",
+                    quantity=2.0,
+                    unit="szt",
+                    note="zaczepy cokołu",
+                )
             )
-        )
 
     if module_type == "corner":
         out.append(
@@ -145,5 +176,42 @@ def estimate_module_hardware_requirements(
                 note="szafka narozna",
             )
         )
+
+    # region INTERNAL_ACCESSORIES
+    rod_count = int(getattr(module, "hanging_rods_count", 0) or 0)
+    if rod_count > 0:
+        out.append(
+            HardwareRequirement(
+                category="hanging_rod",
+                manufacturer="generic",
+                quantity=float(rod_count),
+                unit="szt",
+                note=f"drążek L={width_mm - 36:.0f}mm", # assume 18mm sides
+            )
+        )
+
+    int_drawer_count = int(getattr(module, "internal_drawers_count", 0) or 0)
+    if int_drawer_count > 0:
+        out.append(
+            HardwareRequirement(
+                category="drawer_system",
+                manufacturer=drawer_vendor,
+                quantity=float(int_drawer_count),
+                unit="kpl",
+                note="szuflada wewnętrzna",
+            )
+        )
+    
+    if bool(getattr(module, "led_lighting_active", False)):
+        out.append(
+            HardwareRequirement(
+                category="led_strip",
+                manufacturer="generic",
+                quantity=1.0,
+                unit="kpl",
+                note="oświetlenie wnętrza",
+            )
+        )
+    # endregion
 
     return out

@@ -14,9 +14,16 @@ def normalize_worker_name(worker_name: str) -> str:
     return str(worker_name or "").strip()
 
 
-def build_worker_qr_payload(worker_id: str, worker_name: str = "") -> str:
+def build_worker_qr_payload(worker_id: str, worker_name: str = "", bot_username: str = "") -> str:
     worker_id_norm = normalize_worker_id(worker_id)
     worker_name_norm = normalize_worker_name(worker_name)
+    
+    # If bot_username is provided, create a Telegram Deep Link
+    if bot_username:
+        # Format: https://t.me/bot?start=workerID
+        clean_bot = str(bot_username).strip().lstrip("@")
+        return f"https://t.me/{clean_bot}?start=W{worker_id_norm}"
+
     if worker_id_norm:
         if worker_name_norm:
             return f"{QR_PREFIX}|ID={worker_id_norm}|NAME={worker_name_norm}"

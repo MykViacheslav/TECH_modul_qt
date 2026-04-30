@@ -13,6 +13,10 @@ class WorkTimeSessionDef:
     worker_id: str = ""
     worker_name: str = ""
     work_type: str = ""
+    project_code: str = ""
+    order_id: str = ""
+    workstation: str = ""
+    note: str = ""
     started_at_iso: str = ""
     break_started_at_iso: str = ""
     break_total_minutes: float = 0.0
@@ -23,6 +27,10 @@ class WorkTimeSessionDef:
             "worker_id": self.worker_id,
             "worker_name": self.worker_name,
             "work_type": self.work_type,
+            "project_code": self.project_code,
+            "order_id": self.order_id,
+            "workstation": self.workstation,
+            "note": self.note,
             "started_at_iso": self.started_at_iso,
             "break_started_at_iso": self.break_started_at_iso,
             "break_total_minutes": float(self.break_total_minutes or 0.0),
@@ -36,6 +44,10 @@ class WorkTimeSessionDef:
             worker_id=str(data.get("worker_id", "") or ""),
             worker_name=str(data.get("worker_name", "") or ""),
             work_type=str(data.get("work_type", "") or ""),
+            project_code=str(data.get("project_code", "") or ""),
+            order_id=str(data.get("order_id", "") or ""),
+            workstation=str(data.get("workstation", "") or ""),
+            note=str(data.get("note", "") or ""),
             started_at_iso=str(data.get("started_at_iso", "") or ""),
             break_started_at_iso=str(data.get("break_started_at_iso", "") or ""),
             break_total_minutes=float(data.get("break_total_minutes", 0.0) or 0.0),

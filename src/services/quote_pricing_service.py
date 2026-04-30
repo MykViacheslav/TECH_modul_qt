@@ -12,6 +12,20 @@ class QuotePricingService:
         return float(base_total) + processing_cost + assembly_cost + transport_flat
 
     @staticmethod
-    def compute_sale(adjusted_base_total: float, margin_percent: float, policy_multiplier: float) -> float:
+    def compute_sale(
+        adjusted_base_total: float,
+        margin_percent: float,
+        policy_multiplier: float,
+        architect_commission_percent: float = 0.0,
+    ) -> dict[str, float]:
         margin_multiplier = 1.0 + (float(margin_percent) / 100.0)
-        return float(adjusted_base_total) * margin_multiplier * float(policy_multiplier)
+        base_sale = float(adjusted_base_total) * margin_multiplier * float(policy_multiplier)
+        
+        commission_amount = base_sale * (float(architect_commission_percent) / 100.0)
+        final_sale = base_sale + commission_amount
+        
+        return {
+            "base_sale": round(base_sale, 2),
+            "commission": round(commission_amount, 2),
+            "final_sale": round(final_sale, 2)
+        }

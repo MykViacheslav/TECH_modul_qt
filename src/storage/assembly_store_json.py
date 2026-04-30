@@ -29,15 +29,23 @@ class AssemblyStoreJson:
             self._path.write_text("{}", encoding="utf-8")
 
     def list_names(self) -> List[str]:
-        return sorted(list(self._read_all().keys()))
+        # Keep name listing for UI if needed, but ordered by name
+        assemblies = self.list_assemblies()
+        return [a.name for a in assemblies]
 
     def list_assemblies(self) -> List[FurnitureAssemblyDef]:
         raw_all = self._read_all()
         assemblies: List[FurnitureAssemblyDef] = []
-        for name in sorted(raw_all.keys()):
-            raw = raw_all.get(name)
+        for aid in raw_all.keys():
+            raw = raw_all.get(aid)
             if isinstance(raw, dict):
                 assemblies.append(FurnitureAssemblyDef.from_dict(raw))
+        # Ensure every assembly has an ID (migration)
+        for a in assemblies:
+            if not a.assembly_id:
+                from src.domain.assembly_models import new_assembly_id
+                a.assembly_id = new_assembly_id()
+        
         return sorted(
             assemblies,
             key=lambda item: (
@@ -47,31 +55,66 @@ class AssemblyStoreJson:
             ),
         )
 
-    def get(self, name: str) -> Optional[FurnitureAssemblyDef]:
-        raw = self._read_all().get(name)
-        return FurnitureAssemblyDef.from_dict(raw) if isinstance(raw, dict) else None
+    def get(self, assembly_id: str) -> Optional[FurnitureAssemblyDef]:
+        aid_norm = str(assembly_id or "").strip()
+        if not aid_norm:
+            return None
+        data = self._read_all()
+        # Lookup by ID
+        raw = data.get(aid_norm)
+        if isinstance(raw, dict):
+            return FurnitureAssemblyDef.from_dict(raw)
+        # Fallback to name for legacy data during transition
+        for val in data.values():
+            if isinstance(val, dict) and str(val.get("name", "")).strip() == aid_norm:
+                return FurnitureAssemblyDef.from_dict(val)
+        return None
 
     def save_new(self, assembly: FurnitureAssemblyDef) -> StoreResult:
+        from src.domain.assembly_models import new_assembly_id
+        if not assembly.assembly_id:
+            assembly.assembly_id = new_assembly_id()
+        
         data = self._read_all()
-        if assembly.name in data:
-            return StoreResult(False, f'Nazwa "{assembly.name}" juz istnieje. Uzyj "Nadpisz".')
-        data[assembly.name] = assembly.to_dict()
+        if assembly.assembly_id in data:
+            return StoreResult(False, f'ID "{assembly.assembly_id}" juz istnieje.')
+        
+        # Check for duplicate names (optional UX safety)
+        for val in data.values():
+            if isinstance(val, dict) and val.get("name") == assembly.name:
+                return StoreResult(False, f'Nazwa "{assembly.name}" juz istnieje.')
+
+        data[assembly.assembly_id] = assembly.to_dict()
         self._write_all(data)
-        return StoreResult(True, f'Zapisano nowy komplet: "{assembly.name}".')
+        return StoreResult(True, f'Zapisano новий комплект: "{assembly.name}".')
 
     def overwrite(self, assembly: FurnitureAssemblyDef) -> StoreResult:
+        if not assembly.assembly_id:
+            from src.domain.assembly_models import new_assembly_id
+            assembly.assembly_id = new_assembly_id()
+        
         data = self._read_all()
-        data[assembly.name] = assembly.to_dict()
+        data[assembly.assembly_id] = assembly.to_dict()
         self._write_all(data)
         return StoreResult(True, f'Nadpisano komplet: "{assembly.name}".')
 
-    def delete(self, name: str) -> StoreResult:
+    def delete(self, assembly_id: str) -> StoreResult:
+        aid_norm = str(assembly_id or "").strip()
         data = self._read_all()
-        if name not in data:
-            return StoreResult(False, f'Nie ma kompletu "{name}" w bazie.')
-        data.pop(name, None)
+        if aid_norm not in data:
+            # Fallback search by name for legacy
+            found_id = None
+            for gid, val in data.items():
+                if isinstance(val, dict) and val.get("name") == aid_norm:
+                    found_id = gid
+                    break
+            if not found_id:
+                return StoreResult(False, f'Nie ma kompletu "{aid_norm}" w bazie.')
+            aid_norm = found_id
+            
+        data.pop(aid_norm, None)
         self._write_all(data)
-        return StoreResult(True, f'Usunieto komplet: "{name}".')
+        return StoreResult(True, f'Usunieto komplet ID: "{aid_norm}".')
 
     def _read_all(self) -> Dict[str, dict]:
         try:

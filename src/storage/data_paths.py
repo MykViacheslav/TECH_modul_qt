@@ -12,4 +12,4 @@ def data_dir() -> Path:
     env = os.environ.get("TECH_MODUL_DATA_DIR", "").strip()
     if env:
         return Path(env)
-    return project_root() / "data"
+    return project_root() / "database"

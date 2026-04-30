@@ -48,6 +48,16 @@ class AlarmStoreJson(QObject):
         alarms = [a for a in alarms if a.alarm_id != alarm_id]
         self._save_all(alarms)
 
+    def delete_alarms_by_source(self, source: str) -> None:
+        """Deletes all unresolved alarms belonging to a specific source in a single batch."""
+        alarms = self.list_alarms()
+        new_alarms = [
+            a for a in alarms
+            if a.is_resolved or str((a.extra or {}).get("source", "") or "") != source
+        ]
+        if len(new_alarms) != len(alarms):
+            self._save_all(new_alarms)
+
     def resolve_alarm(self, alarm_id: str) -> None:
         from datetime import datetime
         alarms = self.list_alarms()
@@ -62,6 +72,17 @@ class AlarmStoreJson(QObject):
         alarms = self.list_alarms()
         alarms = [a for a in alarms if not a.is_resolved]
         self._save_all(alarms)
+
+    def save_alarms_batch(self, alarms_to_save: List[AlarmDef]) -> None:
+        """Saves multiple alarms in a single operation."""
+        if not alarms_to_save:
+            return
+        
+        current_alarms = {a.alarm_id: a for a in self.list_alarms()}
+        for alarm in alarms_to_save:
+            current_alarms[alarm.alarm_id] = alarm
+        
+        self._save_all(list(current_alarms.values()))
 
     def _save_all(self, alarms: List[AlarmDef]) -> None:
         data = [alarm.to_dict() for alarm in alarms]

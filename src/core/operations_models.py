@@ -116,6 +116,10 @@ class IssueRecord:
     estimated_cost: float = 0.0
     estimated_revenue_unlock: float = 0.0
     estimated_time_minutes: int = 0
+    quantity_required: float = 1.0
+    quantity_bought: float = 0.0
+    actual_cost: float = 0.0
+    supplier: str = ""
     city: str = ""
     address: str = ""
     notes: str = ""
@@ -148,6 +152,10 @@ class IssueRecord:
             estimated_cost=float(row.get("estimated_cost", 0.0) or 0.0),
             estimated_revenue_unlock=float(row.get("estimated_revenue_unlock", 0.0) or 0.0),
             estimated_time_minutes=int(row.get("estimated_time_minutes", 0) or 0),
+            quantity_required=float(row.get("quantity_required", 1.0) or 1.0),
+            quantity_bought=float(row.get("quantity_bought", 0.0) or 0.0),
+            actual_cost=float(row.get("actual_cost", 0.0) or 0.0),
+            supplier=str(row.get("supplier", "") or "").strip(),
             city=str(row.get("city", "") or "").strip(),
             address=str(row.get("address", "") or "").strip(),
             notes=str(row.get("notes", "") or "").strip(),
@@ -179,6 +187,10 @@ class IssueRecord:
             "estimated_cost": float(self.estimated_cost or 0.0),
             "estimated_revenue_unlock": float(self.estimated_revenue_unlock or 0.0),
             "estimated_time_minutes": int(self.estimated_time_minutes or 0),
+            "quantity_required": float(self.quantity_required or 1.0),
+            "quantity_bought": float(self.quantity_bought or 0.0),
+            "actual_cost": float(self.actual_cost or 0.0),
+            "supplier": str(self.supplier or "").strip(),
             "city": str(self.city or "").strip(),
             "address": str(self.address or "").strip(),
             "notes": str(self.notes or "").strip(),
@@ -213,6 +225,8 @@ class IssueRecord:
 @dataclass
 class RouteTaskRecord:
     id: str = ""
+    created_at: str = ""
+    updated_at: str = ""
     issue_id: str = ""
     task_type: str = "inne"
     project_name: str = ""
@@ -234,12 +248,22 @@ class RouteTaskRecord:
     requires_confirmation: bool = False
     finance_followup_note: str = ""
     notes: str = ""
+    blocked_reason: str = ""
+    
+    # Handoff & Quality Gates
+    handoff_status: str = "not_handed_off" # not_handed_off, ready_for_next, accepted, rejected_back
+    quality_result: str = "ok" # ok, needs_rework, blocked
+    rework_reason: str = ""
+    rejected_by: str = ""
+    accepted_by: str = ""
 
     @classmethod
     def from_dict(cls, row: dict[str, Any]) -> "RouteTaskRecord":
         row = row if isinstance(row, dict) else {}
         return cls(
             id=str(row.get("id", "") or "").strip() or new_route_task_id(),
+            created_at=str(row.get("created_at", "") or "").strip() or now_iso(),
+            updated_at=str(row.get("updated_at", "") or "").strip() or now_iso(),
             issue_id=str(row.get("issue_id", "") or "").strip(),
             task_type=str(row.get("task_type", "inne") or "inne").strip().lower(),
             project_name=str(row.get("project_name", "") or "").strip(),
@@ -261,11 +285,19 @@ class RouteTaskRecord:
             requires_confirmation=to_bool(row.get("requires_confirmation", False)),
             finance_followup_note=str(row.get("finance_followup_note", "") or "").strip(),
             notes=str(row.get("notes", "") or "").strip(),
+            blocked_reason=str(row.get("blocked_reason", "") or "").strip(),
+            handoff_status=str(row.get("handoff_status", "not_handed_off") or "not_handed_off").strip(),
+            quality_result=str(row.get("quality_result", "ok") or "ok").strip(),
+            rework_reason=str(row.get("rework_reason", "") or "").strip(),
+            rejected_by=str(row.get("rejected_by", "") or "").strip(),
+            accepted_by=str(row.get("accepted_by", "") or "").strip(),
         )
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id or new_route_task_id(),
+            "created_at": str(self.created_at or "").strip() or now_iso(),
+            "updated_at": str(self.updated_at or "").strip() or now_iso(),
             "issue_id": str(self.issue_id or "").strip(),
             "task_type": str(self.task_type or "inne").strip().lower(),
             "project_name": str(self.project_name or "").strip(),
@@ -287,6 +319,12 @@ class RouteTaskRecord:
             "requires_confirmation": bool(self.requires_confirmation),
             "finance_followup_note": str(self.finance_followup_note or "").strip(),
             "notes": str(self.notes or "").strip(),
+            "blocked_reason": str(self.blocked_reason or "").strip(),
+            "handoff_status": str(self.handoff_status or "not_handed_off").strip(),
+            "quality_result": str(self.quality_result or "ok").strip(),
+            "rework_reason": str(self.rework_reason or "").strip(),
+            "rejected_by": str(self.rejected_by or "").strip(),
+            "accepted_by": str(self.accepted_by or "").strip(),
         }
 
 
@@ -318,3 +356,73 @@ def route_visible_for_role(route: RouteTaskRecord, role: str, worker_name: str =
         crew = str(route.crew or "").strip().lower()
         return bool(worker_norm and crew and worker_norm in crew)
     return False
+
+@dataclass
+class FulfillmentRecord:
+    project_name: str = ""
+    status: str = "ready_for_shipping" 
+    packed_at: str = ""
+    packed_by: str = ""
+    dispatched_at: str = ""
+    dispatched_by: str = ""
+    delivered_at: str = ""
+    delivered_by: str = ""
+    delivery_note: str = ""
+    package_count: int = 0
+    carrier_name: str = ""
+    tracking_number: str = ""
+    installation_planned_date: str = ""
+    installation_team: str = ""
+    installation_progress: float = 0.0
+    blocked_reason: str = ""
+    notes: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+
+    @classmethod
+    def from_dict(cls, row: dict[str, Any]) -> "FulfillmentRecord":
+        row = row if isinstance(row, dict) else {}
+        return cls(
+            project_name=str(row.get("project_name", "") or "").strip(),
+            status=str(row.get("status", "ready_for_shipping") or "ready_for_shipping").strip(),
+            packed_at=str(row.get("packed_at", "") or "").strip(),
+            packed_by=str(row.get("packed_by", "") or "").strip(),
+            dispatched_at=str(row.get("dispatched_at", "") or "").strip(),
+            dispatched_by=str(row.get("dispatched_by", "") or "").strip(),
+            delivered_at=str(row.get("delivered_at", "") or "").strip(),
+            delivered_by=str(row.get("delivered_by", "") or "").strip(),
+            delivery_note=str(row.get("delivery_note", "") or "").strip(),
+            package_count=int(row.get("package_count", 0) or 0),
+            carrier_name=str(row.get("carrier_name", "") or "").strip(),
+            tracking_number=str(row.get("tracking_number", "") or "").strip(),
+            installation_planned_date=str(row.get("installation_planned_date", "") or "").strip(),
+            installation_team=str(row.get("installation_team", "") or "").strip(),
+            installation_progress=float(row.get("installation_progress", 0.0) or 0.0),
+            blocked_reason=str(row.get("blocked_reason", "") or "").strip(),
+            notes=str(row.get("notes", "") or "").strip(),
+            created_at=str(row.get("created_at", "") or "").strip() or now_iso(),
+            updated_at=str(row.get("updated_at", "") or "").strip() or now_iso(),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "project_name": self.project_name,
+            "status": self.status,
+            "packed_at": self.packed_at,
+            "packed_by": self.packed_by,
+            "dispatched_at": self.dispatched_at,
+            "dispatched_by": self.dispatched_by,
+            "delivered_at": self.delivered_at,
+            "delivered_by": self.delivered_by,
+            "delivery_note": self.delivery_note,
+            "package_count": self.package_count,
+            "carrier_name": self.carrier_name,
+            "tracking_number": self.tracking_number,
+            "installation_planned_date": self.installation_planned_date,
+            "installation_team": self.installation_team,
+            "installation_progress": self.installation_progress,
+            "blocked_reason": self.blocked_reason,
+            "notes": self.notes,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }

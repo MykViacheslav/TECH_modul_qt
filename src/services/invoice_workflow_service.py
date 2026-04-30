@@ -6,6 +6,7 @@ from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 import re
+import csv
 from typing import Any
 
 from src.app.app_settings import load_telegram_settings
@@ -604,8 +605,15 @@ def sync_invoices_from_local_dirs(
 ) -> tuple[int, int, int, int]:
     target = store if store is not None else InvoiceStoreJson()
 
+    # Pre-populate specific dirs if none provided OR just ensure they exist.
+    search_dirs = list(dirs) if dirs else [
+        Path.home() / "Downloads",
+        Path(r"C:\Users\mykyt\Downloads"),
+        Path(r"C:\PythonProject\TECH_modul\Faktury"),
+    ]
+
     unique_paths: dict[str, Path] = {}
-    for raw_dir in dirs:
+    for raw_dir in search_dirs:
         folder = Path(raw_dir).expanduser()
         if not folder.exists() or not folder.is_dir():
             continue
@@ -724,16 +732,16 @@ def notify_unsent_invoice_alerts(
 
 
 def _next_material_id(rows: list[dict[str, Any]]) -> str:
+    # Use same logic as in MaterialStoreJson but on a local list
     max_num = 0
     for row in rows:
         raw = str(row.get("id", "") or "").strip()
         digits = "".join(ch for ch in raw if ch.isdigit())
-        if not digits:
-            continue
-        try:
-            max_num = max(max_num, int(digits))
-        except Exception:
-            continue
+        if digits:
+            try:
+                max_num = max(max_num, int(digits))
+            except ValueError:
+                pass
     return f"M{max_num + 1:04d}"
 
 
@@ -813,6 +821,8 @@ def export_invoice_to_material_store(
     *,
     invoice_store: InvoiceStoreJson | None = None,
     material_store: MaterialStoreJson | None = None,
+    discount_percent: float = 0.0,
+    warehouse_typ: str | None = None,
 ) -> MaterialExportSummary:
     inv_store = invoice_store if invoice_store is not None else InvoiceStoreJson()
     mat_store = material_store if material_store is not None else MaterialStoreJson()
@@ -850,6 +860,13 @@ def export_invoice_to_material_store(
         invoice_date = str(invoice.get("received_at", "") or "")[:10]
     today = datetime.now().strftime("%Y-%m-%d")
 
+    purchase_chan = str(invoice.get("purchase_channel", "faktura") or "").strip().lower()
+    channel_label = "Faktura"
+    if purchase_chan == "paragon":
+        channel_label = "Paragon"
+    elif purchase_chan == "cash":
+        channel_label = "Gotówka"
+
     for item in items:
         name = str(item.get("name", "") or "").strip()
         if not name:
@@ -857,12 +874,19 @@ def export_invoice_to_material_store(
             continue
 
         quantity = _safe_float(item.get("quantity", 0.0))
-        unit_price = _safe_float(item.get("unit_price_gross", 0.0))
-        if unit_price <= 0:
-            unit_price = _safe_float(item.get("unit_price", 0.0))
-        if unit_price <= 0:
-            unit_price = _safe_float(item.get("unit_price_net", 0.0))
-        total_price = _safe_float(item.get("total_price", 0.0))
+        # Get base unit price
+        unit_price_base = _safe_float(item.get("unit_price_gross", 0.0))
+        if unit_price_base <= 0:
+            unit_price_base = _safe_float(item.get("unit_price", 0.0))
+        if unit_price_base <= 0:
+            unit_price_base = _safe_float(item.get("unit_price_net", 0.0))
+        
+        total_price_base = _safe_float(item.get("total_price", 0.0))
+        
+        # Apply discount
+        multiplier = 1.0 - (float(discount_percent or 0.0) / 100.0)
+        unit_price = unit_price_base * multiplier
+        total_price = total_price_base * multiplier
 
         if quantity <= 0:
             quantity = 1.0
@@ -887,7 +911,20 @@ def export_invoice_to_material_store(
         thickness_mm = str(item.get("thickness_mm", "") or "").strip()
         unit = normalize_unit(str(item.get("unit", "") or "").strip())
         price_basis = str(item.get("price_basis", "") or invoice.get("price_basis", "") or "unknown").strip().lower()
-        warehouse_id, warehouse_typ = _suggest_warehouse_for_material_type(material_type)
+        
+        if warehouse_typ and str(warehouse_typ).strip():
+            # Find ID for the name or use as name
+            # For simplicity, if override matches name, we use it.
+            # In a real system we'd lookup ID by name.
+            warehouse_id = "MAG_CUSTOM"
+            warehouse_typ_final = str(warehouse_typ).strip()
+            # Try to match existing
+            if warehouse_typ_final == "okucia_akcesoria": warehouse_id = "MAG003"
+            elif warehouse_typ_final == "plyty_fronty": warehouse_id = "MAG002"
+            elif warehouse_typ_final == "glowny": warehouse_id = "MAG001"
+        else:
+            warehouse_id, warehouse_typ_final = _suggest_warehouse_for_material_type(material_type)
+            
         param_parts: list[str] = []
         if unit:
             param_parts.append(f"jedn: {unit}")
@@ -912,10 +949,10 @@ def export_invoice_to_material_store(
             "spisano_zamowienie": "",
             "ilosc_magazyn": _format_number(quantity, 3),
             "magazyn_id": warehouse_id,
-            "magazyn_typ": warehouse_typ,
+            "magazyn_typ": warehouse_typ_final,
             "pracownik": "",
             "data_wpisu": today,
-            "zakup": f"Faktura: {invoice_number} ({price_basis})" if price_basis in {"netto", "brutto"} else f"Faktura: {invoice_number}",
+            "zakup": f"{channel_label}: {invoice_number} ({price_basis})" if price_basis in {"netto", "brutto"} else f"{channel_label}: {invoice_number}",
             "numer_faktury": invoice_number,
             "data_zakupu": invoice_date,
             "suma_zam_kw": _format_number(unit_price * quantity, 2),

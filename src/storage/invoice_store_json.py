@@ -56,6 +56,9 @@ class InvoiceStoreJson:
         item.setdefault("exported_to_material", False)
         item.setdefault("exported_at", "")
         item.setdefault("telegram_sent", False)
+        item.setdefault("account_type", "bank")
+        item.setdefault("purchase_channel", "faktura")
+
 
         payload_hash = str(item.get("payload_hash", "") or "").strip().lower()
         attachment_key = str(item.get("attachment_key", "") or "").strip().lower()

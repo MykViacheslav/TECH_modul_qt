@@ -64,3 +64,18 @@ class MaterialStoreJson:
         data = self.load()
         rows = data.get("rows", [])
         return [row for row in rows if isinstance(row, dict)]
+
+    def generate_next_id(self) -> str:
+        """Find the absolute maximum ID ever used in the store to ensure uniqueness."""
+        materials = self.list_materials()
+        max_num = 0
+        for mat in materials:
+            raw_id = str(mat.get("id", "") or "").strip()
+            # Extract digits from IDs like 'M0001'
+            digits = "".join(ch for ch in raw_id if ch.isdigit())
+            if digits:
+                try:
+                    max_num = max(max_num, int(digits))
+                except ValueError:
+                    pass
+        return f"M{max_num + 1:04d}"

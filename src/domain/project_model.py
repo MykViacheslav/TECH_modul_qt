@@ -456,6 +456,41 @@ class ProjectPricingSnapshot:
 
 
 @dataclass
+class ProjectObstacle:
+    id: str = ""
+    type: str = ""
+    x: float = 0.0
+    y: float = 0.0
+    width: float = 0.0
+    height: float = 0.0
+    depth: float = 0.0
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "type": self.type,
+            "x": float(self.x),
+            "y": float(self.y),
+            "width": float(self.width),
+            "height": float(self.height),
+            "depth": float(self.depth),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ProjectObstacle":
+        data = data or {}
+        return cls(
+            id=_clean_str(data.get("id", "")),
+            type=_clean_str(data.get("type", "")),
+            x=_clean_float(data.get("x", 0.0)),
+            y=_clean_float(data.get("y", 0.0)),
+            width=_clean_float(data.get("width", 0.0)),
+            height=_clean_float(data.get("height", 0.0)),
+            depth=_clean_float(data.get("depth", 0.0)),
+        )
+
+
+@dataclass
 class ProjectAudit:
     built_from: List[str] = field(default_factory=list)
     built_at: str = ""
@@ -503,6 +538,7 @@ class ProjectModel:
     giblab_result: ProjectGibLabResult = field(default_factory=ProjectGibLabResult)
     pricing_snapshot: ProjectPricingSnapshot = field(default_factory=ProjectPricingSnapshot)
     audit: ProjectAudit = field(default_factory=ProjectAudit)
+    obstacles: List[ProjectObstacle] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -523,6 +559,7 @@ class ProjectModel:
             "giblab_result": self.giblab_result.to_dict(),
             "pricing_snapshot": self.pricing_snapshot.to_dict(),
             "audit": self.audit.to_dict(),
+            "obstacles": [item.to_dict() for item in self.obstacles],
         }
 
     @classmethod
@@ -546,4 +583,5 @@ class ProjectModel:
             giblab_result=ProjectGibLabResult.from_dict(data.get("giblab_result", {}) or {}),
             pricing_snapshot=ProjectPricingSnapshot.from_dict(data.get("pricing_snapshot", {}) or {}),
             audit=ProjectAudit.from_dict(data.get("audit", {}) or {}),
+            obstacles=[ProjectObstacle.from_dict(item) for item in (data.get("obstacles", []) or []) if isinstance(item, dict)],
         )

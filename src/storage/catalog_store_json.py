@@ -8,6 +8,7 @@ from typing import Dict, List, Optional
 from src.domain.material_profile_models import MaterialProfileDef
 from src.domain.material_profile_registry import build_default_material_profiles, get_default_material_profile
 from src.storage.data_paths import data_dir
+from src.api.data_manager import data_manager
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,8 @@ class MaterialDef:
     finish_group: str = ""
     price_pln_per_m2: float = 0.0
     price_note: str = ""
+    color_hex: str = "#ffffff"
+    texture_url: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "skins_left", list(self.skins_left or []))
@@ -122,6 +125,28 @@ class CatalogStoreJson:
                 )
             except Exception:
                 continue
+
+        # PoĹ‚Ä…cz z bazÄ… SQLite dla aktualnych cen i kolorĂłw
+        try:
+            db_mats = data_manager.get_materials()
+            existing_keys = {m.key for m in out}
+            for m in db_mats:
+                m_key = m.get("name", "")
+                if m_key and m_key not in existing_keys:
+                    out.append(
+                        MaterialDef(
+                            key=m_key,
+                            name_pl=m_key,
+                            thickness_mm=float(m.get("thickness", 18)),
+                            price_pln_per_m2=float(m.get("price", 0.0)),
+                            color_hex=m.get("color_hex", "#ffffff"),
+                            texture_url=m.get("texture_url", ""),
+                            material_group="db_board"
+                        )
+                    )
+        except Exception:
+            pass
+
         return sorted(out, key=lambda x: x.key)
 
     def list_edgebands(self) -> List[EdgeBandDef]:
@@ -761,6 +786,30 @@ class CatalogStoreJson:
                     "material_group": "back_board",
                     "finish_group": "raw",
                     "price_pln_per_m2": 21.0,
+                },
+                {
+                    "key": "PB18_FORNIR_2S",
+                    "name_pl": "Plyta wiorowa fornirowana obustronnie",
+                    "core": {"code": "PB18", "name_pl": "Plyta wiorowa 18mm", "thickness_mm": 18.0},
+                    "skins_left": [{"code": "Fornir", "name_pl": "Fornir 0,6mm", "thickness_mm": 0.6}],
+                    "skins_right": [{"code": "Fornir", "name_pl": "Fornir 0,6mm", "thickness_mm": 0.6}],
+                    "manufacturer": "Egger",
+                    "material_type": "fornirowana",
+                    "material_group": "carcass_board",
+                    "finish_group": "veneer",
+                    "price_pln_per_m2": 145.0,
+                },
+                {
+                    "key": "PB18_FORNIR_1S",
+                    "name_pl": "Plyta wiorowa fornirowana jednostronnie",
+                    "core": {"code": "PB18", "name_pl": "Plyta wiorowa 18mm", "thickness_mm": 18.0},
+                    "skins_left": [{"code": "Fornir", "name_pl": "Fornir 0,6mm", "thickness_mm": 0.6}],
+                    "skins_right": [],
+                    "manufacturer": "Egger",
+                    "material_type": "fornirowana",
+                    "material_group": "carcass_board",
+                    "finish_group": "veneer",
+                    "price_pln_per_m2": 118.0,
                 },
             ],
             "edgebands": [
