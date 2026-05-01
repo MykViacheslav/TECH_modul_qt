@@ -46,22 +46,24 @@ REM Start backend
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','%REPO%\scripts\run_backend.ps1' -WindowStyle Hidden"
 echo Backend start command sent>> "%LOG%"
 
-REM Wait until backend API responds (max ~60s)
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ok=$false; 1..30 | ForEach-Object { try { $r=Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8000/api/production/tasks?station=biuro&status=active&limit=1' -TimeoutSec 2; if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 500) { $ok=$true; break } } catch {}; Start-Sleep -Seconds 2 }; if (-not $ok) { exit 1 }"
+REM Wait until backend API responds (faster check, max ~25s)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ok=$false; 1..25 | ForEach-Object { try { $r=Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8000/api/production/tasks?station=biuro&status=active&limit=1' -TimeoutSec 1; if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 500) { $ok=$true; break } } catch {}; Start-Sleep -Seconds 1 }; if (-not $ok) { exit 1 }"
 if errorlevel 1 (
-  echo Backend readiness timeout on http://127.0.0.1:8000>> "%LOG%"
-  goto :end
+  echo [WARN] Backend readiness timeout on http://127.0.0.1:8000 - continuing startup>> "%LOG%"
+  goto :start_frontend
 )
 echo Backend ready>> "%LOG%"
 
 REM Start frontend (logged to frontend.log by run_frontend.ps1)
+:start_frontend
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:NEXT_PUBLIC_API_URL='http://%BIURO_IP%:8000'; Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','%REPO%\scripts\run_frontend.ps1' -WindowStyle Hidden"
 echo Frontend start command sent via run_frontend.ps1>> "%LOG%"
 
-REM Wait until frontend responds (max ~120s)
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ok=$false; 1..60 | ForEach-Object { try { $r=Invoke-WebRequest -UseBasicParsing -Uri '%TARGET_URL%' -TimeoutSec 2; if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 500) { $ok=$true; break } } catch {}; Start-Sleep -Seconds 2 }; if (-not $ok) { exit 1 }"
+REM Wait until frontend responds (faster check, max ~35s)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ok=$false; 1..35 | ForEach-Object { try { $r=Invoke-WebRequest -UseBasicParsing -Uri '%TARGET_URL%' -TimeoutSec 1; if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 500) { $ok=$true; break } } catch {}; Start-Sleep -Seconds 1 }; if (-not $ok) { exit 1 }"
 if errorlevel 1 (
-  echo Frontend readiness timeout for %TARGET_URL%>> "%LOG%"
+  echo [WARN] Frontend readiness timeout for %TARGET_URL% - opening anyway>> "%LOG%"
+  start "" "%TARGET_URL%"
   goto :end
 )
 

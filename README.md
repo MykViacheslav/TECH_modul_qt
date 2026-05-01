@@ -57,6 +57,22 @@ HTTPS:
 .\.venv\Scripts\python.exe -m pytest -q tests\test_kpi_service.py tests\test_dashboard_services_kpi.py tests\test_theme_accessibility.py
 ```
 
+## MSI Tech Module
+
+Moduł techniczny do obliczeń BOM, reguł okuć i konfiguracji modułów meblowych.
+
+- Dokumentacja: [`docs/msi_tech_module/README.md`](docs/msi_tech_module/README.md)
+- Architektura (Mermaid): [`docs/msi_tech_module/ARCHITECTURE.md`](docs/msi_tech_module/ARCHITECTURE.md)
+- Flowchart procesu: [`docs/msi_tech_module/FLOWCHART.md`](docs/msi_tech_module/FLOWCHART.md)
+- Kod bazowy: `src/modules/msi_tech/`
+
+```python
+from src.modules.msi_tech import TechModule, TechModuleService
+
+module = TechModule(id="", name="Szafka 60", width_mm=600, height_mm=720, depth_mm=560)
+bom = TechModuleService().calculate_bom(module)
+```
+
 ## Documentation
 
 - Architecture: `docs/architecture.md`

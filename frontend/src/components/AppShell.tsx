@@ -100,7 +100,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Produkcja",
     icon: Factory,
     items: [
-      { href: "/orders/new", label: "Zlecenia", icon: FileText },
+      { href: "/orders", label: "Zlecenia", icon: FileText },
       { href: "/services", label: "Usługi", icon: Wrench },
       { href: "/workspace/production", label: "Główny Workflow", icon: Workflow },
       { href: "/stations/cnc", label: "CNC", icon: Cpu },

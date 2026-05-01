@@ -177,6 +177,25 @@ class TechModulDataManager:
                 except sqlite3.OperationalError:
                     pass
 
+            # Migrations for Order extended fields (sprint: dates + positions)
+            _orders_new_cols = [
+                ("received_date", "TEXT DEFAULT ''"),
+                ("installation_date", "TEXT DEFAULT ''"),
+                ("priority", "TEXT DEFAULT 'Normalny'"),
+                ("positions_json", "TEXT DEFAULT '[]'"),
+            ]
+            for col_name, col_def in _orders_new_cols:
+                try:
+                    cursor.execute(f"ALTER TABLE orders ADD COLUMN {col_name} {col_def}")
+                except sqlite3.OperationalError:
+                    pass
+
+            # Migration for order_calendar_events: store installation date
+            try:
+                cursor.execute("ALTER TABLE order_calendar_events ADD COLUMN installation_date TEXT DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass
+
             # Tabela Pracowników (do wyboru użytkownika)
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS technicians (
@@ -293,6 +312,7 @@ class TechModulDataManager:
                     price_total REAL DEFAULT 0,
                     invoice_id INTEGER,
                     invoice_line_item_id INTEGER,
+                    purchase_document_line_id INTEGER,
                     date TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY(material_id) REFERENCES materials(id),
@@ -357,6 +377,7 @@ class TechModulDataManager:
                     purchase_document_id INTEGER,
                     purchase_document_line_id INTEGER,
                     related_movement_id INTEGER,
+                    position_id TEXT DEFAULT '',
                     note TEXT DEFAULT '',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     created_by TEXT DEFAULT '',
@@ -434,6 +455,7 @@ class TechModulDataManager:
                     amount_gross REAL DEFAULT 0.0,
                     qty REAL,
                     unit TEXT,
+                    position_id TEXT DEFAULT '',
                     description TEXT DEFAULT '',
                     note TEXT DEFAULT '',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -443,9 +465,47 @@ class TechModulDataManager:
             ''')
 
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_order_cost_entries_order ON order_cost_entries(order_id)")
+
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS operation_tariffs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    code TEXT UNIQUE NOT NULL,
+                    name TEXT NOT NULL,
+                    category TEXT DEFAULT 'general',
+                    operation_type TEXT NOT NULL,
+                    unit TEXT DEFAULT 'szt',
+                    sell_rate_net REAL DEFAULT 0.0,
+                    vat_rate REAL DEFAULT 23.0,
+                    min_charge_net REAL DEFAULT 0.0,
+                    is_active INTEGER DEFAULT 1,
+                    description TEXT DEFAULT '',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            cursor.execute("SELECT count(*) FROM operation_tariffs")
+            if cursor.fetchone()[0] == 0:
+                tariffs = [
+                    ("EDGE_STD", "Oklejanie standard", "Oklejanie", "EDGE_BANDING", "mb", 4.0, 23.0, 0.0, "Oklejanie krawedzi pcv/abs"),
+                    ("FRONT_SMOOTH", "Front gładki", "CNC Fronty", "CNC_FRONT", "m2", 120.0, 23.0, 0.0, "Frezowanie frontu gladkiego"),
+                    ("FRONT_FRAME", "Front ramka delikatna", "CNC Fronty", "CNC_FRAME", "m2", 125.0, 23.0, 0.0, "Frezowanie frontu z ramka"),
+                    ("FRONT_RIBBED", "Front ryflowany", "CNC Fronty", "CNC_RIBBED", "m2", 160.0, 23.0, 0.0, "Frezowanie frontu ryflowanego"),
+                    ("CUT_STD", "Cięcie standard", "Ciecie", "CUTTING", "m2", 25.0, 23.0, 0.0, "Standardowe ciecie plyty"),
+                    ("HDF_NO_EDGE", "HDF bez oklejania", "Inne", "OTHER", "m2", 15.0, 23.0, 0.0, "Wycinanie plecow HDF"),
+                    ("LACQUER_STD", "Lakierowanie", "Lakierowanie", "FINISHING", "m2", 0.0, 23.0, 0.0, "Lakierowanie elementow"),
+                    ("CNC_DRILL_STD", "Wiercenie CNC", "CNC", "DRILLING", "szt", 0.0, 23.0, 0.0, "Wiercenie CNC"),
+                ]
+                for t in tariffs:
+                    cursor.execute(
+                        "INSERT INTO operation_tariffs (code, name, category, operation_type, unit, sell_rate_net, vat_rate, min_charge_net, description) VALUES (?,?,?,?,?,?,?,?,?)",
+                        t
+                    )
+
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_procurement_items_material ON procurement_items(material_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_procurement_items_order ON procurement_items(order_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_procurement_items_status ON procurement_items(status)")
+
 
             # Dodanie domyślnych użytkowników jeśli tabela jest pusta.
             # Phase 1 Safe Work Mode: demo seed only in dev/test, never in prod.
@@ -494,6 +554,7 @@ class TechModulDataManager:
             add_col("arrivals", "unit_price_gross", "REAL DEFAULT 0.0")
             add_col("arrivals", "invoice_id", "INTEGER")
             add_col("arrivals", "invoice_line_item_id", "INTEGER")
+            add_col("arrivals", "purchase_document_line_id", "INTEGER")
             add_col("invoices", "supplier", "TEXT DEFAULT ''")
             add_col("invoices", "currency", "TEXT DEFAULT 'PLN'")
             add_col("invoices", "payload_hash", "TEXT DEFAULT ''")
@@ -502,6 +563,9 @@ class TechModulDataManager:
             add_col("invoices", "parse_method", "TEXT DEFAULT ''")
             add_col("invoices", "parse_confidence", "REAL DEFAULT 0.0")
             add_col("invoices", "duplicate_of_invoice_id", "INTEGER")
+            
+            add_col("inventory_movements", "position_id", "TEXT DEFAULT ''")
+            add_col("order_cost_entries", "position_id", "TEXT DEFAULT ''")
             
             add_col("projects", "obstacles_json", "TEXT DEFAULT '[]'")
 
@@ -819,12 +883,18 @@ class TechModulDataManager:
         budget: float = 0.0,
         status: str = "DRAFT",
         spec_json: str = "{}",
+        received_date: str = "",
+        installation_date: str = "",
+        priority: str = "Normalny",
+        positions_json: str = "[]",
     ) -> int:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO orders (project_id, client_name, title, deadline, deadline_from, deadline_to, budget, status, spec_json) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO orders "
+                "(project_id, client_name, title, deadline, deadline_from, deadline_to, "
+                "budget, status, spec_json, received_date, installation_date, priority, positions_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     int(project_id),
                     str(client_name or "").strip(),
@@ -835,6 +905,10 @@ class TechModulDataManager:
                     float(budget or 0.0),
                     str(status or "DRAFT").strip() or "DRAFT",
                     str(spec_json or "{}").strip() or "{}",
+                    str(received_date or "").strip(),
+                    str(installation_date or "").strip(),
+                    str(priority or "Normalny").strip() or "Normalny",
+                    str(positions_json or "[]").strip() or "[]",
                 ),
             )
             conn.commit()
@@ -846,6 +920,7 @@ class TechModulDataManager:
             title=str(title or "").strip(),
             date_from=str(deadline_from or deadline or "").strip(),
             date_to=str(deadline_to or "").strip(),
+            installation_date=str(installation_date or "").strip(),
         )
         return order_id
 
@@ -856,7 +931,8 @@ class TechModulDataManager:
         title: str,
         date_from: str,
         date_to: str = "",
-        event_type: str = "montaz",
+        event_type: str = "zlecenie",
+        installation_date: str = "",
     ) -> int:
         normalized_from = str(date_from or "").strip()
         if not normalized_from:
@@ -864,6 +940,7 @@ class TechModulDataManager:
         normalized_to = str(date_to or "").strip()
         if normalized_to and normalized_to < normalized_from:
             normalized_to = normalized_from
+        normalized_install = str(installation_date or "").strip()
 
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
@@ -875,15 +952,17 @@ class TechModulDataManager:
             existing = cursor.fetchone()
             if existing is None:
                 cursor.execute(
-                    "INSERT INTO order_calendar_events (order_id, project_id, event_type, title, date_from, date_to) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO order_calendar_events "
+                    "(order_id, project_id, event_type, title, date_from, date_to, installation_date) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
                     (
                         int(order_id),
                         int(project_id),
-                        str(event_type or "montaz").strip() or "montaz",
+                        str(event_type or "zlecenie").strip() or "zlecenie",
                         str(title or "").strip() or f"Order #{int(order_id)}",
                         normalized_from,
                         normalized_to,
+                        normalized_install,
                     ),
                 )
                 conn.commit()
@@ -891,14 +970,16 @@ class TechModulDataManager:
 
             cursor.execute(
                 "UPDATE order_calendar_events "
-                "SET project_id = ?, event_type = ?, title = ?, date_from = ?, date_to = ?, updated_at = CURRENT_TIMESTAMP "
+                "SET project_id = ?, event_type = ?, title = ?, date_from = ?, date_to = ?, "
+                "installation_date = ?, updated_at = CURRENT_TIMESTAMP "
                 "WHERE order_id = ?",
                 (
                     int(project_id),
-                    str(event_type or "montaz").strip() or "montaz",
+                    str(event_type or "zlecenie").strip() or "zlecenie",
                     str(title or "").strip() or f"Order #{int(order_id)}",
                     normalized_from,
                     normalized_to,
+                    normalized_install,
                     int(order_id),
                 ),
             )
@@ -931,9 +1012,504 @@ class TechModulDataManager:
             
             where_stmt = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
             
-            query = f"SELECT id, project_id, client_name, title, deadline, deadline_from, deadline_to, budget, status, spec_json, created_at FROM orders {where_stmt} ORDER BY id DESC LIMIT ?"
+            query = (
+                f"SELECT id, project_id, client_name, title, deadline, deadline_from, deadline_to, "
+                f"budget, status, spec_json, received_date, installation_date, priority, positions_json, created_at "
+                f"FROM orders {where_stmt} ORDER BY id DESC LIMIT ?"
+            )
             cursor.execute(query, (int(limit),))
             return [dict(row) for row in cursor.fetchall()]
+
+    def get_order_by_id(self, order_id: int) -> Optional[Dict]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, project_id, client_name, title, deadline, deadline_from, deadline_to, "
+                "budget, status, spec_json, received_date, installation_date, priority, positions_json, created_at "
+                "FROM orders WHERE id = ?",
+                (int(order_id),),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def get_order_calendar_events(self, order_id: int) -> List[Dict]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, order_id, project_id, event_type, title, date_from, date_to, installation_date, created_at, updated_at "
+                "FROM order_calendar_events "
+                "WHERE order_id = ? "
+                "ORDER BY date_from ASC",
+                (int(order_id),),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def get_order_operational_review(self, order_id: int) -> Dict:
+        order = self.get_order_by_id(order_id)
+        if not order:
+            return {"error": "Order not found"}
+
+        # 1. Positions
+        positions = []
+        try:
+            positions = json.loads(order.get("positions_json") or "[]")
+        except:
+            pass
+
+        # 2. Material Readiness (Detailed)
+        readiness_data = self.get_order_material_readiness(order_id)
+        
+        # 3. Calendar Events
+        calendar_events = self.get_order_calendar_events(order_id)
+
+        # 4. Finance
+        finance = self.get_order_cost_summary(order_id)
+        finance["budget"] = order.get("budget", 0)
+
+        # 5. Audit
+        audit = []
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, timestamp, user_name, action, details FROM audit_log "
+                "WHERE target_type = 'order' AND target_id = ? "
+                "ORDER BY timestamp DESC LIMIT 20",
+                (str(order_id),),
+            )
+            audit = [dict(row) for row in cursor.fetchall()]
+
+        route.append("montaż/pakowanie")
+        
+        # 6. Production Readiness Summary
+        any_shortage = any(pos["status"] == "Brak materiału" or pos["edge_status"] == "Brak okleiny" for pos in readiness_data["positions"])
+        
+        # Suggested route
+        route = ["CNC / rozkrój"]
+        has_edge = any(pos.get("servicePricingInput", {}).get("edge_default_material_id") for pos in positions)
+        if has_edge:
+            route.append("oklejanie")
+        
+        has_lacquer = any(pos.get("servicePricingInput", {}).get("lacquer") for pos in positions)
+        if has_lacquer:
+            route.append("lakiernia")
+        route.append("montaż/pakowanie")
+        
+        # 7. Production Tasks
+        from src.core.operations_store import OperationsStore
+        store = OperationsStore()
+        all_routes = store.list_routes()
+        production_tasks = [t.to_dict() for t in all_routes if t.order_id == str(order_id)]
+
+        return {
+            "order": order,
+            "positions": positions,
+            "derived_demand": readiness_data["summary"], # Compatibility with old UI if needed
+            "material_readiness": readiness_data,
+            "calendar_events": calendar_events,
+            "finance": finance,
+            "audit": audit,
+            "readiness": {
+                "is_ready": readiness_data["is_all_issued"] or readiness_data["is_all_ready"],
+                "missing_materials": [s["name"] for s in readiness_data["summary"] if s["status"] == "Brak"],
+                "suggested_route": route,
+                "status_text": readiness_data["overall_status"]
+            },
+            "production_tasks": production_tasks
+        }
+    
+    def generate_order_production_tasks(self, order_id: int, user_name: str = "System") -> Dict[str, Any]:
+        """
+        Generates production tasks (routes) based on order positions_json.
+        Avoids duplicates for same order + position_id + task_type.
+        """
+        order = self.get_order_by_id(order_id)
+        if not order:
+            return {"error": "Order not found"}
+        
+        try:
+            positions = json.loads(order.get("positions_json") or "[]")
+        except:
+            return {"error": "Invalid positions_json"}
+        
+        from src.core.operations_store import OperationsStore
+        from src.core.operations_models import RouteTaskRecord
+        store = OperationsStore()
+        
+        existing_tasks = store.list_routes()
+        # Filter for this order to speed up duplicate check
+        order_tasks = [t for t in existing_tasks if t.order_id == str(order_id)]
+        
+        created_count = 0
+        skipped_count = 0
+        
+        def task_exists(pos_id: str, t_type: str) -> bool:
+            return any(t.position_id == str(pos_id) and t.task_type == t_type for t in order_tasks)
+
+        for i, pos in enumerate(positions):
+            pos_id = pos.get("id") or f"pos-{i}"
+            pos_num = pos.get("position_number") or (i + 1)
+            name = pos.get("name") or f"Pozycja {pos_num}"
+            input_data = pos.get("servicePricingInput") or {}
+            
+            # 1. CNC / Rozkrój
+            l = float(input_data.get("length") or 0)
+            w = float(input_data.get("width") or 0)
+            if l > 0 and w > 0:
+                if not task_exists(pos_id, "cnc"):
+                    task = RouteTaskRecord(
+                        order_id=str(order_id),
+                        position_id=str(pos_id),
+                        task_type="cnc",
+                        project_name=order.get("title", ""),
+                        client_name=order.get("client_name", ""),
+                        status="planowane",
+                        notes=f"P{pos_num}: {name} ({l}x{w}) | Mat: {input_data.get('material_name', '')}",
+                        planned_date=order.get("deadline") or order.get("installation_date") or "",
+                        route_group=f"Order-{order_id}",
+                    )
+                    store.add_route_task(task)
+                    created_count += 1
+                else:
+                    skipped_count += 1
+
+            # 2. Oklejanie
+            has_edge = any(input_data.get(k) for k in ["edge_top", "edge_bottom", "edge_left", "edge_right"])
+            no_edge = input_data.get("no_edge", False)
+            if has_edge and not no_edge:
+                if not task_exists(pos_id, "oklejanie"):
+                    task = RouteTaskRecord(
+                        order_id=str(order_id),
+                        position_id=str(pos_id),
+                        task_type="oklejanie",
+                        project_name=order.get("title", ""),
+                        client_name=order.get("client_name", ""),
+                        status="planowane",
+                        notes=f"P{pos_num}: {name} | Obrzeże: {input_data.get('edge_material_name', 'Standard')}",
+                        planned_date=order.get("deadline") or order.get("installation_date") or "",
+                        route_group=f"Order-{order_id}",
+                    )
+                    store.add_route_task(task)
+                    created_count += 1
+                else:
+                    skipped_count += 1
+
+            # 3. Lakiernia
+            # Check for lacquer or finishing service
+            is_lacquer = input_data.get("lacquer") or input_data.get("finish") == "lacquer" or "lakier" in str(pos.get("serviceMode", "")).lower()
+            if is_lacquer:
+                if not task_exists(pos_id, "lakiernia"):
+                    task = RouteTaskRecord(
+                        order_id=str(order_id),
+                        position_id=str(pos_id),
+                        task_type="lakiernia",
+                        project_name=order.get("title", ""),
+                        client_name=order.get("client_name", ""),
+                        status="planowane",
+                        notes=f"P{pos_num}: {name} | Lakier: {input_data.get('color', 'RAL 9003')}",
+                        planned_date=order.get("deadline") or order.get("installation_date") or "",
+                        route_group=f"Order-{order_id}",
+                    )
+                    store.add_route_task(task)
+                    created_count += 1
+                else:
+                    skipped_count += 1
+
+            # 4. Montaż / Pakowanie
+            # Always create for every position if not exists
+            if not task_exists(pos_id, "montaz"):
+                task = RouteTaskRecord(
+                    order_id=str(order_id),
+                    position_id=str(pos_id),
+                    task_type="montaz",
+                    project_name=order.get("title", ""),
+                    client_name=order.get("client_name", ""),
+                    status="planowane",
+                    notes=f"P{pos_num}: {name} | Montaż i pakowanie",
+                    planned_date=order.get("deadline") or order.get("installation_date") or "",
+                    route_group=f"Order-{order_id}",
+                )
+                store.add_route_task(task)
+                created_count += 1
+            else:
+                skipped_count += 1
+
+        if created_count > 0:
+            self.log_action(
+                user_name, 
+                "PRODUCTION_TASKS_GENERATED", 
+                target_type="order", 
+                target_id=str(order_id), 
+                details=f"Utworzono {created_count} zadań (pominięto {skipped_count} istniejących)"
+            )
+            return {"status": "ok", "created": created_count, "skipped": skipped_count, "message": f"Utworzono {created_count} zadań."}
+        
+        if skipped_count > 0:
+            return {"status": "exists", "created": 0, "skipped": skipped_count, "message": "Zadania już istnieją."}
+        
+        return {"status": "none", "created": 0, "skipped": 0, "message": "Nie znaleziono pozycji wymagających zadań."}
+
+    def get_order_material_readiness(self, order_id: int) -> Dict[str, Any]:
+        """
+        Detailed material readiness per position for an order.
+        """
+        order = self.get_order_by_id(order_id)
+        if not order: return {"error": "Order not found"}
+        
+        try:
+            positions = json.loads(order.get("positions_json") or "[]")
+        except:
+            positions = []
+            
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # 1. Fetch current movements for this order to see what's reserved/issued
+            cursor.execute(
+                "SELECT material_id, movement_type, qty, position_id FROM inventory_movements WHERE order_id = ?",
+                (int(order_id),)
+            )
+            movements = [dict(r) for r in cursor.fetchall()]
+            
+            pos_readiness = []
+            mat_summary = {} # material_id -> {needed, reserved, issued, available}
+            
+            for i, pos in enumerate(positions):
+                pos_id = str(pos.get("id") or f"pos-{i}")
+                pos_num = pos.get("position_number") or (i + 1)
+                input_data = pos.get("servicePricingInput") or {}
+                qty = float(pos.get("quantity") or 1)
+                l = float(pos.get("lengthMm") or 0) / 1000.0
+                w = float(pos.get("widthMm") or 0) / 1000.0
+                
+                # Base material
+                m_id = input_data.get("base_material_id")
+                base_info = {"id": m_id, "name": input_data.get("base_material_name", "Nieznany"), "needed": 0.0, "reserved": 0.0, "issued": 0.0, "status": "Inne"}
+                if m_id:
+                    try:
+                        mid = int(m_id)
+                        base_info["id"] = mid
+                        needed = round(l * w * qty, 3)
+                        base_info["needed"] = needed
+                        
+                        # Calculate reserved/issued for this specific position
+                        base_info["reserved"] = sum(m["qty"] for m in movements if m["material_id"] == mid and m["movement_type"] == "RESERVED" and m["position_id"] == pos_id)
+                        base_info["issued"] = sum(m["qty"] for m in movements if m["material_id"] == mid and m["movement_type"] == "OUT" and m["position_id"] == pos_id)
+                        
+                        # Global summary
+                        if mid not in mat_summary:
+                            cursor.execute("SELECT m.name, m.unit, ib.qty_available FROM materials m LEFT JOIN inventory_balances ib ON m.id = ib.material_id WHERE m.id = ?", (mid,))
+                            row = cursor.fetchone()
+                            mat_summary[mid] = {
+                                "name": row["name"] if row else "Nieznany",
+                                "unit": row["unit"] if row else "m2",
+                                "needed": 0.0, "reserved": 0.0, "issued": 0.0, "available": float(row["qty_available"] or 0) if row else 0.0
+                            }
+                        mat_summary[mid]["needed"] += needed
+                        mat_summary[mid]["reserved"] += base_info["reserved"]
+                        mat_summary[mid]["issued"] += base_info["issued"]
+                        
+                        if base_info["issued"] >= needed: base_info["status"] = "Wydano"
+                        elif base_info["reserved"] >= needed: base_info["status"] = "Zarezerwowano"
+                        elif mat_summary[mid]["available"] >= (needed - base_info["reserved"]): base_info["status"] = "Dostępny"
+                        else: base_info["status"] = "Brak materiału"
+                    except: pass
+
+                # Edge material
+                em_id = input_data.get("edge_default_material_id")
+                edge_info = {"id": em_id, "name": input_data.get("edge_material_name", "Brak"), "needed": 0.0, "reserved": 0.0, "issued": 0.0, "status": "Brak oklejania"}
+                no_edge = input_data.get("no_edge", False)
+                if em_id and not no_edge:
+                    try:
+                        emid = int(em_id)
+                        edge_info["id"] = emid
+                        edge_len = 0.0
+                        if input_data.get("edge_top"): edge_len += l
+                        if input_data.get("edge_bottom"): edge_len += l
+                        if input_data.get("edge_left"): edge_len += w
+                        if input_data.get("edge_right"): edge_len += w
+                        needed_edge = round(edge_len * qty, 2)
+                        edge_info["needed"] = needed_edge
+                        
+                        if needed_edge > 0:
+                            edge_info["reserved"] = sum(m["qty"] for m in movements if m["material_id"] == emid and m["movement_type"] == "RESERVED" and m["position_id"] == pos_id)
+                            edge_info["issued"] = sum(m["qty"] for m in movements if m["material_id"] == emid and m["movement_type"] == "OUT" and m["position_id"] == pos_id)
+                            
+                            if emid not in mat_summary:
+                                cursor.execute("SELECT m.name, m.unit, ib.qty_available FROM materials m LEFT JOIN inventory_balances ib ON m.id = ib.material_id WHERE m.id = ?", (emid,))
+                                row = cursor.fetchone()
+                                mat_summary[emid] = {
+                                    "name": row["name"] if row else "Nieznany",
+                                    "unit": row["unit"] if row else "mb",
+                                    "needed": 0.0, "reserved": 0.0, "issued": 0.0, "available": float(row["qty_available"] or 0) if row else 0.0
+                                }
+                            mat_summary[emid]["needed"] += needed_edge
+                            mat_summary[emid]["reserved"] += edge_info["reserved"]
+                            mat_summary[emid]["issued"] += edge_info["issued"]
+
+                            if edge_info["issued"] >= needed_edge: edge_info["status"] = "Wydano"
+                            elif edge_info["reserved"] >= needed_edge: edge_info["status"] = "Zarezerwowano"
+                            elif mat_summary[emid]["available"] >= (needed_edge - edge_info["reserved"]): edge_info["status"] = "Dostępny"
+                            else: edge_info["status"] = "Brak okleiny"
+                    except: pass
+                
+                pos_readiness.append({
+                    "position_id": pos_id,
+                    "position_number": pos_num,
+                    "name": pos.get("name", ""),
+                    "base": base_info,
+                    "edge": edge_info,
+                    "status": base_info["status"],
+                    "edge_status": edge_info["status"]
+                })
+            
+            # Format summary
+            summary = []
+            for mid, d in mat_summary.items():
+                shortage = max(0, d["needed"] - (d["issued"] + d["available"]))
+                status = "OK" if shortage <= 0 else "Brak"
+                summary.append({
+                    "material_id": mid,
+                    "name": d["name"],
+                    "unit": d["unit"],
+                    "needed": round(d["needed"], 3),
+                    "reserved": round(d["reserved"], 3),
+                    "issued": round(d["issued"], 3),
+                    "available": round(d["available"], 3),
+                    "shortage": round(shortage, 3),
+                    "status": status
+                })
+                
+            is_all_ready = all(p["status"] in ["Wydano", "Zarezerwowano", "Dostępny"] for p in pos_readiness)
+            is_all_issued = all(p["status"] == "Wydano" for p in pos_readiness)
+            
+            overall_status = "Wydano na produkcję" if is_all_issued else \
+                             "Wszystko gotowe" if is_all_ready else \
+                             "Braki materiałowe"
+            
+            return {
+                "order_id": order_id,
+                "positions": pos_readiness,
+                "summary": summary,
+                "is_all_ready": is_all_ready,
+                "is_all_issued": is_all_issued,
+                "overall_status": overall_status
+            }
+
+    def reserve_order_materials(self, order_id: int, user_name: str = "System") -> Dict[str, Any]:
+        """
+        Bulk reserve materials for an order.
+        """
+        readiness = self.get_order_material_readiness(order_id)
+        if "error" in readiness: return readiness
+        
+        created = 0
+        skipped = 0
+        errors = []
+        
+        for pos in readiness["positions"]:
+            # Base
+            b = pos["base"]
+            if b["id"] and b["needed"] > b["reserved"] + b["issued"]:
+                needed = b["needed"] - (b["reserved"] + b["issued"])
+                try:
+                    self.reserve_material_for_order(
+                        material_id=b["id"],
+                        order_id=order_id,
+                        qty=needed,
+                        position_id=pos["position_id"],
+                        created_by=user_name
+                    )
+                    created += 1
+                except Exception as e:
+                    errors.append(f"Pos {pos['position_number']} Base: {str(e)}")
+            else:
+                skipped += 1
+                
+            # Edge
+            e = pos["edge"]
+            if e["id"] and e["needed"] > e["reserved"] + e["issued"]:
+                needed_e = e["needed"] - (e["reserved"] + e["issued"])
+                try:
+                    self.reserve_material_for_order(
+                        material_id=e["id"],
+                        order_id=order_id,
+                        qty=needed_e,
+                        position_id=pos["position_id"],
+                        created_by=user_name
+                    )
+                    created += 1
+                except Exception as e:
+                    errors.append(f"Pos {pos['position_number']} Edge: {str(e)}")
+            else:
+                skipped += 1
+        
+        if created > 0:
+            self.log_action(user_name, "MATERIAL_RESERVED_FOR_ORDER", target_type="order", target_id=str(order_id), details=f"Zarezerwowano materiały dla {created} pozycji.")
+            
+        return {
+            "status": "ok" if not errors else "partial",
+            "created": created,
+            "errors": errors,
+            "message": f"Zarezerwowano {created} pakiety materiałów. {len(errors)} błędów."
+        }
+
+    def issue_order_materials(self, order_id: int, user_name: str = "System") -> Dict[str, Any]:
+        """
+        Bulk issue materials to production for an order.
+        """
+        readiness = self.get_order_material_readiness(order_id)
+        if "error" in readiness: return readiness
+        
+        created = 0
+        errors = []
+        
+        for pos in readiness["positions"]:
+            # Base
+            b = pos["base"]
+            if b["id"] and b["issued"] < b["needed"]:
+                to_issue = b["needed"] - b["issued"]
+                try:
+                    self.issue_material_to_order(
+                        material_id=b["id"],
+                        order_id=order_id,
+                        qty=to_issue,
+                        position_id=pos["position_id"],
+                        created_by=user_name
+                    )
+                    created += 1
+                except Exception as e:
+                    errors.append(f"Pos {pos['position_number']} Base: {str(e)}")
+            
+            # Edge
+            e = pos["edge"]
+            if e["id"] and e["issued"] < e["needed"]:
+                to_issue_e = e["needed"] - e["issued"]
+                try:
+                    self.issue_material_to_order(
+                        material_id=e["id"],
+                        order_id=order_id,
+                        qty=to_issue_e,
+                        position_id=pos["position_id"],
+                        created_by=user_name
+                    )
+                    created += 1
+                except Exception as e:
+                    errors.append(f"Pos {pos['position_number']} Edge: {str(e)}")
+        
+        if created > 0:
+            self.log_action(user_name, "MATERIAL_ISSUED_TO_PRODUCTION", target_type="order", target_id=str(order_id), details=f"Wydano materiały dla {created} pozycji.")
+            
+        return {
+            "status": "ok" if not errors else "partial",
+            "created": created,
+            "errors": errors,
+            "message": f"Wydano {created} pakiety materiałów na produkcję."
+        }
+
 
     def update_order_status(self, order_id: int, new_status: str) -> bool:
         status_text = str(new_status or "").strip()
@@ -1555,7 +2131,28 @@ class TechModulDataManager:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT id, name, role, avatar_color, last_active, is_active FROM technicians ORDER BY name")
+            
+            # Ensure the 7 default users exist
+            default_users = [
+                ("Właściciel", "owner", "#f59e0b"),
+                ("Biuro", "office", "#10b981"),
+                ("Produkcja", "production", "#3b82f6"),
+                ("Montaż", "installation", "#8b5cf6"),
+                ("CNC", "cnc", "#ef4444"),
+                ("Lakiernia", "paint_shop", "#ec4899"),
+                ("Magazyn", "warehouse", "#6b7280"),
+            ]
+            
+            for name, role, color in default_users:
+                cursor.execute("SELECT id FROM technicians WHERE name = ?", (name,))
+                if not cursor.fetchone():
+                    cursor.execute(
+                        "INSERT INTO technicians (name, role, avatar_color, is_active) VALUES (?, ?, ?, 1)",
+                        (name, role, color)
+                    )
+            conn.commit()
+            
+            cursor.execute("SELECT id, name, role, avatar_color, last_active, is_active FROM technicians WHERE is_active = 1 ORDER BY id ASC")
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
 
@@ -2268,6 +2865,7 @@ class TechModulDataManager:
         purchase_document_id: Optional[int] = None,
         purchase_document_line_id: Optional[int] = None,
         related_movement_id: Optional[int] = None,
+        position_id: str = "",
         note: str = "",
         created_by: str = "",
     ) -> int:
@@ -2277,8 +2875,8 @@ class TechModulDataManager:
                 """INSERT INTO inventory_movements
                    (material_id, movement_type, qty, unit, unit_cost_net, total_cost_net,
                     location, order_id, purchase_document_id, purchase_document_line_id,
-                    related_movement_id, note, created_by)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    related_movement_id, position_id, note, created_by)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     int(material_id),
                     str(movement_type),
@@ -2291,6 +2889,7 @@ class TechModulDataManager:
                     int(purchase_document_id) if purchase_document_id is not None else None,
                     int(purchase_document_line_id) if purchase_document_line_id is not None else None,
                     int(related_movement_id) if related_movement_id is not None else None,
+                    str(position_id),
                     str(note),
                     str(created_by),
                 ),
@@ -2430,6 +3029,7 @@ class TechModulDataManager:
             incoming_map = {row["material_id"]: max(0, row["purchased_qty"] - row["received_qty"]) for row in cursor.fetchall()}
             
             # 3. Get detailed demand (who needs what)
+            # A. From inventory movements (explicit reservations)
             cursor.execute("""
                 SELECT im.material_id, im.order_id, o.title as order_title, o.client_name, SUM(im.qty) as reserved_qty
                 FROM inventory_movements im
@@ -2445,27 +3045,93 @@ class TechModulDataManager:
                     "order_id": row["order_id"],
                     "order_title": row["order_title"],
                     "client_name": row["client_name"],
-                    "qty": row["reserved_qty"]
+                    "qty": row["reserved_qty"],
+                    "source": "reservation"
                 })
+
+            # B. From orders positions (implicit demand from wizard)
+            cursor.execute("SELECT id, title, client_name, positions_json FROM orders WHERE is_deleted = 0 AND status IN ('DRAFT', 'OPEN', 'Nowe')")
+            for order_row in cursor.fetchall():
+                order_id = order_row["id"]
+                positions = []
+                try:
+                    positions = json.loads(order_row["positions_json"] or "[]")
+                except:
+                    continue
+                
+                # Derive demand from positions
+                order_demand: Dict[int, float] = {}
+                for pos in positions:
+                    input_data = pos.get("servicePricingInput", {})
+                    qty = float(pos.get("quantity") or 1)
+                    
+                    # 1. Base Material Demand (Area in m2)
+                    m_id_raw = input_data.get("base_material_id")
+                    if m_id_raw:
+                        try:
+                            m_id = int(m_id_raw)
+                            l = float(pos.get("lengthMm") or 0) / 1000.0
+                            w = float(pos.get("widthMm") or 0) / 1000.0
+                            area = l * w * qty
+                            if area > 0:
+                                order_demand[m_id] = order_demand.get(m_id, 0.0) + area
+                        except:
+                            pass
+                            
+                    # 2. Edge Material Demand (Length in mb)
+                    edge_m_id_raw = input_data.get("edge_default_material_id")
+                    if edge_m_id_raw:
+                        try:
+                            em_id = int(edge_m_id_raw)
+                            l_m = float(pos.get("lengthMm") or 0) / 1000.0
+                            w_m = float(pos.get("widthMm") or 0) / 1000.0
+                            
+                            edge_len = 0.0
+                            if input_data.get("edge_top"): edge_len += l_m
+                            if input_data.get("edge_bottom"): edge_len += l_m
+                            if input_data.get("edge_left"): edge_len += w_m
+                            if input_data.get("edge_right"): edge_len += w_m
+                            
+                            total_edge = edge_len * qty
+                            if total_edge > 0:
+                                order_demand[em_id] = order_demand.get(em_id, 0.0) + total_edge
+                        except:
+                            pass
+
+                for m_id, qty_needed in order_demand.items():
+                    if m_id not in demand_details: demand_details[m_id] = []
+                    # Simple heuristic: if this order already has a RESERVED movement for this material, skip adding "draft" demand to avoid double counting
+                    already_reserved = any(d["order_id"] == order_id and d["source"] == "reservation" for d in demand_details[m_id])
+                    if not already_reserved:
+                        demand_details[m_id].append({
+                            "order_id": order_id,
+                            "order_title": order_row["title"],
+                            "client_name": order_row["client_name"],
+                            "qty": qty_needed,
+                            "source": "wizard_draft"
+                        })
                 
             # 4. Assemble final rows
             results = []
             for m in materials:
                 mid = m["id"]
                 on_hand = m["qty_on_hand"] or 0.0
-                reserved = m["qty_reserved"] or 0.0
                 min_stock = m["min_stock"] or 0.0
                 incoming = incoming_map.get(mid, 0.0)
                 
+                # Total reserved from all sources
+                details = demand_details.get(mid, [])
+                reserved_total = sum(d["qty"] for d in details)
+                
                 # Shortage is when (On Hand + Incoming) < (Reserved + Min Stock)
-                total_need = reserved + min_stock
+                total_need = reserved_total + min_stock
                 total_supply = on_hand + incoming
                 shortage = max(0.0, total_need - total_supply)
                 
                 status = "OK"
                 if shortage > 0:
                     status = "SHORTAGE"
-                    if on_hand < reserved:
+                    if on_hand < reserved_total:
                         status = "CRITICAL"
                 
                 results.append({
@@ -2475,13 +3141,13 @@ class TechModulDataManager:
                     "unit": m["unit"],
                     "category": m["category"],
                     "qty_on_hand": on_hand,
-                    "qty_reserved": reserved,
+                    "qty_reserved": reserved_total,
                     "qty_incoming": incoming,
-                    "qty_available": on_hand - reserved,
+                    "qty_available": on_hand - reserved_total,
                     "min_stock": min_stock,
                     "shortage": shortage,
                     "status": status,
-                    "demand_orders": demand_details.get(mid, [])
+                    "demand_orders": details
                 })
                 
             return results
@@ -2654,6 +3320,7 @@ class TechModulDataManager:
         order_id: int,
         qty: float,
         unit: str = "pcs",
+        position_id: str = "",
         note: str = "",
         created_by: str = "",
     ) -> Dict:
@@ -2670,7 +3337,8 @@ class TechModulDataManager:
             qty=qty,
             unit=unit,
             order_id=order_id,
-            note=note or f"Reservation for order #{order_id}",
+            position_id=position_id,
+            note=note or f"Reservation for order #{order_id} pos {position_id}",
             created_by=created_by,
         )
         new_balance = self.rebuild_inventory_balance(material_id)
@@ -2763,6 +3431,7 @@ class TechModulDataManager:
         order_id: int,
         qty: float,
         unit: str = "pcs",
+        position_id: str = "",
         unit_cost_override: Optional[float] = None,
         note: str = "",
         created_by: str = "",
@@ -2787,8 +3456,8 @@ class TechModulDataManager:
             cursor.execute(
                 """INSERT INTO inventory_movements
                    (material_id, movement_type, qty, unit, unit_cost_net, total_cost_net,
-                    order_id, note, created_by)
-                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                    order_id, position_id, note, created_by)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
                 (
                     int(material_id),
                     "OUT",
@@ -2797,7 +3466,8 @@ class TechModulDataManager:
                     unit_cost,
                     total_cost,
                     int(order_id),
-                    note or f"Issue to order #{order_id}",
+                    str(position_id),
+                    note or f"Issue to order #{order_id} pos {position_id}",
                     str(created_by),
                 ),
             )
@@ -2820,8 +3490,8 @@ class TechModulDataManager:
             cursor.execute(
                 """INSERT INTO order_cost_entries
                    (order_id, cost_type, source_type, source_id, amount_net,
-                    vat_rate, amount_gross, qty, unit, description, note, created_by)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    vat_rate, amount_gross, qty, unit, position_id, description, note, created_by)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     int(order_id),
                     "MATERIAL",
@@ -2832,7 +3502,8 @@ class TechModulDataManager:
                     amount_gross,
                     float(qty),
                     str(unit),
-                    f"Material issue #{out_movement_id}",
+                    str(position_id),
+                    f"Material issue #{out_movement_id} for pos {position_id}",
                     note,
                     str(created_by),
                 ),
@@ -3731,8 +4402,49 @@ class TechModulDataManager:
         queue.sort(key=lambda x: (status_order.get(x["fulfillment"]["status"], 99), x["fulfillment"]["created_at"]), reverse=False)
         return queue
 
+    def get_operation_tariffs(self, active_only: bool = True) -> list[dict[str, Any]]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            query = "SELECT * FROM operation_tariffs"
+            if active_only:
+                query += " WHERE is_active = 1"
+            query += " ORDER BY category, name"
+            cursor.execute(query)
+            return [dict(row) for row in cursor.fetchall()]
 
-# Singleton do użycia w API
+    def update_operation_tariff(self, tariff_id: int, payload: dict[str, Any]):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            set_clauses = []
+            params = []
+            for k, v in payload.items():
+                if k in ["name", "sell_rate_net", "vat_rate", "min_charge_net", "is_active", "description", "category"]:
+                    set_clauses.append(f"{k} = ?")
+                    params.append(v)
+            if not set_clauses:
+                return
+            params.append(tariff_id)
+            cursor.execute(f"UPDATE operation_tariffs SET {', '.join(set_clauses)}, updated_at = CURRENT_TIMESTAMP WHERE id = ?", params)
+            conn.commit()
+
+    def create_operation_tariff(self, payload: dict[str, Any]) -> int:
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            keys = payload.keys()
+            placeholders = ", ".join(["?"] * len(keys))
+            cursor.execute(
+                f"INSERT INTO operation_tariffs ({', '.join(keys)}) VALUES ({placeholders})",
+                list(payload.values())
+            )
+            conn.commit()
+            tariff_id = cursor.lastrowid
+            
+            self.log_audit("owner", "OPERATION_TARIFF_CREATED", "tariff", str(tariff_id), f"Created tariff: {payload.get('name')}")
+            return tariff_id
+
+
+# Singleton do uzycia w API
 data_manager = TechModulDataManager()
 # Phase 1 Safe Work Mode: skip module-level demo seeds in prod.
 if not safe_mode.is_prod():

@@ -3,7 +3,8 @@
 import AppShell from "@/components/AppShell";
 import PageHeader from "@/components/PageHeader";
 import { Button, Card } from "@/components/ui";
-import { Sliders, ShieldCheck, Terminal, Bell, Loader2 } from "lucide-react";
+import { Sliders, ShieldCheck, Terminal, Bell, Loader2, CircleDollarSign, ChevronRight } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { TechModulAPI, type SystemSummary } from "@/services/api";
 
@@ -20,6 +21,7 @@ export default function SettingsPage() {
   const [summary, setSummary] = useState<SystemSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     let active = true;
@@ -102,6 +104,22 @@ export default function SettingsPage() {
             </div>
             <Row label="E-mail raportow" value="biuro@example.pl" />
             <Row label="Telegram alarmy" value="Wlaczone" />
+          </Card>
+          <Card>
+            <div className="flex items-center gap-3 mb-4">
+              <CircleDollarSign className="w-5 h-5 text-blue-400" />
+              <h3 className="text-base font-semibold">Finanse i Cenniki</h3>
+            </div>
+            <div className="space-y-2">
+              <Button 
+                variant="secondary" 
+                className="w-full justify-between"
+                onClick={() => router.push("/settings/pricing")}
+              >
+                Cennik obróbki (taryfy)
+                <ChevronRight className="w-4 h-4 opacity-50" />
+              </Button>
+            </div>
           </Card>
         </div>
 

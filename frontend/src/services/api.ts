@@ -180,13 +180,32 @@ export type ServicePricingValidationFlag = {
   message: string;
 };
 
+export type OperationTariff = {
+  id: number;
+  code: string;
+  name: string;
+  category: string;
+  operation_type: string;
+  unit: string;
+  sell_rate_net: number;
+  internal_cost_net: number;
+  vat_rate: number;
+  min_charge_net: number;
+  is_active: number;
+  description: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ServicePricingBuckets = {
   material_cost: number;
   cnc_service_cost: number;
   finishing_cost: number;
   extra_cost: number;
+  operation_cost: number;
   net_total: number;
 };
+
 
 export type ServicePricingResult = {
   schema_version: string;
@@ -219,6 +238,10 @@ export type OrderRecord = {
   spec_json?: string;
   created_at?: string;
   order_name?: string;
+  received_date?: string;
+  installation_date?: string;
+  priority?: string;
+  positions_json?: string;
 };
 
 export type OperationAction =
@@ -1161,6 +1184,8 @@ export interface RouteTaskRecord {
   requires_confirmation: boolean;
   finance_followup_note: string;
   notes: string;
+  order_id?: string;
+  position_id?: string;
 }
 
 export interface DashboardV2Response {
@@ -1726,12 +1751,49 @@ export const TechModulAPI = {
     budget?: number;
     status?: string;
     spec_json?: string;
+    received_date?: string;
+    installation_date?: string;
+    priority?: string;
+    positions_json?: string;
   }): Promise<{ status: string; id: number }> {
     return postJson<{ status: string; id: number }>(
       "/orders",
       payload,
       "Blad zapisu zamowienia"
     );
+  },
+
+  async getOrderOperationalReview(orderId: number): Promise<any> {
+    const res = await fetch(`${API_BASE_URL}/api/orders/${orderId}/operational-review`, { credentials: "include" });
+    if (!res.ok) throw new Error("Blad pobierania przegladu operacyjnego");
+    return res.json();
+  },
+
+  async generateProductionTasks(orderId: number): Promise<any> {
+    const res = await fetch(`${API_BASE_URL}/api/orders/${orderId}/generate-tasks`, { 
+      method: "POST",
+      credentials: "include" 
+    });
+    if (!res.ok) throw new Error("Blad generowania zadan produkcyjnych");
+    return res.json();
+  },
+
+  async reserveOrderMaterials(orderId: number): Promise<any> {
+    const res = await fetch(`${API_BASE_URL}/api/orders/${orderId}/reserve-materials`, { 
+      method: "POST",
+      credentials: "include" 
+    });
+    if (!res.ok) throw new Error("Blad rezerwacji materialow");
+    return res.json();
+  },
+
+  async issueOrderMaterials(orderId: number): Promise<any> {
+    const res = await fetch(`${API_BASE_URL}/api/orders/${orderId}/issue-materials`, { 
+      method: "POST",
+      credentials: "include" 
+    });
+    if (!res.ok) throw new Error("Blad wydania materialow");
+    return res.json();
   },
 
   async previewServicePricing(payload: {
@@ -1744,6 +1806,29 @@ export const TechModulAPI = {
       "Blad podgladu kalkulacji uslugi"
     );
   },
+
+  async getOperationTariffs(activeOnly = true): Promise<OperationTariff[]> {
+    const res = await fetch(`${API_BASE_URL}/api/pricing/operation-tariffs?active_only=${activeOnly}`, { credentials: "include" });
+    if (!res.ok) throw new Error("Blad pobierania taryf operacji");
+    return res.json();
+  },
+
+  async updateOperationTariff(tariff_id: number, payload: Partial<OperationTariff>): Promise<{ status: string }> {
+    return patchJson<{ status: string }>(
+      `/api/pricing/operation-tariffs/${tariff_id}`,
+      payload,
+      "Blad aktualizacji taryfy"
+    );
+  },
+  
+  async createOperationTariff(payload: Partial<OperationTariff>): Promise<{ status: string; id: number }> {
+    return postJson<{ status: string; id: number }>(
+      "/api/pricing/operation-tariffs",
+      payload,
+      "Blad dodawania taryfy"
+    );
+  },
+
 
   async updateOrderStatus(
     orderId: number,

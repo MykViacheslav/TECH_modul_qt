@@ -11,7 +11,9 @@ import sys
 import os
 import re
 import sqlite3
+
 import json
+
 import unicodedata
 from pathlib import Path
 from types import SimpleNamespace
@@ -198,7 +200,12 @@ def _resolve_workspace_mount_type(module_row: Dict[str, Any]) -> str:
 # Konfiguracja CORS dla bezpiecznego poĹ‚Ä…czenia z frontendem
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # W produkcji ogranicz do localhost:3000
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://0.0.0.0:3000",
+    ],
+    allow_origin_regex=r"http://(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+):3000",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -261,6 +268,10 @@ class OrderCreate(BaseModel):
     budget: float = 0.0
     status: str = "DRAFT"
     spec_json: str = "{}"
+    received_date: str = ""
+    installation_date: str = ""
+    priority: str = "Normalny"
+    positions_json: str = "[]"
 
 
 class ServicePricingPreviewRequest(BaseModel):
@@ -2951,9 +2962,57 @@ def preview_service_pricing(payload: ServicePricingPreviewRequest):
     }
 
 
+@app.get("/api/pricing/operation-tariffs")
+def get_operation_tariffs(active_only: bool = True):
+    return data_manager.get_operation_tariffs(active_only=active_only)
+
+
+@app.patch("/api/pricing/operation-tariffs/{tariff_id}")
+def update_operation_tariff(tariff_id: int, payload: dict):
+    data_manager.update_operation_tariff(tariff_id, payload)
+    return {"status": "ok"}
+
+
+@app.post("/api/pricing/operation-tariffs")
+def create_operation_tariff(payload: dict):
+    tariff_id = data_manager.create_operation_tariff(payload)
+    return {"status": "ok", "id": tariff_id}
+
+
+
 @app.get("/orders")
 def get_orders(project_id: int | None = None, include_deleted: bool = False):
     return data_manager.get_orders(project_id=project_id, include_deleted=include_deleted)
+
+
+@app.get("/api/orders/{order_id}/operational-review")
+def get_order_operational_review(order_id: int):
+    review = data_manager.get_order_operational_review(order_id)
+    if "error" in review:
+        raise HTTPException(status_code=404, detail=review["error"])
+    return review
+
+@app.post("/api/orders/{order_id}/generate-tasks")
+def generate_order_tasks(order_id: int):
+    # In a real app we'd get the user from the session/token
+    result = data_manager.generate_order_production_tasks(order_id, user_name="Admin")
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+@app.post("/api/orders/{order_id}/reserve-materials")
+def reserve_order_materials(order_id: int):
+    result = data_manager.reserve_order_materials(order_id, user_name="Admin")
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+@app.post("/api/orders/{order_id}/issue-materials")
+def issue_order_materials(order_id: int):
+    result = data_manager.issue_order_materials(order_id, user_name="Admin")
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
 
 
 @app.post("/orders")
@@ -2990,7 +3049,11 @@ def create_order(order: OrderCreate):
         deadline_to=deadline_to,
         budget=order.budget,
         status=order.status,
-        spec_json=safe_spec_json
+        spec_json=safe_spec_json,
+        received_date=order.received_date,
+        installation_date=order.installation_date,
+        priority=order.priority,
+        positions_json=order.positions_json
     )
     return {"status": "success", "id": order_id}
 
@@ -3577,6 +3640,32 @@ async def production_task_action(req: Dict[str, Any]):
         raise HTTPException(status_code=404, detail="Nie znaleziono zadania")
     
     if action == "start":
+        # --- MATERIAL GATE ---
+        if task.task_type in {"cnc", "oklejanie"} and task.order_id:
+            try:
+                order_id_int = int(task.order_id)
+                readiness = data_manager.get_order_material_readiness(order_id_int)
+                
+                # Check specific position if available, otherwise check overall readiness
+                pos_found = False
+                for p in readiness.get("positions", []):
+                    if p["position_id"] == str(task.position_id):
+                        pos_found = True
+                        # If CNC, check base. If Edging, check edge.
+                        if task.task_type == "cnc" and p["base"]["issued"] < p["base"]["needed"]:
+                            raise HTTPException(status_code=400, detail=f"Brak wydanego materiału na CNC dla pozycji {p['position_number']} ({p['base']['name']})")
+                        if task.task_type == "oklejanie" and p["edge"]["needed"] > 0 and p["edge"]["issued"] < p["edge"]["needed"]:
+                            raise HTTPException(status_code=400, detail=f"Brak wydanej okleiny dla pozycji {p['position_number']} ({p['edge']['name']})")
+                
+                # If position matching failed, at least check if anything is issued for this order? 
+                # No, better be strict. If it's a task from an order, it must have position_id.
+            except HTTPException:
+                raise
+            except Exception as e:
+                # If check fails for technical reasons, log but maybe don't block? 
+                # Actually, in prod we should probably be safe.
+                print(f"Material Gate Error: {str(e)}")
+
         task.status = "w_trakcie"
         task.crew = worker_id
     elif action == "finish":

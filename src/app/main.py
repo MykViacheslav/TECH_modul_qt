@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import socket
 import sys
 import traceback
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtWidgets import QApplication, QDialog, QMessageBox
+from PyQt6.QtGui import QColor, QFont, QPainter, QPixmap
+from PyQt6.QtWidgets import QApplication, QDialog, QMessageBox, QSplashScreen
 
 # Ensure project root is importable when running this file directly.
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -19,6 +21,30 @@ from src.app.main_window import MainWindow
 from src.core.perf.perf_timer import perf_log
 from src.domain.permissions import normalize_role
 from src.widgets.login_dialog import LoginDialog
+
+
+_INSTANCE_LOCK_PORT = 46731
+
+
+def _build_splash() -> QSplashScreen:
+    """Create a simple startup splash to avoid frozen-app perception."""
+    pix = QPixmap(620, 220)
+    pix.fill(QColor("#0f172a"))
+    painter = QPainter(pix)
+    painter.setPen(QColor("#e2e8f0"))
+    painter.setFont(QFont("Segoe UI", 20, QFont.Weight.Bold))
+    painter.drawText(26, 78, "TECH_modul")
+    painter.setPen(QColor("#94a3b8"))
+    painter.setFont(QFont("Segoe UI", 11))
+    painter.drawText(26, 112, "Uruchamianie aplikacji...")
+    painter.end()
+    splash = QSplashScreen(pix, Qt.WindowType.WindowStaysOnTopHint)
+    splash.showMessage(
+        "Start systemu...",
+        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
+        QColor("#cbd5e1"),
+    )
+    return splash
 
 
 def show_error(title: str, message: str, details: str = ""):
@@ -72,6 +98,22 @@ def main() -> int:
         help="Uruchom sam kiosk rejestracji czasu pracy"
     )
     args = parser.parse_args()
+
+    # Prevent multiple GUI instances: duplicate processes often cause
+    # perceived "hangs" and very slow startup on user machines.
+    app_lock: socket.socket | None = None
+    if not args.server:
+        app_lock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            app_lock.bind(("127.0.0.1", _INSTANCE_LOCK_PORT))
+            app_lock.listen(1)
+        except OSError:
+            try:
+                app_lock.close()
+            except Exception:
+                pass
+            print("TECH_modul jest już uruchomiony (druga instancja zablokowana).")
+            return 1
     
     # Export safe mode flag for other modules
     import os
@@ -79,9 +121,16 @@ def main() -> int:
         os.environ["TECH_SAFE_MODE"] = "1"
     
     app = QApplication(sys.argv)
+    if app_lock is not None:
+        # Keep lock alive for entire process lifetime.
+        app.setProperty("app_instance_lock", app_lock)
+    splash = _build_splash()
+    splash.show()
+    app.processEvents()
     
     # === TRYB SERWER ===
     if args.server:
+        splash.hide()
         from src.server.data_server import DataServer
         
         print(f"Uruchamianie serwera TECH_modul na porcie {args.server_port}...")
@@ -94,14 +143,27 @@ def main() -> int:
         return 0
 
     if args.time_kiosk:
+        splash.showMessage(
+            "Ladowanie kiosku czasu pracy...",
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
+            QColor("#cbd5e1"),
+        )
+        app.processEvents()
         from src.widgets.time_clock_kiosk import TimeClockKioskWindow
 
         w = TimeClockKioskWindow()
+        splash.finish(w)
         w.showFullScreen()
         return app.exec()
     
     # === TRYB ŚCIANY (KIOSK) ===
     if args.wall:
+        splash.showMessage(
+            "Ladowanie trybu sciany...",
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
+            QColor("#cbd5e1"),
+        )
+        app.processEvents()
         from src.widgets.wall_calendar_view import WallCalendarView
         
         w = WallCalendarView(station_filter=args.station)
@@ -113,6 +175,7 @@ def main() -> int:
             screen_geometry = screens[args.screen].geometry()
             w.setGeometry(screen_geometry)
         
+        splash.finish(w)
         w.showFullScreen()
     else:
         # === TRYB NORMALNY (KLIENT) ===
@@ -122,6 +185,7 @@ def main() -> int:
         current_role = "produkcja"
         
         if not args.no_login:
+            splash.hide()
             login_dialog = LoginDialog()
             result = login_dialog.exec()
             
@@ -131,16 +195,37 @@ def main() -> int:
             
             current_worker, current_role = login_dialog.get_logged_in_worker()
             current_role = normalize_role(current_role)
+            splash.show()
+            splash.showMessage(
+                "Logowanie zakonczone. Ladowanie panelu glownego...",
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
+                QColor("#cbd5e1"),
+            )
+            app.processEvents()
         
         # Normal mode - show main window
         try:
             _app_t0 = _time.perf_counter_ns()
+            splash.showMessage(
+                "Inicjalizacja okna glownego...",
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
+                QColor("#cbd5e1"),
+            )
+            app.processEvents()
             w = MainWindow()
             perf_log("startup.to_main_window_constructed", _app_t0)
             w.set_current_user(current_worker, current_role)
+            splash.showMessage(
+                "Konczenie startu...",
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
+                QColor("#cbd5e1"),
+            )
+            app.processEvents()
             w.showMaximized()
+            splash.finish(w)
             perf_log("startup.to_show_maximized", _app_t0)
         except Exception as e:
+            splash.hide()
             show_error(
                 "Błąd uruchomienia",
                 f"Nie można uruchomić aplikacji:\n{str(e)}\n\n"

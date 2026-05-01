@@ -1,0 +1,15 @@
+{
+  "active_policy": "base",
+  "policy_multipliers": {
+    "base": 1.0,
+    "dealer": 0.92,
+    "promo": 0.88,
+    "internal": 0.75
+  },
+  "rules": {
+    "processing_percent": 0.0,
+    "assembly_percent": 0.0,
+    "transport_flat": 0.0
+  },
+  "active_role": "owner"
+}

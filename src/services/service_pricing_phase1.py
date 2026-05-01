@@ -146,6 +146,7 @@ def normalize_service_item(raw: Dict[str, Any]) -> Dict[str, Any]:
                 _i(raw.get("unknown_operation_count"), _i(tech.get("unknown_operation_count"), 0)),
             ),
         },
+        "operation_tariff": raw.get("operation_tariff"),
     }
     return normalized
 
@@ -410,7 +411,43 @@ def _extra_bucket(normalized: Dict[str, Any], tariffs: Dict[str, Any]) -> float:
     return max(0.0, total)
 
 
-def _summary_text(normalized: Dict[str, Any], buckets: Dict[str, float], status: str) -> str:
+def _operation_bucket(normalized: dict[str, Any]) -> float:
+    tariff = normalized.get("operation_tariff")
+    if not isinstance(tariff, dict):
+        return 0.0
+
+    rate = _f(tariff.get("sell_rate_net"), 0.0)
+    unit = _s(tariff.get("unit")).lower()
+    min_charge = _f(tariff.get("min_charge_net"), 0.0)
+
+    length_mm = normalized["length_mm"]
+    width_mm = normalized["width_mm"]
+    qty = normalized["quantity"]
+
+    area_m2 = (length_mm * width_mm * qty) / 1_000_000.0
+    edge_sides = normalized.get("edge_sides") or {}
+    edge_mb = 0.0
+    if edge_sides.get("top"):
+        edge_mb += (width_mm * qty) / 1000.0
+    if edge_sides.get("bottom"):
+        edge_mb += (width_mm * qty) / 1000.0
+    if edge_sides.get("left"):
+        edge_mb += (length_mm * qty) / 1000.0
+    if edge_sides.get("right"):
+        edge_mb += (length_mm * qty) / 1000.0
+
+    cost = 0.0
+    if unit == "mb":
+        cost = edge_mb * rate
+    elif unit == "m2":
+        cost = area_m2 * rate
+    elif unit == "szt":
+        cost = qty * rate
+
+    return max(cost, min_charge) if cost > 0 or min_charge > 0 else 0.0
+
+
+def _summary_text(normalized: dict[str, Any], buckets: dict[str, float], status: str) -> str:
     mode = _s(normalized.get("service_mode")) or "unknown"
     material = _s(normalized.get("base_material_name")) or _s(normalized.get("base_material_id")) or "-"
     tech = normalized.get("technology_summary") or {}
@@ -421,15 +458,18 @@ def _summary_text(normalized: Dict[str, Any], buckets: Dict[str, float], status:
         f"T{_i(tech.get('tool_count_unique'), 0)} "
         f"C={_f(tech.get('cnc_complexity_score'), 0.0):.0f}"
     )
+    op_name = _s((normalized.get("operation_tariff") or {}).get("name"))
+    op_info = f" | {op_name}" if op_name else ""
+
     return (
-        f"{mode} | {material} {_f(normalized.get('base_thickness_mm'), 0.0):.0f}mm | {tech_bits} | "
+        f"{mode}{op_info} | {material} {_f(normalized.get('base_thickness_mm'), 0.0):.0f}mm | {tech_bits} | "
         f"mat {buckets['material_cost']:.2f} + cnc {buckets['cnc_service_cost']:.2f} + "
-        f"fin {buckets['finishing_cost']:.2f} + ext {buckets['extra_cost']:.2f} = "
+        f"fin {buckets['finishing_cost']:.2f} + op {buckets['operation_cost']:.2f} + ext {buckets['extra_cost']:.2f} = "
         f"{buckets['net_total']:.2f} ({status})"
     )
 
 
-def price_service_item(raw_item: Dict[str, Any], tariffs: Dict[str, Any] | None = None) -> Dict[str, Any]:
+def price_service_item(raw_item: dict[str, Any], tariffs: dict[str, Any] | None = None) -> dict[str, Any]:
     store = ServicePricingTariffStoreJson()
     tariffs_payload = tariffs if isinstance(tariffs, dict) else store.load()
     normalized = normalize_service_item(raw_item if isinstance(raw_item, dict) else {})
@@ -442,18 +482,21 @@ def price_service_item(raw_item: Dict[str, Any], tariffs: Dict[str, Any] | None 
     cnc_service_cost = cnc_cost_from_import if cnc_cost_from_import > 0 else manual_cnc_fallback
     finishing_cost = manual_finishing
     extra_cost = _extra_bucket(normalized, tariffs_payload)
+    operation_cost = _operation_bucket(normalized)
 
     buckets = {
         "material_cost": _round2(material_cost),
         "cnc_service_cost": _round2(cnc_service_cost),
         "finishing_cost": _round2(finishing_cost),
         "extra_cost": _round2(extra_cost),
+        "operation_cost": _round2(operation_cost),
     }
     buckets["net_total"] = _round2(
-        buckets["material_cost"] + buckets["cnc_service_cost"] + buckets["finishing_cost"] + buckets["extra_cost"]
+        buckets["material_cost"] + buckets["cnc_service_cost"] + buckets["finishing_cost"] + buckets["extra_cost"] + buckets["operation_cost"]
     )
 
     summary = _summary_text(normalized, buckets, status)
+
 
     return {
         "schema_version": SERVICE_PRICING_PAYLOAD_SCHEMA_VERSION,

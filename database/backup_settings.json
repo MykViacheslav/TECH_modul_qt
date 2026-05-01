@@ -1,0 +1,5 @@
+{
+  "max_backups": 30,
+  "auto_backup_enabled": true,
+  "last_backup_date": "2026-05-01"
+}

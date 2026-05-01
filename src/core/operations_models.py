@@ -249,6 +249,8 @@ class RouteTaskRecord:
     finance_followup_note: str = ""
     notes: str = ""
     blocked_reason: str = ""
+    order_id: str = ""
+    position_id: str = ""
     
     # Handoff & Quality Gates
     handoff_status: str = "not_handed_off" # not_handed_off, ready_for_next, accepted, rejected_back
@@ -291,6 +293,8 @@ class RouteTaskRecord:
             rework_reason=str(row.get("rework_reason", "") or "").strip(),
             rejected_by=str(row.get("rejected_by", "") or "").strip(),
             accepted_by=str(row.get("accepted_by", "") or "").strip(),
+            order_id=str(row.get("order_id", "") or "").strip(),
+            position_id=str(row.get("position_id", "") or "").strip(),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -325,6 +329,8 @@ class RouteTaskRecord:
             "rework_reason": str(self.rework_reason or "").strip(),
             "rejected_by": str(self.rejected_by or "").strip(),
             "accepted_by": str(self.accepted_by or "").strip(),
+            "order_id": str(self.order_id or "").strip(),
+            "position_id": str(self.position_id or "").strip(),
         }
 
 

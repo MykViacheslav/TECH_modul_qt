@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  Database,
   Download,
   Edit3,
   FileDown,
@@ -29,6 +30,7 @@ import {
   type ClientRecord,
   type ImportedTechnologySummary,
   type MaterialRecord,
+  type OperationTariff,
   type OrderRecord,
   type ServicePricingResult,
   type UnifiedSummaryData,
@@ -167,13 +169,7 @@ const STEPS = [
   { id: 8, label: "Podsumowanie" },
 ] as const;
 
-const SERVICES_CATALOG = [
-  "Ciecie",
-  "Oklejanie",
-  "Lakierowanie",
-  "Frezowanie frontow",
-  "Wiercenie CNC",
-];
+// SERVICES_CATALOG was hardcoded, now we use database operation_tariffs
 
 const TECH_SCOPE_DEFAULT = "__default__";
 const EXTRA_OPTIONS = [
@@ -415,17 +411,10 @@ export default function NewOrderPage() {
   const [materialDbSelectedId, setMaterialDbSelectedId] = useState<string>("");
 
   const [payments, setPayments] = useState<PaymentRow[]>([]);
-  const [services, setServices] = useState<ServiceRow[]>(
-    SERVICES_CATALOG.map((name) => ({
-      id: crypto.randomUUID(),
-      name,
-      enabled: false,
-      qty: 1,
-      unit: "szt",
-      unitPrice: 0,
-      notes: "",
-    }))
-  );
+  const [services, setServices] = useState<ServiceRow[]>([]);
+  const [operationTariffs, setOperationTariffs] = useState<OperationTariff[]>([]);
+  const [tariffSearchQuery, setTariffSearchQuery] = useState("");
+  const [loadingTariffs, setLoadingTariffs] = useState(false);
   const [paymentDraft, setPaymentDraft] = useState({
     stage: "Rezerwacja terminu",
     amount: 0,
@@ -875,6 +864,11 @@ export default function NewOrderPage() {
     loadClients();
     loadRecentOrders();
     loadMaterialsDb();
+    loadTariffs();
+  }, []);
+
+  useEffect(() => {
+    loadMaterialsDb();
 
     const fetchActiveProject = async () => {
       try {
@@ -1182,6 +1176,18 @@ export default function NewOrderPage() {
     }
     setMaterialDbCategory("all");
   }, [materialDraft.scope]);
+
+  const loadTariffs = async () => {
+    setLoadingTariffs(true);
+    try {
+      const data = await TechModulAPI.getOperationTariffs(true);
+      setOperationTariffs(data);
+    } catch (err) {
+      console.error("Blad pobierania taryf:", err);
+    } finally {
+      setLoadingTariffs(false);
+    }
+  };
 
   const loadClients = async () => {
     setLoadingClients(true);
@@ -3069,7 +3075,17 @@ export default function NewOrderPage() {
                           <select
                             className={baseInput}
                             value={serviceEstimator.materialId}
-                            onChange={(e) => setServiceEstimator((prev) => ({ ...prev, materialId: e.target.value }))}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setServiceEstimator((prev) => {
+                                const next = { ...prev, materialId: val };
+                                const m = materialsDb.find(x => String(x.id) === val);
+                                if (m && m.thickness_mm) {
+                                  next.thicknessMm = m.thickness_mm;
+                                }
+                                return next;
+                              });
+                            }}
                           >
                             <option value="">Material z bazy (opcjonalnie)</option>
                             {materialsDb.map((m) => (
@@ -4262,130 +4278,224 @@ export default function NewOrderPage() {
           ) : null}
 
           {step === 6 ? (
-            <div className="space-y-4">
-              <Card className="border-[#333] bg-[#1e1e1e] p-4">
-                <div className="mb-2 text-lg font-bold">Uslugi dla klienta</div>
-                <div className="mb-2 rounded border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-[11px] text-blue-200">
-                  Klient przypisany do uslug:{" "}
-                  <span className="font-black">{clientDisplayName || "-"}</span>
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              {/* Service Selection Container */}
+              <Card className="border-white/10 bg-[#161618]/90 backdrop-blur-md p-6 rounded-xl shadow-2xl overflow-hidden relative group">
+                <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+                
+                <div className="relative z-10">
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                        <Database className="h-5 w-5 text-blue-400" />
+                        Katalog Usług Systemowych
+                      </h2>
+                      <p className="text-slate-400 text-sm mt-1">Wybierz usługi z bazy danych, aby dodać je do wyceny projektu.</p>
+                    </div>
+                    <div className="flex items-center gap-3 bg-blue-500/10 border border-blue-500/20 px-3 py-1.5 rounded-full">
+                      <div className="h-2 w-2 rounded-full bg-blue-400 animate-pulse" />
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-blue-300">Database Sync Active</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 mb-6">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                      <input
+                        type="text"
+                        className="w-full bg-white/5 border border-white/10 rounded-lg pl-10 pr-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 transition-all"
+                        placeholder="Szukaj usługi (np. Cięcie, Oklejanie, CNC...)"
+                        value={tariffSearchQuery}
+                        onChange={(e) => setTariffSearchQuery(e.target.value)}
+                      />
+                    </div>
+                    <Button 
+                      variant="secondary" 
+                      className="h-10 px-6 font-semibold bg-white/5 hover:bg-white/10 border-white/10"
+                      onClick={() => loadTariffs()}
+                      disabled={loadingTariffs}
+                    >
+                      {loadingTariffs ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4 mr-2" />}
+                      Odśwież bazę
+                    </Button>
+                  </div>
+
+                  {/* Desktop Grid / Mobile Cards for selection */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[320px] overflow-y-auto pr-2 custom-scrollbar">
+                    {operationTariffs
+                      .filter(t => t.name.toLowerCase().includes(tariffSearchQuery.toLowerCase()))
+                      .map((tariff) => (
+                        <div 
+                          key={tariff.id}
+                          className="group/item flex flex-col p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-blue-500/30 transition-all duration-300"
+                        >
+                          <div className="flex justify-between items-start mb-2">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 group-hover/item:text-blue-400 transition-colors">
+                              {tariff.category}
+                            </span>
+                            <span className="text-xs font-mono text-emerald-400">{tariff.sell_rate_net.toFixed(2)} zł/{tariff.unit}</span>
+                          </div>
+                          <h3 className="text-sm font-semibold text-slate-200 mb-3 line-clamp-1">{tariff.name}</h3>
+                          <Button
+                            size="sm"
+                            className="mt-auto w-full bg-blue-600/20 hover:bg-blue-600/40 text-blue-300 border border-blue-500/30 hover:border-blue-500/50"
+                            onClick={() => {
+                              const newSrv: ServiceRow = {
+                                id: crypto.randomUUID(),
+                                name: tariff.name,
+                                enabled: true,
+                                qty: 1,
+                                unit: tariff.unit as any,
+                                unitPrice: tariff.sell_rate_net,
+                                notes: "",
+                              };
+                              setServices(prev => [...prev, newSrv]);
+                            }}
+                          >
+                            <Plus className="h-3.5 w-3.5 mr-2" /> Dodaj do listy
+                          </Button>
+                        </div>
+                      ))}
+                    {operationTariffs.length === 0 && !loadingTariffs && (
+                      <div className="col-span-full py-12 text-center text-slate-500">
+                        <Database className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                        <p>Brak usług w bazie danych. Sprawdź połączenie lub odśwież bazę.</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div className="mb-3 text-slate-400">
-                  Zaznacz uslugi wykonywane przy zamowieniu i dopisz ilosc, cene oraz uwagi.
+              </Card>
+
+              {/* Active Services Table */}
+              <Card className="border-white/10 bg-[#161618]/90 backdrop-blur-md rounded-xl shadow-2xl overflow-hidden">
+                <div className="p-6 border-b border-white/5 flex items-center justify-between">
+                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-emerald-400" />
+                    Wybrane usługi i koszty
+                  </h2>
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Suma netto</div>
+                      <div className="text-xl font-black text-emerald-400">{servicesTotal.toFixed(2)} zł</div>
+                    </div>
+                  </div>
                 </div>
-                <div className="overflow-hidden rounded border border-[#33445f]">
+
+                <div className="overflow-x-auto">
                   <table className="w-full border-collapse">
-                    <thead className="bg-[#bcc8da] text-[#0b1c39]">
-                      <tr>
-                        <th className="px-2 py-2 text-left">Aktywna</th>
-                        <th className="px-2 py-2 text-left">Usluga</th>
-                        <th className="px-2 py-2 text-left">Ilosc</th>
-                        <th className="px-2 py-2 text-left">Jedn.</th>
-                        <th className="px-2 py-2 text-left">Cena jedn.</th>
-                        <th className="px-2 py-2 text-left">Uwagi</th>
-                        <th className="px-2 py-2 text-left">Wartosc</th>
+                    <thead>
+                      <tr className="bg-white/[0.02] border-b border-white/5">
+                        <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-widest text-slate-500">Usluga</th>
+                        <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-widest text-slate-500">Ilość</th>
+                        <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-widest text-slate-500">Jednostka</th>
+                        <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-widest text-slate-500">Cena jedn.</th>
+                        <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-widest text-slate-500">Uwagi</th>
+                        <th className="px-6 py-4 text-right text-[10px] font-bold uppercase tracking-widest text-slate-500">Wartość</th>
+                        <th className="px-6 py-4 text-right text-[10px] font-bold uppercase tracking-widest text-slate-500"></th>
                       </tr>
                     </thead>
-                    <tbody>
-                      {services.map((srv) => (
-                        <tr key={srv.id} className="border-t border-white/5">
-                          <td className="px-2 py-2">
-                            <input
-                              type="checkbox"
-                              checked={srv.enabled}
-                              onChange={(e) =>
-                                setServices((prev) =>
-                                  prev.map((item) =>
-                                    item.id === srv.id ? { ...item, enabled: e.target.checked } : item
-                                  )
-                                )
-                              }
-                            />
-                          </td>
-                          <td className="px-2 py-2 font-semibold">{srv.name}</td>
-                          <td className="px-2 py-2">
-                            <input
-                              type="number"
-                              min={0}
-                              step={1}
-                              className={clsx(baseInput, "w-24")}
-                              value={srv.qty}
-                              onChange={(e) =>
-                                setServices((prev) =>
-                                  prev.map((item) =>
-                                    item.id === srv.id
-                                      ? { ...item, qty: Number(e.target.value) || 0 }
-                                      : item
-                                  )
-                                )
-                              }
-                            />
-                          </td>
-                          <td className="px-2 py-2">
-                            <select
-                              className={clsx(baseInput, "w-24")}
-                              value={srv.unit}
-                              onChange={(e) =>
-                                setServices((prev) =>
-                                  prev.map((item) =>
-                                    item.id === srv.id
-                                      ? { ...item, unit: e.target.value as "szt" | "m2" | "mb" | "kpl" }
-                                      : item
-                                  )
-                                )
-                              }
-                            >
-                              <option value="szt">szt</option>
-                              <option value="m2">m2</option>
-                              <option value="mb">mb</option>
-                              <option value="kpl">kpl</option>
-                            </select>
-                          </td>
-                          <td className="px-2 py-2">
-                            <input
-                              type="number"
-                              min={0}
-                              step={0.01}
-                              className={clsx(baseInput, "w-28")}
-                              value={srv.unitPrice}
-                              onChange={(e) =>
-                                setServices((prev) =>
-                                  prev.map((item) =>
-                                    item.id === srv.id
-                                      ? { ...item, unitPrice: Number(e.target.value) || 0 }
-                                      : item
-                                  )
-                                )
-                              }
-                            />
-                          </td>
-                          <td className="px-2 py-2">
-                            <input
-                              className={clsx(baseInput, "w-full min-w-[180px]")}
-                              value={srv.notes}
-                              onChange={(e) =>
-                                setServices((prev) =>
-                                  prev.map((item) =>
-                                    item.id === srv.id ? { ...item, notes: e.target.value } : item
-                                  )
-                                )
-                              }
-                              placeholder="Uwagi"
-                            />
-                          </td>
-                          <td className="px-2 py-2 font-semibold">
-                            {((Number(srv.qty) || 0) * (Number(srv.unitPrice) || 0)).toFixed(2)} zl
+                    <tbody className="divide-y divide-white/5">
+                      {services.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                            <Plus className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                            <p>Nie wybrano jeszcze żadnych usług. Skorzystaj z katalogu powyżej.</p>
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        services.map((srv) => (
+                          <tr key={srv.id} className="hover:bg-white/[0.02] transition-colors group">
+                            <td className="px-6 py-4">
+                              <div className="font-semibold text-slate-200">{srv.name}</div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <input
+                                type="number"
+                                min={0}
+                                step={0.01}
+                                className="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                value={srv.qty}
+                                onChange={(e) =>
+                                  setServices((prev) =>
+                                    prev.map((item) =>
+                                      item.id === srv.id
+                                        ? { ...item, qty: Number(e.target.value) || 0 }
+                                        : item
+                                    )
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className="px-6 py-4 text-slate-400 text-sm">{srv.unit}</td>
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={0.01}
+                                  className="w-24 bg-white/5 border border-white/10 rounded px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                  value={srv.unitPrice}
+                                  onChange={(e) =>
+                                    setServices((prev) =>
+                                      prev.map((item) =>
+                                        item.id === srv.id
+                                          ? { ...item, unitPrice: Number(e.target.value) || 0 }
+                                          : item
+                                      )
+                                    )
+                                  }
+                                />
+                                <span className="text-xs text-slate-500">zł</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <input
+                                className="w-full min-w-[150px] bg-white/5 border border-white/10 rounded px-2 py-1 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                value={srv.notes}
+                                onChange={(e) =>
+                                  setServices((prev) =>
+                                    prev.map((item) =>
+                                      item.id === srv.id ? { ...item, notes: e.target.value } : item
+                                    )
+                                  )
+                                }
+                                placeholder="Dodaj uwagi do usługi..."
+                              />
+                            </td>
+                            <td className="px-6 py-4 text-right font-bold text-slate-200">
+                              {(srv.qty * srv.unitPrice).toFixed(2)} zł
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <button
+                                onClick={() => setServices(prev => prev.filter(i => i.id !== srv.id))}
+                                className="p-2 text-slate-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                                title="Usuń usługę"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
               </Card>
 
-              <Card className="border-[#333] bg-[#1e1e1e] p-4 text-sm leading-7">
-                <div>Aktywne uslugi: {servicesActive.length}</div>
-                <div>Wartosc uslug: {servicesTotal.toFixed(2)} zl</div>
-              </Card>
+              {/* Quick Summary Strip */}
+              <div className="flex justify-end gap-4">
+                <Card className="border-white/10 bg-white/[0.03] px-6 py-4 rounded-xl flex items-center gap-8">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Pozycje</span>
+                    <span className="text-lg font-bold text-white">{servicesActive.length}</span>
+                  </div>
+                  <div className="h-8 w-px bg-white/10" />
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Wartość całkowita</span>
+                    <span className="text-lg font-bold text-emerald-400">{servicesTotal.toFixed(2)} zł</span>
+                  </div>
+                </Card>
+              </div>
             </div>
           ) : null}
 
