@@ -31,10 +31,12 @@ def build_tabs(ctx):
         except Exception:
             return widget
 
+    from .page_sciana import ScianaPage
     from .tab_module import ModuleTab
     from .tab_module_base import ModuleBaseTab
 
     return [
+        ("ŚCIANA", wrap(ScianaPage(ctx))),
         ("MODUL", wrap(ModuleTab(ctx))),
         ("BAZA MODULU", wrap(ModuleBaseTab(ctx))),
     ]

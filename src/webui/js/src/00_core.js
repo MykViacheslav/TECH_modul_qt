@@ -216,6 +216,8 @@ mode:"none",
 
     island:{ on:false, W:900, D:600, x:1200, y:800 },
     obs: [],
+    modules3dc: [],
+    selectedModuleId:null,
     selectedObsId:null,
     drag:null,
     view:null
