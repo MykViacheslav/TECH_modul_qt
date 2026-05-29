@@ -1,2 +1,2 @@
-﻿Set-Location "C:\PythonProject\TECH_modul\TECH_modul_qt"
+Set-Location $PSScriptRoot
 .\.venv\Scripts\python.exe .\src\main.py
